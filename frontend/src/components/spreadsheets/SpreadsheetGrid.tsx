@@ -4478,23 +4478,46 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   );
 
   // Derived ranges for virtualized rendering (clamp so we never render 0 rows/cols when grid has content)
-  const visibleStartRow = Math.max(0, visibleRange.startRow);
-  const visibleEndRow =
+  const visibleStartRowRaw = Math.max(0, visibleRange.startRow);
+  const visibleEndRowRaw =
     rowCount <= 0
       ? -1
-      : Math.max(visibleStartRow, Math.min(rowCount - 1, visibleRange.endRow));
+      : Math.max(visibleStartRowRaw, Math.min(rowCount - 1, visibleRange.endRow));
   const visibleStartCol = Math.max(0, visibleRange.startCol);
   const visibleEndCol =
     colCount <= 0
       ? -1
       : Math.max(visibleStartCol, Math.min(colCount - 1, visibleRange.endCol));
+  // Number of frozen rows (typically 0 or 1) – clamp to valid range
+  const frozenRows = Math.max(0, Math.min(frozenRowCount, rowCount));
+
+  // For virtualized rendering of *non-frozen* rows, never start before the first non-frozen row.
+  const visibleStartRow = Math.max(frozenRows, visibleStartRowRaw);
+  const visibleEndRow =
+    rowCount <= frozenRows
+      ? frozenRows - 1
+      : Math.max(visibleStartRow, visibleEndRowRaw);
+
   let visibleRowCount = Math.max(0, visibleEndRow - visibleStartRow + 1);
   let visibleColCount = Math.max(0, visibleEndCol - visibleStartCol + 1);
   if (rowCount > 0 && visibleRowCount === 0) visibleRowCount = 1;
   if (colCount > 0 && visibleColCount === 0) visibleColCount = 1;
 
-  const topSpacerHeight = getRowOffset(visibleStartRow);
-  const bottomSpacerHeight = Math.max(0, totalRowHeight - getRowOffset(visibleEndRow + 1));
+  // Spacers only apply to the non-frozen region. Frozen rows are always rendered explicitly.
+  let topSpacerHeight = 0;
+  let bottomSpacerHeight = 0;
+  if (rowCount > 0) {
+    if (frozenRows > 0) {
+      const frozenHeight = getRowOffset(frozenRows);
+      const nonFrozenStartOffset = getRowOffset(visibleStartRow);
+      const nonFrozenEndOffset = getRowOffset(visibleEndRow + 1);
+      topSpacerHeight = Math.max(0, nonFrozenStartOffset - frozenHeight);
+      bottomSpacerHeight = Math.max(0, totalRowHeight - nonFrozenEndOffset);
+    } else {
+      topSpacerHeight = getRowOffset(visibleStartRow);
+      bottomSpacerHeight = Math.max(0, totalRowHeight - getRowOffset(visibleEndRow + 1));
+    }
+  }
   const leftSpacerWidth = getColumnOffset(visibleStartCol);
   const rightSpacerWidth = Math.max(0, totalColumnWidth - getColumnOffset(visibleEndCol + 1));
 
@@ -5277,6 +5300,202 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
 
           {/* Grid Body */}
           <tbody>
+            {/* Frozen rows: always rendered so they remain sticky even when scrolled far down. */}
+            {Array.from({ length: frozenRows }).map((_, rowIndex) => {
+              const row = rowIndex; // 0-based for API
+              const rowHeight = getRowHeight(row);
+              const rowBaseStyle = getCellBaseStyle(rowHeight);
+              const frozen = isFrozenRow(row);
+              const frozenStickyStyle: React.CSSProperties = frozen
+                ? {
+                    position: 'sticky',
+                    top: `${getFrozenRowStickyTop(row)}px`,
+                    zIndex: 15,
+                    backgroundColor: isRowHeaderSelected(row) ? 'rgb(191 219 254)' : 'rgb(243 244 246)',
+                  }
+                : {};
+              const frozenDataStickyStyle: React.CSSProperties = frozen
+                ? {
+                    position: 'sticky',
+                    top: `${getFrozenRowStickyTop(row)}px`,
+                    zIndex: 14,
+                  }
+                : {};
+              return (
+                <tr key={row}>
+                  {/* Row Number */}
+                  <td
+                    className={`border border-gray-300 text-xs font-semibold text-gray-600 text-center sticky left-0 z-10 relative overflow-visible ${
+                      isRowHeaderSelected(row) ? 'bg-blue-100' : 'bg-gray-100'
+                    }`}
+                    style={{ ...rowBaseStyle, ...frozenStickyStyle }}
+                    data-testid={`row-header-${row}`}
+                    onClick={() => handleRowHeaderClick(row)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      selectRow(row);
+                      openHeaderMenu('row', row, e.clientX, e.clientY);
+                    }}
+                  >
+                    {row + 1}
+                    <div
+                      data-testid={`row-resize-handle-${row}`}
+                      className="absolute left-0"
+                      style={{
+                        bottom: `-${RESIZE_HANDLE_SIZE / 2}px`,
+                        width: '100%',
+                        height: `${RESIZE_HANDLE_SIZE}px`,
+                        cursor: 'row-resize',
+                      }}
+                      onPointerDown={(e) => startResize(e, 'row', row)}
+                      onPointerMove={handleResizePointerMove}
+                      onPointerUp={handleResizePointerUp}
+                      onPointerCancel={handleResizePointerUp}
+                    />
+                  </td>
+
+                  {/* Left spacer */}
+                  <td
+                    className="border border-gray-300 p-0"
+                    style={{
+                      width: `${leftSpacerWidth}px`,
+                      ...rowBaseStyle,
+                      ...(frozen ? { ...frozenDataStickyStyle, backgroundColor: 'white' } : {}),
+                    }}
+                  />
+
+                  {/* Data Cells */}
+                  {Array.from({ length: visibleColCount }).map((_, colOffset) => {
+                    const col = visibleStartCol + colOffset; // 0-based for API
+                    const colWidth = getColumnWidth(col);
+                    const key = getCellKey(row, col);
+                    const isActive = activeCell && activeCell.row === row && activeCell.col === col;
+                    const isHighlighted =
+                      highlightCell != null &&
+                      highlightCell.row === row &&
+                      highlightCell.col === col;
+                    const isInSelection = isCellInSelection(row, col);
+                    const isEditing = editingCell === key;
+                    const showFillHandle = Boolean(
+                      isActive && isSingleCellSelection && !isEditing && !isFilling
+                    );
+                    const displayValue = isEditing ? editValue : getCellDisplayValue(row, col);
+                    const highlightColor = getHighlightColor(row, col);
+                    const hasHighlight = Boolean(highlightColor);
+                    
+                    // Determine cell styling based on selection state
+                    let cellClassName = 'border border-gray-300 p-0 relative align-top';
+                    if (isEditing) {
+                      cellClassName += ' ring-2 ring-blue-600 ring-inset';
+                    } else if (isActive && isInSelection) {
+                      // Active cell within selection: thicker border
+                      cellClassName += ' ring-2 ring-blue-500 ring-inset';
+                      if (!hasHighlight) {
+                        cellClassName += ' bg-blue-50';
+                      }
+                    } else if (isActive) {
+                      // Active cell without selection
+                      cellClassName += ' ring-2 ring-blue-500 ring-inset';
+                    } else if (isInSelection) {
+                      // Cell in selection range (but not active)
+                      if (!hasHighlight) {
+                        cellClassName += ' bg-blue-100';
+                      }
+                    }
+                    if (isCellInFillPreview(row, col)) {
+                      if (!hasHighlight) {
+                        cellClassName += ' bg-blue-50';
+                      }
+                    }
+                    if (isHighlighted) {
+                      cellClassName += ' ring-2 ring-amber-400 ring-inset bg-amber-50';
+                    }
+
+                    return (
+                      <td
+                        key={`${row}-${col}`}
+                        className={cellClassName}
+                        onMouseDown={(e) => handleCellMouseDown(e, row, col)}
+                        onDoubleClick={() => handleCellDoubleClick(row, col)}
+                        style={{
+                          width: `${colWidth}px`,
+                          minWidth: `${colWidth}px`,
+                          ...rowBaseStyle,
+                          ...(frozen
+                            ? {
+                                ...frozenDataStickyStyle,
+                                backgroundColor:
+                                  highlightColor ??
+                                  (isInSelection
+                                    ? isActive
+                                      ? 'rgb(239 246 255)'
+                                      : 'rgb(219 234 254)'
+                                    : 'white'),
+                              }
+                            : {}),
+                          ...(!frozen && highlightColor ? { backgroundColor: highlightColor } : {}),
+                        }}
+                        data-row={row}
+                        data-col={col}
+                      >
+                        {isEditing ? (
+                          <input
+                            ref={inputRef}
+                            type="text"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onBlur={handleInputBlur}
+                            // Stop propagation so grid-level handlers never see
+                            // key events while editing. The input's own handler
+                            // (handleInputKeyDown) takes care of Enter/Escape.
+                            onKeyDown={(e) => {
+                              e.stopPropagation();
+                              handleInputKeyDown(e);
+                            }}
+                            className="w-full"
+                            style={{ width: `${colWidth}px`, minWidth: `${colWidth}px`, ...getCellInputStyle(rowHeight) }}
+                          />
+                        ) : (
+                          <div
+                            className="text-gray-900"
+                            style={{
+                              ...getCellContentStyle(rowHeight),
+                              fontWeight: getCellFormat(row, col).bold ? 700 : undefined,
+                              fontStyle: getCellFormat(row, col).italic ? 'italic' : undefined,
+                              textDecoration: getCellFormat(row, col).strikethrough ? 'line-through' : undefined,
+                              color: getCellFormat(row, col).textColor ?? undefined,
+                              fontFamily: getCellFormat(row, col).fontFamily ?? undefined,
+                              fontSize: getCellFormat(row, col).fontSize != null ? `${getCellFormat(row, col).fontSize}px` : undefined,
+                            }}
+                          >
+                            {displayValue}
+                          </div>
+                        )}
+                        {showFillHandle && (
+                          <div
+                            className="absolute bottom-0 right-0 h-2 w-2 bg-blue-600 border border-white cursor-crosshair"
+                            onPointerDown={(e) => handleFillHandlePointerDown(e, row, col)}
+                          />
+                        )}
+                      </td>
+                    );
+                  })}
+
+                  {/* Right spacer */}
+                  <td
+                    className="border border-gray-300 p-0"
+                    style={{
+                      width: `${rightSpacerWidth}px`,
+                      ...rowBaseStyle,
+                      ...(frozen ? { ...frozenDataStickyStyle, backgroundColor: 'white' } : {}),
+                    }}
+                  />
+                </tr>
+              );
+            })}
+
+            {/* Spacer for non-frozen rows that are scrolled out above the current viewport */}
             {topSpacerHeight > 0 && (
               <tr>
                 <td
@@ -5286,8 +5505,9 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               </tr>
             )}
 
+            {/* Virtualized non-frozen rows */}
             {Array.from({ length: visibleRowCount }).map((_, rowOffset) => {
-              const row = visibleStartRow + rowOffset; // 0-based for API
+              const row = visibleStartRow + rowOffset; // 0-based for API, starts at first non-frozen row
               const rowHeight = getRowHeight(row);
               const rowBaseStyle = getCellBaseStyle(rowHeight);
               const frozen = isFrozenRow(row);
