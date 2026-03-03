@@ -109,6 +109,7 @@ jobs:
         run: |      
           mkdir -p devops/gitleaks
           ls -la frontend
+          du -sh frontend/*
           #for i in backend devops docs frontend k6 nginx openapi pgbackrest postgres; do echo ${i};gitleaks detect --config devops/gitleaks/.gitleaks.toml --source ${i} --report-path devops/gitleaks/gitleaks-report.${i}.json --no-git || echo "gitleaks failed";done
 
       - name: Check Dockerfile for USER directive
