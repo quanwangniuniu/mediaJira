@@ -14,8 +14,16 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.paginator import Paginator
 
 from .models import (
-    Spreadsheet, Sheet, SheetRow, SheetColumn, WorkflowPattern, PatternJob, PatternJobStatus,
-    SpreadsheetHighlight, SpreadsheetCellFormat
+    Spreadsheet,
+    Sheet,
+    SheetRow,
+    SheetColumn,
+    WorkflowPattern,
+    PatternJob,
+    PatternJobStatus,
+    SpreadsheetHighlight,
+    SpreadsheetCellFormat,
+    SpreadsheetHighlightScope,
 )
 from .serializers import (
     SpreadsheetSerializer, SpreadsheetCreateSerializer, SpreadsheetUpdateSerializer,
@@ -885,16 +893,35 @@ class SpreadsheetHighlightBatchView(APIView):
         deleted = 0
         for op in serializer.validated_data['ops']:
             scope = op['scope']
+            operation = op['operation']
             row_index = op.get('row')
             col_index = op.get('col')
-            operation = op['operation']
+
+            # Normalize storage so ROW and COLUMN highlights are consistent with pattern engine:
+            # - CELL: row_index=row, col_index=col
+            # - ROW:  row_index=row, col_index=0
+            # - COLUMN: row_index=0, col_index=col
+            if scope == SpreadsheetHighlightScope.CELL:
+                norm_row = row_index
+                norm_col = col_index
+            elif scope == SpreadsheetHighlightScope.ROW:
+                norm_row = row_index
+                norm_col = 0
+            elif scope == SpreadsheetHighlightScope.COLUMN:
+                norm_row = 0
+                norm_col = col_index
+            else:
+                # Fallback: keep as-is (should not normally happen)
+                norm_row = row_index
+                norm_col = col_index
+
             if operation == 'SET':
                 color = op['color']
                 SpreadsheetHighlight.objects.update_or_create(
                     sheet=sheet,
                     scope=scope,
-                    row_index=row_index,
-                    col_index=col_index,
+                    row_index=norm_row,
+                    col_index=norm_col,
                     defaults={
                         'spreadsheet': spreadsheet,
                         'color': color,
@@ -902,12 +929,15 @@ class SpreadsheetHighlightBatchView(APIView):
                 )
                 updated += 1
             else:
-                deleted += SpreadsheetHighlight.objects.filter(
-                    sheet=sheet,
-                    scope=scope,
-                    row_index=row_index,
-                    col_index=col_index,
-                ).delete()[0]
+                # CLEAR: delete any matching highlight records for this logical target.
+                qs = SpreadsheetHighlight.objects.filter(sheet=sheet, scope=scope)
+                if scope == SpreadsheetHighlightScope.CELL:
+                    qs = qs.filter(row_index=norm_row, col_index=norm_col)
+                elif scope == SpreadsheetHighlightScope.ROW:
+                    qs = qs.filter(row_index=norm_row)
+                elif scope == SpreadsheetHighlightScope.COLUMN:
+                    qs = qs.filter(col_index=norm_col)
+                deleted += qs.delete()[0]
 
         return Response({'updated': updated, 'deleted': deleted})
 
