@@ -26,6 +26,8 @@ const mockSheet: SheetData = {
   spreadsheet: 1,
   name: 'Sheet1',
   position: 0,
+  frozen_row_count: 0,
+  frozen_column_count: 0,
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
   is_deleted: false,
@@ -58,7 +60,7 @@ export const SpreadsheetAPI = {
   ): Promise<SpreadsheetData> =>
     Promise.resolve({
       ...mockSpreadsheet,
-      name: data.name,
+      name: data.name ?? mockSpreadsheet.name,
     }),
 
   deleteSpreadsheet: async (): Promise<void> => Promise.resolve(),
@@ -90,7 +92,9 @@ export const SpreadsheetAPI = {
   ): Promise<SheetData> =>
     Promise.resolve({
       ...mockSheet,
-      name: data.name,
+      name: data.name ?? mockSheet.name,
+      frozen_row_count: data.frozen_row_count ?? mockSheet.frozen_row_count,
+      frozen_column_count: data.frozen_column_count ?? mockSheet.frozen_column_count,
     }),
 
   deleteSheet: async (): Promise<void> => Promise.resolve(),

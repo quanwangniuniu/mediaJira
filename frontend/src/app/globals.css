@@ -477,6 +477,15 @@ hr {
   scrollbar-width: none;  /* Firefox */
 }
 
+/* Outline overlay: no scrollbar gutter */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* Visible scrollbar for spreadsheet grid; only this container scrolls (page/body do not). */
 .spreadsheet-scroll-container {
   /* Firefox */

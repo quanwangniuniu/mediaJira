@@ -47,6 +47,7 @@ export default function NewTaskForm({
     experiment: "Experiment",
     optimization: "Optimization",
     communication: "Client Communication",
+    platform_policy_update: "Platform Policy Update",
   };
 
   useEffect(() => {
@@ -256,6 +257,7 @@ export default function NewTaskForm({
           <option value="experiment">Experiment</option>
           <option value="optimization">Optimization</option>
           <option value="communication">Client Communication</option>
+          <option value="platform_policy_update">Platform Policy Update</option>
         </select>
         {errors.type && (
           <p className="text-red-500 text-sm mt-1">{errors.type}</p>

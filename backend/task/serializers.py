@@ -213,7 +213,7 @@ class TaskSerializer(serializers.ModelSerializer):
     
     def validate_type(self, value):
         """Validate task type"""
-        valid_types = ['budget', 'asset', 'retrospective', 'report', 'scaling', 'alert', 'experiment', 'optimization', 'communication']
+        valid_types = ['budget', 'asset', 'retrospective', 'report', 'scaling', 'alert', 'experiment', 'optimization', 'communication', 'platform_policy_update']
         if value not in valid_types:
             raise serializers.ValidationError(f"Invalid task type. Must be one of: {valid_types}")
         return value
@@ -284,6 +284,7 @@ class TaskLinkSerializer(serializers.Serializer):
             'clientcommunication',
             'reporttask',
             'decision',
+            'platformpolicyupdate',
         ]
         if value not in valid_content_types:
             raise serializers.ValidationError(f"Invalid content type. Must be one of: {valid_content_types}")

@@ -60,6 +60,8 @@ import {
   RetrospectiveTaskData,
 } from "@/lib/api/retrospectiveApi";
 import ReportDetail from "./ReportDetail";
+import PlatformPolicyUpdateDetail from "./PlatformPolicyUpdateDetail";
+import { PolicyAPI, PlatformPolicyUpdateData } from "@/lib/api/policyApi";
 import {
   JiraDueDateBadge,
   JiraBoardDueTone,
@@ -227,6 +229,10 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
   // Report data (for report tasks)
   const [report, setReport] = useState<ReportTask | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
+
+  // Platform policy update data (for platform_policy_update tasks)
+  const [policyUpdate, setPolicyUpdate] = useState<PlatformPolicyUpdateData | null>(null);
+  const [policyUpdateLoading, setPolicyUpdateLoading] = useState(false);
 
   // Retrospective data (for retrospective tasks)
   const [retrospective, setRetrospective] =
@@ -522,6 +528,32 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
     }
   };
 
+  const loadPolicyUpdate = async () => {
+    if (!task.id || task.type !== "platform_policy_update") {
+      setPolicyUpdate(null);
+      return;
+    }
+    setPolicyUpdateLoading(true);
+    try {
+      let update: PlatformPolicyUpdateData | null = null;
+      if (task.content_type === "platformpolicyupdate" && task.object_id) {
+        const resp = await PolicyAPI.get(Number(task.object_id));
+        update = resp.data;
+      }
+      if (!update) {
+        const resp = await PolicyAPI.list({ task_id: task.id });
+        const updates = resp.data?.results || [];
+        update = updates[0] || null;
+      }
+      setPolicyUpdate(update);
+    } catch (e) {
+      console.error("Error loading policy update:", e);
+      setPolicyUpdate(null);
+    } finally {
+      setPolicyUpdateLoading(false);
+    }
+  };
+
   const loadRetrospective = async () => {
     if (!task.id || task.type !== "retrospective") {
       setRetrospective(null);
@@ -712,6 +744,15 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
       loadReport();
     } else {
       setReport(null);
+    }
+  }, [task.id, task.type, task.object_id]);
+
+  // Load policy update for platform_policy_update tasks
+  useEffect(() => {
+    if (task.type === "platform_policy_update") {
+      loadPolicyUpdate();
+    } else {
+      setPolicyUpdate(null);
     }
   }, [task.id, task.type, task.object_id]);
 
@@ -1634,6 +1675,15 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
               report={report}
               loading={reportLoading}
               onRefresh={loadReport}
+            />
+          )}
+
+          {/* Platform Policy Update detail */}
+          {task?.type === "platform_policy_update" && (
+            <PlatformPolicyUpdateDetail
+              policyUpdate={policyUpdate ?? undefined}
+              loading={policyUpdateLoading}
+              onRefresh={loadPolicyUpdate}
             />
           )}
 

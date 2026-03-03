@@ -12,12 +12,14 @@ import TaskCreatePanel from '@/components/tasks/TaskCreatePanel';
 import NewBudgetRequestForm from '@/components/tasks/NewBudgetRequestForm';
 import NewAssetForm from '@/components/tasks/NewAssetForm';
 import NewRetrospectiveForm from '@/components/tasks/NewRetrospectiveForm';
+import NewPlatformPolicyUpdateForm from '@/components/tasks/NewPlatformPolicyUpdateForm';
 import { useFormValidation } from '@/hooks/useFormValidation';
 import { CreateTaskData } from '@/types/task';
 import { TaskAPI } from '@/lib/api/taskApi';
 import { BudgetAPI } from '@/lib/api/budgetApi';
 import { AssetAPI } from '@/lib/api/assetApi';
 import { RetrospectiveAPI, CreateRetrospectiveData } from '@/lib/api/retrospectiveApi';
+import { PolicyAPI } from '@/lib/api/policyApi';
 import useAuth from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
 import { ProjectAPI } from '@/lib/api/projectApi';
@@ -87,6 +89,7 @@ function TimelinePageContent() {
     file: null,
   });
   const [retrospectiveData, setRetrospectiveData] = useState<Partial<CreateRetrospectiveData>>({});
+  const [policyData, setPolicyData] = useState<any>({});
 
   const loadProjectOptions = useCallback(async () => {
     try {
@@ -190,11 +193,31 @@ function TimelinePageContent() {
     },
   };
 
+  const policyValidationRules = {
+    platform: (value: any) => {
+      if (!value || value.trim() === '') return 'Platform is required';
+      return '';
+    },
+    policy_change_type: (value: any) => {
+      if (!value || value.trim() === '') return 'Policy change type is required';
+      return '';
+    },
+    policy_description: (value: any) => {
+      if (!value || value.trim() === '') return 'Policy description is required';
+      return '';
+    },
+    immediate_actions_required: (value: any) => {
+      if (!value || value.trim() === '') return 'Immediate actions required is required';
+      return '';
+    },
+  };
+
   // Initialize validation hooks
   const taskValidation = useFormValidation<CreateTaskData>(taskValidationRules);
   const budgetValidation = useFormValidation(budgetValidationRules);
   const assetValidation = useFormValidation(assetValidationRules);
   const retrospectiveValidation = useFormValidation(retrospectiveValidationRules);
+  const policyValidation = useFormValidation(policyValidationRules);
 
   // Task type configuration
   const taskTypeConfig = {
@@ -264,6 +287,35 @@ function TimelinePageContent() {
           retrospectiveData.scheduled_at || new Date().toISOString(),
         status: retrospectiveData.status || 'scheduled',
       }),
+    },
+    platform_policy_update: {
+      contentType: 'platformpolicyupdate',
+      formData: policyData,
+      setFormData: setPolicyData,
+      validation: policyValidation,
+      api: PolicyAPI.create,
+      formComponent: NewPlatformPolicyUpdateForm,
+      requiredFields: ['platform', 'policy_change_type', 'policy_description', 'immediate_actions_required'],
+      getPayload: (createdTask: any) => {
+        const parseCommaSeparated = (val: string) =>
+          (val || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+        return {
+          task_id: createdTask.id,
+          platform: policyData.platform,
+          policy_change_type: policyData.policy_change_type,
+          policy_description: policyData.policy_description,
+          policy_reference_url: policyData.policy_reference_url || undefined,
+          effective_date: policyData.effective_date || undefined,
+          affected_campaigns: parseCommaSeparated(policyData.affected_campaigns),
+          affected_ad_sets: parseCommaSeparated(policyData.affected_ad_sets),
+          affected_assets: parseCommaSeparated(policyData.affected_assets),
+          performance_impact: policyData.performance_impact || '',
+          budget_impact: policyData.budget_impact || '',
+          compliance_risk: policyData.compliance_risk || '',
+          immediate_actions_required: policyData.immediate_actions_required,
+          action_deadline: policyData.action_deadline || undefined,
+        };
+      },
     },
   };
 
@@ -349,6 +401,7 @@ function TimelinePageContent() {
       file: null,
     });
     setRetrospectiveData({});
+    setPolicyData({});
     setTaskType('');
     setContentType('');
   };
@@ -359,6 +412,7 @@ function TimelinePageContent() {
     budgetValidation.clearErrors();
     assetValidation.clearErrors();
     retrospectiveValidation.clearErrors();
+    policyValidation.clearErrors();
   };
 
   const handleCreateTask = (projectId: number | null) => {
@@ -436,6 +490,10 @@ function TimelinePageContent() {
 
   const handleRetrospectiveDataChange = (newRetrospectiveData: any) => {
     setRetrospectiveData((prev) => ({ ...prev, ...newRetrospectiveData }));
+  };
+
+  const handlePolicyDataChange = (newPolicyData: any) => {
+    setPolicyData((prev: any) => ({ ...prev, ...newPolicyData }));
   };
 
   // Submit method to create task and related objects
@@ -961,6 +1019,14 @@ function TimelinePageContent() {
               retrospectiveData={retrospectiveData}
               taskData={taskData}
               validation={retrospectiveValidation}
+            />
+          )}
+          {taskData.type === 'platform_policy_update' && (
+            <NewPlatformPolicyUpdateForm
+              onPolicyDataChange={handlePolicyDataChange}
+              policyData={policyData}
+              taskData={taskData}
+              validation={policyValidation}
             />
           )}
         </div>

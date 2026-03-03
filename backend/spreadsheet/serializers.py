@@ -18,6 +18,7 @@ from .models import (
     PatternJob,
     SpreadsheetHighlight,
     SpreadsheetHighlightScope,
+    SpreadsheetCellFormat,
 )
 from .services import SheetService
 
@@ -73,7 +74,8 @@ class SheetSerializer(serializers.ModelSerializer):
     class Meta:
         model = Sheet
         fields = [
-            'id', 'spreadsheet', 'name', 'position', 'created_at', 'updated_at', 'is_deleted'
+            'id', 'spreadsheet', 'name', 'position', 'frozen_row_count', 'frozen_column_count',
+            'created_at', 'updated_at', 'is_deleted'
         ]
         read_only_fields = ['id', 'spreadsheet', 'position', 'created_at', 'updated_at', 'is_deleted']
 
@@ -106,7 +108,7 @@ class SheetUpdateSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Sheet
-        fields = ['name']
+        fields = ['name', 'frozen_row_count', 'frozen_column_count']
     
     def validate(self, data):
         """Validate that position is not provided (it's read-only)"""
@@ -115,6 +117,16 @@ class SheetUpdateSerializer(serializers.ModelSerializer):
                 'position': 'position is read-only'
             })
         return data
+    
+    def validate_frozen_row_count(self, value):
+        if value is not None and (value < 0 or value > 1000):
+            raise serializers.ValidationError("frozen_row_count must be between 0 and 1000")
+        return value
+    
+    def validate_frozen_column_count(self, value):
+        if value is not None and (value < 0 or value > 100):
+            raise serializers.ValidationError("frozen_column_count must be between 0 and 100")
+        return value
     
     def validate_name(self, value):
         """Validate sheet name"""
@@ -383,6 +395,50 @@ class SpreadsheetHighlightOpSerializer(serializers.Serializer):
 
 class SpreadsheetHighlightBatchSerializer(serializers.Serializer):
     ops = SpreadsheetHighlightOpSerializer(many=True, min_length=1, max_length=2000)
+
+
+class SpreadsheetCellFormatSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SpreadsheetCellFormat
+        fields = [
+            'id', 'row_index', 'column_index', 'bold', 'italic', 'strikethrough', 'text_color',
+            'font_family', 'font_size', 'number_format', 'created_at', 'updated_at',
+        ]
+
+
+class NumberFormatSerializer(serializers.Serializer):
+    """Nested structure for number display format."""
+    type = serializers.ChoiceField(
+        choices=['GENERAL', 'NUMBER', 'CURRENCY', 'PERCENT'],
+        required=False,
+        default='GENERAL'
+    )
+    currency_code = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=10)
+    decimal_places = serializers.IntegerField(required=False, allow_null=True, min_value=0, max_value=10)
+
+
+class SpreadsheetCellFormatOpSerializer(serializers.Serializer):
+    row = serializers.IntegerField(min_value=0)
+    column = serializers.IntegerField(min_value=0)
+    bold = serializers.BooleanField(default=False)
+    italic = serializers.BooleanField(default=False)
+    strikethrough = serializers.BooleanField(default=False)
+    text_color = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=20)
+    font_family = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=100)
+    font_size = serializers.IntegerField(required=False, allow_null=True, min_value=6, max_value=72)
+    number_format = NumberFormatSerializer(required=False, allow_null=True)
+
+    def validate_number_format(self, value):
+        if value is None:
+            return None
+        result = dict(value)
+        if result.get('type') == 'CURRENCY' and not result.get('currency_code'):
+            result['currency_code'] = 'USD'
+        return result
+
+
+class SpreadsheetCellFormatBatchSerializer(serializers.Serializer):
+    ops = SpreadsheetCellFormatOpSerializer(many=True, min_length=1, max_length=2000)
 
 
 class WorkflowPatternListSerializer(serializers.ModelSerializer):

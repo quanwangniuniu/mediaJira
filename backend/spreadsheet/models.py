@@ -49,6 +49,14 @@ class Sheet(TimeStampedModel):
     position = models.IntegerField(
         help_text="Position/order of the sheet within the spreadsheet"
     )
+    frozen_row_count = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Number of rows to freeze (0 = none, 1 = freeze first row, etc.)"
+    )
+    frozen_column_count = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Number of columns to freeze (0 = none)"
+    )
 
     class Meta:
         ordering = ['position', 'created_at']
@@ -402,6 +410,39 @@ class SpreadsheetHighlight(TimeStampedModel):
 
     def __str__(self):
         return f"{self.scope} highlight on sheet {self.sheet_id}"
+
+
+class SpreadsheetCellFormat(TimeStampedModel):
+    """Per-cell text formatting (bold, italic, strikethrough, text color, font family, font size)."""
+    sheet = models.ForeignKey(
+        Sheet,
+        on_delete=models.CASCADE,
+        related_name='cell_formats'
+    )
+    row_index = models.IntegerField(help_text="0-based row position")
+    column_index = models.IntegerField(help_text="0-based column position")
+    bold = models.BooleanField(default=False)
+    italic = models.BooleanField(default=False)
+    strikethrough = models.BooleanField(default=False)
+    text_color = models.CharField(max_length=20, null=True, blank=True, help_text="Hex color e.g. #333333")
+    font_family = models.CharField(max_length=100, null=True, blank=True, help_text="Font family e.g. Arial, Helvetica")
+    font_size = models.PositiveSmallIntegerField(null=True, blank=True, help_text="Font size in pixels")
+    # Number format: { "type": "GENERAL"|"NUMBER"|"CURRENCY"|"PERCENT", "currency_code": "USD"|"EUR"|..., "decimal_places": 0..10 }
+    number_format = models.JSONField(null=True, blank=True, help_text="Display format for numeric cells (type, currency_code, decimal_places)")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['sheet', 'row_index', 'column_index'],
+                name='unique_sheet_cell_format_position'
+            )
+        ]
+        indexes = [
+            models.Index(fields=['sheet']),
+        ]
+
+    def __str__(self):
+        return f"Cell format at ({self.row_index},{self.column_index}) on sheet {self.sheet_id}"
 
 
 class WorkflowPattern(TimeStampedModel):
