@@ -127,9 +127,12 @@ export default function AssetDetail({
           setLoadingTaskAsset(true);
           const response = await AssetAPI.getAssets(normalizedTaskId);
           if (response.results && response.results.length > 0) {
-            const firstAsset = response.results[0];
+            // Filter by task in case backend does not filter (task_id may be passed as query param but backend may ignore)
+            const forTask = response.results.filter(
+              (a: Asset) => String(a.task) === String(normalizedTaskId)
+            );
+            const firstAsset = forTask.length > 0 ? forTask[0] : response.results[0];
             setTaskAsset(firstAsset);
-            // Set resolved asset ID to load details
             setResolvedAssetId(String(firstAsset.id));
           } else {
             setTaskAsset(null);
@@ -142,8 +145,10 @@ export default function AssetDetail({
         } finally {
           setLoadingTaskAsset(false);
         }
-      } else {
+      } else if (normalizedAssetId) {
         setResolvedAssetId(normalizedAssetId);
+      } else {
+        setResolvedAssetId(undefined);
       }
     };
     loadTaskAsset();
@@ -483,7 +488,7 @@ export default function AssetDetail({
   // Full mode for TaskDetail page
   if (isLoading) {
     return (
-      <section className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <section className="border-t border-slate-200 pt-5">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-500"></div>
           Loading asset details...
@@ -494,7 +499,7 @@ export default function AssetDetail({
 
   if (assetError) {
     return (
-      <section className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <section className="border-t border-slate-200 pt-5">
         <div className="text-sm text-red-500">Failed to load asset details: {assetError}</div>
       </section>
     );
@@ -502,14 +507,14 @@ export default function AssetDetail({
 
   if (!displayAsset) {
     return (
-      <section className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <section className="border-t border-slate-200 pt-5">
         <div className="text-gray-500 text-sm">No asset has been linked to this task yet.</div>
       </section>
     );
   }
 
   return (
-    <section className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+    <section className="border-t border-slate-200 pt-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-gray-900">Asset Review Overview</h3>
         <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusClass}`}>
@@ -736,13 +741,16 @@ export default function AssetDetail({
             {canUploadVersion && (
               <label
                 htmlFor="asset-version-upload"
-                className={`inline-flex items-center px-3 py-1.5 text-sm rounded text-white transition-colors ${
+                className={`inline-flex items-center gap-1.5 px-1 py-1 text-sm rounded-md transition-colors ${
                   uploadingVersion
-                    ? 'bg-indigo-300 cursor-wait'
-                    : 'bg-indigo-600 hover:bg-indigo-700 cursor-pointer'
+                    ? 'text-indigo-400 cursor-wait'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 cursor-pointer'
                 }`}
               >
-                {uploadingVersion ? 'Uploading...' : '+ Upload Version'}
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                <span>{uploadingVersion ? 'Uploading...' : 'Upload version'}</span>
               </label>
             )}
           </div>
@@ -864,14 +872,16 @@ export default function AssetDetail({
         <div>
           <h4 className="text-sm font-semibold text-gray-700 mb-2">Asset Information</h4>
           <div className="space-y-2 text-sm">
-            <div>
-              <span className="text-gray-500">Owner: </span>
-              <span className="text-gray-900">{formatUser(displayAsset.owner)}</span>
+            <div className="grid grid-cols-[auto_1fr] items-start gap-x-1.5">
+              <span className="text-gray-500">Team:</span>
+              <span className="text-gray-900">
+                {displayAsset.team ? `Team #${displayAsset.team}` : 'None'}
+              </span>
             </div>
-            <div>
-              <span className="text-gray-500">Tags: </span>
+            <div className="grid grid-cols-[auto_1fr] items-start gap-x-1.5">
+              <span className="text-gray-500">Tags:</span>
               {displayAsset.tags && displayAsset.tags.length > 0 ? (
-                <div className="flex flex-wrap gap-1 mt-1">
+                <div className="flex flex-wrap gap-1">
                   {displayAsset.tags.map((tag, i) => (
                     <span
                       key={`${displayAsset.id}-tag-${i}-${tag}`}
@@ -884,14 +894,6 @@ export default function AssetDetail({
               ) : (
                 <span className="text-gray-900">None</span>
               )}
-            </div>
-            <div>
-              <span className="text-gray-500">Created: </span>
-              <span className="text-gray-900">
-                {displayAsset.created_at
-                  ? new Date(displayAsset.created_at).toLocaleString()
-                  : 'Unknown'}
-              </span>
             </div>
           </div>
         </div>

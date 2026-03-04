@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { expect, userEvent, within } from "@storybook/test";
+import { expect, userEvent, within, waitFor, screen } from "@storybook/test";
 import React, { useState } from "react";
 import AdModal from "@/components/google_ads/AdModal";
 import { baseGoogleAds } from "@/stories/google-ads/shared/googleAdsStoryData";
@@ -46,10 +46,14 @@ export const CreateMode: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("Create New Ad")).toBeInTheDocument();
-    await expect(canvas.getByLabelText(/Ad Name/i)).toBeInTheDocument();
+    const adNameInput = canvas.getByLabelText(/Ad Name/i);
+    await expect(adNameInput).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: /Next/i })).toBeInTheDocument();
-    await userEvent.type(canvas.getByLabelText(/Ad Name/i), "Test Ad");
-    await expect(canvas.getByDisplayValue("Test Ad")).toBeInTheDocument();
+    await userEvent.click(adNameInput);
+    await userEvent.type(adNameInput, "test ad");
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("test ad")).toBeInTheDocument();
+    });
   },
 };
 

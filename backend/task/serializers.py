@@ -36,14 +36,105 @@ class TaskSerializer(serializers.ModelSerializer):
     is_subtask = serializers.BooleanField(read_only=True)
     parent_relationship = serializers.SerializerMethodField()
     order_in_project = serializers.IntegerField(required=False)
-    
+    approval_chain_progress = serializers.SerializerMethodField()
+
     class Meta:
         model = Task
         fields = [
             'id', 'summary', 'description', 'status', 'type',
-            'owner', 'owner_id', 'project', 'project_id', 'current_approver', 'current_approver_id', 'content_type', 'object_id', 'start_date', 'due_date', 'is_subtask', 'parent_relationship', 'order_in_project', 'anomaly_status'
+            'owner', 'owner_id', 'project', 'project_id',
+            'current_approver', 'current_approver_id',
+            'content_type', 'object_id', 'start_date', 'due_date',
+            'is_subtask', 'parent_relationship', 'order_in_project',
+            'anomaly_status', 'approval_chain_progress',
         ]
-        read_only_fields = ['id', 'status', 'owner', 'content_type', 'object_id', 'is_subtask', 'parent_relationship', 'anomaly_status']
+        read_only_fields = ['id', 'status', 'owner', 'content_type', 'object_id', 'is_subtask', 'parent_relationship', 'anomaly_status', 'approval_chain_progress']
+
+    def get_approval_chain_progress(self, obj):
+        """
+        Return approval chain progress info for the frontend.
+
+        Returns None if no chain is assigned (legacy single-approver mode).
+        Otherwise returns:
+          {
+            "current_step": 2,
+            "total_steps": 3,
+            "step_display": "Step 2 of 3",
+            "chain_name": "Buyer → Lead → Client",
+            "next_approver": { "id": ..., "username": ..., "email": ... } | null,
+            "steps": [
+              {
+                "step_number": 1,
+                "status": "approved",
+                "approver": { "id": ..., "username": ..., "email": ... },
+                "record": { "approved_by": {...}, "is_approved": true, "decided_time": "...", "comment": "..." }
+              },
+              {
+                "step_number": 2,
+                "status": "current",
+                "approver": { ... },
+                "record": null
+              },
+              ...
+            ]
+          }
+        """
+        if not obj.approval_chain or not obj.current_approval_step:
+            return None
+
+        chain = obj.approval_chain
+        total = chain.total_steps
+        current = obj.current_approval_step
+
+        # Build a lookup of existing approval records: step_number -> record
+        records = {r.step_number: r for r in obj.approval_records.all()}
+
+        # Extract per-step role labels from chain name (e.g. "Buyer → Lead → Client")
+        role_labels = [part.strip() for part in chain.name.split('→')]
+
+        steps = []
+        for step_num in range(1, total + 1):
+            chain_step = chain.get_step(step_num)
+            if not chain_step:
+                continue
+
+            if step_num < current:
+                status = 'approved'
+            elif step_num == current:
+                status = 'current'
+            else:
+                status = 'pending'
+
+            record = records.get(step_num)
+            record_data = None
+            if record:
+                record_data = {
+                    'approved_by': UserSummarySerializer(record.approved_by).data,
+                    'is_approved': record.is_approved,
+                    'decided_time': record.decided_time.isoformat(),
+                    'comment': record.comment,
+                }
+
+            # Use the role label from chain name if available, otherwise fall back to "Step N"
+            role_name = role_labels[step_num - 1] if step_num - 1 < len(role_labels) else f'Step {step_num}'
+
+            steps.append({
+                'step_number': step_num,
+                'role_name': role_name,
+                'status': status,
+                'approver': UserSummarySerializer(chain_step.approver).data,
+                'record': record_data,
+            })
+
+        next_step = chain.get_step(current + 1)
+        return {
+            'current_step': current,
+            'total_steps': total,
+            'step_display': f'Step {current} of {total}',
+            'chain_name': chain.name,
+            'next_approver': UserSummarySerializer(next_step.approver).data if next_step else None,
+            'steps': steps,
+        }
     
     def create(self, validated_data):
         """Create a new task"""
@@ -181,7 +272,7 @@ class TaskSerializer(serializers.ModelSerializer):
     
     def validate_type(self, value):
         """Validate task type"""
-        valid_types = ['budget', 'asset', 'retrospective', 'report', 'scaling', 'alert', 'experiment', 'optimization', 'communication']
+        valid_types = ['budget', 'asset', 'retrospective', 'report', 'scaling', 'alert', 'experiment', 'optimization', 'communication', 'platform_policy_update']
         if value not in valid_types:
             raise serializers.ValidationError(f"Invalid task type. Must be one of: {valid_types}")
         return value
@@ -252,6 +343,7 @@ class TaskLinkSerializer(serializers.Serializer):
             'clientcommunication',
             'reporttask',
             'decision',
+            'platformpolicyupdate',
         ]
         if value not in valid_content_types:
             raise serializers.ValidationError(f"Invalid content type. Must be one of: {valid_content_types}")

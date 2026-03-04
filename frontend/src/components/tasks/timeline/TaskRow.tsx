@@ -1,13 +1,16 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { addDays, addHours } from 'date-fns';
 import { CheckSquare, Square, X } from 'lucide-react';
+import toast from 'react-hot-toast';
 import type { TaskData } from '@/types/task';
 import { dateToX, getColumnWidth, toDate, widthFromRange } from './timelineUtils';
 import type { TimelineColumn, TimelineScale } from './timelineUtils';
 import { TaskAPI } from '@/lib/api/taskApi';
 import { cn } from '@/lib/utils';
+import ConfirmDialog from '@/components/common/ConfirmDialog';
 
 const DONE_STATUSES = new Set(['APPROVED', 'LOCKED', 'DONE', 'COMPLETED', 'RESOLVED']);
 const IN_PROGRESS_STATUSES = new Set(['SUBMITTED', 'UNDER_REVIEW', 'IN_REVIEW', 'IN_PROGRESS', 'REVIEW']);
@@ -40,6 +43,7 @@ const formatTypeLabel = (value?: string | null) => {
     experiment: 'Experiment',
     optimization: 'Optimization',
     communication: 'Communication',
+    platform_policy_update: 'Platform Policy Update',
   };
   if (labelMap[normalized]) return labelMap[normalized];
   return normalized
@@ -95,6 +99,8 @@ const TaskRow = ({
   onDelete,
 }: TaskRowProps) => {
   const [hoverPos, setHoverPos] = useState<'before' | 'after' | null>(null);
+  const [navigating, setNavigating] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const columnWidth = getColumnWidth(scale);
   const gridWidth = columns.reduce((sum, column) => sum + column.width, 0);
   const startDateRaw = toDate(task.start_date);
@@ -136,6 +142,7 @@ const TaskRow = ({
   const isDone = DONE_STATUSES.has((task.status || '').toUpperCase());
 
   return (
+    <>
     <div
       className={cn("grid items-stretch relative", className)}
       style={{ gridTemplateColumns: `${leftColumnWidth}px 1fr` }}
@@ -179,8 +186,8 @@ const TaskRow = ({
       <div className="flex items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 group">
         <button
           type="button"
-          onClick={() => onTaskClick?.(task)}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 hover:bg-slate-50"
+          onClick={() => { setNavigating(true); onTaskClick?.(task); }}
+          className={cn("flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 hover:bg-slate-50", navigating && "opacity-50 pointer-events-none")}
         >
           <span className="text-slate-400">
             {isDone ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
@@ -196,6 +203,18 @@ const TaskRow = ({
             >
               {task.summary || 'Untitled task'}
             </span>
+            {task.content_type === 'decision' && task.object_id ? (
+              <span className="shrink-0 text-[10px] text-slate-400" title="From decision">
+                From{' '}
+                <Link
+                  href={`/decisions/${task.object_id}${(task.project?.id ?? task.project_id) ? `?project_id=${task.project?.id ?? task.project_id}` : ''}`}
+                  className="text-indigo-600 hover:text-indigo-800 hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Decision #{task.object_id}
+                </Link>
+              </span>
+            ) : null}
           </div>
           <span className={cn('rounded px-2 py-0.5 text-[10px] font-semibold', typeTone)}>
             {typeLabel}
@@ -205,17 +224,9 @@ const TaskRow = ({
         {task.id && (
           <button
             type="button"
-            onClick={async (e) => {
+            onClick={(e) => {
               e.stopPropagation();
-              if (!task.id) return;
-              if (!window.confirm(`Delete task #${task.id} "${task.summary}"?`)) return;
-              try {
-                await TaskAPI.deleteTask(task.id);
-                onDelete?.(task.id);
-              } catch (error) {
-                console.error('Failed to delete task:', error);
-                alert('Failed to delete task. Please try again.');
-              }
+              setShowDeleteConfirm(true);
             }}
             className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50"
             title="Delete task"
@@ -240,6 +251,27 @@ const TaskRow = ({
         </div>
       </div>
     </div>
+    <ConfirmDialog
+      isOpen={showDeleteConfirm}
+      title="Delete task"
+      message={task.id ? `Delete task #${task.id} "${task.summary || 'Untitled task'}"?` : ''}
+      type="danger"
+      confirmText="Delete"
+      onConfirm={async () => {
+        if (!task.id) return;
+        try {
+          await TaskAPI.deleteTask(task.id);
+          toast.success('Task deleted');
+          onDelete?.(task.id);
+        } catch (error) {
+          console.error('Failed to delete task:', error);
+          toast.error('Failed to delete task. Please try again.');
+        }
+        setShowDeleteConfirm(false);
+      }}
+      onCancel={() => setShowDeleteConfirm(false)}
+    />
+    </>
   );
 };
 

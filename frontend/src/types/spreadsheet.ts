@@ -29,6 +29,8 @@ export interface SheetData {
   spreadsheet: number;
   name: string;
   position: number;
+  frozen_row_count?: number;
+  frozen_column_count?: number;
   created_at: string;
   updated_at: string;
   is_deleted: boolean;
@@ -46,6 +48,8 @@ export interface CreateSheetRequest {
 }
 
 export interface UpdateSheetRequest {
-  name: string;
+  name?: string;
+  frozen_row_count?: number;
+  frozen_column_count?: number;
 }
 

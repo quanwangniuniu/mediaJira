@@ -177,13 +177,22 @@ class SheetService:
     
     @staticmethod
     @transaction.atomic
-    def update_sheet(sheet: Sheet, name: str) -> Sheet:
+    def update_sheet(
+        sheet: Sheet,
+        name: str,
+        *,
+        frozen_row_count: Optional[int] = None,
+        frozen_column_count: Optional[int] = None,
+    ) -> Sheet:
         """
-        Update sheet name (position cannot be updated)
+        Update sheet (name, frozen_row_count, frozen_column_count).
+        Position cannot be updated.
         
         Args:
             sheet: Sheet instance to update
             name: New name
+            frozen_row_count: Optional new frozen row count
+            frozen_column_count: Optional new frozen column count
             
         Returns:
             Updated Sheet instance
@@ -202,6 +211,10 @@ class SheetService:
             )
         
         sheet.name = name
+        if frozen_row_count is not None:
+            sheet.frozen_row_count = max(0, min(1000, frozen_row_count))
+        if frozen_column_count is not None:
+            sheet.frozen_column_count = max(0, min(100, frozen_column_count))
         sheet.save()
         
         return sheet
@@ -1882,7 +1895,19 @@ class WorkflowPatternService:
             header_row = int(header_row_index) - 1
             if header_row < 0:
                 raise ValidationError("Invalid SET_COLUMN_NAME target")
-            target_col = WorkflowPatternService._resolve_header_column(sheet, header_row, params)
+            # Simplified semantics: always use the recorded column position (column_ref.index)
+            # to decide which header cell to rename, instead of matching header text.
+            column_ref = params.get('column_ref') or {}
+            col_index_1based = column_ref.get('index')
+            target_col = None
+            if col_index_1based is not None:
+                # column_ref.index is 1-based; convert to 0-based SheetColumn.position
+                target_col_candidate = int(col_index_1based) - 1
+                if target_col_candidate < 0:
+                    raise ValidationError("Invalid column index for SET_COLUMN_NAME step")
+                # Only apply if a column actually exists at this position
+                if SheetColumn.objects.filter(sheet=sheet, position=target_col_candidate, is_deleted=False).exists():
+                    target_col = target_col_candidate
             if target_col is not None:
                 operation = {
                     'operation': 'clear' if str(to_header).strip() == '' else 'set',

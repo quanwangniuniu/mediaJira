@@ -11,7 +11,12 @@ import {
 const meta: Meta<typeof TextInput> = {
   title: 'Input/Primitives',
   component: TextInput,
-  subcomponents: { TextArea, Checkbox, Select, MultiSelect },
+  subcomponents: { 
+    TextArea: TextArea as any, 
+    Checkbox: Checkbox as any, 
+    Select: Select as any, 
+    MultiSelect: MultiSelect as any 
+  },
   parameters: {
     layout: 'centered',
   },

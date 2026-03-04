@@ -447,7 +447,7 @@ export default function FactoryCard(props: FactoryCardProps) {
       case 'longHeadline':
         const isLVariantLongHeadline = variantKey === 'mobile.landscape.logo-longheadline-biz-textcta';
         const isNVariantLongHeadline = variantKey === 'mobile.inline.thumb-longheadline-adbiz-button';
-        let longHeadlineStyle = isLVariantLongHeadline
+        let longHeadlineStyle: Record<string, any> = isLVariantLongHeadline
           ? { fontSize: '18px', lineHeight: '1.22', whiteSpace: 'normal', overflowWrap: 'anywhere' }
           : isNVariantLongHeadline
             ? { fontSize: '12px', lineHeight: '16px', marginBottom: '0', whiteSpace: 'normal', overflowWrap: 'anywhere' }
@@ -537,7 +537,7 @@ export default function FactoryCard(props: FactoryCardProps) {
             30,
             { medium: 34, large: 60, mediumFactor: 0.7, largeFactor: 0.48 }
           );
-          const titleXLClamped = applyLineClamp(titleXLAdjusted, 3);
+          const titleXLClamped: Record<string, any> = applyLineClamp(titleXLAdjusted, 3);
           return title ? <div key={slot} className={styles.headlineXL} style={titleXLClamped}>{title}</div> : null;
         }
         return title ? <div key={slot} className={styles.headlineXL}>{title}</div> : null;
@@ -649,10 +649,10 @@ export default function FactoryCard(props: FactoryCardProps) {
             20,
             { medium: 40, large: 72, mediumFactor: 0.72, largeFactor: 0.5 }
           );
-          const descClampedStyle = applyLineClamp(descAdjustedStyle, 2);
+          const descClampedStyle: Record<string, any> = applyLineClamp(descAdjustedStyle, 2);
           return description ? <div key={slot} className={styles.descLight} style={descClampedStyle}>{description}</div> : null;
         }
-        let descStyle = variantKey === 'mobile.portrait.hero-logo-title-desc-buttons'
+        let descStyle: Record<string, any> = variantKey === 'mobile.portrait.hero-logo-title-desc-buttons'
           ? { fontSize: '28px', lineHeight: '1.4', whiteSpace: 'normal', overflowWrap: 'anywhere' }
           : isSVariantDesc
             ? { fontSize: '18px', lineHeight: '1.4', whiteSpace: 'normal', overflowWrap: 'anywhere' }
@@ -683,7 +683,7 @@ export default function FactoryCard(props: FactoryCardProps) {
           config.panel?.type === 'darkSheet' ||
           config.panel?.type === 'lightSheet'
         );
-        let finalDescStyle = shouldClampDesc
+        let finalDescStyle: Record<string, any> = shouldClampDesc
           ? applyLineClamp(descStyle, 3)
           : descStyle;
         finalDescStyle = adjustFontSizeForText(
@@ -728,7 +728,7 @@ export default function FactoryCard(props: FactoryCardProps) {
             ? { fontSize: '14px', lineHeight: '1.15', textAlign: 'center', whiteSpace: 'normal', overflowWrap: 'anywhere', maxWidth: '44px', margin: '0 auto' }
                       : {};
         const bizClass = (config.panel?.type === 'darkOverlay' || config.panel?.type === 'darkSheet') ? styles.bizDark : styles.biz;
-        let bizAdjustedStyle = bizStyle;
+        let bizAdjustedStyle: Record<string, any> = bizStyle;
         if (config.panel?.type === 'darkOverlay' || config.panel?.type === 'darkSheet') {
           bizAdjustedStyle = adjustFontSizeForText(bizStyle, business, parsePxValue(bizStyle.fontSize) ?? 16, { medium: 50, large: 90, mediumFactor: 0.85, largeFactor: 0.7 });
         } else if (config.panel?.type === 'lightSheet' && isGVariant) {
@@ -778,7 +778,7 @@ export default function FactoryCard(props: FactoryCardProps) {
               { medium: 18, large: 28, mediumFactor: 0.8, largeFactor: 0.6 }
             )
           : adBizBaseStyle;
-        const adBizFinalStyle = (isNVariantAdBiz || isOPQRVariantAdBiz)
+        const adBizFinalStyle: Record<string, any> = (isNVariantAdBiz || isOPQRVariantAdBiz)
           ? applyLineClamp(adBizAdjustedStyle, 2)
           : adBizAdjustedStyle;
         return (
@@ -1062,7 +1062,7 @@ export default function FactoryCard(props: FactoryCardProps) {
       case 'cta-fab':
         const isUVariantFab = variantKey === 'mobile.inline.inlinebox-title-desc-fab-footer';
         const isVVariantFab = variantKey === 'mobile.inline.darkcard-title-desc-fab-footer';
-        const fabStyle = isUVariantFab ? {
+        const fabStyle: Record<string, any> = isUVariantFab ? {
           position: 'static',
           marginTop: '0',
           alignSelf: 'flex-start',
@@ -1409,8 +1409,8 @@ export default function FactoryCard(props: FactoryCardProps) {
     
     if (isDVariant) {
       const gridItems: Array<{ slot: string; gridColumn: string; gridRow: string }> = [];
-      rows.forEach((row, rowIdx) => {
-        row.forEach((cell, colIdx) => {
+      rows.forEach((row: string[], rowIdx: number) => {
+        row.forEach((cell: string, colIdx: number) => {
           if (cell !== '') {
             const gridColumn = `${colIdx + 1} / ${colIdx + 2}`;
             let gridRow = `${rowIdx + 1} / ${rowIdx + 2}`;
@@ -1446,8 +1446,8 @@ export default function FactoryCard(props: FactoryCardProps) {
     
     if (isMVariant) {
       const gridItems: Array<{ slot: string; gridColumn: string; gridRow: string }> = [];
-      rows.forEach((row, rowIdx) => {
-        row.forEach((cell, colIdx) => {
+      rows.forEach((row: string[], rowIdx: number) => {
+        row.forEach((cell: string, colIdx: number) => {
           if (cell !== '') {
             const gridColumn = `${colIdx + 1} / ${colIdx + 2}`;
             let gridRow = `${rowIdx + 1} / ${rowIdx + 2}`;
@@ -1496,8 +1496,8 @@ export default function FactoryCard(props: FactoryCardProps) {
     
     if (isOVariant || isPVariant) {
       const gridItems: Array<{ slot: string; gridColumn: string; gridRow: string }> = [];
-      rows.forEach((row, rowIdx) => {
-        row.forEach((cell, colIdx) => {
+      rows.forEach((row: string[], rowIdx: number) => {
+        row.forEach((cell: string, colIdx: number) => {
           if (cell !== '') {
             let gridColumn = `${colIdx + 1} / ${colIdx + 2}`;
             let gridRow = `${rowIdx + 1} / ${rowIdx + 2}`;
@@ -1579,8 +1579,8 @@ export default function FactoryCard(props: FactoryCardProps) {
     
     if (isQVariant || isRVariant) {
       const gridItems: Array<{ slot: string; gridColumn: string; gridRow: string }> = [];
-      rows.forEach((row, rowIdx) => {
-        row.forEach((cell, colIdx) => {
+      rows.forEach((row: string[], rowIdx: number) => {
+        row.forEach((cell: string, colIdx: number) => {
           if (cell !== '') {
             let gridColumn = `${colIdx + 1} / ${colIdx + 2}`;
             let gridRow = `${rowIdx + 1} / ${rowIdx + 2}`;
@@ -1646,8 +1646,8 @@ export default function FactoryCard(props: FactoryCardProps) {
     
     if (isNVariant) {
       const gridItems: Array<{ slot: string; gridColumn: string; gridRow: string }> = [];
-      rows.forEach((row, rowIdx) => {
-        row.forEach((cell, colIdx) => {
+      rows.forEach((row: string[], rowIdx: number) => {
+        row.forEach((cell: string, colIdx: number) => {
           if (cell !== '') {
             let gridColumn = `${colIdx + 1} / ${colIdx + 2}`;
             let gridRow = `${rowIdx + 1} / ${rowIdx + 2}`;
@@ -1712,8 +1712,8 @@ export default function FactoryCard(props: FactoryCardProps) {
     
     if (isSVariant) {
       const gridItems: Array<{ slot: string; gridColumn: string; gridRow: string }> = [];
-      rows.forEach((row, rowIdx) => {
-        row.forEach((cell, colIdx) => {
+      rows.forEach((row: string[], rowIdx: number) => {
+        row.forEach((cell: string, colIdx: number) => {
           if (cell !== '') {
             let gridColumn = `${colIdx + 1} / ${colIdx + 2}`;
             let gridRow = `${rowIdx + 1} / ${rowIdx + 2}`;
@@ -1765,8 +1765,8 @@ export default function FactoryCard(props: FactoryCardProps) {
     
     if (isIVariant) {
       const gridItems: Array<{ slot: string; gridColumn: string; gridRow: string }> = [];
-      rows.forEach((row, rowIdx) => {
-        row.forEach((cell, colIdx) => {
+      rows.forEach((row: string[], rowIdx: number) => {
+        row.forEach((cell: string, colIdx: number) => {
           if (cell !== '') {
             const gridColumn = `${colIdx + 1} / ${colIdx + 2}`;
             const gridRow = `${rowIdx + 1} / ${rowIdx + 2}`;
@@ -1856,7 +1856,7 @@ export default function FactoryCard(props: FactoryCardProps) {
       const isBvariant = variantKey === 'mobile.portrait.hero-logo-title-desc-buttons';
       const isHVariant = variantKey === 'mobile.landscape.centered-whitecard';
       const isJVariant = variantKey === 'mobile.landscape.image-plus-whitecard-below';
-      const panelStyle = isBvariant && position === 'below' ? { 
+      const panelStyle: Record<string, any> = isBvariant && position === 'below' ? { 
         margin: '0', 
         borderRadius: '0', 
         border: 'none', 
@@ -2130,7 +2130,7 @@ export default function FactoryCard(props: FactoryCardProps) {
       const isTVariant = variantKey === 'mobile.sheet.logo-title-biz-desc-buttons';
       const isYVariant = variantKey === 'mobile.sheet.light-logoTitle-desc-video-cta';
       const sheetClass = pattern ? styles.lightSheetPattern : styles.lightSheet;
-      const sheetStyle = isGVariant ? {
+      const sheetStyle: Record<string, any> = isGVariant ? {
         background: '#f0f9ff',
         padding: '16px',
         gap: '12px',
@@ -2632,7 +2632,6 @@ export default function FactoryCard(props: FactoryCardProps) {
                   minHeight: isBvariant ? '50%' : 0,
                   display: 'flex', 
                   flexDirection: 'column', 
-                  minHeight: 0, 
                   position: 'relative' 
                 }
               : isStandardFrame

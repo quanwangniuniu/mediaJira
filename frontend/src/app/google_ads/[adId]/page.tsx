@@ -19,8 +19,7 @@ function GoogleAdsDetailPageContent() {
     ? {
         name: user.username || 'User',
         email: user.email || '',
-        role: user.role || 'user',
-        avatar: user.avatar || undefined,
+        role: user.roles?.[0] || 'user',
       }
     : undefined;
 
@@ -135,7 +134,7 @@ function GoogleAdsDetailPageContent() {
               </div>
               <div className="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
                 <dt className="text-sm font-medium text-gray-500">Resource Name</dt>
-                <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2 font-mono">{currentAd.resource_name || '-'}</dd>
+                <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2 font-mono">{(currentAd as any).resource_name || '-'}</dd>
               </div>
               <div className="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
                 <dt className="text-sm font-medium text-gray-500">Google Ads ID</dt>

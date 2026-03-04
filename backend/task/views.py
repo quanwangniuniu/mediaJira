@@ -7,7 +7,7 @@ from django.core.exceptions import ValidationError
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.shortcuts import get_object_or_404
-from task.models import Task, ApprovalRecord, TaskComment, TaskAttachment, TaskHierarchy, TaskRelation
+from task.models import Task, ApprovalRecord, TaskComment, TaskAttachment, TaskHierarchy, TaskRelation, ApprovalChain
 from task.serializers import TaskSerializer, TaskLinkSerializer, ApprovalRecordSerializer, TaskApprovalSerializer, TaskForwardSerializer, TaskCommentSerializer, TaskAttachmentSerializer, SubtaskAddSerializer, TaskRelationAddSerializer
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
@@ -233,21 +233,26 @@ class TaskViewSet(viewsets.ModelViewSet):
         """Link task to an existing object"""
         task = self.get_object()
         
-        # Check if task is already linked
-        if task.is_linked:
-            return Response(
-                {'error': 'Task is already linked to an object'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
         # Validate link data
         serializer = TaskLinkSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
+
         # Get the linked object from validated data
         linked_object = serializer.validated_data['linked_object']
-        
+
+        # Check if task is already linked
+        if task.is_linked:
+            # Idempotent: if already linked to the same object, return success
+            ct = ContentType.objects.get_for_model(linked_object.__class__)
+            if task.content_type_id == ct.id and task.object_id == str(linked_object.id):
+                task_serializer = TaskSerializer(task, context={'request': request})
+                return Response(task_serializer.data, status=status.HTTP_200_OK)
+            return Response(
+                {'error': 'Task is already linked to a different object'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         # Link the task to the object
         task.link_to_object(linked_object)
         
@@ -284,36 +289,51 @@ class TaskViewSet(viewsets.ModelViewSet):
         try:
             # Execute the action
             if action == 'approve':
-                task.approve()
+                task.approve()   # UNDER_REVIEW → APPROVED
                 is_approved = True
             else:  # action == 'reject'
-                task.reject()
+                task.reject()    # UNDER_REVIEW → REJECTED
                 is_approved = False
-            
-            # Create approval record
-            next_step = task.approval_records.count() + 1
+
+            # Record the decision for the current step
+            step_number = (
+                task.current_approval_step
+                if task.current_approval_step
+                else task.approval_records.count() + 1
+            )
             ApprovalRecord.objects.create(
                 task=task,
                 approved_by=task.current_approver or request.user,
                 is_approved=is_approved,
                 comment=comment,
-                step_number=next_step
+                step_number=step_number
             )
-            
-            # Save the task to persist the state change
+
+            # If approved and a chain is active, auto-advance to the next step
+            if is_approved and task.approval_chain and task.current_approval_step:
+                next_step_num = task.current_approval_step + 1
+                next_step = task.approval_chain.get_step(next_step_num)
+                if next_step:
+                    # More steps remain: APPROVED → UNDER_REVIEW with next approver
+                    task.forward_to_next()
+                    task.current_approver = next_step.approver
+                    task.current_approval_step = next_step_num
+                # else: chain is complete — task stays APPROVED, ready to be locked
+
+            # Save all changes
             task.save()
-            
+
             # Return both the approval record and updated task data
             approval_serializer = ApprovalRecordSerializer(
                 task.approval_records.latest('step_number')
             )
             task_serializer = TaskSerializer(task, context={'request': request})
-            
+
             return Response({
                 'approval_record': approval_serializer.data,
                 'task': task_serializer.data
             }, status=status.HTTP_200_OK)
-            
+
         except Exception as e:
             return Response(
                 {'error': str(e)},
@@ -362,15 +382,27 @@ class TaskViewSet(viewsets.ModelViewSet):
     def approval_history(self, request, pk=None):
         """Get approval history for a task"""
         task = self.get_object()
-        
+
         # Get approval records ordered by step_number
         approval_records = task.approval_records.all().order_by('step_number')
-        
-        # Serialize the approval records
+
+        # Build role_name lookup from chain name (e.g. "Buyer → Lead → Client")
+        role_labels = {}
+        if task.approval_chain:
+            parts = [p.strip() for p in task.approval_chain.name.split('→')]
+            role_labels = {i + 1: label for i, label in enumerate(parts)}
+
+        # Serialize and annotate each record with its role_name
         approval_serializer = ApprovalRecordSerializer(approval_records, many=True)
-        
+        history = []
+        for record_data in approval_serializer.data:
+            step_num = record_data.get('step_number')
+            entry = dict(record_data)
+            entry['role_name'] = role_labels.get(step_num)
+            history.append(entry)
+
         return Response({
-            'history': approval_serializer.data
+            'history': history
         }, status=status.HTTP_200_OK)
     
     @action(detail=True, methods=['post'])
@@ -477,27 +509,43 @@ class TaskViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def start_review(self, request, pk=None):
-        """Start review for a task (change status to UNDER_REVIEW)"""
+        """Start review for a task (change status to UNDER_REVIEW).
+
+        If a predefined ApprovalChain exists for this task's project + type,
+        it is automatically assigned and the first step's approver becomes
+        current_approver. Otherwise the task falls back to legacy single-approver mode.
+        """
         task = self.get_object()
-        
+
         # Validate task can start review
         if task.status != Task.Status.SUBMITTED:
             return Response(
                 {'error': 'Task must be in SUBMITTED status to start review'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         try:
-            # Start review
+            # Transition status: SUBMITTED → UNDER_REVIEW
             task.start_review()
-            task.save()  # Save the state change
-            
+
+            # Auto-assign approval chain if one is configured and not already set
+            if not task.approval_chain:
+                chain = Task.find_approval_chain(task.project, task.type)
+                if chain and chain.total_steps > 0:
+                    first_step = chain.get_step(1)
+                    if first_step:
+                        task.approval_chain = chain
+                        task.current_approval_step = 1
+                        task.current_approver = first_step.approver
+
+            task.save()
+
             # Return updated task
             task_serializer = TaskSerializer(task, context={'request': request})
             return Response({
                 'task': task_serializer.data
             }, status=status.HTTP_200_OK)
-            
+
         except Exception as e:
             return Response(
                 {'error': str(e)},
@@ -908,7 +956,7 @@ def get_task_types(request):
     task_types = [
         {'value': choice[0], 'label': choice[1]}
         for choice in task_type_choices
-        if choice[0] not in ['execution', 'platform_policy_update']  # Exclude types not used in UI
+        if choice[0] not in ['execution']  # Exclude types not used in UI
     ]
     
     return Response({'task_types': task_types}, status=status.HTTP_200_OK)

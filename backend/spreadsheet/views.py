@@ -14,8 +14,16 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.paginator import Paginator
 
 from .models import (
-    Spreadsheet, Sheet, SheetRow, SheetColumn, WorkflowPattern, PatternJob, PatternJobStatus,
-    SpreadsheetHighlight
+    Spreadsheet,
+    Sheet,
+    SheetRow,
+    SheetColumn,
+    WorkflowPattern,
+    PatternJob,
+    PatternJobStatus,
+    SpreadsheetHighlight,
+    SpreadsheetCellFormat,
+    SpreadsheetHighlightScope,
 )
 from .serializers import (
     SpreadsheetSerializer, SpreadsheetCreateSerializer, SpreadsheetUpdateSerializer,
@@ -27,7 +35,8 @@ from .serializers import (
     CellBatchUpdateSerializer, CellBatchUpdateResponseSerializer,
     WorkflowPatternCreateSerializer, WorkflowPatternListSerializer, WorkflowPatternDetailSerializer,
     PatternApplySerializer, PatternJobStatusSerializer,
-    SpreadsheetHighlightSerializer, SpreadsheetHighlightBatchSerializer
+    SpreadsheetHighlightSerializer, SpreadsheetHighlightBatchSerializer,
+    SpreadsheetCellFormatSerializer, SpreadsheetCellFormatBatchSerializer
 )
 from .services import SpreadsheetService, SheetService, CellService
 from .models import SheetStructureOperation
@@ -343,13 +352,16 @@ class SheetDetailView(APIView):
             is_deleted=False
         )
         
-        serializer = SheetUpdateSerializer(data=request.data)
+        serializer = SheetUpdateSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
         
         try:
             updated_sheet = SheetService.update_sheet(
                 sheet=sheet,
-                name=serializer.validated_data['name']
+                name=data.get('name', sheet.name),
+                frozen_row_count=data.get('frozen_row_count'),
+                frozen_column_count=data.get('frozen_column_count'),
             )
         except DjangoValidationError as e:
             raise ValidationError({'error': str(e)})
@@ -881,16 +893,35 @@ class SpreadsheetHighlightBatchView(APIView):
         deleted = 0
         for op in serializer.validated_data['ops']:
             scope = op['scope']
+            operation = op['operation']
             row_index = op.get('row')
             col_index = op.get('col')
-            operation = op['operation']
+
+            # Normalize storage so ROW and COLUMN highlights are consistent with pattern engine:
+            # - CELL: row_index=row, col_index=col
+            # - ROW:  row_index=row, col_index=0
+            # - COLUMN: row_index=0, col_index=col
+            if scope == SpreadsheetHighlightScope.CELL:
+                norm_row = row_index
+                norm_col = col_index
+            elif scope == SpreadsheetHighlightScope.ROW:
+                norm_row = row_index
+                norm_col = 0
+            elif scope == SpreadsheetHighlightScope.COLUMN:
+                norm_row = 0
+                norm_col = col_index
+            else:
+                # Fallback: keep as-is (should not normally happen)
+                norm_row = row_index
+                norm_col = col_index
+
             if operation == 'SET':
                 color = op['color']
                 SpreadsheetHighlight.objects.update_or_create(
                     sheet=sheet,
                     scope=scope,
-                    row_index=row_index,
-                    col_index=col_index,
+                    row_index=norm_row,
+                    col_index=norm_col,
                     defaults={
                         'spreadsheet': spreadsheet,
                         'color': color,
@@ -898,12 +929,67 @@ class SpreadsheetHighlightBatchView(APIView):
                 )
                 updated += 1
             else:
-                deleted += SpreadsheetHighlight.objects.filter(
-                    sheet=sheet,
-                    scope=scope,
-                    row_index=row_index,
-                    col_index=col_index,
-                ).delete()[0]
+                # CLEAR: delete any matching highlight records for this logical target.
+                qs = SpreadsheetHighlight.objects.filter(sheet=sheet, scope=scope)
+                if scope == SpreadsheetHighlightScope.CELL:
+                    qs = qs.filter(row_index=norm_row, col_index=norm_col)
+                elif scope == SpreadsheetHighlightScope.ROW:
+                    qs = qs.filter(row_index=norm_row)
+                elif scope == SpreadsheetHighlightScope.COLUMN:
+                    qs = qs.filter(col_index=norm_col)
+                deleted += qs.delete()[0]
 
         return Response({'updated': updated, 'deleted': deleted})
+
+
+class SpreadsheetCellFormatListView(APIView):
+    """List cell formats for a sheet"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+
+        formats = SpreadsheetCellFormat.objects.filter(sheet=sheet, is_deleted=False).order_by('row_index', 'column_index')
+        serializer = SpreadsheetCellFormatSerializer(formats, many=True)
+        return Response({'formats': serializer.data})
+
+
+class SpreadsheetCellFormatBatchView(APIView):
+    """Batch update cell formats"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+
+        serializer = SpreadsheetCellFormatBatchSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        updated = 0
+        for op in serializer.validated_data['ops']:
+            row_index = op['row']
+            column_index = op['column']
+            defaults = {
+                'bold': op.get('bold', False),
+                'italic': op.get('italic', False),
+                'strikethrough': op.get('strikethrough', False),
+                'text_color': op.get('text_color') or None,
+                'is_deleted': False,
+            }
+            if 'font_family' in op:
+                defaults['font_family'] = op['font_family'] or None
+            if 'font_size' in op:
+                defaults['font_size'] = op['font_size']
+            if 'number_format' in op:
+                defaults['number_format'] = op['number_format']
+            SpreadsheetCellFormat.objects.update_or_create(
+                sheet=sheet,
+                row_index=row_index,
+                column_index=column_index,
+                defaults=defaults,
+            )
+            updated += 1
+
+        return Response({'updated': updated})
 

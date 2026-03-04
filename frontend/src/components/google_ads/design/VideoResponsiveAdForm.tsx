@@ -1,9 +1,37 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { GoogleAd } from '@/lib/api/googleAdsApi';
+import { GoogleAd, AdVideoAsset, AdImageAsset } from '@/lib/api/googleAdsApi';
 import { GoogleAdsVideoData, GoogleAdsPhotoData } from '@/lib/api/googleAdsMediaApi';
 import VideoSelectionModal from '../VideoSelectionModal';
+
+// Helper function to convert AdVideoAsset[] to GoogleAdsVideoData[]
+const convertVideoAssets = (assets: AdVideoAsset[] | undefined): GoogleAdsVideoData[] => {
+  if (!assets) return [];
+  return assets
+    .filter((asset): asset is AdVideoAsset & { id: number } => asset.id !== undefined)
+    .map(asset => ({
+      id: asset.id!,
+      title: asset.asset || 'Video',
+      video_id: asset.video_id || '',
+      image_url: asset.url,
+      message: undefined,
+    }));
+};
+
+// Helper function to convert AdImageAsset[] to GoogleAdsPhotoData[]
+const convertImageAssets = (assets: AdImageAsset[] | undefined): GoogleAdsPhotoData[] => {
+  if (!assets) return [];
+  return assets
+    .filter((asset): asset is AdImageAsset & { id: number } => asset.id !== undefined)
+    .map(asset => ({
+      id: asset.id!,
+      url: asset.url || asset.asset || '',
+      caption: undefined,
+      image_hash: undefined,
+      uploaded: false,
+    }));
+};
 
 interface VideoResponsiveAdFormProps {
   ad: GoogleAd;
@@ -113,8 +141,8 @@ export default function VideoResponsiveAdForm({
         setCompanionBannerEnabled(videoAd.companion_banner_enabled || false);
         setBreadcrumb1(videoAd.breadcrumb1 || '');
         setBreadcrumb2(videoAd.breadcrumb2 || '');
-        setSelectedVideos(videoAd.videos || []);
-        setSelectedCompanionBanners(videoAd.companion_banners || []);
+        setSelectedVideos(convertVideoAssets(videoAd.videos));
+        setSelectedCompanionBanners(convertImageAssets(videoAd.companion_banners));
       }
       
       isInitialLoad.current = false;

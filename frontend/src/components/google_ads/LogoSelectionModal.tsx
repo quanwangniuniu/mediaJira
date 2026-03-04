@@ -498,7 +498,6 @@ const LogoSelectionModal: React.FC<LogoSelectionModalProps> = ({
                         onMouseEnter={handleMediaMouseEnter}
                         onMouseLeave={handleMediaMouseLeave}
                         onPreviewShow={handlePreviewShow}
-                        onPreviewHide={() => setPreviewMedia(null)}
                       />
                     ))}
                 </div>

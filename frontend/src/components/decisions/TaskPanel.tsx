@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import DecisionTaskCreateModal from '@/components/decisions/DecisionTaskCreateModal';
 import { TaskAPI } from '@/lib/api/taskApi';
 import type { TaskData } from '@/types/task';
@@ -131,9 +132,10 @@ const TaskPanel = ({
       {!loading && !error && tasks.length > 0 ? (
         <div className="mt-4 space-y-2">
           {tasks.map((task) => (
-            <div
+            <Link
               key={task.id}
-              className="rounded-md border border-gray-200 bg-white px-3 py-2 text-xs"
+              href={`/tasks/${task.id}`}
+              className="block rounded-md border border-gray-200 bg-white px-3 py-2 text-xs hover:bg-gray-50"
             >
               <div className="flex items-center justify-between gap-2">
                 <span
@@ -146,7 +148,7 @@ const TaskPanel = ({
                 <span className="text-gray-500">Due {formatDate(task.due_date)}</span>
               </div>
               <div className="mt-1 text-gray-500">Owner: {formatOwner(task)}</div>
-            </div>
+            </Link>
           ))}
         </div>
       ) : null}

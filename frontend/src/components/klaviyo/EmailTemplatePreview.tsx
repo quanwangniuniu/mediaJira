@@ -92,14 +92,15 @@ const EmailTemplatePreview: React.FC<EmailTemplatePreviewProps> = ({
       case "Heading": {
         const headingStyles = block.styles || {};
         const headingStyleProps = getStyleProps(headingStyles);
+        const headingStyle: Record<string, any> = {
+          ...headingStyleProps,
+          fontSize: headingStyleProps.fontSize || "12px",
+          color: headingStyleProps.color || "#111827",
+        };
         return (
           <h2
             className="py-1"
-            style={{
-              ...headingStyleProps,
-              fontSize: headingStyleProps.fontSize || "12px",
-              color: headingStyleProps.color || "#111827",
-            }}
+            style={headingStyle}
           >
             {block.content || "Heading"}
           </h2>
@@ -110,14 +111,15 @@ const EmailTemplatePreview: React.FC<EmailTemplatePreviewProps> = ({
         const paragraphStyleProps = getStyleProps(paragraphStyles);
         const content = block.content || "Text content";
         const truncatedContent = content.length > 50 ? content.substring(0, 50) + "..." : content;
+        const paragraphStyle: Record<string, any> = {
+          ...paragraphStyleProps,
+          fontSize: paragraphStyleProps.fontSize || "10px",
+          color: paragraphStyleProps.color || "#374151",
+        };
         return (
           <p
             className="py-0.5"
-            style={{
-              ...paragraphStyleProps,
-              fontSize: paragraphStyleProps.fontSize || "10px",
-              color: paragraphStyleProps.color || "#374151",
-            }}
+            style={paragraphStyle}
           >
             {truncatedContent}
           </p>
@@ -129,14 +131,15 @@ const EmailTemplatePreview: React.FC<EmailTemplatePreviewProps> = ({
         const textStyleProps = getStyleProps(textStyles);
         const content = block.content || "Text content";
         const truncatedContent = content.length > 50 ? content.substring(0, 50) + "..." : content;
+        const textStyle: Record<string, any> = {
+          ...textStyleProps,
+          fontSize: textStyleProps.fontSize || "10px",
+          color: textStyleProps.color || "#374151",
+        };
         return (
           <p
             className="py-0.5"
-            style={{
-              ...textStyleProps,
-              fontSize: textStyleProps.fontSize || "10px",
-              color: textStyleProps.color || "#374151",
-            }}
+            style={textStyle}
           >
             {truncatedContent}
           </p>

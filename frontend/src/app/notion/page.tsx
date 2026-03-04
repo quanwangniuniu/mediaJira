@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Layout from '@/components/layout/Layout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
-import useAuth from '@/hooks/useAuth';
 import { NotionDraftAPI } from '@/lib/api/notionDraftApi';
-import NotionDraftList from '@/components/notion/NotionDraftList';
-import NotionEditor, { createEmptyBlock } from '@/components/notion/NotionEditor';
+import { createEmptyBlock } from '@/components/notion/NotionEditor';
+import NotionLayout from '@/components/notion/NotionLayout';
 import {
   DraftStatus,
   DraftSummary,
@@ -14,7 +14,6 @@ import {
   NotionContentBlockRecord,
 } from '@/types/notion';
 import { toast } from 'react-hot-toast';
-import { useRouter } from 'next/navigation';
 
 const TODO_STATE_REGEX = /data-todo-state="(checked|unchecked)"/i;
 const addTodoMarkerIfMissing = (html: string) => {
@@ -199,9 +198,6 @@ const buildSnapshot = (title: string, status: string, blocks: EditorBlock[]) =>
   });
 
 function NotionPageContent() {
-  const { user, logout } = useAuth();
-  const router = useRouter();
-
   const [drafts, setDrafts] = useState<DraftSummary[]>([]);
   // Initialize selectedDraftId from localStorage if available
   const [selectedDraftId, setSelectedDraftId] = useState<number | null>(() => {
@@ -227,30 +223,57 @@ function NotionPageContent() {
   const [isPreviewOpen, setIsPreviewOpen] = useState<boolean>(false);
   const [deletingDraftId, setDeletingDraftId] = useState<number | null>(null);
 
+  const router = useRouter();
   const snapshotRef = useRef<string>(buildSnapshot(title, status, blocks));
 
-  const layoutUser = useMemo(
-    () =>
-      user
-        ? {
-            name: user.username || 'User',
-            email: user.email || '',
-            role: user.roles?.length ? user.roles[0] : 'user',
-          }
-        : undefined,
-    [user]
-  );
-
-  const handleUserAction = useCallback(
-    async (action: string) => {
-      if (action === 'logout') {
-        await logout();
+  const handleNavigateAway = useCallback(
+    (destination: string) => {
+      if (!hasChanges) {
+        router.push(destination);
+        return;
       }
-      if (action === 'settings') {
-        router.push('/profile/settings');
-      }
+      toast(
+        (t: { id: string }) => (
+          <div className="flex items-center gap-4 bg-white rounded-lg shadow-lg border border-gray-100 px-4 py-3 min-w-[300px]">
+            <div className="flex items-center gap-2 flex-1">
+              <svg className="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+              </svg>
+              <span className="text-sm font-medium text-gray-700">Unsaved changes will be lost</span>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  toast.dismiss(t.id);
+                  router.push(destination);
+                }}
+                className="px-3 py-1 text-xs font-semibold text-white bg-amber-500 hover:bg-amber-600 rounded-md transition-colors"
+              >
+                Leave
+              </button>
+              <button
+                type="button"
+                onClick={() => toast.dismiss(t.id)}
+                className="px-3 py-1 text-xs font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+              >
+                Stay
+              </button>
+            </div>
+          </div>
+        ),
+        {
+          duration: 6000,
+          position: 'bottom-center',
+          style: {
+            background: 'transparent',
+            boxShadow: 'none',
+            padding: 0,
+          },
+        }
+      );
     },
-    [logout, router]
+    [hasChanges, router]
   );
 
   const syncSnapshot = useCallback(
@@ -457,16 +480,6 @@ function NotionPageContent() {
     }
   }, [blocks, selectedDraftId, status, title]);
 
-  useEffect(() => {
-    const beforeUnload = (event: BeforeUnloadEvent) => {
-      if (!hasChanges) return;
-      event.preventDefault();
-      event.returnValue = '';
-    };
-    window.addEventListener('beforeunload', beforeUnload);
-    return () => window.removeEventListener('beforeunload', beforeUnload);
-  }, [hasChanges]);
-
   const handleCreateDraft = useCallback(async () => {
     try {
       setIsSaving(true);
@@ -535,11 +548,8 @@ function NotionPageContent() {
     }
   }, [syncSnapshot]);
 
-  const handleDeleteDraft = useCallback(
+  const performDeleteDraft = useCallback(
     async (draftId: number) => {
-      if (!window.confirm('Delete this draft?')) {
-        return;
-      }
       try {
         setDeletingDraftId(draftId);
         await NotionDraftAPI.deleteDraft(draftId);
@@ -571,6 +581,52 @@ function NotionPageContent() {
       }
     },
     [drafts, loadDraftDetail, selectedDraftId, syncSnapshot]
+  );
+
+  const handleDeleteDraft = useCallback(
+    (draftId: number) => {
+      toast(
+        (t) => (
+          <div className="flex items-center gap-4 bg-white rounded-lg shadow-lg border border-gray-100 px-4 py-3 min-w-[280px]">
+            <div className="flex items-center gap-2 flex-1">
+              <svg className="w-4 h-4 text-red-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              <span className="text-sm font-medium text-gray-700">Delete this draft?</span>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  toast.dismiss(t.id);
+                  performDeleteDraft(draftId);
+                }}
+                className="px-3 py-1 text-xs font-semibold text-white bg-red-500 hover:bg-red-600 rounded-md transition-colors"
+              >
+                Delete
+              </button>
+              <button
+                type="button"
+                onClick={() => toast.dismiss(t.id)}
+                className="px-3 py-1 text-xs font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ),
+        {
+          duration: 4000,
+          position: 'bottom-center',
+          style: {
+            background: 'transparent',
+            boxShadow: 'none',
+            padding: 0,
+          },
+        }
+      );
+    },
+    [performDeleteDraft]
   );
 
   const handleSave = useCallback(async () => {
@@ -713,142 +769,33 @@ function NotionPageContent() {
   }, [lastEditedAt]);
 
   return (
-    <Layout user={layoutUser} onUserAction={handleUserAction}>
-      <div className="h-full flex bg-gray-50 min-h-0">
-        <NotionDraftList
-          drafts={drafts}
-          selectedId={selectedDraftId}
-          onSelect={loadDraftDetail}
-          onCreate={handleCreateDraft}
-          onDelete={handleDeleteDraft}
-          isLoading={isLoadingDrafts || deletingDraftId !== null}
-        />
-        <div className="flex-1 flex flex-col min-h-0">
-          <div className="border-b border-gray-200 bg-white px-8 py-6 flex-shrink-0">
-            <div className="flex items-center gap-4">
-              <input
-                type="text"
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder="Untitled"
-                className="flex-1 border-0 border-b border-transparent focus:border-blue-500 focus:ring-0 text-3xl font-semibold text-gray-900 placeholder:text-gray-300"
-                disabled={!selectedDraftId}
-              />
-              {lastEditedLabel && (
-                <span aria-live="polite" className="text-sm text-gray-500 whitespace-nowrap">
-                  {lastEditedLabel}
-                </span>
-              )}
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsPreviewOpen(true)}
-                  className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled={!selectedDraftId}
-                >
-                  Preview
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-60"
-                  disabled={!selectedDraftId || isSaving || !hasChanges}
-                >
-                  {isSaving ? 'Saving…' : 'Save'}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex-1 bg-white min-h-0 overflow-y-auto">
-            {isLoadingEditor ? (
-              <div className="h-full flex items-center justify-center text-gray-400">
-                Loading draft…
-              </div>
-            ) : selectedDraftId ? (
-              <NotionEditor blocks={blocks} setBlocks={setBlocks} draftId={selectedDraftId || undefined} />
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center text-gray-400 space-y-3">
-                <h2 className="text-xl font-semibold text-gray-500">
-                  No draft selected
-                </h2>
-                <p className="max-w-md text-sm text-gray-500">
-                  Create a new draft or select one from the sidebar to start
-                  writing with the Notion-style editor.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleCreateDraft}
-                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                >
-                  New draft
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {isPreviewOpen && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4 py-8">
-          <div className="relative flex flex-col max-h-[90vh] w-full max-w-3xl rounded-xl bg-white shadow-2xl">
-            <div className="flex-shrink-0 h-16 border-b border-gray-200 bg-white px-6 flex items-center">
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold text-gray-900">
-                  {title || 'Untitled'}
-                </h3>
-                <p className="text-sm text-gray-500">Preview mode</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsPreviewOpen(false)}
-                className="rounded-full bg-gray-100 p-2 text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                aria-label="Close preview"
-              >
-                <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                  <path
-                    fillRule="evenodd"
-                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-8 space-y-6 min-h-0">
-              {blocks.map((block) => {
-                if (block.type === 'divider') {
-                  return (
-                    <div key={block.id} className="w-full border-t border-gray-300 my-4" />
-                  );
-                }
-                if (block.type === 'image' || block.type === 'video' || block.type === 'audio' || block.type === 'file' || block.type === 'web_bookmark') {
-                  return (
-                    <div
-                      key={block.id}
-                      className="prose prose-gray max-w-none"
-                      dangerouslySetInnerHTML={{ __html: block.html || '' }}
-                    />
-                  );
-                }
-                if (!block.html) {
-                  return (
-                    <div key={block.id} className="text-gray-300 italic">
-                      Empty block
-                    </div>
-                  );
-                }
-                return (
-                  <div
-                    key={block.id}
-                    className="prose prose-gray max-w-none"
-                    dangerouslySetInnerHTML={{ __html: block.html }}
-                  />
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
+    <Layout
+      showHeader={true}
+      showSidebar={true}
+      unsavedChangesGuard={
+        hasChanges ? { hasChanges, onNavigateAway: handleNavigateAway } : undefined
+      }
+    >
+      <NotionLayout
+        drafts={drafts}
+        selectedDraftId={selectedDraftId}
+        onSelectDraft={loadDraftDetail}
+        onCreateDraft={handleCreateDraft}
+        onDeleteDraft={handleDeleteDraft}
+        isDraftListLoading={isLoadingDrafts || deletingDraftId !== null}
+        title={title}
+        onTitleChange={setTitle}
+        lastEditedLabel={lastEditedLabel}
+        onOpenPreview={() => setIsPreviewOpen(true)}
+        onSave={handleSave}
+        isSaving={isSaving}
+        hasChanges={hasChanges}
+        isLoadingEditor={isLoadingEditor}
+        blocks={blocks}
+        setBlocks={setBlocks}
+        isPreviewOpen={isPreviewOpen}
+        onClosePreview={() => setIsPreviewOpen(false)}
+      />
     </Layout>
   );
 }

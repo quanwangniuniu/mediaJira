@@ -1,10 +1,34 @@
+export interface ApprovalChainStepRecord {
+  approved_by: UserSummary;
+  is_approved: boolean;
+  decided_time: string;
+  comment: string | null;
+}
+
+export interface ApprovalChainStepData {
+  step_number: number;
+  role_name: string;
+  status: 'approved' | 'current' | 'pending';
+  approver: UserSummary;
+  record: ApprovalChainStepRecord | null;
+}
+
+export interface ApprovalChainProgress {
+  current_step: number;
+  total_steps: number;
+  step_display: string;
+  chain_name: string;
+  next_approver: UserSummary | null;
+  steps: ApprovalChainStepData[];
+}
+
 // Type for getting an existing task
 export interface TaskData {
   id?: number;
   owner?: UserSummary;
   owner_id?: number | null; // Write-only for updates
   project_id: number; // Required for creation
-  type: "budget" | "asset" | "retrospective" | "report" | "scaling" | "alert" | "experiment" | "optimization" | "communication"; // Valid task types
+  type: "budget" | "asset" | "retrospective" | "report" | "scaling" | "alert" | "experiment" | "optimization" | "communication" | "platform_policy_update"; // Valid task types
   summary: string;
   description?: string;
   current_approver?: UserSummary; // For display (from API response)
@@ -26,12 +50,13 @@ export interface TaskData {
   is_subtask?: boolean; // Indicates if this task is a subtask
   parent_relationship?: any; // Parent relationship if this is a subtask
   order_in_project?: number; // Order of task within its project
+  approval_chain_progress?: ApprovalChainProgress | null;
 }
 
 // Type for creating a new task (current_approver_id is user ID)
 export interface CreateTaskData {
   project_id: number;
-  type: "budget" | "asset" | "retrospective" | "report" | "scaling" | "alert" | "experiment" | "optimization" | "communication";
+  type: "budget" | "asset" | "retrospective" | "report" | "scaling" | "alert" | "experiment" | "optimization" | "communication" | "platform_policy_update";
   summary: string;
   description?: string;
   current_approver_id?: number; // User ID for creation
