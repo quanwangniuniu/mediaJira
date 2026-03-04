@@ -46,6 +46,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -106,6 +108,7 @@ jobs:
         continue-on-error: true
         run: |      
           mkdir -p devops/gitleaks
+          rm -rf frontend/{node_modules,.next}
           gitleaks detect --config devops/gitleaks/.gitleaks.toml --source . --report-path devops/gitleaks/gitleaks-report.json --no-git || echo "gitleaks failed"
 
       - name: Check Dockerfile for USER directive
@@ -148,6 +151,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       # Build backend image with cache
@@ -211,6 +216,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       # Rebuild images using cache from build job (fast due to GHA cache)
