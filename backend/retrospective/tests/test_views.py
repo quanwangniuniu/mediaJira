@@ -47,6 +47,15 @@ class RetrospectiveTaskViewSetTest(TestCase):
             created_by=self.user,
             status=RetrospectiveStatus.SCHEDULED
         )
+
+    def _retrospective_payload(self, campaign_id):
+        return {
+            'campaign': str(campaign_id),
+            'decision': 'Scale budget toward best performing channel',
+            'confidence_level': 4,
+            'primary_assumption': 'Recent KPI lift will continue next sprint',
+            'key_risk_ignore': 'Short-term auction volatility',
+        }
     
     def test_list_retrospectives(self):
         """Test listing retrospectives"""
@@ -72,13 +81,79 @@ class RetrospectiveTaskViewSetTest(TestCase):
         
         self.client.force_authenticate(user=self.user)
         url = reverse('retrospective:retrospective-list')
-        data = {
-            'campaign': str(second_campaign.id)
-        }
+        data = self._retrospective_payload(second_campaign.id)
         response = self.client.post(url, data)
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(RetrospectiveTask.objects.count(), 2)  # Including the one from setUp
+
+    def test_create_retrospective_requires_new_fields(self):
+        """Test required decision fields on retrospective creation"""
+        third_campaign = Project.objects.create(
+            name='Third Test Campaign',
+            organization=self.organization
+        )
+        self.client.force_authenticate(user=self.user)
+        url = reverse('retrospective:retrospective-list')
+        response = self.client.post(url, {'campaign': str(third_campaign.id)})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('decision', response.data)
+        self.assertIn('confidence_level', response.data)
+        self.assertIn('primary_assumption', response.data)
+
+    def test_create_retrospective_rejects_invalid_confidence_level(self):
+        """Test confidence_level option validation on create"""
+        fourth_campaign = Project.objects.create(
+            name='Fourth Test Campaign',
+            organization=self.organization
+        )
+        self.client.force_authenticate(user=self.user)
+        url = reverse('retrospective:retrospective-list')
+        data = self._retrospective_payload(fourth_campaign.id)
+        data['confidence_level'] = 6
+        response = self.client.post(url, data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('confidence_level', response.data)
+    
+    def test_create_retrospective_rejects_float_confidence_level(self):
+        fifth_campaign = Project.objects.create(
+            name='Fifth Test Campaign',
+            organization=self.organization
+        )
+        self.client.force_authenticate(user=self.user)
+        url = reverse('retrospective:retrospective-list')
+        data = {
+            'campaign': str(fifth_campaign.id),
+            'decision': 'Keep budget steady',
+            'confidence_level': 3.5,
+            'primary_assumption': 'Performance remains stable',
+            'key_risk_ignore': '',
+        }
+
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('confidence_level', response.data)
+    
+    def test_create_retrospective_rejects_string_confidence_level(self):
+        fifth_campaign = Project.objects.create(
+            name='Sixth Test Campaign',
+            organization=self.organization
+        )
+        self.client.force_authenticate(user=self.user)
+        url = reverse('retrospective:retrospective-list')
+        data = {
+            'campaign': str(fifth_campaign.id),
+            'decision': 'Keep budget steady',
+            'confidence_level': 'high',
+            'primary_assumption': 'Performance remains stable',
+            'key_risk_ignore': '',
+        }
+
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('confidence_level', response.data)
     
     def test_retrieve_retrospective(self):
         """Test retrieving a retrospective"""
@@ -467,7 +542,11 @@ class APIIntegrationTest(TestCase):
         # 1. Create retrospective
         url = reverse('retrospective:retrospective-list')
         data = {
-            'campaign': str(self.campaign.id)
+            'campaign': str(self.campaign.id),
+            'decision': 'Keep the current creative mix',
+            'confidence_level': 3,
+            'primary_assumption': 'Current conversion trend remains stable',
+            'key_risk_ignore': '',
         }
         response = self.client.post(url, data)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)

@@ -30,6 +30,13 @@ class RetrospectiveTask(models.Model):
     """
     Model for managing retrospective tasks triggered by campaign completion
     """
+    class ConfidenceLevel(models.IntegerChoices):
+        LEVEL_1 = 1, '1'
+        LEVEL_2 = 2, '2'
+        LEVEL_3 = 3, '3'
+        LEVEL_4 = 4, '4'
+        LEVEL_5 = 5, '5'
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
     # Campaign relationship (now referencing core.Project but keeping field name 'campaign' for backward-compat)
@@ -52,6 +59,26 @@ class RetrospectiveTask(models.Model):
     scheduled_at = models.DateTimeField(
         default=timezone.now,
         help_text="When the retrospective was scheduled"
+    )
+    decision = models.CharField(
+        max_length=255,
+        default="",
+        help_text="Decision made for this retrospective task"
+    )
+    confidence_level = models.IntegerField(
+        default=ConfidenceLevel.LEVEL_3,
+        choices=ConfidenceLevel.choices,
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        help_text="Confidence level for the decision (1-5)"
+    )
+    primary_assumption = models.TextField(
+        default="",
+        help_text="Primary assumption behind the decision"
+    )
+    key_risk_ignore = models.TextField(
+        blank=True,
+        default="",
+        help_text="Optional key risk to explicitly ignore"
     )
     started_at = models.DateTimeField(
         null=True,

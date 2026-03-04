@@ -4,21 +4,21 @@ info:
   version: v0.1-draft
   description: |
     API and ERD extension for scheduled campaign retrospectives, KPI metric storage, and analytics/reporting. 
-    
+
     **Usage Examples:**
     - Campaign auto-triggers a retrospective task after completion.
     - Data Analyst submits optimization notes and insights for a campaign.
     - KPI metrics are stored and later queried for dashboard/reporting.
-    
+
     **Retrospective Task States:**
     - Scheduled → In Progress → Completed → Reported
-    
+
     **Entities:**
     - RetrospectiveTask (1:1 with CampaignTask, type=Retrospective)
     - CampaignKPI (1:n → CampaignTask)
     - Insight (n:1 → RetrospectiveTask)
     - CustomReport (optional, for saved filters/visualizations)
-    
+
     **See also:** BE5 for dashboard/reporting integration, BE1 for asset/feedback loop compatibility.
 servers:
   - description: Local Development
@@ -49,6 +49,22 @@ components:
         status:
           type: string
           enum: [Scheduled, In Progress, Completed, Reported]
+        decision:
+          type: string
+          description: Core decision captured during retrospective planning
+        confidence_level:
+          type: integer
+          enum: [1, 2, 3, 4, 5]
+          minimum: 1
+          maximum: 5
+          description: Confidence score for the decision (1-5)
+        primary_assumption:
+          type: string
+          description: Primary assumption supporting the decision
+        key_risk_ignore:
+          type: string
+          description: Optional key risk intentionally ignored
+          nullable: true
         report_url:
           type: string
           format: uri
@@ -65,6 +81,9 @@ components:
         - created_by
         - scheduled_time
         - status
+        - decision
+        - confidence_level
+        - primary_assumption
     CampaignKPI:
       type: object
       properties:
@@ -146,14 +165,14 @@ paths:
       security:
         - bearerAuth: []
       responses:
-        '200':
+        "200":
           description: List of retrospective tasks
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/RetrospectiveTask'
+                  $ref: "#/components/schemas/RetrospectiveTask"
     post:
       summary: Create a new retrospective task
       security:
@@ -163,14 +182,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RetrospectiveTask'
+              $ref: "#/components/schemas/RetrospectiveTask"
       responses:
-        '201':
+        "201":
           description: Created retrospective task
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RetrospectiveTask'
+                $ref: "#/components/schemas/RetrospectiveTask"
   /retrospectives/{id}/insights/:
     get:
       summary: List insights for a retrospective task
@@ -183,14 +202,14 @@ paths:
           schema:
             type: integer
       responses:
-        '200':
+        "200":
           description: List of insights
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Insight'
+                  $ref: "#/components/schemas/Insight"
     post:
       summary: Add an insight to a retrospective task
       security:
@@ -206,14 +225,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Insight'
+              $ref: "#/components/schemas/Insight"
       responses:
-        '201':
+        "201":
           description: Created insight
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Insight'
+                $ref: "#/components/schemas/Insight"
   /campaign-tasks/{id}/kpis/:
     get:
       summary: List KPIs for a campaign task
@@ -226,14 +245,14 @@ paths:
           schema:
             type: integer
       responses:
-        '200':
+        "200":
           description: List of KPIs
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/CampaignKPI'
+                  $ref: "#/components/schemas/CampaignKPI"
     post:
       summary: Add a KPI metric to a campaign task
       security:
@@ -249,28 +268,28 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CampaignKPI'
+              $ref: "#/components/schemas/CampaignKPI"
       responses:
-        '201':
+        "201":
           description: Created KPI
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CampaignKPI'
+                $ref: "#/components/schemas/CampaignKPI"
   /custom-reports/:
     get:
       summary: List custom reports
       security:
         - bearerAuth: []
       responses:
-        '200':
+        "200":
           description: List of custom reports
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/CustomReport'
+                  $ref: "#/components/schemas/CustomReport"
     post:
       summary: Create a custom report
       security:
@@ -280,11 +299,11 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CustomReport'
+              $ref: "#/components/schemas/CustomReport"
       responses:
-        '201':
+        "201":
           description: Created custom report
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CustomReport' 
+                $ref: "#/components/schemas/CustomReport"
