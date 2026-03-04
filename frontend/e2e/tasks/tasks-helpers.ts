@@ -20,27 +20,48 @@ export async function waitForTasksPageReady(page: Page) {
 }
 
 /**
- * Navigate to /tasks and, if projects are listed, select the first one.
+ * Navigate to /tasks, select a project by name, and return its ID.
+ * Run once before all tests (in beforeAll) to grab the project ID.
+ * Uses E2E_PROJECT_NAME env var (default "Q1 E2E Task").
  */
-export async function goToTasks(page: Page) {
+export async function navigateToTasksAndSelectProject(page: Page): Promise<number> {
   await page.goto('/tasks');
 
   await expect(page.getByText('Preparing your workspace')).not.toBeVisible({ timeout: 30_000 });
-
   await expect(page.getByRole('heading', { name: 'Select a project' })).toBeVisible({ timeout: 10_000 });
 
-  const firstProjectCard = page
+  const projectName = process.env.E2E_PROJECT_NAME || 'E2E Test Project';
+  
+  const projectCard = page
     .locator('button.group')
-    .filter({ has: page.locator('span.font-medium', { hasText: /^P-\d+$/ }) })
+    .filter({ has: page.locator('span.font-semibold.text-slate-900', { hasText: projectName }) })
     .first();
-
-  await expect(firstProjectCard).toBeVisible({ timeout: 10_000 });
-  await firstProjectCard.scrollIntoViewIfNeeded();
-  await firstProjectCard.click();
+  await projectCard.click();
 
   await page.waitForURL(/\/tasks\?project_id=\d+/, { timeout: 10_000 });
-
   await waitForTasksPageReady(page);
+
+  const url = new URL(page.url());
+  const projectId = parseInt(url.searchParams.get('project_id') ?? '0', 10);
+  if (!projectId) throw new Error('Could not parse project_id from URL');
+  return projectId;
+}
+
+/**
+ * Ensure we are on the tasks page for the given project.
+ * Run before each test (in beforeEach) to navigate to /tasks?project_id=X&view=timeline.
+ */
+export async function ensureOnTasksPage(page: Page, projectId: number): Promise<void> {
+  await page.goto(`/tasks?project_id=${projectId}&view=timeline`);
+  await waitForTasksPageReady(page);
+}
+
+/**
+ * Full flow: navigate, select project, wait for ready.
+ * Use when you need the full flow in each test (e.g. task-create.spec).
+ */
+export async function goToTasks(page: Page): Promise<void> {
+  await navigateToTasksAndSelectProject(page);
 }
 
 /** Alias for goToTasks (same behavior). */

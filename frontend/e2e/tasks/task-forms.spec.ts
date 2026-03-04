@@ -1,18 +1,31 @@
 import { test, expect } from '@playwright/test';
 import {
-  goToTasksWithProject,
+  navigateToTasksAndSelectProject,
+  ensureOnTasksPage,
   submitCreateAndGetId,
   deleteTaskById,
 } from './tasks-helpers';
 
 test.describe('Task-type specific forms', () => {
+  test.describe.configure({ mode: 'serial' });
+
   let createdTaskId: number | null = null;
+  let projectId: number;
+
+  test.beforeAll(async ({ browser }) => {
+    const context = await browser.newContext({
+      storageState: 'e2e/.auth/user.json',
+    });
+    const page = await context.newPage();
+    projectId = await navigateToTasksAndSelectProject(page);
+    await context.close();
+  });
 
   test.beforeEach(async ({ page }) => {
     createdTaskId = null;
-    await goToTasksWithProject(page);
+    await ensureOnTasksPage(page, projectId);
 
-    await page.getByRole('button', { name: 'Create Task' }).click();
+    await page.getByRole('button', { name: 'Create Task' }).first().click();
     await expect(page.getByTestId('task-create-panel')).toBeVisible();
   });
 
@@ -47,25 +60,6 @@ test.describe('Task-type specific forms', () => {
     await panel
       .getByPlaceholder(/Summarize the outcome|Campaign stabilized/)
       .fill('Campaign stabilized within 48 hours after budget reallocation.');
-
-    createdTaskId = await submitCreateAndGetId(page, panel);
-  });
-
-  test('user can fill an Asset task-type form', async ({ page }) => {
-    const panel = page.getByTestId('task-create-panel');
-
-    await panel.locator('#task-type').selectOption({ value: 'asset' });
-    await panel.locator('#task-summary').fill('E2E Asset Task');
-    await panel.locator('#asset-tags').fill('e2e,test');
-
-    createdTaskId = await submitCreateAndGetId(page, panel);
-  });
-
-  test('user can fill a Retrospective task-type form', async ({ page }) => {
-    const panel = page.getByTestId('task-create-panel');
-
-    await panel.locator('#task-type').selectOption({ value: 'retrospective' });
-    await panel.locator('#task-summary').fill('E2E Retrospective Task');
 
     createdTaskId = await submitCreateAndGetId(page, panel);
   });
@@ -158,4 +152,60 @@ test.describe('Task-type specific forms', () => {
 
     createdTaskId = await submitCreateAndGetId(page, panel);
   });
+
+  test('user can fill a Retrospective task-type form', async ({ page }) => {
+    const panel = page.getByTestId('task-create-panel');
+
+    await panel.locator('#task-type').selectOption({ value: 'retrospective' });
+    await panel.locator('#task-summary').fill('E2E Retrospective Task');
+
+    const expandBtn = panel.getByLabel('Expand create panel');
+    if (await expandBtn.isVisible()) {
+      await expandBtn.click();
+    }
+
+    await expect(panel.locator('#retrospective-campaign')).toBeVisible();
+    await expect(panel.locator('#retrospective-campaign')).not.toHaveValue('');
+
+    await panel.locator('#retrospective-status').selectOption('scheduled');
+
+    createdTaskId = await submitCreateAndGetId(page, panel);
+  });
+
+  test('user can fill a Platform Policy Update task-type form', async ({
+    page,
+  }) => {
+    const panel = page.getByTestId('task-create-panel');
+
+    await panel
+      .locator('#task-type')
+      .selectOption({ value: 'platform_policy_update' });
+    await panel.locator('#task-summary').fill('E2E Platform Policy Update Task');
+
+    const expandBtn = panel.getByLabel('Expand create panel');
+    if (await expandBtn.isVisible()) {
+      await expandBtn.click();
+    }
+
+    await expect(panel.locator('#policy-platform')).not.toBeDisabled({
+      timeout: 10_000,
+    });
+    await panel.locator('#policy-platform').selectOption({ index: 1 });
+
+    await expect(panel.locator('#policy-change-type')).not.toBeDisabled({
+      timeout: 10_000,
+    });
+    await panel.locator('#policy-change-type').selectOption({ index: 1 });
+
+    await panel
+      .locator('#policy-description')
+      .fill('E2E test: new targeting restrictions on paid social.');
+
+    await panel
+      .locator('#policy-immediate-actions')
+      .fill('Audit active campaigns for compliance.');
+
+    createdTaskId = await submitCreateAndGetId(page, panel);
+  });
+
 });

@@ -5,8 +5,8 @@ import { test as setup, expect } from '@playwright/test';
 const AUTH_DIR = path.join(__dirname, '.auth');
 const AUTH_FILE = path.join(AUTH_DIR, 'user.json');
 
-const TEST_EMAIL = process.env.TEST_USER_EMAIL || 'devuser@example.com';
-const TEST_PASSWORD = process.env.TEST_USER_PASSWORD || 'password123!';
+const TEST_EMAIL = process.env.DEV_USER_EMAIL || 'devuser@example.com';
+const TEST_PASSWORD = process.env.DEV_USER_PASSWORD || 'password123!';
 
 setup('authenticate', async ({ page }) => {
   await page.goto('/login');
