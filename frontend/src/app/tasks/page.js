@@ -1555,7 +1555,8 @@ function TasksPageContent() {
             linkError.response?.data?.message ||
             linkError.message ||
             "Unknown error";
-          toast.error(`Asset created, but failed to link to task: ${errorMsg}`);
+          const typeLabel = BOARD_TYPE_META[taskData.type]?.title || taskData.type;
+          toast.error(`${typeLabel} created, but failed to link to task: ${errorMsg}`);
         }
       } else {
         console.warn("Cannot link task: missing createdObject or contentType", {
@@ -1779,7 +1780,7 @@ function TasksPageContent() {
     <Layout
       user={layoutUser}
       onUserAction={handleUserAction}
-      mainScrollMode={activeTab === "board" ? "page" : "container"}
+      mainScrollMode="page"
     >
       <div className="min-h-full bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
