@@ -34,7 +34,7 @@ interface LayoutProps {
 const Layout: React.FC<LayoutProps> = ({
   children,
   className = '',
-  mainScrollMode = 'container',
+  mainScrollMode = 'page',
   sidebarCollapsed = false,
   showHeader = true,
   showSidebar = true,
