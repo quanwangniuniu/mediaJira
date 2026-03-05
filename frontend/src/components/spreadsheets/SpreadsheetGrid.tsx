@@ -216,6 +216,11 @@ const DEBOUNCE_MS = 500; // Debounce delay for batch writes
 const RESIZE_DEBOUNCE_MS = 500; // Debounce delay for resize API calls
 const MAX_ROWS = 100000; // Hard cap for grid size
 const MAX_COLUMNS = 702; // ZZZ (26 * 27) - hard cap for grid size
+// Tile configuration for range loading. Viewports are quantized into these tiles
+// so that small scroll differences map to stable range keys, enabling effective
+// caching and in-flight request deduplication.
+const TILE_ROWS = 50;
+const TILE_COLUMNS = 20;
 const ADD_ROWS_TRIGGER_DISTANCE = 100; // Show "Add rows" UI when within this many pixels of bottom
 const PREFETCH_ROWS_PER_CHUNK = 100; // Rows per request during post-import hydration
 const PREFETCH_CONCURRENCY = 2; // Max concurrent readCellRange requests during hydration
@@ -368,9 +373,60 @@ const findIndexAtOffset = (
   return Math.max(0, Math.min(count - 1, low));
 };
 
+type NormalizedRange = {
+  startRow: number;
+  endRow: number;
+  startColumn: number;
+  endColumn: number;
+};
+
+const normalizeRangeToTile = (
+  startRow: number,
+  endRow: number,
+  startColumn: number,
+  endColumn: number,
+  rowLimit: number,
+  colLimit: number
+): NormalizedRange => {
+  // Clamp to current sheet dimensions to keep keys bounded.
+  const effectiveMaxRow = Math.max(0, Math.min(rowLimit - 1, MAX_ROWS - 1));
+  const effectiveMaxCol = Math.max(0, Math.min(colLimit - 1, MAX_COLUMNS - 1));
+
+  const safeStartRow = Math.max(0, Math.min(startRow, effectiveMaxRow));
+  const safeEndRow = Math.max(safeStartRow, Math.min(endRow, effectiveMaxRow));
+  const safeStartColumn = Math.max(0, Math.min(startColumn, effectiveMaxCol));
+  const safeEndColumn = Math.max(safeStartColumn, Math.min(endColumn, effectiveMaxCol));
+
+  const tileStartRow = Math.floor(safeStartRow / TILE_ROWS) * TILE_ROWS;
+  const tileEndRow = Math.min(
+    effectiveMaxRow,
+    Math.ceil((safeEndRow + 1) / TILE_ROWS) * TILE_ROWS - 1
+  );
+
+  const tileStartColumn = Math.floor(safeStartColumn / TILE_COLUMNS) * TILE_COLUMNS;
+  const tileEndColumn = Math.min(
+    effectiveMaxCol,
+    Math.ceil((safeEndColumn + 1) / TILE_COLUMNS) * TILE_COLUMNS - 1
+  );
+
+  return {
+    startRow: tileStartRow,
+    endRow: tileEndRow,
+    startColumn: tileStartColumn,
+    endColumn: tileEndColumn,
+  };
+};
+
+const makeRangeKey = (range: NormalizedRange): string =>
+  `${range.startRow}-${range.endRow}-${range.startColumn}-${range.endColumn}`;
+
 // Cache cells per sheetId to maintain isolation
 const cellCache = new Map<number, Map<CellKey, CellData>>();
-const loadedRangesCache = new Map<number, Set<string>>(); // Set of range keys: `${startRow}-${endRow}-${startCol}-${endCol}`
+const loadedRangesCache = new Map<number, Set<string>>(); // Set of normalized range keys
+// Track in-flight range requests per sheet so multiple callers share the same promise (keyed by tile)
+const inFlightRangeRequests = new Map<number, Map<string, Promise<void>>>();
+// Track in-flight requests keyed by the exact viewport payload for hard dedup of identical calls
+const inFlightExactRequests = new Map<string, Promise<void>>();
 // Cache dimensions per sheetId
 const dimensionsCache = new Map<number, { rowCount: number; colCount: number }>();
 
@@ -541,6 +597,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   const gridRef = useRef<HTMLDivElement>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const resizeDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollRafIdRef = useRef<number | null>(null);
   const pendingSelectionRef = useRef<{ position: 'start' | 'end' | number } | null>(null);
   const resizeStateRef = useRef<ResizeState | null>(null);
   const fillStateRef = useRef<{
@@ -934,26 +991,43 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     };
   }, [rowCount, colCount, getRowIndexAtOffset, getColumnIndexAtOffset, totalRowHeight, safeDefaultRange]);
 
-  // Check if range is already loaded
+  // Check if a (possibly non-tile-aligned) range is already fully loaded by
+  // normalizing it to a tile-aligned key and consulting the cache.
   const isRangeLoaded = useCallback(
     (startRow: number, endRow: number, startColumn: number, endColumn: number): boolean => {
-      const rangeKey = `${startRow}-${endRow}-${startColumn}-${endColumn}`;
+      const normalized = normalizeRangeToTile(
+        startRow,
+        endRow,
+        startColumn,
+        endColumn,
+        Math.max(1, rowCount),
+        Math.max(1, colCount)
+      );
+      const rangeKey = makeRangeKey(normalized);
       const loadedRanges = loadedRangesCache.get(sheetId);
       return loadedRanges?.has(rangeKey) || false;
     },
-    [sheetId]
+    [sheetId, rowCount, colCount]
   );
 
-  // Mark range as loaded
+  // Mark a range as loaded by recording its normalized tile-aligned key.
   const markRangeLoaded = useCallback(
     (startRow: number, endRow: number, startColumn: number, endColumn: number) => {
-      const rangeKey = `${startRow}-${endRow}-${startColumn}-${endColumn}`;
+      const normalized = normalizeRangeToTile(
+        startRow,
+        endRow,
+        startColumn,
+        endColumn,
+        Math.max(1, rowCount),
+        Math.max(1, colCount)
+      );
+      const rangeKey = makeRangeKey(normalized);
       const loadedRanges = loadedRangesCache.get(sheetId);
       if (loadedRanges) {
         loadedRanges.add(rangeKey);
       }
     },
-    [sheetId]
+    [sheetId, rowCount, colCount]
   );
 
   // Load cells from backend for a range
@@ -965,72 +1039,141 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       endColumn: number,
       force: boolean = false
     ) => {
-      if (!force && isRangeLoaded(startRow, endRow, startColumn, endColumn)) {
-        return; // Already loaded
+      const viewportKey = `${sheetId}:${startRow}-${endRow}-${startColumn}-${endColumn}`;
+      const normalized = normalizeRangeToTile(
+        startRow,
+        endRow,
+        startColumn,
+        endColumn,
+        Math.max(1, rowCount),
+        Math.max(1, colCount)
+      );
+      const rangeKey = makeRangeKey(normalized);
+
+    let inFlightForSheet = inFlightRangeRequests.get(sheetId);
+      if (!inFlightForSheet) {
+        inFlightForSheet = new Map<string, Promise<void>>();
+        inFlightRangeRequests.set(sheetId, inFlightForSheet);
       }
 
-      try {
-        const response = await SpreadsheetAPI.readCellRange(
-          spreadsheetId,
+      const loadedRanges = loadedRangesCache.get(sheetId);
+      const cacheHit = !force && !!loadedRanges && loadedRanges.has(rangeKey);
+
+      // First-tier dedup: exact payload (even when force=true we can still share the same in-flight call).
+      const existingExact = inFlightExactRequests.get(viewportKey);
+      const inFlightExactHit = !!existingExact;
+
+      // Second-tier dedup: tile-based (normalized) in-flight sharing.
+      const existingTile = inFlightForSheet.get(rangeKey);
+      const inFlightTileHit = !!existingTile;
+
+      if (process.env.NODE_ENV === 'development') {
+        // eslint-disable-next-line no-console
+        console.debug('[SpreadsheetGrid][RangeLoad]', {
           sheetId,
-          startRow,
-          endRow,
-          startColumn,
-          endColumn
-        );
-        
-        // Sync grid dimensions from full sheet size (sheet_row_count/sheet_column_count). Enforce minimum DEFAULT_ROWS×DEFAULT_COLUMNS so new/empty sheets are 1000×26 and scrollable.
-        const res = response as typeof response & { sheet_row_count?: number | null; sheet_column_count?: number | null };
-        const sheetRows = res.sheet_row_count != null ? res.sheet_row_count : null;
-        const sheetCols = res.sheet_column_count != null ? res.sheet_column_count : null;
-        if (sheetRows != null && sheetCols != null) {
-          const backendRowCount = Math.min(MAX_ROWS, Math.max(DEFAULT_ROWS, sheetRows));
-          const backendColCount = Math.min(MAX_COLUMNS, Math.max(DEFAULT_COLUMNS, sheetCols));
-          if (backendRowCount !== rowCount || backendColCount !== colCount) {
-            setRowCount(backendRowCount);
-            setColCount(backendColCount);
-            dimensionsCache.set(sheetId, { rowCount: backendRowCount, colCount: backendColCount });
-          }
-          // If backend has fewer columns/rows than we need (e.g. new sheet), persist resize so insert works
-          if (backendRowCount > sheetRows || backendColCount > sheetCols) {
-            void resizeGrid(backendRowCount, backendColCount, true);
-          }
-        }
+          viewport: { startRow, endRow, startColumn, endColumn },
+          normalized,
+          viewportKey,
+          rangeKey,
+          cacheHit,
+          inFlightExactHit,
+          inFlightTileHit,
+          force,
+        });
+      }
 
-        // Update cells from response
-        setCells((prev) => {
-          const next = new Map(prev);
-          const cachedCells = cellCache.get(sheetId) || new Map();
+      if (!force && cacheHit) {
+        return; // Already loaded tile
+      }
 
-          response.cells.forEach((cell) => {
-            const key = getCellKey(cell.row_position, cell.column_position);
-            const fallbackRawInput =
-              cell.raw_input ??
-              cell.formula_value ??
-              cell.string_value ??
-              (cell.number_value != null ? String(cell.number_value) : '') ??
-              (cell.boolean_value != null ? (cell.boolean_value ? 'TRUE' : 'FALSE') : '');
-            const cellData: CellData = {
-              rawInput: fallbackRawInput,
-              computedType: cell.computed_type ?? null,
-              computedNumber: cell.computed_number ?? null,
-              computedString: cell.computed_string ?? null,
-              errorCode: cell.error_code ?? null,
-              isLoaded: true,
-            };
-            next.set(key, cellData);
-            cachedCells.set(key, cellData);
+      // Reuse any existing in-flight request for this exact payload.
+      if (existingExact) {
+        return existingExact;
+      }
+
+      // Or reuse tile-level in-flight (same normalized tile).
+      if (existingTile) {
+        return existingTile;
+      }
+
+      const requestPromise = (async () => {
+        try {
+          const response = await SpreadsheetAPI.readCellRange(
+            spreadsheetId,
+            sheetId,
+            normalized.startRow,
+            normalized.endRow,
+            normalized.startColumn,
+            normalized.endColumn
+          );
+          
+          // Sync grid dimensions from full sheet size (sheet_row_count/sheet_column_count). Enforce minimum DEFAULT_ROWS×DEFAULT_COLUMNS so new/empty sheets are 1000×26 and scrollable.
+          const res = response as typeof response & { sheet_row_count?: number | null; sheet_column_count?: number | null };
+          const sheetRows = res.sheet_row_count != null ? res.sheet_row_count : null;
+          const sheetCols = res.sheet_column_count != null ? res.sheet_column_count : null;
+          if (sheetRows != null && sheetCols != null) {
+            const backendRowCount = Math.min(MAX_ROWS, Math.max(DEFAULT_ROWS, sheetRows));
+            const backendColCount = Math.min(MAX_COLUMNS, Math.max(DEFAULT_COLUMNS, sheetCols));
+            if (backendRowCount !== rowCount || backendColCount !== colCount) {
+              setRowCount(backendRowCount);
+              setColCount(backendColCount);
+              dimensionsCache.set(sheetId, { rowCount: backendRowCount, colCount: backendColCount });
+            }
+            // If backend has fewer columns/rows than we need (e.g. new sheet), persist resize so insert works
+            if (backendRowCount > sheetRows || backendColCount > sheetCols) {
+              void resizeGrid(backendRowCount, backendColCount, true);
+            }
+          }
+
+          // Update cells from response
+          setCells((prev) => {
+            const next = new Map(prev);
+            const cachedCells = cellCache.get(sheetId) || new Map();
+
+            response.cells.forEach((cell) => {
+              const key = getCellKey(cell.row_position, cell.column_position);
+              const fallbackRawInput =
+                cell.raw_input ??
+                cell.formula_value ??
+                cell.string_value ??
+                (cell.number_value != null ? String(cell.number_value) : '') ??
+                (cell.boolean_value != null ? (cell.boolean_value ? 'TRUE' : 'FALSE') : '');
+              const cellData: CellData = {
+                rawInput: fallbackRawInput,
+                computedType: cell.computed_type ?? null,
+                computedNumber: cell.computed_number ?? null,
+                computedString: cell.computed_string ?? null,
+                errorCode: cell.error_code ?? null,
+                isLoaded: true,
+              };
+              next.set(key, cellData);
+              cachedCells.set(key, cellData);
+            });
+
+            cellCache.set(sheetId, cachedCells);
+            return next;
           });
 
-          cellCache.set(sheetId, cachedCells);
-          return next;
-        });
+          // Mark the full tile as loaded so subsequent viewports within this tile hit cache.
+          markRangeLoaded(normalized.startRow, normalized.endRow, normalized.startColumn, normalized.endColumn);
+        } catch (error: any) {
+          console.error('Failed to load cell range:', error);
+          // Don't show toast for background loading errors
+        } finally {
+          // Clean up in-flight tracking regardless of success/failure
+          inFlightExactRequests.delete(viewportKey);
+          const currentForSheet = inFlightRangeRequests.get(sheetId);
+          if (currentForSheet) {
+            currentForSheet.delete(rangeKey);
+          }
+        }
+      })();
 
-        markRangeLoaded(startRow, endRow, startColumn, endColumn);
-      } catch (error: any) {
-        console.error('Failed to load cell range:', error);
-        // Don't show toast for background loading errors
-      }
+      // Track in-flight for both exact payload and normalized tile so callers can reuse the same promise.
+      inFlightExactRequests.set(viewportKey, requestPromise);
+      inFlightForSheet.set(rangeKey, requestPromise);
+
+      return requestPromise;
     },
     [spreadsheetId, sheetId, isRangeLoaded, markRangeLoaded, resizeGrid, rowCount, colCount]
   );
@@ -1084,6 +1227,17 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   const resetSheetCaches = useCallback(() => {
     cellCache.set(sheetId, new Map());
     loadedRangesCache.set(sheetId, new Set());
+    const inFlightForSheet = inFlightRangeRequests.get(sheetId);
+    if (inFlightForSheet) {
+      inFlightForSheet.clear();
+      inFlightRangeRequests.delete(sheetId);
+    }
+    // Clear any exact in-flight requests for this sheet
+    for (const key of Array.from(inFlightExactRequests.keys())) {
+      if (key.startsWith(`${sheetId}:`)) {
+        inFlightExactRequests.delete(key);
+      }
+    }
     setCells(new Map());
   }, [sheetId]);
 
@@ -1654,34 +1808,46 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     return () => clearTimeout(timer);
   }, [sheetId, computeVisibleRange, loadCellRange]);
 
-  // Handle scroll to load more cells (no auto-expand)
+  // Handle scroll to load more cells (no auto-expand). We schedule work in
+  // requestAnimationFrame so we compute the viewport and trigger range loads
+  // at most once per frame even if the browser fires many scroll events.
   const handleScroll = useCallback(() => {
-    const range = computeVisibleRange();
-    loadCellRange(range.startRow, range.endRow, range.startColumn, range.endColumn);
-    setVisibleRange({
-      startRow: range.startRow,
-      endRow: range.endRow,
-      startCol: range.startColumn,
-      endCol: range.endColumn,
-    });
+    if (!gridRef.current) return;
 
-    // Show "Add rows" UI when near bottom of grid
-    if (gridRef.current) {
-      const container = gridRef.current;
-      const scrollTop = container.scrollTop;
-      const scrollHeight = container.scrollHeight;
-      const clientHeight = container.clientHeight;
-      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-      const isNearBottom = distanceFromBottom < ADD_ROWS_TRIGGER_DISTANCE;
-      const isAtMaxRows = rowCount >= MAX_ROWS;
-
-      // Show UI if near bottom and not at max
-      if (isNearBottom && !isAtMaxRows && range.endRow >= rowCount - 10) {
-        setShowAddRowsUI(true);
-      } else {
-        setShowAddRowsUI(false);
-      }
+    if (scrollRafIdRef.current != null) {
+      cancelAnimationFrame(scrollRafIdRef.current);
     }
+
+    scrollRafIdRef.current = requestAnimationFrame(() => {
+      scrollRafIdRef.current = null;
+
+      const range = computeVisibleRange();
+      loadCellRange(range.startRow, range.endRow, range.startColumn, range.endColumn);
+      setVisibleRange({
+        startRow: range.startRow,
+        endRow: range.endRow,
+        startCol: range.startColumn,
+        endCol: range.endColumn,
+      });
+
+      // Show "Add rows" UI when near bottom of grid
+      if (gridRef.current) {
+        const container = gridRef.current;
+        const scrollTop = container.scrollTop;
+        const scrollHeight = container.scrollHeight;
+        const clientHeight = container.clientHeight;
+        const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+        const isNearBottom = distanceFromBottom < ADD_ROWS_TRIGGER_DISTANCE;
+        const isAtMaxRows = rowCount >= MAX_ROWS;
+
+        // Show UI if near bottom and not at max
+        if (isNearBottom && !isAtMaxRows && range.endRow >= rowCount - 10) {
+          setShowAddRowsUI(true);
+        } else {
+          setShowAddRowsUI(false);
+        }
+      }
+    });
   }, [computeVisibleRange, loadCellRange, rowCount]);
 
   // Recompute visible range if dimensions change (e.g., after expansion)
@@ -3530,6 +3696,9 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       if (resizeDebounceTimerRef.current) {
         clearTimeout(resizeDebounceTimerRef.current);
       }
+       if (scrollRafIdRef.current != null) {
+         cancelAnimationFrame(scrollRafIdRef.current);
+       }
     };
   }, []);
 
