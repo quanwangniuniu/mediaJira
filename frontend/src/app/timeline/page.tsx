@@ -20,6 +20,7 @@ import { BudgetAPI } from '@/lib/api/budgetApi';
 import { AssetAPI } from '@/lib/api/assetApi';
 import { RetrospectiveAPI, CreateRetrospectiveData } from '@/lib/api/retrospectiveApi';
 import { PolicyAPI } from '@/lib/api/policyApi';
+import { TASK_TYPE_CONFIG_STATIC } from '@/lib/taskTypeConfigRegistry';
 import useAuth from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
 import { ProjectAPI } from '@/lib/api/projectApi';
@@ -219,105 +220,49 @@ function TimelinePageContent() {
   const retrospectiveValidation = useFormValidation(retrospectiveValidationRules);
   const policyValidation = useFormValidation(policyValidationRules);
 
-  // Task type configuration
-  const taskTypeConfig = {
-    budget: {
-      contentType: 'budgetrequest',
-      formData: budgetData,
-      setFormData: setBudgetData,
-      validation: budgetValidation,
-      api: BudgetAPI.createBudgetRequest,
-      formComponent: NewBudgetRequestForm,
-      requiredFields: ['amount', 'currency', 'ad_channel', 'budget_pool'],
-      getPayload: (createdTask: any) => {
-        if (!taskData.current_approver_id) {
-          throw new Error('Approver is required for budget request');
-        }
-        if (!budgetData.budget_pool) {
-          throw new Error('Budget pool is required for budget request');
-        }
-        return {
-          task: createdTask.id,
-          amount: budgetData.amount,
-          currency: budgetData.currency,
-          ad_channel: budgetData.ad_channel,
-          budget_pool_id: budgetData.budget_pool,
-          notes: budgetData.notes || '',
-          current_approver: taskData.current_approver_id,
-        };
+  // Task type configuration from shared registry (timeline only supports a subset of types)
+  const timelineTaskTypeKeys = ['budget', 'asset', 'retrospective', 'platform_policy_update'] as const;
+  const taskTypeConfig = useMemo(() => {
+    const formStateByType: Record<string, { formData: any; setFormData: any; validation: any }> = {
+      budget: { formData: budgetData, setFormData: setBudgetData, validation: budgetValidation },
+      asset: { formData: assetData, setFormData: setAssetData, validation: assetValidation },
+      retrospective: {
+        formData: retrospectiveData,
+        setFormData: setRetrospectiveData,
+        validation: retrospectiveValidation,
       },
-    },
-    asset: {
-      contentType: 'asset',
-      formData: assetData,
-      setFormData: setAssetData,
-      validation: assetValidation,
-      api: AssetAPI.createAsset,
-      formComponent: NewAssetForm,
-      requiredFields: ['tags'],
-      getPayload: (createdTask: any) => {
-        const tagsArray = (assetData.tags || '')
-          .split(',')
-          .map((t: string) => t.trim())
-          .filter(Boolean);
-        const payload: any = {
-          task: createdTask.id,
-          tags: tagsArray,
-        };
-        if (assetData.team) {
-          const teamNum = Number(assetData.team);
-          if (!Number.isNaN(teamNum)) {
-            payload.team = teamNum;
-          }
-        }
-        return payload;
+      platform_policy_update: {
+        formData: policyData,
+        setFormData: setPolicyData,
+        validation: policyValidation,
       },
-    },
-    retrospective: {
-      contentType: 'retrospectivetask',
-      formData: retrospectiveData,
-      setFormData: setRetrospectiveData,
-      validation: retrospectiveValidation,
-      api: RetrospectiveAPI.createRetrospective,
-      formComponent: NewRetrospectiveForm,
-      requiredFields: ['campaign'],
-      getPayload: (createdTask: any) => ({
-        campaign: retrospectiveData.campaign || taskData.project_id?.toString(),
-        scheduled_at:
-          retrospectiveData.scheduled_at || new Date().toISOString(),
-        status: retrospectiveData.status || 'scheduled',
-      }),
-    },
-    platform_policy_update: {
-      contentType: 'platformpolicyupdate',
-      formData: policyData,
-      setFormData: setPolicyData,
-      validation: policyValidation,
-      api: PolicyAPI.create,
-      formComponent: NewPlatformPolicyUpdateForm,
-      requiredFields: ['platform', 'policy_change_type', 'policy_description', 'immediate_actions_required'],
-      getPayload: (createdTask: any) => {
-        const parseCommaSeparated = (val: string) =>
-          (val || '').split(',').map((s: string) => s.trim()).filter(Boolean);
-        return {
-          task_id: createdTask.id,
-          platform: policyData.platform,
-          policy_change_type: policyData.policy_change_type,
-          policy_description: policyData.policy_description,
-          policy_reference_url: policyData.policy_reference_url || undefined,
-          effective_date: policyData.effective_date || undefined,
-          affected_campaigns: parseCommaSeparated(policyData.affected_campaigns),
-          affected_ad_sets: parseCommaSeparated(policyData.affected_ad_sets),
-          affected_assets: parseCommaSeparated(policyData.affected_assets),
-          performance_impact: policyData.performance_impact || '',
-          budget_impact: policyData.budget_impact || '',
-          compliance_risk: policyData.compliance_risk || '',
-          immediate_actions_required: policyData.immediate_actions_required,
-          action_deadline: policyData.action_deadline || undefined,
-        };
-      },
-    },
-  };
+    };
+    const config: Record<string, any> = {};
+    for (const key of timelineTaskTypeKeys) {
+      const staticConfig = TASK_TYPE_CONFIG_STATIC[key];
+      if (!staticConfig) continue;
+      const { formData, setFormData, validation } = formStateByType[key] || {};
+      config[key] = {
+        ...staticConfig,
+        formData,
+        setFormData,
+        validation: validation ?? null,
+        getPayload: (createdTask: any) =>
+          staticConfig.getPayload(formData, taskData, createdTask),
+      };
+    }
+    return config;
+  }, [
+    budgetData,
+    assetData,
+    retrospectiveData,
+    policyData,
+    taskData,
+    budgetValidation,
+    assetValidation,
+    retrospectiveValidation,
+    policyValidation,
+  ]);
 
   // Generic function to create task type specific object
   const createTaskTypeObject = async (taskType: string, createdTask: any) => {

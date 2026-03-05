@@ -43,6 +43,10 @@ import JiraBoardView from "@/components/jira-ticket/JiraBoardView";
 import JiraSummaryView from "@/components/jira-ticket/JiraSummaryView";
 import JiraTasksView from "@/components/jira-ticket/JiraTasksView";
 import TimelineViewComponent from "@/components/tasks/timeline/TimelineView";
+import {
+  TASK_TYPE_CONFIG_STATIC,
+  defaultReportContext,
+} from "@/lib/taskTypeConfigRegistry";
 
 const BOARD_TYPE_ORDER = [
   "task",
@@ -258,11 +262,6 @@ function TasksPageContent() {
   });
   const [policyData, setPolicyData] = useState({});
 
-  const defaultReportContext = {
-    reporting_period: null,
-    situation: "",
-    what_changed: "",
-  };
   const [reportData, setReportData] = useState({
     audience_type: "client",
     audience_details: "",
@@ -523,292 +522,6 @@ function TasksPageContent() {
     }));
   }, [projectId]);
 
-  // Task type configuration - defines how each task type should be handled
-  const taskTypeConfig = {
-    budget: {
-      contentType: "budgetrequest",
-      formData: budgetData,
-      setFormData: setBudgetData,
-      validation: null, // Will be set below
-      api: BudgetAPI.createBudgetRequest,
-      formComponent: NewBudgetRequestForm,
-      requiredFields: ["amount", "currency", "ad_channel", "budget_pool"],
-      getPayload: (createdTask) => {
-        // Ensure current_approver is provided
-        if (!taskData.current_approver_id) {
-          throw new Error("Approver is required for budget request");
-        }
-        // Ensure budget_pool is provided
-        if (!budgetData.budget_pool) {
-          throw new Error("Budget pool is required for budget request");
-        }
-        return {
-          task: createdTask.id,
-          amount: budgetData.amount,
-          currency: budgetData.currency,
-          ad_channel: budgetData.ad_channel,
-          budget_pool_id: budgetData.budget_pool,
-          notes: budgetData.notes || "",
-          current_approver: taskData.current_approver_id,
-        };
-      },
-    },
-    asset: {
-      contentType: "asset",
-      formData: assetData,
-      setFormData: setAssetData,
-      validation: null, // Will be set below
-      api: AssetAPI.createAsset,
-      formComponent: NewAssetForm,
-      requiredFields: ["tags"], // Tags are required
-      getPayload: (createdTask) => {
-        const tagsArray = (assetData.tags || "")
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean);
-        const payload = {
-          task: createdTask.id,
-          tags: tagsArray,
-        };
-        if (assetData.team) {
-          const teamNum = Number(assetData.team);
-          if (!Number.isNaN(teamNum)) {
-            payload.team = teamNum;
-          }
-        }
-        return payload;
-      },
-    },
-    retrospective: {
-      contentType: "retrospectivetask",
-      formData: retrospectiveData,
-      setFormData: setRetrospectiveData,
-      validation: null, // Will be set below
-      api: RetrospectiveAPI.createRetrospective,
-      formComponent: NewRetrospectiveForm,
-      requiredFields: ["campaign"],
-      getPayload: (createdTask) => ({
-        campaign: retrospectiveData.campaign || taskData.project_id?.toString(),
-        scheduled_at:
-          retrospectiveData.scheduled_at || new Date().toISOString(),
-        status: retrospectiveData.status || "scheduled",
-      }),
-    },
-    scaling: {
-      contentType: "scalingplan",
-      formData: scalingPlanData,
-      setFormData: setScalingPlanData,
-      validation: null,
-      api: OptimizationScalingAPI.createScalingPlan,
-      formComponent: ScalingPlanForm,
-      requiredFields: ["strategy"],
-      getPayload: (createdTask) => {
-        if (!createdTask?.id) {
-          throw new Error("Task ID is required to create scaling plan");
-        }
-        return {
-          task: createdTask.id,
-          strategy: scalingPlanData.strategy || "horizontal",
-          scaling_target: scalingPlanData.scaling_target || "",
-          risk_considerations: scalingPlanData.risk_considerations || "",
-          max_scaling_limit: scalingPlanData.max_scaling_limit || "",
-          stop_conditions: scalingPlanData.stop_conditions || "",
-          expected_outcomes: scalingPlanData.expected_outcomes || "",
-          affected_entities: scalingPlanData.affected_entities || null,
-        };
-      },
-    },
-    alert: {
-      contentType: "alerttask",
-      formData: alertData,
-      setFormData: setAlertData,
-      validation: null,
-      api: AlertingAPI.createAlertTask,
-      formComponent: AlertTaskForm,
-      requiredFields: ["alert_type", "severity"],
-      getPayload: (createdTask) => {
-        if (!createdTask?.id) {
-          throw new Error("Task ID is required to create alert details");
-        }
-        const rawMetricValue = alertData.change_value
-          ? Number(alertData.change_value)
-          : null;
-        const rawCurrentValue = alertData.current_value
-          ? Number(alertData.current_value)
-          : null;
-        const rawPreviousValue = alertData.previous_value
-          ? Number(alertData.previous_value)
-          : null;
-        const metricValue = Number.isNaN(rawMetricValue) ? null : rawMetricValue;
-        const currentValue = Number.isNaN(rawCurrentValue)
-          ? null
-          : rawCurrentValue;
-        const previousValue = Number.isNaN(rawPreviousValue)
-          ? null
-          : rawPreviousValue;
-        const investigationNotes =
-          alertData.investigation_notes ||
-          [
-            alertData.investigation_assumption
-              ? `Assumption: ${alertData.investigation_assumption}`
-              : null,
-          ]
-            .filter(Boolean)
-            .join(" | ");
-        const resolutionSteps =
-          alertData.resolution_steps ||
-          [
-            ...(alertData.resolution_actions || []),
-            alertData.resolution_notes || null,
-          ]
-            .filter(Boolean)
-            .join(" | ");
-        return {
-          task: createdTask.id,
-          alert_type: alertData.alert_type || "spend_spike",
-          severity: alertData.severity || "medium",
-          status: alertData.status || "open",
-          affected_entities: alertData.affected_entities || [],
-          initial_metrics: {
-            metric_key: alertData.metric_key || "spend",
-            change_type: alertData.change_type || "percent",
-            change_value: metricValue,
-            change_window: alertData.change_window || "daily",
-            current_value: currentValue,
-            previous_value: previousValue,
-          },
-          assigned_to: alertData.assigned_to
-            ? Number(alertData.assigned_to)
-            : null,
-          acknowledged_by: alertData.acknowledged_by
-            ? Number(alertData.acknowledged_by)
-            : null,
-          investigation_notes: investigationNotes,
-          resolution_steps: resolutionSteps,
-          related_references: alertData.related_references || [],
-          postmortem_root_cause: alertData.postmortem_root_cause || "",
-          postmortem_prevention: alertData.postmortem_prevention || "",
-        };
-      },
-    },
-    communication: {
-      contentType: "clientcommunication",
-      formData: communicationData,
-      setFormData: setCommunicationData,
-      validation: null, // will be set below
-      api: ClientCommunicationAPI.create,
-      formComponent: NewClientCommunicationForm,
-      requiredFields: ["communication_type", "required_actions", "impacted_areas"],
-      getPayload: (createdTask) => {
-        if (!createdTask?.id) {
-          throw new Error("Task ID is required to create client communication");
-        }
-        // Validate impacted_areas is not empty
-        if (!communicationData.impacted_areas || communicationData.impacted_areas.length === 0) {
-          throw new Error("At least one impacted area is required");
-        }
-        // Validate required fields
-        if (!communicationData.communication_type) {
-          throw new Error("Communication type is required");
-        }
-        if (!communicationData.required_actions || communicationData.required_actions.trim() === "") {
-          throw new Error("Required actions is required");
-        }
-        return {
-          task: createdTask.id,
-          communication_type: communicationData.communication_type,
-          stakeholders: communicationData.stakeholders || "",
-          impacted_areas: communicationData.impacted_areas,
-          required_actions: communicationData.required_actions,
-          client_deadline: communicationData.client_deadline && communicationData.client_deadline.trim() !== "" 
-            ? communicationData.client_deadline 
-            : null,
-          notes: communicationData.notes || "",
-        };
-      },
-    },
-    experiment: {
-      contentType: "experiment",
-      formData: experimentData,
-      setFormData: setExperimentData,
-      validation: null,
-      api: ExperimentAPI.createExperiment,
-      formComponent: ExperimentForm,
-      requiredFields: ["hypothesis"],
-      getPayload: (createdTask) => ({
-        task: createdTask.id,
-        name: taskData.summary || "Experiment task",
-        hypothesis: experimentData.hypothesis || "",
-        expected_outcome: experimentData.expected_outcome,
-        description: experimentData.description,
-        control_group: experimentData.control_group,
-        variant_group: experimentData.variant_group,
-        success_metric: experimentData.success_metric,
-        constraints: experimentData.constraints,
-        status: experimentData.status,
-      }),
-    },
-    optimization: {
-      contentType: "optimization",
-      formData: optimizationData,
-      setFormData: setOptimizationData,
-      validation: null,
-      api: OptimizationAPI.createOptimization,
-      formComponent: OptimizationForm,
-      requiredFields: [],
-      getPayload: (createdTask) => ({
-        task: createdTask.id,
-        ...optimizationData,
-      }),
-    },
-    report: {
-      contentType: "reporttask",
-      formData: reportData,
-      setFormData: setReportData,
-      validation: null,
-      api: ReportAPI.createReport,
-      formComponent: ReportForm,
-      requiredFields: ["outcome_summary"],
-      getPayload: (createdTask) => ({
-        task: createdTask.id,
-        audience_type: reportData.audience_type,
-        audience_details: reportData.audience_details || "",
-        context: reportData.context || defaultReportContext,
-        outcome_summary: reportData.outcome_summary || "",
-        narrative_explanation: reportData.narrative_explanation || "",
-        key_actions: reportData.key_actions || [],
-      }),
-    },
-    platform_policy_update: {
-      contentType: "platformpolicyupdate",
-      formData: policyData,
-      setFormData: setPolicyData,
-      validation: null,
-      api: PolicyAPI.create,
-      formComponent: NewPlatformPolicyUpdateForm,
-      requiredFields: ["platform", "policy_change_type", "policy_description", "immediate_actions_required"],
-      getPayload: (createdTask) => {
-        const parseCommaSeparated = (val) => (val || "").split(",").map((s) => s.trim()).filter(Boolean);
-        return {
-          task_id: createdTask.id,
-          platform: policyData.platform,
-          policy_change_type: policyData.policy_change_type,
-          policy_description: policyData.policy_description,
-          policy_reference_url: policyData.policy_reference_url || undefined,
-          effective_date: policyData.effective_date || undefined,
-          affected_campaigns: parseCommaSeparated(policyData.affected_campaigns),
-          affected_ad_sets: parseCommaSeparated(policyData.affected_ad_sets),
-          affected_assets: parseCommaSeparated(policyData.affected_assets),
-          performance_impact: policyData.performance_impact || "",
-          budget_impact: policyData.budget_impact || "",
-          compliance_risk: policyData.compliance_risk || "",
-          immediate_actions_required: policyData.immediate_actions_required,
-          action_deadline: policyData.action_deadline || undefined,
-        };
-      },
-    },
-  };
-
   // Form validation rules
   const taskValidationRules = {
     project_id: (value) => (!value || value == 0 ? "Project is required" : ""),
@@ -931,14 +644,81 @@ function TasksPageContent() {
   );
   const policyValidation = useFormValidation(policyValidationRules);
 
-  // Assign validation hooks to config
-  taskTypeConfig.budget.validation = budgetValidation;
-  taskTypeConfig.asset.validation = assetValidation;
-  taskTypeConfig.retrospective.validation = retrospectiveValidation;
-  taskTypeConfig.alert.validation = alertValidation;
-  taskTypeConfig.experiment.validation = experimentValidation;
-  taskTypeConfig.communication.validation = communicationValidation;
-  taskTypeConfig.platform_policy_update.validation = policyValidation;
+  // Task type configuration from shared registry; pages wire in local form state and validation
+  const taskTypeConfig = useMemo(() => {
+    const formStateByType = {
+      budget: { formData: budgetData, setFormData: setBudgetData, validation: budgetValidation },
+      asset: { formData: assetData, setFormData: setAssetData, validation: assetValidation },
+      retrospective: {
+        formData: retrospectiveData,
+        setFormData: setRetrospectiveData,
+        validation: retrospectiveValidation,
+      },
+      scaling: {
+        formData: scalingPlanData,
+        setFormData: setScalingPlanData,
+        validation: null,
+      },
+      alert: { formData: alertData, setFormData: setAlertData, validation: alertValidation },
+      communication: {
+        formData: communicationData,
+        setFormData: setCommunicationData,
+        validation: communicationValidation,
+      },
+      experiment: {
+        formData: experimentData,
+        setFormData: setExperimentData,
+        validation: experimentValidation,
+      },
+      optimization: {
+        formData: optimizationData,
+        setFormData: setOptimizationData,
+        validation: null,
+      },
+      report: {
+        formData: reportData,
+        setFormData: setReportData,
+        validation: null,
+      },
+      platform_policy_update: {
+        formData: policyData,
+        setFormData: setPolicyData,
+        validation: policyValidation,
+      },
+    };
+    const config = {};
+    for (const [key, staticConfig] of Object.entries(TASK_TYPE_CONFIG_STATIC)) {
+      const { formData, setFormData, validation } = formStateByType[key] || {};
+      config[key] = {
+        ...staticConfig,
+        formData,
+        setFormData,
+        validation: validation ?? null,
+        getPayload: (createdTask) =>
+          staticConfig.getPayload(formData, taskData, createdTask),
+      };
+    }
+    return config;
+  }, [
+    budgetData,
+    assetData,
+    retrospectiveData,
+    scalingPlanData,
+    alertData,
+    communicationData,
+    experimentData,
+    optimizationData,
+    reportData,
+    policyData,
+    taskData,
+    budgetValidation,
+    assetValidation,
+    retrospectiveValidation,
+    alertValidation,
+    experimentValidation,
+    communicationValidation,
+    policyValidation,
+  ]);
 
   // Filter tasks by search query
   const filteredTasks = useMemo(() => {
