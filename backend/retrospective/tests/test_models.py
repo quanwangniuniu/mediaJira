@@ -128,6 +128,17 @@ class RetrospectiveTaskLifecycleTest(TestCase):
         with self.assertRaises(ValidationError):
             retrospective.full_clean()
 
+    def test_post_outcome_choice_validation(self):
+        """Test post-outcome option fields reject invalid values"""
+        retrospective = RetrospectiveTask(
+            campaign=self.campaign,
+            created_by=self.user,
+            outcome_compared_to_expectation='unexpectedly_good',
+            would_make_same_decision_again='maybe',
+        )
+        with self.assertRaises(ValidationError):
+            retrospective.full_clean()
+
 
 class InsightGenerationTest(TestCase):
     """Test insight generation under different KPI inputs"""

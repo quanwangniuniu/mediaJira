@@ -37,6 +37,15 @@ class RetrospectiveTask(models.Model):
         LEVEL_4 = 4, '4'
         LEVEL_5 = 5, '5'
 
+    class OutcomeComparedToExpectation(models.TextChoices):
+        BETTER = 'better', 'Better'
+        WORSE = 'worse', 'Worse'
+        AS_EXPECTED = 'as_expected', 'As expected'
+
+    class WouldMakeSameDecisionAgain(models.TextChoices):
+        YES = 'yes', 'Yes'
+        NO = 'no', 'No'
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
     # Campaign relationship (now referencing core.Project but keeping field name 'campaign' for backward-compat)
@@ -79,6 +88,25 @@ class RetrospectiveTask(models.Model):
         blank=True,
         default="",
         help_text="Optional key risk to explicitly ignore"
+    )
+    outcome_compared_to_expectation = models.CharField(
+        max_length=20,
+        choices=OutcomeComparedToExpectation.choices,
+        null=True,
+        blank=True,
+        help_text="Post-outcome: result compared to initial expectation"
+    )
+    biggest_wrong_assumption = models.TextField(
+        null=True,
+        blank=True,
+        help_text="Post-outcome: biggest assumption that proved wrong"
+    )
+    would_make_same_decision_again = models.CharField(
+        max_length=3,
+        choices=WouldMakeSameDecisionAgain.choices,
+        null=True,
+        blank=True,
+        help_text="Post-outcome: whether the same decision would be made again"
     )
     started_at = models.DateTimeField(
         null=True,

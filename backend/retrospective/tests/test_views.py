@@ -183,6 +183,90 @@ class RetrospectiveTaskViewSetTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.retrospective.refresh_from_db()
         self.assertEqual(self.retrospective.status, RetrospectiveStatus.IN_PROGRESS)
+
+    def test_update_retrospective_accepts_post_outcome_fields(self):
+        """Test valid post-outcome update values via PATCH"""
+        self.client.force_authenticate(user=self.user)
+        url = reverse('retrospective:retrospective-detail', args=[str(self.retrospective.id)])
+        data = {
+            'outcome_compared_to_expectation': 'better',
+            'biggest_wrong_assumption': 'Expected conversion lag to continue',
+            'would_make_same_decision_again': 'yes',
+        }
+        response = self.client.patch(url, data)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.retrospective.refresh_from_db()
+        self.assertEqual(self.retrospective.outcome_compared_to_expectation, 'better')
+        self.assertEqual(
+            self.retrospective.biggest_wrong_assumption,
+            'Expected conversion lag to continue',
+        )
+        self.assertEqual(self.retrospective.would_make_same_decision_again, 'yes')
+
+    def test_update_retrospective_rejects_invalid_post_outcome_options(self):
+        """Test invalid enum values for post-outcome fields via PATCH"""
+        self.client.force_authenticate(user=self.user)
+        url = reverse('retrospective:retrospective-detail', args=[str(self.retrospective.id)])
+        data = {
+            'outcome_compared_to_expectation': 'much_better',
+            'would_make_same_decision_again': 'maybe',
+        }
+        response = self.client.patch(url, data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('outcome_compared_to_expectation', response.data)
+        self.assertIn('would_make_same_decision_again', response.data)
+
+    def test_create_retrospective_rejects_update_only_post_outcome_fields(self):
+        """Test post-outcome fields cannot be set during create"""
+        extra_campaign = Project.objects.create(
+            name='Update Only Field Campaign',
+            organization=self.organization
+        )
+        self.client.force_authenticate(user=self.user)
+        url = reverse('retrospective:retrospective-list')
+        data = self._retrospective_payload(extra_campaign.id)
+        data.update({
+            'outcome_compared_to_expectation': 'better',
+            'biggest_wrong_assumption': 'Assumption text',
+            'would_make_same_decision_again': 'yes',
+        })
+        response = self.client.post(url, data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('outcome_compared_to_expectation', response.data)
+        self.assertIn('biggest_wrong_assumption', response.data)
+        self.assertIn('would_make_same_decision_again', response.data)
+
+    def test_update_retrospective_post_outcome_fields_are_optional(self):
+        """Test PATCH succeeds when only one post-outcome field is provided"""
+        self.client.force_authenticate(user=self.user)
+        url = reverse('retrospective:retrospective-detail', args=[str(self.retrospective.id)])
+        response = self.client.patch(
+            url,
+            {'biggest_wrong_assumption': 'Assumed CPA would remain high'},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.retrospective.refresh_from_db()
+        self.assertEqual(
+            self.retrospective.biggest_wrong_assumption,
+            'Assumed CPA would remain high',
+        )
+    
+    def test_patch_with_no_fields(self):
+        """Test PATCH succeeds when no fields are provided"""
+        self.client.force_authenticate(user=self.user)
+
+        url = reverse(
+            "retrospective:retrospective-detail",
+            args=[str(self.retrospective.id)]
+        )
+
+        response = self.client.patch(url, {})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
     
     @patch('retrospective.views.generate_retrospective')
     def test_start_analysis(self, mock_generate_task):

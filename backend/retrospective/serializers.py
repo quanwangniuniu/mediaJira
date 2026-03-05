@@ -129,6 +129,8 @@ class RetrospectiveTaskDetailSerializer(serializers.ModelSerializer):
             'id', 'campaign', 'campaign_name', 'campaign_description', 'status', 'status_display',
             'scheduled_at', 'started_at', 'completed_at', 'duration_formatted', 'duration',
             'decision', 'confidence_level', 'primary_assumption', 'key_risk_ignore',
+            'outcome_compared_to_expectation', 'biggest_wrong_assumption',
+            'would_make_same_decision_again',
             'report_url', 'report_generated_at', 'reviewed_by', 'reviewed_at',
             'created_by', 'created_at', 'updated_at', 'kpi_count', 'insight_count'
         ]
@@ -191,6 +193,24 @@ class RetrospectiveTaskCreateSerializer(serializers.ModelSerializer):
             )
         
         return value
+
+    def validate(self, attrs):
+        """Post-outcome fields are update-only and cannot be provided on create."""
+        attrs = super().validate(attrs)
+        update_only_fields = (
+            'outcome_compared_to_expectation',
+            'biggest_wrong_assumption',
+            'would_make_same_decision_again',
+        )
+        errors = {
+            field: 'This field is update-only and cannot be set during create.'
+            for field in update_only_fields
+            if field in self.initial_data
+        }
+        if errors:
+            raise serializers.ValidationError(errors)
+        return attrs
+
 
 
 class RetrospectiveSummarySerializer(serializers.Serializer):
