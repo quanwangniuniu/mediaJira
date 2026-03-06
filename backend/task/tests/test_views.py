@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
-from task.models import Task
+from task.models import Task, ApprovalRecord
 from core.models import Project, Organization, Team, AdChannel, ProjectMember
 from budget_approval.models import BudgetPool, BudgetRequest
 from asset.models import Asset
@@ -70,6 +70,10 @@ class TaskAPITest(TestCase):
         # Setup API client
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
+
+        # Setup approver client (authenticated as self.approver)
+        self.approver_client = APIClient()
+        self.approver_client.force_authenticate(user=self.approver)
     
     def create_task_with_status(self, status, **kwargs):
         """
@@ -905,14 +909,14 @@ class TaskAPITest(TestCase):
             project=self.project,
             current_approver=self.approver
         )
-        
+
         url = reverse('task-make-approval', kwargs={'pk': task.id})
         data = {
             'action': 'approve',
             'comment': 'Approved for budget allocation'
         }
-        
-        response = self.client.post(url, data, format='json')
+
+        response = self.approver_client.post(url, data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
@@ -971,14 +975,14 @@ class TaskAPITest(TestCase):
             project=self.project,
             current_approver=self.approver
         )
-        
+
         url = reverse('task-make-approval', kwargs={'pk': task.id})
         data = {
             'action': 'reject',
             'comment': 'Insufficient budget documentation'
         }
-        
-        response = self.client.post(url, data, format='json')
+
+        response = self.approver_client.post(url, data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
@@ -1098,15 +1102,15 @@ class TaskAPITest(TestCase):
         # Approve again (second step)
         url = reverse('task-make-approval', kwargs={'pk': task.id})
         data = {'action': 'approve', 'comment': 'Second approval'}
-        
-        response = self.client.post(url, data, format='json')
-        
+
+        response = self.approver_client.post(url, data, format='json')
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        
+
         # Check response contains approval_record and task
         self.assertIn('approval_record', response.data)
         self.assertIn('task', response.data)
-        
+
         # Check approval record data
         approval_record = response.data['approval_record']
         self.assertIn('id', approval_record)
@@ -1114,7 +1118,7 @@ class TaskAPITest(TestCase):
         self.assertIn('is_approved', approval_record)
         self.assertIn('comment', approval_record)
         self.assertIn('step_number', approval_record)
-        
+
         self.assertEqual(approval_record['approved_by']['id'], self.approver.id)
         self.assertTrue(approval_record['is_approved'])
         self.assertEqual(approval_record['comment'], 'Second approval')
@@ -1138,15 +1142,15 @@ class TaskAPITest(TestCase):
             project=self.project,
             current_approver=self.approver
         )
-        
+
         url = reverse('task-make-approval', kwargs={'pk': task.id})
         data = {'action': 'invalid_action', 'comment': 'Should not work'}
-        
-        response = self.client.post(url, data, format='json')
-        
+
+        response = self.approver_client.post(url, data, format='json')
+
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(task.approval_records.count(), 0)
-    
+
     def test_make_approval_missing_action(self):
         """Test make-approval with missing action"""
         task = self.create_task_with_status(
@@ -1157,12 +1161,12 @@ class TaskAPITest(TestCase):
             project=self.project,
             current_approver=self.approver
         )
-        
+
         url = reverse('task-make-approval', kwargs={'pk': task.id})
         data = {'comment': 'Should not work'}
-        
-        response = self.client.post(url, data, format='json')
-        
+
+        response = self.approver_client.post(url, data, format='json')
+
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(task.approval_records.count(), 0)
     
@@ -1777,8 +1781,11 @@ class TaskAPITest(TestCase):
         task.current_approval_step = 1
         task.save()
 
+        step1_client = APIClient()
+        step1_client.force_authenticate(user=step1_approver)
+
         url = reverse('task-make-approval', kwargs={'pk': task.id})
-        response = self.client.post(url, {'action': 'approve', 'comment': 'Step 1 done'}, format='json')
+        response = step1_client.post(url, {'action': 'approve', 'comment': 'Step 1 done'}, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         task_data = response.data['task']
@@ -1841,8 +1848,11 @@ class TaskAPITest(TestCase):
             step_number=1
         )
 
+        step2_client = APIClient()
+        step2_client.force_authenticate(user=step2_approver)
+
         url = reverse('task-make-approval', kwargs={'pk': task.id})
-        response = self.client.post(url, {'action': 'approve', 'comment': 'Final approval'}, format='json')
+        response = step2_client.post(url, {'action': 'approve', 'comment': 'Final approval'}, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         task_data = response.data['task']
@@ -1912,7 +1922,7 @@ class TaskAPITest(TestCase):
         self.assertIn('error', response.data)
 
         # Task status must not have changed
-        task.refresh_from_db()
+        task = Task.objects.get(pk=task.pk)
         self.assertEqual(task.status, Task.Status.APPROVED)
 
     def test_lock_allowed_when_chain_fully_approved(self):
@@ -1965,7 +1975,7 @@ class TaskAPITest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['task']['status'], 'LOCKED')
 
-        task.refresh_from_db()
+        task = Task.objects.get(pk=task.pk)
         self.assertEqual(task.status, Task.Status.LOCKED)
 
     def test_lock_legacy_mode_no_chain_still_works(self):

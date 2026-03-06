@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, ValidationError as DRFValidationError
 from django.core.exceptions import ValidationError
+from django.db.models import Q
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.shortcuts import get_object_or_404
@@ -109,13 +110,17 @@ class TaskViewSet(viewsets.ModelViewSet):
             
             # New logic: support all_projects parameter
             if all_projects and accessible_project_ids:
-                queryset = queryset.filter(project_id__in=accessible_project_ids)
+                project_filter = Q(project_id__in=accessible_project_ids)
             elif active_project:
-                queryset = queryset.filter(project_id=active_project.id)
+                project_filter = Q(project_id=active_project.id)
             elif accessible_project_ids:
-                queryset = queryset.filter(project_id__in=accessible_project_ids)
+                project_filter = Q(project_id__in=accessible_project_ids)
             else:
-                return Task.objects.none()
+                project_filter = Q(pk__in=[])  # empty
+
+            # Also include tasks where user is the designated current approver,
+            # even if they are not a member of that project (cross-project approval chain).
+            queryset = queryset.filter(project_filter | Q(current_approver=user))
 
         # Apply filters
         task_type = self.request.query_params.get('type')
@@ -179,14 +184,19 @@ class TaskViewSet(viewsets.ModelViewSet):
         if not user.is_authenticated:
             raise PermissionDenied('Authentication credentials were not provided.')
 
-        # Ensure the user is an active member of the task's project
+        # Ensure the user is an active member of the task's project,
+        # OR is the current designated approver (cross-project approval chain).
         has_membership = ProjectMember.objects.filter(
             user=user,
             project=task.project,
             is_active=True,
         ).exists()
+        is_current_approver = (
+            task.current_approver_id is not None and
+            task.current_approver_id == user.id
+        )
 
-        if not has_membership:
+        if not has_membership and not is_current_approver:
             raise PermissionDenied('You do not have access to this task.')
 
         self.check_object_permissions(self.request, task)
@@ -277,7 +287,14 @@ class TaskViewSet(viewsets.ModelViewSet):
                 {'error': 'Task must be in UNDER_REVIEW status to be approved or rejected'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
+        # Verify the requesting user is the designated approver for this step
+        if task.current_approver_id and request.user.id != task.current_approver_id:
+            return Response(
+                {'error': 'Only the designated approver for this step can approve or reject.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         # Validate request data
         serializer = TaskApprovalSerializer(data=request.data)
         if not serializer.is_valid():
