@@ -180,19 +180,6 @@ class RetrospectiveTaskCreateSerializer(serializers.ModelSerializer):
             'id',
         ]
         read_only_fields = ['id']
-    
-    def validate_campaign(self, value):
-        """Validate campaign for retrospective creation"""
-        # For Project model, we assume it's always eligible for retrospective
-        # since Project doesn't have a status field, we skip the status check
-        
-        # Check if retrospective already exists
-        if RetrospectiveTask.objects.filter(campaign=value).exists():
-            raise serializers.ValidationError(
-                "Retrospective already exists for this campaign"
-            )
-        
-        return value
 
     def validate(self, attrs):
         """Post-outcome fields are update-only and cannot be provided on create."""

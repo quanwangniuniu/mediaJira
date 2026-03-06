@@ -39,25 +39,18 @@ import {
   OptimizationScalingAPI,
   ScalingPlan,
 } from "@/lib/api/optimizationScalingApi";
-import {
-  ExperimentAPI,
-  Experiment,
-} from "@/lib/api/experimentApi";
+import { ExperimentAPI, Experiment } from "@/lib/api/experimentApi";
 import { ChevronDown, Trash2 } from "lucide-react";
-import {
-  OptimizationAPI,
-  Optimization,
-} from "@/lib/api/optimizationApi";
+import { OptimizationAPI, Optimization } from "@/lib/api/optimizationApi";
 import { ClientCommunicationAPI } from "@/lib/api/clientCommunicationApi";
-import type {
-  ClientCommunicationPayload,
-} from "@/lib/api/clientCommunicationApi";
+import type { ClientCommunicationPayload } from "@/lib/api/clientCommunicationApi";
 import { AlertingAPI, AlertTask } from "@/lib/api/alertingApi";
 import { ReportAPI } from "@/lib/api/reportApi";
 import type { ReportTask } from "@/types/report";
 import {
   RetrospectiveAPI,
   RetrospectiveTaskData,
+  UpdateRetrospectiveData,
 } from "@/lib/api/retrospectiveApi";
 import ReportDetail from "./ReportDetail";
 import PlatformPolicyUpdateDetail from "./PlatformPolicyUpdateDetail";
@@ -135,10 +128,21 @@ function CommentStyleTextarea({
   textareaRef,
   ...props
 }: CommentStyleTextareaProps) {
-  return <textarea ref={textareaRef} className={sharedCommentLikeTextareaClass} {...props} />;
+  return (
+    <textarea
+      ref={textareaRef}
+      className={sharedCommentLikeTextareaClass}
+      {...props}
+    />
+  );
 }
 
-export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDeleted }: TaskDetailProps) {
+export default function TaskDetail({
+  task,
+  currentUser,
+  onTaskUpdate,
+  onTaskDeleted,
+}: TaskDetailProps) {
   const { updateTask } = useTaskStore();
   const { startReview: startBudgetReview, makeDecision: makeBudgetDecision } =
     useBudgetData();
@@ -146,7 +150,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
 
   const [summaryDraft, setSummaryDraft] = useState(task.summary || "");
   const [descriptionDraft, setDescriptionDraft] = useState(
-    task.description || ""
+    task.description || "",
   );
   const [editingSummary, setEditingSummary] = useState(false);
   const [editingDescription, setEditingDescription] = useState(false);
@@ -154,7 +158,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
   const [editingStartDate, setEditingStartDate] = useState(false);
   const [editingDueDate, setEditingDueDate] = useState(false);
   const [ownerId, setOwnerId] = useState<string>(
-    task.owner?.id?.toString() || ""
+    task.owner?.id?.toString() || "",
   );
   const [savingStatus, setSavingStatus] = useState(false);
   const [savingOwner, setSavingOwner] = useState(false);
@@ -178,7 +182,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
   >([]);
   const [nextApprover, setNextApprover] = useState<string | null>(null);
   const [currentApproverId, setCurrentApproverId] = useState<string>(
-    task.current_approver?.id?.toString() || ""
+    task.current_approver?.id?.toString() || "",
   );
   const [approvalHistory, setApprovalHistory] = useState<ApprovalRecord[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -190,7 +194,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
 
   // Budget request and budget pool data
   const [budgetRequest, setBudgetRequest] = useState<BudgetRequestData | null>(
-    null
+    null,
   );
   const [budgetPool, setBudgetPool] = useState<BudgetPoolData | null>(null);
   const [loadingBudgetData, setLoadingBudgetData] = useState(false);
@@ -198,7 +202,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
   const [taskComments, setTaskComments] = useState<TaskComment[]>([]);
   const [taskCommentsLoading, setTaskCommentsLoading] = useState(false);
   const [taskCommentsError, setTaskCommentsError] = useState<string | null>(
-    null
+    null,
   );
   const [taskCommentInput, setTaskCommentInput] = useState("");
   const {
@@ -231,7 +235,8 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
   const [reportLoading, setReportLoading] = useState(false);
 
   // Platform policy update data (for platform_policy_update tasks)
-  const [policyUpdate, setPolicyUpdate] = useState<PlatformPolicyUpdateData | null>(null);
+  const [policyUpdate, setPolicyUpdate] =
+    useState<PlatformPolicyUpdateData | null>(null);
   const [policyUpdateLoading, setPolicyUpdateLoading] = useState(false);
 
   // Retrospective data (for retrospective tasks)
@@ -244,13 +249,14 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
     useState<ClientCommunicationData | null>(null);
   const [communicationLoading, setCommunicationLoading] = useState(false);
   const [communicationError, setCommunicationError] = useState<string | null>(
-    null
+    null,
   );
   const [editingCommunication, setEditingCommunication] = useState(false);
   const [savingCommunication, setSavingCommunication] = useState(false);
-  const [communicationDraft, setCommunicationDraft] = useState<
-    Omit<ClientCommunicationPayload, "task"> | null
-  >(null);
+  const [communicationDraft, setCommunicationDraft] = useState<Omit<
+    ClientCommunicationPayload,
+    "task"
+  > | null>(null);
 
   useEffect(() => {
     setSummaryDraft(task.summary || "");
@@ -364,8 +370,10 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
         const items = resp.data || [];
         const score = (item: AlertTask) => {
           let value = 0;
-          if (item.affected_entities && item.affected_entities.length > 0) value += 3;
-          if (item.related_references && item.related_references.length > 0) value += 2;
+          if (item.affected_entities && item.affected_entities.length > 0)
+            value += 3;
+          if (item.related_references && item.related_references.length > 0)
+            value += 2;
           if (item.investigation_notes) value += 2;
           if (item.resolution_steps) value += 2;
           if (item.postmortem_root_cause) value += 1;
@@ -377,7 +385,10 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
           if (scoreDiff !== 0) return scoreDiff;
           const aTime = Date.parse(a.updated_at || a.created_at || "");
           const bTime = Date.parse(b.updated_at || b.created_at || "");
-          return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
+          return (
+            (Number.isNaN(bTime) ? 0 : bTime) -
+            (Number.isNaN(aTime) ? 0 : aTime)
+          );
         });
         detail = sorted[0] || null;
       }
@@ -391,12 +402,16 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
           } as any);
           detail = created.data as any;
         } catch (createError) {
-          const fallback = await AlertingAPI.listAlertTasks({ task_id: task.id });
+          const fallback = await AlertingAPI.listAlertTasks({
+            task_id: task.id,
+          });
           const items = fallback.data || [];
           const score = (item: AlertTask) => {
             let value = 0;
-            if (item.affected_entities && item.affected_entities.length > 0) value += 3;
-            if (item.related_references && item.related_references.length > 0) value += 2;
+            if (item.affected_entities && item.affected_entities.length > 0)
+              value += 3;
+            if (item.related_references && item.related_references.length > 0)
+              value += 2;
             if (item.investigation_notes) value += 2;
             if (item.resolution_steps) value += 2;
             if (item.postmortem_root_cause) value += 1;
@@ -408,7 +423,10 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
             if (scoreDiff !== 0) return scoreDiff;
             const aTime = Date.parse(a.updated_at || a.created_at || "");
             const bTime = Date.parse(b.updated_at || b.created_at || "");
-            return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
+            return (
+              (Number.isNaN(bTime) ? 0 : bTime) -
+              (Number.isNaN(aTime) ? 0 : aTime)
+            );
           });
           detail = sorted[0] || null;
         }
@@ -439,9 +457,9 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
       }
       if (!exp) {
         const resp = await ExperimentAPI.listExperiments({});
-        const experiments = Array.isArray(resp.data) 
-          ? resp.data 
-          : ((resp.data as any)?.results || []);
+        const experiments = Array.isArray(resp.data)
+          ? resp.data
+          : (resp.data as any)?.results || [];
         exp = experiments.find((e: Experiment) => e.task === task.id) || null;
       }
       setExperiment(exp);
@@ -469,11 +487,14 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
         }
       }
       if (!opt) {
-        const resp = await OptimizationAPI.listOptimizations({ task_id: task.id });
-        const optimizations = Array.isArray(resp.data) 
-          ? resp.data 
-          : ((resp.data as any)?.results || []);
-        opt = optimizations.find((o: Optimization) => o.task === task.id) || null;
+        const resp = await OptimizationAPI.listOptimizations({
+          task_id: task.id,
+        });
+        const optimizations = Array.isArray(resp.data)
+          ? resp.data
+          : (resp.data as any)?.results || [];
+        opt =
+          optimizations.find((o: Optimization) => o.task === task.id) || null;
       }
       setOptimization(opt);
     } catch (e) {
@@ -501,7 +522,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
           } catch (e) {
             console.warn(
               "Report object_id lookup failed, falling back to task lookup:",
-              e
+              e,
             );
           }
         }
@@ -515,7 +536,10 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
           | undefined;
         const list = Array.isArray(raw) ? raw : raw?.results ?? [];
         reportData =
-          list.find((item) => Number((item as ReportTask & { task?: number }).task) === task.id) ??
+          list.find(
+            (item) =>
+              Number((item as ReportTask & { task?: number }).task) === task.id,
+          ) ??
           list[0] ??
           null;
       }
@@ -562,10 +586,38 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
     setRetrospectiveLoading(true);
     try {
       let detail: RetrospectiveTaskData | null = null;
-      if (task.object_id) {
+      const projectId = task.project_id ?? task.project?.id;
+      const linkedContentType = task.content_type;
+
+      // task.object_id should only be used as retrospective id when the link is to a retrospective.
+      if (linkedContentType === "retrospectivetask" && task.object_id) {
         const retrospectiveId = String(task.object_id);
         const resp = await RetrospectiveAPI.getRetrospective(retrospectiveId);
         detail = resp.data as RetrospectiveTaskData;
+      }
+
+      // Defensive fallback: decision-linked retrospective tasks store decision id in object_id.
+      if (!detail && projectId != null) {
+        if (linkedContentType && linkedContentType !== "retrospectivetask") {
+          console.warn(
+            "Retrospective task is not linked to retrospectivetask content type; falling back to campaign lookup.",
+            {
+              taskId: task.id,
+              contentType: linkedContentType,
+              objectId: task.object_id,
+              projectId,
+            },
+          );
+        }
+
+        const listResp = await RetrospectiveAPI.getRetrospectives({
+          campaign: String(projectId),
+        });
+        const items = Array.isArray(listResp.data)
+          ? listResp.data
+          : listResp.data?.results || [];
+        detail =
+          (Array.isArray(items) && (items[0] as RetrospectiveTaskData)) || null;
       }
       setRetrospective(detail);
     } catch (e) {
@@ -573,6 +625,28 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
       setRetrospective(null);
     } finally {
       setRetrospectiveLoading(false);
+    }
+  };
+
+  const handleSaveRetrospective = async (payload: UpdateRetrospectiveData) => {
+    if (!retrospective?.id) {
+      throw new Error("Retrospective not loaded.");
+    }
+    try {
+      await RetrospectiveAPI.updateRetrospective(
+        String(retrospective.id),
+        payload,
+      );
+      await loadRetrospective();
+      toast.success("Retrospective updated.");
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to update retrospective.";
+      toast.error(message);
+      throw error;
     }
   };
 
@@ -593,7 +667,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
   const currentApproverLabel = useMemo(() => {
     if (!currentApproverId) return "Unassigned";
     const matched = approvers.find(
-      (approver) => approver.id.toString() === currentApproverId
+      (approver) => approver.id.toString() === currentApproverId,
     );
     if (matched?.username) return matched.username;
     if (matched?.email) return matched.email;
@@ -653,7 +727,8 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
         toast.error("Invalid status transition");
         return;
       }
-      const updatedTask: TaskData = (response.data?.task ?? response.data) as TaskData;
+      const updatedTask: TaskData = (response.data?.task ??
+        response.data) as TaskData;
       Object.assign(task, updatedTask);
       updateTask(task.id!, updatedTask);
       toast.success("Status updated.");
@@ -764,6 +839,39 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
       setRetrospective(null);
     }
   }, [task.id, task.type, task.object_id]);
+
+  useEffect(() => {
+    const shouldRenderRetrospective = task?.type === "retrospective";
+    // #region agent log
+    fetch("http://127.0.0.1:7242/ingest/d1c5a812-8fba-4f4b-91ec-d69ecfc99679", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        runId: "taskdetail-retro-render-check-v1",
+        hypothesisId: "H1",
+        location: "TaskDetail.tsx:renderStateEffect",
+        message: "Render state snapshot for retrospective section",
+        data: {
+          taskId: task?.id ?? null,
+          taskType: task?.type ?? null,
+          shouldRenderRetrospective,
+          retrospectiveLoading,
+          hasRetrospectiveData: Boolean(retrospective),
+          taskObjectId: task?.object_id ?? null,
+          taskContentType: task?.content_type ?? null,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+  }, [
+    task?.id,
+    task?.type,
+    retrospectiveLoading,
+    retrospective,
+    task?.object_id,
+    task?.content_type,
+  ]);
 
   // Load client communication for communication tasks
   useEffect(() => {
@@ -961,7 +1069,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
 
         // Get budget request
         const budgetResponse = await BudgetAPI.getBudgetRequest(
-          Number(task.object_id)
+          Number(task.object_id),
         );
         const budgetData = budgetResponse.data;
         setBudgetRequest(budgetData);
@@ -969,7 +1077,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
         // Get budget pool if budget request has budget_pool
         if (budgetData.budget_pool) {
           const poolResponse = await BudgetAPI.getBudgetPool(
-            budgetData.budget_pool
+            budgetData.budget_pool,
           );
           const poolData = poolResponse.data;
           setBudgetPool(poolData);
@@ -1034,7 +1142,10 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
   }, [communication?.communication_type]);
 
   const formatImpactedAreas = () => {
-    if (!communication?.impacted_areas || communication.impacted_areas.length === 0) {
+    if (
+      !communication?.impacted_areas ||
+      communication.impacted_areas.length === 0
+    ) {
       return "None selected";
     }
     const mapping: Record<string, string> = {
@@ -1052,7 +1163,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
     K extends keyof Omit<ClientCommunicationPayload, "task">,
   >(
     field: K,
-    value: Omit<ClientCommunicationPayload, "task">[K]
+    value: Omit<ClientCommunicationPayload, "task">[K],
   ) => {
     setCommunicationDraft((prev) =>
       prev
@@ -1060,12 +1171,12 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
             ...prev,
             [field]: value,
           }
-        : prev
+        : prev,
     );
   };
 
   const toggleCommunicationImpactedArea = (
-    area: ClientCommunicationPayload["impacted_areas"][number]
+    area: ClientCommunicationPayload["impacted_areas"][number],
   ) => {
     setCommunicationDraft((prev) => {
       if (!prev) return prev;
@@ -1117,7 +1228,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
               ...prev,
               ...payload,
             }
-          : prev
+          : prev,
       );
       setEditingCommunication(false);
       toast.success("Client communication updated.");
@@ -1198,7 +1309,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
 
           // Refresh budget request data to update UI
           const budgetResponse = await BudgetAPI.getBudgetRequest(
-            Number(task.object_id)
+            Number(task.object_id),
           );
           setBudgetRequest(budgetResponse.data);
         } catch (budgetError) {
@@ -1268,7 +1379,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
 
           // Refresh budget request data to update UI
           const budgetResponse = await BudgetAPI.getBudgetRequest(
-            Number(task.object_id)
+            Number(task.object_id),
           );
           setBudgetRequest(budgetResponse.data);
         } catch (budgetError) {
@@ -1322,7 +1433,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
 
       console.log(
         "Task approved successfully. Status updated to:",
-        taskResponse.data.task?.status
+        taskResponse.data.task?.status,
       );
     } catch (error) {
       console.error("Error approving task:", error);
@@ -1353,7 +1464,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
 
           // Refresh budget request data to update UI
           const budgetResponse = await BudgetAPI.getBudgetRequest(
-            Number(task.object_id)
+            Number(task.object_id),
           );
           setBudgetRequest(budgetResponse.data);
         } catch (budgetError) {
@@ -1449,7 +1560,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
     const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate());
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const diffDays = Math.ceil(
-      (dueDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+      (dueDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
     );
 
     if (diffDays < 0) return "danger";
@@ -1459,9 +1570,9 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
 
   return (
     <>
-    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-6 items-start">
-      {/* Left section */}
-      <div className="space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-6 items-start">
+        {/* Left section */}
+        <div className="space-y-6">
           {/* Task Summary & Description */}
           <section>
             {!editingSummary ? (
@@ -1483,7 +1594,9 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
                   <p className="text-sm text-slate-500 mt-1">
                     From{" "}
                     <Link
-                      href={`/decisions/${task.object_id}${projectId ? `?project_id=${projectId}` : ""}`}
+                      href={`/decisions/${task.object_id}${
+                        projectId ? `?project_id=${projectId}` : ""
+                      }`}
                       className="text-indigo-600 hover:text-indigo-800 hover:underline"
                     >
                       Decision #{task.object_id}
@@ -1506,7 +1619,9 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
                     onClick={handleSaveSummary}
                     disabled={savingSummary}
                     className={`px-3 py-1.5 text-sm rounded-md text-white ${
-                      savingSummary ? "bg-indigo-300" : "bg-indigo-600 hover:bg-indigo-700"
+                      savingSummary
+                        ? "bg-indigo-300"
+                        : "bg-indigo-600 hover:bg-indigo-700"
                     }`}
                   >
                     {savingSummary ? "Saving..." : "Save"}
@@ -1603,7 +1718,9 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
             <>
               {alertLoading && (
                 <div className="border-t border-slate-200 pt-5">
-                  <p className="text-sm text-gray-500">Loading alert details...</p>
+                  <p className="text-sm text-gray-500">
+                    Loading alert details...
+                  </p>
                 </div>
               )}
               {!alertLoading && alertTask && (
@@ -1615,7 +1732,9 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
               )}
               {!alertLoading && !alertTask && (
                 <div className="border-t border-slate-200 pt-5">
-                  <p className="text-sm text-gray-500">No alert details found.</p>
+                  <p className="text-sm text-gray-500">
+                    No alert details found.
+                  </p>
                 </div>
               )}
             </>
@@ -1678,232 +1797,251 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
               </div>
 
               {communicationLoading && (
-                <p className="py-2 text-sm text-slate-500">Loading details...</p>
+                <p className="py-2 text-sm text-slate-500">
+                  Loading details...
+                </p>
               )}
 
               {communicationError && !communicationLoading && (
-                <p className="py-2 text-sm text-red-600">{communicationError}</p>
+                <p className="py-2 text-sm text-red-600">
+                  {communicationError}
+                </p>
               )}
 
-              {communication && !communicationLoading && !communicationError && (
-                <>
-                  {!editingCommunication ? (
-                    <div className="divide-y divide-slate-200">
-                      <div className="flex items-center justify-end px-3 py-2">
-                        <button
-                          type="button"
-                          onClick={() => setEditingCommunication(true)}
-                          className="rounded-md px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                        >
-                          Edit
-                        </button>
+              {communication &&
+                !communicationLoading &&
+                !communicationError && (
+                  <>
+                    {!editingCommunication ? (
+                      <div className="divide-y divide-slate-200">
+                        <div className="flex items-center justify-end px-3 py-2">
+                          <button
+                            type="button"
+                            onClick={() => setEditingCommunication(true)}
+                            className="rounded-md px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                          >
+                            Edit
+                          </button>
+                        </div>
+
+                        <div className="px-3 py-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            Communication Type
+                          </p>
+                          <p className="text-sm leading-6 text-slate-900">
+                            {communicationTypeLabel}
+                          </p>
+                        </div>
+
+                        <div className="px-3 py-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            Stakeholders
+                          </p>
+                          <p className="text-sm leading-6 text-slate-900 whitespace-pre-wrap">
+                            {communication.stakeholders?.trim() ||
+                              "No stakeholders recorded"}
+                          </p>
+                        </div>
+
+                        <div className="px-3 py-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            Impacted Areas
+                          </p>
+                          <p className="text-sm leading-6 text-slate-900">
+                            {formatImpactedAreas()}
+                          </p>
+                        </div>
+
+                        <div className="px-3 py-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            Required Actions
+                          </p>
+                          <p className="text-sm leading-6 text-slate-900 whitespace-pre-wrap">
+                            {communication.required_actions ||
+                              "No actions recorded"}
+                          </p>
+                        </div>
+
+                        <div className="px-3 py-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            Client Deadline
+                          </p>
+                          <p className="text-sm leading-6 text-slate-900">
+                            {communication.client_deadline
+                              ? formatDate(communication.client_deadline)
+                              : "No deadline set"}
+                          </p>
+                        </div>
+
+                        <div className="px-3 py-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            Notes
+                          </p>
+                          <p className="text-sm leading-6 text-slate-900 whitespace-pre-wrap">
+                            {communication.notes?.trim() || "No notes recorded"}
+                          </p>
+                        </div>
                       </div>
-
-                      <div className="px-3 py-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Communication Type
-                        </p>
-                        <p className="text-sm leading-6 text-slate-900">
-                          {communicationTypeLabel}
-                        </p>
-                      </div>
-
-                      <div className="px-3 py-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Stakeholders
-                        </p>
-                        <p className="text-sm leading-6 text-slate-900 whitespace-pre-wrap">
-                          {communication.stakeholders?.trim() ||
-                            "No stakeholders recorded"}
-                        </p>
-                      </div>
-
-                      <div className="px-3 py-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Impacted Areas
-                        </p>
-                        <p className="text-sm leading-6 text-slate-900">
-                          {formatImpactedAreas()}
-                        </p>
-                      </div>
-
-                      <div className="px-3 py-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Required Actions
-                        </p>
-                        <p className="text-sm leading-6 text-slate-900 whitespace-pre-wrap">
-                          {communication.required_actions || "No actions recorded"}
-                        </p>
-                      </div>
-
-                      <div className="px-3 py-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Client Deadline
-                        </p>
-                        <p className="text-sm leading-6 text-slate-900">
-                          {communication.client_deadline
-                            ? formatDate(communication.client_deadline)
-                            : "No deadline set"}
-                        </p>
-                      </div>
-
-                      <div className="px-3 py-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Notes
-                        </p>
-                        <p className="text-sm leading-6 text-slate-900 whitespace-pre-wrap">
-                          {communication.notes?.trim() || "No notes recorded"}
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    communicationDraft && (
-                      <div className="space-y-4 rounded-md border border-slate-200 bg-slate-50 p-3">
-                        <div className="grid grid-cols-1 gap-4">
-                          <div>
-                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Communication Type
-                            </label>
-                            <select
-                              value={communicationDraft.communication_type}
-                              onChange={(e) =>
-                                updateCommunicationDraftField(
-                                  "communication_type",
-                                  e.target.value as ClientCommunicationPayload["communication_type"]
-                                )
-                              }
-                              className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
-                            >
-                              {COMMUNICATION_TYPE_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Stakeholders
-                            </label>
-                            <AutoResizeTextarea
-                              value={communicationDraft.stakeholders || ""}
-                              onChange={(e) =>
-                                updateCommunicationDraftField(
-                                  "stakeholders",
-                                  e.target.value
-                                )
-                              }
-                              placeholder="List client contacts and internal team members involved."
-                              className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Impacted Areas
-                            </label>
-                            <div className="flex flex-wrap gap-2">
-                              {IMPACTED_AREA_OPTIONS.map((option) => {
-                                const active = communicationDraft.impacted_areas.includes(
-                                  option.value
-                                );
-                                return (
-                                  <button
+                    ) : (
+                      communicationDraft && (
+                        <div className="space-y-4 rounded-md border border-slate-200 bg-slate-50 p-3">
+                          <div className="grid grid-cols-1 gap-4">
+                            <div>
+                              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Communication Type
+                              </label>
+                              <select
+                                value={communicationDraft.communication_type}
+                                onChange={(e) =>
+                                  updateCommunicationDraftField(
+                                    "communication_type",
+                                    e.target
+                                      .value as ClientCommunicationPayload["communication_type"],
+                                  )
+                                }
+                                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                              >
+                                {COMMUNICATION_TYPE_OPTIONS.map((option) => (
+                                  <option
                                     key={option.value}
-                                    type="button"
-                                    onClick={() =>
-                                      toggleCommunicationImpactedArea(option.value)
-                                    }
-                                    className={`rounded-full border px-3 py-1 text-xs font-medium ${
-                                      active
-                                        ? "border-indigo-300 bg-indigo-50 text-indigo-700"
-                                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                                    }`}
+                                    value={option.value}
                                   >
                                     {option.label}
-                                  </button>
-                                );
-                              })}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Stakeholders
+                              </label>
+                              <AutoResizeTextarea
+                                value={communicationDraft.stakeholders || ""}
+                                onChange={(e) =>
+                                  updateCommunicationDraftField(
+                                    "stakeholders",
+                                    e.target.value,
+                                  )
+                                }
+                                placeholder="List client contacts and internal team members involved."
+                                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Impacted Areas
+                              </label>
+                              <div className="flex flex-wrap gap-2">
+                                {IMPACTED_AREA_OPTIONS.map((option) => {
+                                  const active =
+                                    communicationDraft.impacted_areas.includes(
+                                      option.value,
+                                    );
+                                  return (
+                                    <button
+                                      key={option.value}
+                                      type="button"
+                                      onClick={() =>
+                                        toggleCommunicationImpactedArea(
+                                          option.value,
+                                        )
+                                      }
+                                      className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                                        active
+                                          ? "border-indigo-300 bg-indigo-50 text-indigo-700"
+                                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                                      }`}
+                                    >
+                                      {option.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Required Actions
+                              </label>
+                              <AutoResizeTextarea
+                                value={
+                                  communicationDraft.required_actions || ""
+                                }
+                                onChange={(e) =>
+                                  updateCommunicationDraftField(
+                                    "required_actions",
+                                    e.target.value,
+                                  )
+                                }
+                                placeholder="Describe the actions required in response."
+                                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Client Deadline
+                              </label>
+                              <input
+                                type="date"
+                                value={communicationDraft.client_deadline || ""}
+                                onChange={(e) =>
+                                  updateCommunicationDraftField(
+                                    "client_deadline",
+                                    e.target.value || null,
+                                  )
+                                }
+                                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Notes
+                              </label>
+                              <AutoResizeTextarea
+                                value={communicationDraft.notes || ""}
+                                onChange={(e) =>
+                                  updateCommunicationDraftField(
+                                    "notes",
+                                    e.target.value,
+                                  )
+                                }
+                                placeholder="Any additional context or follow-up details."
+                                className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                              />
                             </div>
                           </div>
 
-                          <div>
-                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Required Actions
-                            </label>
-                            <AutoResizeTextarea
-                              value={communicationDraft.required_actions || ""}
-                              onChange={(e) =>
-                                updateCommunicationDraftField(
-                                  "required_actions",
-                                  e.target.value
-                                )
-                              }
-                              placeholder="Describe the actions required in response."
-                              className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Client Deadline
-                            </label>
-                            <input
-                              type="date"
-                              value={communicationDraft.client_deadline || ""}
-                              onChange={(e) =>
-                                updateCommunicationDraftField(
-                                  "client_deadline",
-                                  e.target.value || null
-                                )
-                              }
-                              className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Notes
-                            </label>
-                            <AutoResizeTextarea
-                              value={communicationDraft.notes || ""}
-                              onChange={(e) =>
-                                updateCommunicationDraftField("notes", e.target.value)
-                              }
-                              placeholder="Any additional context or follow-up details."
-                              className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
-                            />
+                          <div className="flex justify-end gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={handleCancelCommunicationEdit}
+                              disabled={savingCommunication}
+                              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-white disabled:opacity-60"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleSaveCommunication}
+                              disabled={savingCommunication}
+                              className={`rounded-md px-3 py-1.5 text-sm text-white ${
+                                savingCommunication
+                                  ? "bg-indigo-300"
+                                  : "bg-indigo-600 hover:bg-indigo-700"
+                              }`}
+                            >
+                              {savingCommunication ? "Saving..." : "Save"}
+                            </button>
                           </div>
                         </div>
-
-                        <div className="flex justify-end gap-2 pt-1">
-                          <button
-                            type="button"
-                            onClick={handleCancelCommunicationEdit}
-                            disabled={savingCommunication}
-                            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-white disabled:opacity-60"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleSaveCommunication}
-                            disabled={savingCommunication}
-                            className={`rounded-md px-3 py-1.5 text-sm text-white ${
-                              savingCommunication
-                                ? "bg-indigo-300"
-                                : "bg-indigo-600 hover:bg-indigo-700"
-                            }`}
-                          >
-                            {savingCommunication ? "Saving..." : "Save"}
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  )}
-                </>
-              )}
+                      )
+                    )}
+                  </>
+                )}
             </section>
           )}
 
@@ -1918,7 +2056,9 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
           {task?.type === "asset" && (
             <AssetDetail
               taskId={task.id}
-              assetId={task.content_type === "asset" ? (task.object_id || null) : null}
+              assetId={
+                task.content_type === "asset" ? task.object_id || null : null
+              }
               hideComments={true}
             />
           )}
@@ -1927,6 +2067,7 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
               retrospective={retrospective || undefined}
               loading={retrospectiveLoading}
               onRefresh={loadRetrospective}
+              onSave={handleSaveRetrospective}
             />
           )}
 
@@ -1934,7 +2075,13 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
           {task?.id && <Attachments taskId={task.id} />}
 
           {/* Subtasks - Only show if task is not a subtask */}
-          {task?.id && !task.is_subtask && <Subtasks taskId={task.id} taskProjectId={task.project_id || task.project?.id} parentTaskIsSubtask={task.is_subtask} />}
+          {task?.id && !task.is_subtask && (
+            <Subtasks
+              taskId={task.id}
+              taskProjectId={task.project_id || task.project?.id}
+              parentTaskIsSubtask={task.is_subtask}
+            />
+          )}
 
           {/* Linked Work Items */}
           {task?.id && <LinkedWorkItems taskId={task.id} />}
@@ -2067,301 +2214,304 @@ export default function TaskDetail({ task, currentUser, onTaskUpdate, onTaskDele
               </div>
             </section>
           )}
-      </div>
+        </div>
 
-      {/* Right section */}
-      <div className="space-y-4 lg:sticky lg:top-24 self-start">
-        {/* Task Basic Info */}
-        <Accordion
-          type="multiple"
-          className="w-full border-t border-slate-200 pt-5"
-          defaultValue={["item-1"]}
-        >
-          <AccordionItem value="item-1" className="border-none">
-            <AccordionTrigger>
-              <span className="text-[15px] font-semibold text-[#172b4d]">Details</span>
-            </AccordionTrigger>
-            <AccordionContent>
-              <div className="space-y-0">
-                {/* Status - editable dropdown */}
-                <div className={jiraDetailRowClass}>
-                  <label className={jiraDetailLabelClass}>
-                    Status
-                  </label>
-                  <div
-                    className={`rounded-[3px] border border-[#d0d4db] transition-colors hover:border-[#8590a2] focus-within:border-[#0c66e4] focus-within:shadow-[inset_0_0_0_1px_#0c66e4] ${
-                      savingStatus ? "opacity-50" : ""
-                    } ${getStatusColor(task?.status)}`}
-                  >
-                    <select
-                      value={task?.status ?? ""}
-                      onChange={(e) => handleStatusChange(e.target.value)}
-                      disabled={savingStatus}
-                      className="block h-9 w-full min-w-0 rounded-[3px] border-0 bg-transparent px-2.5 py-1.5 text-sm text-[#172b4d] focus:outline-none focus:ring-0 disabled:cursor-not-allowed"
+        {/* Right section */}
+        <div className="space-y-4 lg:sticky lg:top-24 self-start">
+          {/* Task Basic Info */}
+          <Accordion
+            type="multiple"
+            className="w-full border-t border-slate-200 pt-5"
+            defaultValue={["item-1"]}
+          >
+            <AccordionItem value="item-1" className="border-none">
+              <AccordionTrigger>
+                <span className="text-[15px] font-semibold text-[#172b4d]">
+                  Details
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-0">
+                  {/* Status - editable dropdown */}
+                  <div className={jiraDetailRowClass}>
+                    <label className={jiraDetailLabelClass}>Status</label>
+                    <div
+                      className={`rounded-[3px] border border-[#d0d4db] transition-colors hover:border-[#8590a2] focus-within:border-[#0c66e4] focus-within:shadow-[inset_0_0_0_1px_#0c66e4] ${
+                        savingStatus ? "opacity-50" : ""
+                      } ${getStatusColor(task?.status)}`}
                     >
-                      <option value="DRAFT">Draft</option>
-                      <option value="SUBMITTED">Submitted</option>
-                      <option value="UNDER_REVIEW">Under Review</option>
-                      <option value="APPROVED">Approved</option>
-                      <option value="REJECTED">Rejected</option>
-                      <option value="LOCKED">Locked</option>
-                      <option value="CANCELLED">Cancelled</option>
+                      <select
+                        value={task?.status ?? ""}
+                        onChange={(e) => handleStatusChange(e.target.value)}
+                        disabled={savingStatus}
+                        className="block h-9 w-full min-w-0 rounded-[3px] border-0 bg-transparent px-2.5 py-1.5 text-sm text-[#172b4d] focus:outline-none focus:ring-0 disabled:cursor-not-allowed"
+                      >
+                        <option value="DRAFT">Draft</option>
+                        <option value="SUBMITTED">Submitted</option>
+                        <option value="UNDER_REVIEW">Under Review</option>
+                        <option value="APPROVED">Approved</option>
+                        <option value="REJECTED">Rejected</option>
+                        <option value="LOCKED">Locked</option>
+                        <option value="CANCELLED">Cancelled</option>
+                      </select>
+                    </div>
+                  </div>
+                  {/* Work type - locked */}
+                  <div className={jiraDetailRowClass}>
+                    <label className={jiraDetailLabelClass}>Work type</label>
+                    <div className="pt-1.5 min-w-0">
+                      <span className="inline-block rounded-[3px] bg-purple-100 px-1.5 py-0.5 text-xs font-medium text-purple-800">
+                        {task?.type || "Unknown"}
+                      </span>
+                    </div>
+                  </div>
+                  {/* Owner - editable dropdown */}
+                  <div className={jiraDetailRowClass}>
+                    <label className={jiraDetailLabelClass}>Owner</label>
+                    <select
+                      value={ownerId}
+                      onChange={(e) => handleOwnerChange(e.target.value)}
+                      disabled={savingOwner || loadingApprovers}
+                      className={`${jiraDetailControlClass} ${
+                        savingOwner || loadingApprovers ? "opacity-50" : ""
+                      }`}
+                    >
+                      <option value="">
+                        {approvers.length === 0 ? "No members" : "Unassigned"}
+                      </option>
+                      {approvers.map((member) => (
+                        <option key={member.id} value={member.id.toString()}>
+                          {member.username ||
+                            member.email ||
+                            `User #${member.id}`}
+                        </option>
+                      ))}
                     </select>
                   </div>
-                </div>
-                {/* Work type - locked */}
-                <div className={jiraDetailRowClass}>
-                  <label className={jiraDetailLabelClass}>
-                    Work type
-                  </label>
-                  <div className="pt-1.5 min-w-0">
-                    <span className="inline-block rounded-[3px] bg-purple-100 px-1.5 py-0.5 text-xs font-medium text-purple-800">
-                      {task?.type || "Unknown"}
-                    </span>
-                  </div>
-                </div>
-                {/* Owner - editable dropdown */}
-                <div className={jiraDetailRowClass}>
-                  <label className={jiraDetailLabelClass}>
-                    Owner
-                  </label>
-                  <select
-                    value={ownerId}
-                    onChange={(e) => handleOwnerChange(e.target.value)}
-                    disabled={savingOwner || loadingApprovers}
-                    className={`${jiraDetailControlClass} ${savingOwner || loadingApprovers ? "opacity-50" : ""}`}
-                  >
-                    <option value="">
-                      {approvers.length === 0
-                        ? "No members"
-                        : "Unassigned"}
-                    </option>
-                    {approvers.map((member) => (
-                      <option key={member.id} value={member.id.toString()}>
-                        {member.username || member.email || `User #${member.id}`}
+                  {/* Current Approver - editable dropdown */}
+                  <div className={jiraDetailRowClass}>
+                    <label className={jiraDetailLabelClass}>
+                      Current Approver
+                    </label>
+                    <select
+                      value={currentApproverId}
+                      onChange={(e) =>
+                        handleCurrentApproverChange(e.target.value)
+                      }
+                      disabled={loadingApprovers}
+                      className={`${jiraDetailControlClass} ${
+                        loadingApprovers ? "opacity-50" : ""
+                      }`}
+                    >
+                      <option value="">
+                        {approvers.length === 0
+                          ? "No approver assigned"
+                          : "Unassigned"}
                       </option>
-                    ))}
-                  </select>
-                </div>
-                {/* Current Approver - editable dropdown */}
-                <div className={jiraDetailRowClass}>
-                  <label className={jiraDetailLabelClass}>
-                    Current Approver
-                  </label>
-                  <select
-                    value={currentApproverId}
-                    onChange={(e) =>
-                      handleCurrentApproverChange(e.target.value)
-                    }
-                    disabled={loadingApprovers}
-                    className={`${jiraDetailControlClass} ${loadingApprovers ? "opacity-50" : ""}`}
-                  >
-                    <option value="">
-                      {approvers.length === 0
-                        ? "No approver assigned"
-                        : "Unassigned"}
-                    </option>
-                    {approvers.map((approver) => (
-                      <option key={approver.id} value={approver.id.toString()}>
-                        {approver.username ||
-                          approver.email ||
-                          `User #${approver.id}`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {/* Project - locked */}
-                <div className={jiraDetailRowClass}>
-                  <label className={jiraDetailLabelClass}>
-                    Project
-                  </label>
-                  <p className={`${jiraDetailValueTextClass} break-words`}>
-                    {task?.project?.name || "Unknown Project"}
-                  </p>
-                </div>
-                {/* Start Date - locked */}
-                <div className={jiraDetailRowClass}>
-                  <label className={jiraDetailLabelClass}>
-                    Start Date
-                  </label>
-                  <div className="pt-1.5 min-w-0">
-                    {startDateInput ? (
-                      <span className={jiraDetailValueTextClass}>
-                        {formatDate(startDateInput)}
-                      </span>
-                    ) : (
-                      <p className={jiraDetailValueTextClass}>None</p>
-                    )}
+                      {approvers.map((approver) => (
+                        <option
+                          key={approver.id}
+                          value={approver.id.toString()}
+                        >
+                          {approver.username ||
+                            approver.email ||
+                            `User #${approver.id}`}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                </div>
-
-                {/* Due Date - editable */}
-                <div className={jiraDetailRowClass}>
-                  <label className={jiraDetailLabelClass}>
-                    Due Date
-                  </label>
-                  <div className="min-w-0 space-y-1.5">
-                    {dueDateInput ? (
-                      <div className="pt-0.5">
-                        <JiraDueDateBadge
-                          label={formatDate(dueDateInput)}
-                          tone={getDetailDueTone(dueDateInput)}
-                        />
-                      </div>
-                    ) : (
-                      <p className="pt-1.5 text-sm text-[#172b4d]">None</p>
-                    )}
-                    <input
-                      type="date"
-                      value={dueDateInput || ""}
-                      onChange={(e) => setDueDateInput(e.target.value)}
-                      onBlur={() => {
-                        const current = task.due_date ?? "";
-                        if (dueDateInput !== current) {
-                          handleSaveDates();
-                        }
-                      }}
-                      disabled={savingDates}
-                      className={`${jiraDetailControlClass} ${savingDates ? "opacity-50" : ""}`}
-                    />
+                  {/* Project - locked */}
+                  <div className={jiraDetailRowClass}>
+                    <label className={jiraDetailLabelClass}>Project</label>
+                    <p className={`${jiraDetailValueTextClass} break-words`}>
+                      {task?.project?.name || "Unknown Project"}
+                    </p>
                   </div>
-                </div>
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-        </Accordion>
-
-        {/* Approval Timeline */}
-        <Accordion
-          type="multiple"
-          className="w-full border-t border-slate-200 pt-5"
-          defaultValue={["item-1"]}
-        >
-          <AccordionItem value="item-1" className="border-none">
-            <AccordionTrigger>
-              <span className="font-semibold text-gray-900">
-                Approval Timeline
-              </span>
-            </AccordionTrigger>
-            <AccordionContent>
-              <div className="space-y-3">
-                {loadingHistory ? (
-                  <p>Loading approval history...</p>
-                ) : approvalHistory.length === 0 ? (
-                  <p>No approval history yet for this task.</p>
-                ) : (
-                  approvalHistory.map((record, index) => (
-                    <div key={record.id} className="flex flew-row">
-                      <div
-                        className={`w-3 h-3 rounded-full mr-3 mt-1 ${
-                          index === approvalHistory.length - 1
-                            ? "bg-blue-500"
-                            : "bg-gray-300"
-                        }`}
-                      ></div>
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold text-gray-900">
-                          {record.approved_by.username}
-                          <span className="text-xs font-normal text-gray-900">
-                            {" "}
-                            {record.is_approved ? "approved" : "rejected"}
-                          </span>
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {formatDate(record.decided_time)}
-                        </p>
-                        <p className="text-xs text-gray-900">
-                          {record.comment}
-                        </p>
-                      </div>
+                  {/* Start Date - locked */}
+                  <div className={jiraDetailRowClass}>
+                    <label className={jiraDetailLabelClass}>Start Date</label>
+                    <div className="pt-1.5 min-w-0">
+                      {startDateInput ? (
+                        <span className={jiraDetailValueTextClass}>
+                          {formatDate(startDateInput)}
+                        </span>
+                      ) : (
+                        <p className={jiraDetailValueTextClass}>None</p>
+                      )}
                     </div>
-                  ))
-                )}
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-        </Accordion>
+                  </div>
 
-        {/* Operations */}
-        {task.status === "SUBMITTED" &&
-          (task.type === "asset" ? (
-            <div>
-              <p className="text-xs text-gray-500 px-4 py-2 bg-gray-50 border border-gray-200 rounded-md">
-                Review for asset tasks is handled in the asset panel. Assigned
-                reviewers can start the review from the &quot;Asset Review Overview&quot;
-                section.
-              </p>
-            </div>
-          ) : (
-            <div>
-              <button
-                disabled={isReviewing}
-                onClick={handleStartReview}
-                className={`w-full px-4 py-2 text-sm font-medium rounded-md transition-colors
+                  {/* Due Date - editable */}
+                  <div className={jiraDetailRowClass}>
+                    <label className={jiraDetailLabelClass}>Due Date</label>
+                    <div className="min-w-0 space-y-1.5">
+                      {dueDateInput ? (
+                        <div className="pt-0.5">
+                          <JiraDueDateBadge
+                            label={formatDate(dueDateInput)}
+                            tone={getDetailDueTone(dueDateInput)}
+                          />
+                        </div>
+                      ) : (
+                        <p className="pt-1.5 text-sm text-[#172b4d]">None</p>
+                      )}
+                      <input
+                        type="date"
+                        value={dueDateInput || ""}
+                        onChange={(e) => setDueDateInput(e.target.value)}
+                        onBlur={() => {
+                          const current = task.due_date ?? "";
+                          if (dueDateInput !== current) {
+                            handleSaveDates();
+                          }
+                        }}
+                        disabled={savingDates}
+                        className={`${jiraDetailControlClass} ${
+                          savingDates ? "opacity-50" : ""
+                        }`}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+
+          {/* Approval Timeline */}
+          <Accordion
+            type="multiple"
+            className="w-full border-t border-slate-200 pt-5"
+            defaultValue={["item-1"]}
+          >
+            <AccordionItem value="item-1" className="border-none">
+              <AccordionTrigger>
+                <span className="font-semibold text-gray-900">
+                  Approval Timeline
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-3">
+                  {loadingHistory ? (
+                    <p>Loading approval history...</p>
+                  ) : approvalHistory.length === 0 ? (
+                    <p>No approval history yet for this task.</p>
+                  ) : (
+                    approvalHistory.map((record, index) => (
+                      <div key={record.id} className="flex flew-row">
+                        <div
+                          className={`w-3 h-3 rounded-full mr-3 mt-1 ${
+                            index === approvalHistory.length - 1
+                              ? "bg-blue-500"
+                              : "bg-gray-300"
+                          }`}
+                        ></div>
+                        <div className="flex-1">
+                          <p className="text-sm font-semibold text-gray-900">
+                            {record.approved_by.username}
+                            <span className="text-xs font-normal text-gray-900">
+                              {" "}
+                              {record.is_approved ? "approved" : "rejected"}
+                            </span>
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {formatDate(record.decided_time)}
+                          </p>
+                          <p className="text-xs text-gray-900">
+                            {record.comment}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+
+          {/* Operations */}
+          {task.status === "SUBMITTED" &&
+            (task.type === "asset" ? (
+              <div>
+                <p className="text-xs text-gray-500 px-4 py-2 bg-gray-50 border border-gray-200 rounded-md">
+                  Review for asset tasks is handled in the asset panel. Assigned
+                  reviewers can start the review from the &quot;Asset Review
+                  Overview&quot; section.
+                </p>
+              </div>
+            ) : (
+              <div>
+                <button
+                  disabled={isReviewing}
+                  onClick={handleStartReview}
+                  className={`w-full px-4 py-2 text-sm font-medium rounded-md transition-colors
                   ${
                     isReviewing
                       ? "bg-gray-300 text-gray-500 cursor-not-allowed"
                       : "bg-blue-600 text-white hover:bg-blue-700"
                   }
                   `}
+                >
+                  {canReviewTask()
+                    ? "Start Review"
+                    : "Start Review (No Permission)"}
+                </button>
+              </div>
+            ))}
+          {showRevise && (
+            <div>
+              <button
+                disabled={isRevising}
+                onClick={handleStartRevise}
+                className="w-full px-4 py-2 text-sm font-medium rounded-md transition-colors bg-yellow-600 text-white hover:bg-yellow-700"
               >
-                {canReviewTask()
-                  ? "Start Review"
-                  : "Start Review (No Permission)"}
+                Revise
               </button>
             </div>
-          ))}
-        {showRevise && (
-          <div>
-            <button
-              disabled={isRevising}
-              onClick={handleStartRevise}
-              className="w-full px-4 py-2 text-sm font-medium rounded-md transition-colors bg-yellow-600 text-white hover:bg-yellow-700"
-            >
-              Revise
-            </button>
-          </div>
-        )}
+          )}
 
-        {/* Delete task */}
-        {task?.id ? (
-          <div>
-            <button
-              type="button"
-              onClick={() => setShowDeleteConfirm(true)}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md border border-red-200 text-red-600 hover:bg-red-50"
-            >
-              <Trash2 className="h-4 w-4" />
-              Delete Task
-            </button>
-          </div>
-        ) : null}
+          {/* Delete task */}
+          {task?.id ? (
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md border border-red-200 text-red-600 hover:bg-red-50"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete Task
+              </button>
+            </div>
+          ) : null}
+        </div>
       </div>
-    </div>
-    <ConfirmDialog
-      isOpen={showDeleteConfirm}
-      title="Delete task"
-      message={task?.id ? `Delete task #${task.id} "${task.summary || "Untitled"}"?` : ""}
-      type="danger"
-      confirmText="Delete"
-      onConfirm={async () => {
-        if (!task?.id) return;
-        try {
-          await TaskAPI.deleteTask(task.id);
-          toast.success("Task deleted");
-          onTaskDeleted?.();
-        } catch (error: any) {
-          const message =
-            error?.response?.data?.detail ||
-            error?.response?.data?.message ||
-            error?.message ||
-            "Failed to delete task. Please try again.";
-          toast.error(message);
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Delete task"
+        message={
+          task?.id
+            ? `Delete task #${task.id} "${task.summary || "Untitled"}"?`
+            : ""
         }
-        setShowDeleteConfirm(false);
-      }}
-      onCancel={() => setShowDeleteConfirm(false)}
-    />
+        type="danger"
+        confirmText="Delete"
+        onConfirm={async () => {
+          if (!task?.id) return;
+          try {
+            await TaskAPI.deleteTask(task.id);
+            toast.success("Task deleted");
+            onTaskDeleted?.();
+          } catch (error: any) {
+            const message =
+              error?.response?.data?.detail ||
+              error?.response?.data?.message ||
+              error?.message ||
+              "Failed to delete task. Please try again.";
+            toast.error(message);
+          }
+          setShowDeleteConfirm(false);
+        }}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </>
   );
 }
