@@ -271,10 +271,12 @@ class TaskSerializer(serializers.ModelSerializer):
         return attrs
     
     def validate_type(self, value):
-        """Validate task type"""
-        valid_types = ['budget', 'asset', 'retrospective', 'report', 'scaling', 'alert', 'experiment', 'optimization', 'communication', 'platform_policy_update']
+        """Validate task type against Task model choices."""
+        valid_types = [choice[0] for choice in Task._meta.get_field('type').choices]
         if value not in valid_types:
-            raise serializers.ValidationError(f"Invalid task type. Must be one of: {valid_types}")
+            raise serializers.ValidationError(
+                f"Invalid task type. Must be one of: {valid_types}"
+            )
         return value
     
     content_type = serializers.SerializerMethodField()
@@ -331,59 +333,46 @@ class TaskLinkSerializer(serializers.Serializer):
     """Serializer for linking task to an object"""
     content_type = serializers.CharField()
     object_id = serializers.CharField()
-    
-    def validate_content_type(self, value):
-        """Validate content type"""
-        valid_content_types = [
-            'budgetrequest',
-            'asset',
-            'retrospectivetask',
-            'scalingplan', 'alerttask', 'experiment',
-            'optimization',
-            'clientcommunication',
-            'reporttask',
-            'decision',
-            'platformpolicyupdate',
-        ]
-        if value not in valid_content_types:
-            raise serializers.ValidationError(f"Invalid content type. Must be one of: {valid_content_types}")
-        return value
-    
+
     def validate(self, data):
-        """Validate the link data"""
-        content_type = data['content_type']
-        object_id = data['object_id']
-        
+        """Validate the link data: normalize content_type, resolve ContentType once, then fetch object."""
+        content_type = (data['content_type'] or '').strip().lower()
+        object_id = (data['object_id'] or '').strip()
+        data['content_type'] = content_type
+        data['object_id'] = object_id
+
         try:
-            # Get the content type
             ct = ContentType.objects.get(model=content_type)
-            
-            # Try to get the object
-            model_class = ct.model_class()
-            if model_class is None:
-                raise serializers.ValidationError(f"Content type '{content_type}' not found")
-            
-            # For UUID fields (like RetrospectiveTask), convert string to UUID
-            if content_type == 'retrospectivetask':
-                import uuid
-                try:
-                    object_uuid = uuid.UUID(object_id)
-                    obj = model_class.objects.get(id=object_uuid)
-                except (ValueError, model_class.DoesNotExist):
-                    raise serializers.ValidationError(f"Object with id '{object_id}' not found")
-            else:
-                # For integer fields
-                try:
-                    obj = model_class.objects.get(id=object_id)
-                except (ValueError, model_class.DoesNotExist):
-                    raise serializers.ValidationError(f"Object with id '{object_id}' not found")
-            
-            # Store the object in validated_data for later use
-            data['linked_object'] = obj
-            
         except ContentType.DoesNotExist:
-            raise serializers.ValidationError(f"Content type '{content_type}' not found")
-        
+            raise serializers.ValidationError({
+                'content_type': f"Content type '{content_type}' not found."
+            })
+
+        model_class = ct.model_class()
+        if model_class is None:
+            raise serializers.ValidationError({
+                'content_type': f"Content type '{content_type}' has no model class."
+            })
+
+        # For UUID fields (e.g. RetrospectiveTask), convert string to UUID
+        if content_type == 'retrospectivetask':
+            import uuid
+            try:
+                object_uuid = uuid.UUID(object_id)
+                obj = model_class.objects.get(id=object_uuid)
+            except (ValueError, model_class.DoesNotExist):
+                raise serializers.ValidationError({
+                    'object_id': f"Object with id '{object_id}' not found."
+                })
+        else:
+            try:
+                obj = model_class.objects.get(id=object_id)
+            except (ValueError, model_class.DoesNotExist):
+                raise serializers.ValidationError({
+                    'object_id': f"Object with id '{object_id}' not found."
+                })
+
+        data['linked_object'] = obj
         return data
 
 

@@ -34,7 +34,7 @@ const defaultReportContext = {
 
 export type TaskTypeConfigStatic = {
   contentType: string;
-  api: (payload: unknown) => Promise<unknown>;
+  api: (payload: any) => Promise<unknown>;
   formComponent: ComponentType<any>;
   requiredFields: string[];
   getPayload: (
