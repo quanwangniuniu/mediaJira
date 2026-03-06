@@ -4770,8 +4770,9 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         </div>
       ) : null}
 
-      {/* Import/Export actions */}
-      <div className="flex items-center justify-start gap-2 px-2 py-2 border-b border-gray-200 bg-white">
+      {/* Unified toolbar: undo/redo, freeze, import/export, highlight & formatting */}
+      <div className="flex items-center justify-between gap-3 px-2 py-1.5 border-b border-gray-200 bg-white">
+        <div className="flex items-center gap-1.5">
         <input
           ref={fileInputRef}
           type="file"
@@ -4784,24 +4785,24 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           onClick={handleUnifiedUndo}
           disabled={!canUndo || isReverting}
           title="Undo (Ctrl+Z)"
-          className="flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <Undo2 className="h-4 w-4" strokeWidth={2.5} />
+            <Undo2 className="h-3.5 w-3.5" strokeWidth={2.3} />
         </button>
         <button
           type="button"
           onClick={handleUnifiedRedo}
           disabled={!canRedo || isReverting}
           title="Redo (Ctrl+Shift+Z)"
-          className="flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <Redo2 className="h-4 w-4" strokeWidth={2.5} />
+            <Redo2 className="h-3.5 w-3.5" strokeWidth={2.3} />
         </button>
         <button
           type="button"
           onClick={handleFreezeHeader}
           title={frozenRowCount > 0 ? 'Unfreeze header (Ctrl+Shift+F)' : 'Freeze header (Ctrl+Shift+F)'}
-          className={`flex h-8 w-8 items-center justify-center rounded border transition-colors ${
+            className={`flex h-7 w-7 items-center justify-center rounded border transition-colors text-xs ${
             frozenRowCount > 0
               ? 'border-blue-300 bg-blue-50 text-blue-700'
               : 'border-gray-200 text-gray-600 hover:bg-gray-50'
@@ -4809,7 +4810,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           data-testid="freeze-header-button"
         >
           <span className="flex items-center gap-0.5 text-sm font-semibold">
-            <Snowflake className="h-3.5 w-3.5" strokeWidth={2.5} />
+              <Snowflake className="h-3 w-3" strokeWidth={2.3} />
             <span>H</span>
           </span>
         </button>
@@ -4817,7 +4818,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           type="button"
           onClick={handleImportClick}
           disabled={isImporting}
-          className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+            className="rounded border border-gray-200 px-2 py-0.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
         >
           Import
         </button>
@@ -4839,7 +4840,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               setExportMenuOpen((prev) => !prev);
             }}
             disabled={isImporting}
-            className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+              className="rounded border border-gray-200 px-2 py-0.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
             aria-haspopup="menu"
             aria-expanded={exportMenuOpen}
             data-export-menu-trigger
@@ -4883,11 +4884,10 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               document.body
             )}
         </div>
-      </div>
+        </div>
 
-      {/* Highlight & Text formatting toolbar */}
-      <div className="flex items-center justify-between gap-4 px-2 py-2 border-b border-gray-200 bg-white">
-        <div className="flex items-center gap-2">
+        {/* Highlight & Text formatting controls */}
+        <div className="flex items-center gap-1.5">
           <div className="relative" ref={highlightMenuRef}>
             <button
               type="button"
@@ -4897,7 +4897,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                 setHighlightMenuOpen((prev) => !prev);
               }}
               disabled={!hasSelection}
-              className="flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+              className="flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-60"
               aria-haspopup="menu"
               aria-expanded={highlightMenuOpen}
               data-highlight-menu-trigger
@@ -4953,42 +4953,42 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               onClick={() => applyFormatToSelection({ bold: !formatStateForSelection?.bold })}
               disabled={!hasSelection}
               title="Bold"
-              className={`flex h-8 w-8 items-center justify-center rounded border transition-colors disabled:opacity-60 ${
+              className={`flex h-7 w-7 items-center justify-center rounded border transition-colors disabled:opacity-60 ${
                 formatStateForSelection?.bold
                   ? 'border-blue-300 bg-blue-50 text-blue-700'
                   : 'border-gray-200 text-gray-600 hover:bg-gray-50'
               }`}
               data-testid="format-bold"
             >
-              <Bold className="h-4 w-4" strokeWidth={2.5} />
+              <Bold className="h-3.5 w-3.5" strokeWidth={2.3} />
             </button>
             <button
               type="button"
               onClick={() => applyFormatToSelection({ italic: !formatStateForSelection?.italic })}
               disabled={!hasSelection}
               title="Italic"
-              className={`flex h-8 w-8 items-center justify-center rounded border transition-colors disabled:opacity-60 ${
+              className={`flex h-7 w-7 items-center justify-center rounded border transition-colors disabled:opacity-60 ${
                 formatStateForSelection?.italic
                   ? 'border-blue-300 bg-blue-50 text-blue-700'
                   : 'border-gray-200 text-gray-600 hover:bg-gray-50'
               }`}
               data-testid="format-italic"
             >
-              <Italic className="h-4 w-4" strokeWidth={2.5} />
+              <Italic className="h-3.5 w-3.5" strokeWidth={2.3} />
             </button>
             <button
               type="button"
               onClick={() => applyFormatToSelection({ strikethrough: !formatStateForSelection?.strikethrough })}
               disabled={!hasSelection}
               title="Strikethrough"
-              className={`flex h-8 w-8 items-center justify-center rounded border transition-colors disabled:opacity-60 ${
+              className={`flex h-7 w-7 items-center justify-center rounded border transition-colors disabled:opacity-60 ${
                 formatStateForSelection?.strikethrough
                   ? 'border-blue-300 bg-blue-50 text-blue-700'
                   : 'border-gray-200 text-gray-600 hover:bg-gray-50'
               }`}
               data-testid="format-strikethrough"
             >
-              <Strikethrough className="h-4 w-4" strokeWidth={2.5} />
+              <Strikethrough className="h-3.5 w-3.5" strokeWidth={2.3} />
             </button>
             <div className="relative" ref={textColorMenuRef}>
               <button
@@ -5000,7 +5000,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                 disabled={!hasSelection}
                 title="Text color"
                 data-text-color-trigger
-                className="flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+                className="flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-60"
                 data-testid="format-text-color"
               >
                 <Palette className="h-4 w-4" strokeWidth={2.5} style={selectedTextColor ? { color: selectedTextColor } : undefined} />
@@ -5049,7 +5049,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                 applyFormatToSelection({ fontFamily: v });
               }}
               disabled={!hasSelection}
-              className="rounded border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60 max-w-[120px]"
+              className="rounded border border-gray-200 px-2 py-0.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60 max-w-[120px]"
               data-testid="format-font-family"
               title="Font family"
             >
@@ -5067,7 +5067,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                 applyFormatToSelection({ fontSize: v });
               }}
               disabled={!hasSelection}
-              className="rounded border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60 w-14"
+              className="rounded border border-gray-200 px-2 py-0.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60 w-14"
               data-testid="format-font-size"
               title="Font size"
             >
@@ -5078,7 +5078,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               ))}
             </select>
           </div>
-          <div className="flex items-center gap-1 border-l border-gray-200 pl-3">
+          <div className="flex items-center gap-1 border-l border-gray-200 pl-2">
             <div className="relative">
               <button
                 type="button"
