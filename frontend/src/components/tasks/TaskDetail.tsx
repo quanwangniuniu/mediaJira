@@ -14,7 +14,7 @@ import {
   AccordionTrigger,
   AccordionContent,
 } from "../ui/accordion";
-import { TaskData, TaskComment } from "@/types/task";
+import { TaskData, TaskComment, ApprovalChainProgress } from "@/types/task";
 import { RemovablePicker } from "../ui/RemovablePicker";
 import { ProjectAPI } from "@/lib/api/projectApi";
 import { TaskAPI } from "@/lib/api/taskApi";
@@ -83,6 +83,7 @@ interface ApprovalRecord {
   comment: string;
   step_number: number;
   decided_time: string;
+  role_name?: string | null;
 }
 
 interface ClientCommunicationData
@@ -1357,6 +1358,9 @@ export default function TaskDetail({
 
   // Handle approve button click: approve --> lock or forward to next approver
   const handleApprove = async () => {
+    const chainProgress: ApprovalChainProgress | null | undefined = task.approval_chain_progress;
+    const isChainMode = !!chainProgress;
+
     try {
       // Call task make_approval API
       const taskResponse = await TaskAPI.makeApproval(task.id!, {
@@ -1399,27 +1403,44 @@ export default function TaskDetail({
         updateTask(task.id!, taskResponse.data.task);
       }
 
-      // If no next approver selected, lock the task
-      if (!nextApprover) {
-        const lockResponse = await TaskAPI.lock(task.id!);
-        // Update task data with lock response
-        if (lockResponse.data.task) {
-          Object.assign(task, lockResponse.data.task);
-          updateTask(task.id!, lockResponse.data.task);
-        }
-        toast.success("Task approved and locked (no next approver selected)");
+      // Use the UPDATED task status from makeApproval response to drive next action.
+      // This prevents calling forward/lock incorrectly when the backend auto-advances
+      // the chain (APPROVED → UNDER_REVIEW) before the frontend can react.
+      const updatedStatus = taskResponse.data.task?.status;
+
+      if (updatedStatus === "UNDER_REVIEW") {
+        // Backend auto-advanced to the next chain step — no further action needed.
+        const nextStepApprover = taskResponse.data.task?.current_approver;
+        toast.success(
+          nextStepApprover
+            ? `Task approved — forwarded to ${nextStepApprover.username}`
+            : "Task approved — forwarded to next approver"
+        );
       } else {
-        // Forward to next approver
-        const forwardResponse = await TaskAPI.forward(task.id!, {
-          next_approver_id: parseInt(nextApprover),
-          comment: reviewComment,
-        });
-        // Update task data with forward response
-        if (forwardResponse.data.task) {
-          Object.assign(task, forwardResponse.data.task);
-          updateTask(task.id!, forwardResponse.data.task);
+        // Task is APPROVED — lock or forward based on nextApprover picker (legacy mode).
+        if (!nextApprover) {
+          const lockResponse = await TaskAPI.lock(task.id!);
+          if (lockResponse.data.task) {
+            Object.assign(task, lockResponse.data.task);
+            updateTask(task.id!, lockResponse.data.task);
+          }
+          toast.success(
+            isChainMode
+              ? "Task approved and locked (approval chain complete)"
+              : "Task approved and locked (no next approver selected)"
+          );
+        } else {
+          // Legacy mode: forward to selected next approver
+          const forwardResponse = await TaskAPI.forward(task.id!, {
+            next_approver_id: parseInt(nextApprover),
+            comment: reviewComment,
+          });
+          if (forwardResponse.data.task) {
+            Object.assign(task, forwardResponse.data.task);
+            updateTask(task.id!, forwardResponse.data.task);
+          }
+          toast.success("Task approved and forwarded to next approver");
         }
-        toast.success("Task approved and forwarded to next approver");
       }
 
       // Reset form and close review section
@@ -2181,22 +2202,89 @@ export default function TaskDetail({
                 />
               </div>
 
-              <div className="mt-4 space-y-1.5">
-                <p className="block text-xs font-medium uppercase tracking-wide text-slate-500">
-                  Next Approver
-                </p>
-                <RemovablePicker
-                  options={approvers.map((approver) => ({
-                    value: approver.id.toString(),
-                    label: approver.username || approver.email,
-                  }))}
-                  placeholder="Select next approver"
-                  value={nextApprover}
-                  onChange={(val) => setNextApprover(val)}
-                  loading={loadingApprovers}
-                  className="w-full max-w-[360px]"
-                />
-              </div>
+              {task.approval_chain_progress ? (
+                /* Chain mode: show full step-by-step approval timeline */
+                <div className="mt-4 space-y-3">
+                  <p className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                    Approval Chain — {task.approval_chain_progress.chain_name}
+                  </p>
+                  <ol className="space-y-2">
+                    {task.approval_chain_progress.steps.map((step) => {
+                      const isApproved = step.status === 'approved';
+                      const isCurrent = step.status === 'current';
+                      return (
+                        <li key={step.step_number} className="flex items-start gap-3">
+                          {/* Step indicator */}
+                          <span
+                            className={`mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                              isApproved
+                                ? 'bg-green-500 text-white'
+                                : isCurrent
+                                ? 'bg-blue-500 text-white'
+                                : 'bg-slate-200 text-slate-500'
+                            }`}
+                          >
+                            {isApproved ? '✓' : step.step_number}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p
+                              className={`text-sm font-medium ${
+                                isApproved
+                                  ? 'text-green-700'
+                                  : isCurrent
+                                  ? 'text-blue-700'
+                                  : 'text-slate-400'
+                              }`}
+                            >
+                              {step.role_name}
+                              <span className="ml-1 font-normal opacity-70">
+                                ({step.approver.username})
+                              </span>
+                            </p>
+                            {isApproved && step.record ? (
+                              <p className="text-xs text-slate-500">
+                                Approved by{' '}
+                                <span className="font-medium text-slate-700">
+                                  {step.record.approved_by.username}
+                                </span>
+                                {' · '}
+                                {new Date(step.record.decided_time).toLocaleDateString()}
+                                {step.record.comment && (
+                                  <span className="ml-1 italic">
+                                    &ldquo;{step.record.comment}&rdquo;
+                                  </span>
+                                )}
+                              </p>
+                            ) : isCurrent ? (
+                              <p className="text-xs text-blue-500">Awaiting approval</p>
+                            ) : (
+                              <p className="text-xs text-slate-400">Pending</p>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </div>
+              ) : (
+                /* Legacy mode: manual next approver picker */
+                <div className="mt-4 space-y-1.5">
+                  <p className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+                    Next Approver
+                  </p>
+                  <RemovablePicker
+                    options={approvers.map((approver) => ({
+                      value: approver.id.toString(),
+                      label: approver.username || approver.email,
+                    }))}
+                    placeholder="Select next approver"
+                    value={nextApprover}
+                    onChange={(val) => setNextApprover(val)}
+                    loading={loadingApprovers}
+                    className="w-full max-w-[360px]"
+                  />
+                </div>
+              )}
 
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <button
@@ -2373,53 +2461,58 @@ export default function TaskDetail({
                     </div>
                   </div>
                 </div>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
 
-          {/* Approval Timeline */}
-          <Accordion
-            type="multiple"
-            className="w-full border-t border-slate-200 pt-5"
-            defaultValue={["item-1"]}
-          >
-            <AccordionItem value="item-1" className="border-none">
-              <AccordionTrigger>
-                <span className="font-semibold text-gray-900">
-                  Approval Timeline
-                </span>
-              </AccordionTrigger>
-              <AccordionContent>
-                <div className="space-y-3">
-                  {loadingHistory ? (
-                    <p>Loading approval history...</p>
-                  ) : approvalHistory.length === 0 ? (
-                    <p>No approval history yet for this task.</p>
-                  ) : (
-                    approvalHistory.map((record, index) => (
-                      <div key={record.id} className="flex flew-row">
-                        <div
-                          className={`w-3 h-3 rounded-full mr-3 mt-1 ${
-                            index === approvalHistory.length - 1
-                              ? "bg-blue-500"
-                              : "bg-gray-300"
-                          }`}
-                        ></div>
-                        <div className="flex-1">
-                          <p className="text-sm font-semibold text-gray-900">
-                            {record.approved_by.username}
-                            <span className="text-xs font-normal text-gray-900">
-                              {" "}
-                              {record.is_approved ? "approved" : "rejected"}
-                            </span>
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {formatDate(record.decided_time)}
-                          </p>
-                          <p className="text-xs text-gray-900">
-                            {record.comment}
-                          </p>
-                        </div>
+        {/* Approval Timeline */}
+        <Accordion
+          type="multiple"
+          className="w-full border-t border-slate-200 pt-5"
+          defaultValue={["item-1"]}
+        >
+          <AccordionItem value="item-1" className="border-none">
+            <AccordionTrigger>
+              <span className="font-semibold text-gray-900">
+                Approval Timeline
+              </span>
+            </AccordionTrigger>
+            <AccordionContent>
+              <div className="space-y-3">
+                {loadingHistory ? (
+                  <p>Loading approval history...</p>
+                ) : approvalHistory.length === 0 ? (
+                  <p>No approval history yet for this task.</p>
+                ) : (
+                  approvalHistory.map((record, index) => (
+                    <div key={record.id} className="flex flew-row">
+                      <div
+                        className={`w-3 h-3 rounded-full mr-3 mt-1 ${
+                          index === approvalHistory.length - 1
+                            ? "bg-blue-500"
+                            : "bg-gray-300"
+                        }`}
+                      ></div>
+                      <div className="flex-1">
+                        {record.role_name && (
+                          <span className="inline-block mb-1 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">
+                            {record.role_name}
+                          </span>
+                        )}
+                        <p className="text-sm font-semibold text-gray-900">
+                          {record.approved_by.username}
+                          <span className="text-xs font-normal text-gray-900">
+                            {" "}
+                            {record.is_approved ? "approved" : "rejected"}
+                          </span>
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {formatDate(record.decided_time)}
+                        </p>
+                        <p className="text-xs text-gray-900">
+                          {record.comment}
+                        </p>
                       </div>
                     ))
                   )}

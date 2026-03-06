@@ -39,11 +39,24 @@ class Task(models.Model):
       help_text="The user who owns the task"
     )
     current_approver = models.ForeignKey(
-      User, 
-      related_name='tasks_to_approve', 
-      on_delete=models.SET_NULL, 
-      null=True, 
+      User,
+      related_name='tasks_to_approve',
+      on_delete=models.SET_NULL,
+      null=True,
       help_text="The user who is currently reviewing the task"
+    )
+    approval_chain = models.ForeignKey(
+      'ApprovalChain',
+      on_delete=models.SET_NULL,
+      null=True,
+      blank=True,
+      related_name='tasks',
+      help_text="The predefined approval chain assigned to this task (null = legacy single-approver mode)"
+    )
+    current_approval_step = models.PositiveIntegerField(
+      null=True,
+      blank=True,
+      help_text="Current step number in the approval chain (1-based). Null if no chain is assigned."
     )
     project = models.ForeignKey(
       Project, 
@@ -179,6 +192,25 @@ class Task(models.Model):
     def forward_to_next(self):
         """Owner forwards the task to the next approver"""
         pass
+
+    # --- Approval Chain Helpers ---
+
+    @staticmethod
+    def find_approval_chain(project, task_type):
+        """
+        Find the most specific ApprovalChain for the given project and task_type.
+
+        Matching priority (most specific first):
+          1. project + task_type both match
+          2. project matches, task_type is null (applies to all types in that project)
+          3. task_type matches, project is null (applies to all projects)
+        Returns None if no chain is configured.
+        """
+        return (
+            ApprovalChain.objects.filter(project=project, task_type=task_type).first()
+            or ApprovalChain.objects.filter(project=project, task_type__isnull=True).first()
+            or ApprovalChain.objects.filter(project__isnull=True, task_type=task_type).first()
+        )
 
     # --- Helpful Properties ---
     @property
@@ -362,6 +394,114 @@ class ApprovalRecord(models.Model):
     class Meta:
         unique_together = ['task', 'step_number']
         ordering = ['step_number']
+
+
+class ApprovalChain(models.Model):
+    """
+    Predefined approval chain configurable per project and/or task type.
+    Defines the ordered sequence of approvers (e.g. Buyer → Lead → Client).
+
+    Matching priority (most specific wins):
+      1. project + task_type both match
+      2. project matches, task_type is null (applies to all types in project)
+      3. task_type matches, project is null (applies to all projects)
+    """
+
+    TASK_TYPE_CHOICES = [
+        ('budget', 'Budget'),
+        ('asset', 'Asset'),
+        ('retrospective', 'Retrospective'),
+        ('report', 'Report'),
+        ('execution', 'Execution'),
+        ('scaling', 'Scaling'),
+        ('alert', 'Alert'),
+        ('experiment', 'Experiment'),
+        ('optimization', 'Optimization'),
+        ('communication', 'Client Communication'),
+        ('platform_policy_update', 'Platform Policy Update'),
+    ]
+
+    name = models.CharField(
+        max_length=100,
+        help_text="Display name for this approval chain (e.g. 'Buyer → Lead → Client')"
+    )
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='approval_chains',
+        help_text="Project this chain applies to. Leave blank to apply across all projects."
+    )
+    task_type = models.CharField(
+        max_length=50,
+        choices=TASK_TYPE_CHOICES,
+        null=True,
+        blank=True,
+        help_text="Task type this chain applies to. Leave blank to apply to all task types."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        # Note: Database-level CheckConstraint is not used here due to SQLite incompatibility
+        # (isnull=False in Q objects generates invalid SQL on SQLite).
+        # Validation is enforced at the application layer via clean() below.
+        pass
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if not self.project_id and not self.task_type:
+            raise ValidationError(
+                "An ApprovalChain must have at least one of 'project' or 'task_type' set."
+            )
+
+    @property
+    def total_steps(self):
+        """Total number of steps in this chain."""
+        return self.steps.count()
+
+    def get_step(self, step_number):
+        """Return the ApprovalChainStep for the given 1-based step number, or None."""
+        return self.steps.filter(order=step_number).first()
+
+    def __str__(self):
+        parts = []
+        if self.project:
+            parts.append(f"project={self.project.name}")
+        if self.task_type:
+            parts.append(f"type={self.task_type}")
+        return f"ApprovalChain '{self.name}' ({', '.join(parts)})"
+
+
+class ApprovalChainStep(models.Model):
+    """
+    A single step in an ApprovalChain.
+    Each step specifies the approver and its position (order) in the chain.
+    """
+
+    chain = models.ForeignKey(
+        ApprovalChain,
+        on_delete=models.CASCADE,
+        related_name='steps',
+        help_text="The approval chain this step belongs to"
+    )
+    order = models.PositiveIntegerField(
+        help_text="Position of this step in the chain (1-based, e.g. 1 = Buyer, 2 = Lead, 3 = Client)"
+    )
+    approver = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='approval_chain_steps',
+        help_text="User responsible for approving at this step"
+    )
+
+    class Meta:
+        unique_together = ['chain', 'order']
+        ordering = ['order']
+
+    def __str__(self):
+        return f"Step {self.order} of '{self.chain.name}': {self.approver}"
 
 
 class TaskComment(models.Model):

@@ -54,11 +54,7 @@ export default function TaskPage() {
 
   return (
     <ProtectedRoute>
-      <Layout
-        user={layoutUser}
-        onUserAction={handleUserAction}
-        mainScrollMode="page"
-      >
+      <Layout user={layoutUser} onUserAction={handleUserAction} mainScrollMode="page">
         <div className="min-h-screen bg-slate-50">
           <div className="mx-auto max-w-[1680px] px-2 py-8 sm:px-3 lg:px-4">
             <div className="mb-6 flex flex-col gap-3">
