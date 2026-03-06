@@ -16,25 +16,62 @@ export default function WorkflowEmptyState() {
           <circle cx="90" cy="90" r="14" fill="#3B82F6" />
           <circle cx="60" cy="60" r="8" fill="#1E293B" />
           <circle cx="75" cy="45" r="6" fill="#6366F1" />
-          <line x1="30" y1="30" x2="60" y2="60" stroke="#94A3B8" strokeWidth="2" />
-          <line x1="90" y1="30" x2="60" y2="60" stroke="#94A3B8" strokeWidth="2" />
-          <line x1="30" y1="90" x2="60" y2="60" stroke="#94A3B8" strokeWidth="2" />
-          <line x1="90" y1="90" x2="75" y2="45" stroke="#94A3B8" strokeWidth="2" />
-          <line x1="75" y1="45" x2="60" y2="60" stroke="#94A3B8" strokeWidth="2" />
+          <line
+            x1="30"
+            y1="30"
+            x2="60"
+            y2="60"
+            stroke="#94A3B8"
+            strokeWidth="2"
+          />
+          <line
+            x1="90"
+            y1="30"
+            x2="60"
+            y2="60"
+            stroke="#94A3B8"
+            strokeWidth="2"
+          />
+          <line
+            x1="30"
+            y1="90"
+            x2="60"
+            y2="60"
+            stroke="#94A3B8"
+            strokeWidth="2"
+          />
+          <line
+            x1="90"
+            y1="90"
+            x2="75"
+            y2="45"
+            stroke="#94A3B8"
+            strokeWidth="2"
+          />
+          <line
+            x1="75"
+            y1="45"
+            x2="60"
+            y2="60"
+            stroke="#94A3B8"
+            strokeWidth="2"
+          />
         </svg>
       </div>
 
-      <h3 className="text-xl font-semibold text-gray-900">Make work flow your way</h3>
+      <h3 className="text-xl font-semibold text-gray-900">
+        Make work flow your way
+      </h3>
 
       <p className="mt-3 max-w-md text-sm text-gray-600 leading-relaxed">
-        Workflows represent your team's process and control how people progress your project's
-        work.
+        Workflows represent your team's process and control how people progress
+        your project's work.
       </p>
 
       <p className="mt-4 max-w-md text-sm text-gray-600 leading-relaxed">
-        Here, you can add statuses, which appear as drop zones for the cards on your project's
-        board. You can create pathways between statuses called transitions, and automate
-        repetitive actions using rules.
+        Here, you can add statuses, which appear as drop zones for the cards on
+        your project's board. You can create pathways between statuses called
+        transitions, and automate repetitive actions using rules.
       </p>
 
       <p className="mt-4 text-sm font-medium text-gray-700">
@@ -50,4 +87,3 @@ export default function WorkflowEmptyState() {
     </div>
   );
 }
-
