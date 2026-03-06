@@ -98,6 +98,7 @@ class RetrospectiveTaskListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'campaign', 'campaign_name', 'status', 'status_display',
             'scheduled_at', 'started_at', 'completed_at', 'duration_formatted',
+            'decision', 'confidence_level', 'primary_assumption', 'key_risk_ignore',
             'created_by', 'created_at'
         ]
     
@@ -127,6 +128,9 @@ class RetrospectiveTaskDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'campaign', 'campaign_name', 'campaign_description', 'status', 'status_display',
             'scheduled_at', 'started_at', 'completed_at', 'duration_formatted', 'duration',
+            'decision', 'confidence_level', 'primary_assumption', 'key_risk_ignore',
+            'outcome_compared_to_expectation', 'biggest_wrong_assumption',
+            'would_make_same_decision_again',
             'report_url', 'report_generated_at', 'reviewed_by', 'reviewed_at',
             'created_by', 'created_at', 'updated_at', 'kpi_count', 'insight_count'
         ]
@@ -155,23 +159,45 @@ class RetrospectiveTaskDetailSerializer(serializers.ModelSerializer):
 
 class RetrospectiveTaskCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating RetrospectiveTask instances"""
+    decision = serializers.CharField(required=True, allow_blank=False)
+    confidence_level = serializers.ChoiceField(
+        required=True,
+        choices=[1, 2, 3, 4, 5],
+    )
+    primary_assumption = serializers.CharField(required=True, allow_blank=False)
+    key_risk_ignore = serializers.CharField(required=False, allow_blank=True)
+
     class Meta:
         model = RetrospectiveTask
-        fields = ['campaign', 'scheduled_at', 'status', 'id']
+        fields = [
+            'campaign',
+            'scheduled_at',
+            'status',
+            'decision',
+            'confidence_level',
+            'primary_assumption',
+            'key_risk_ignore',
+            'id',
+        ]
         read_only_fields = ['id']
-    
-    def validate_campaign(self, value):
-        """Validate campaign for retrospective creation"""
-        # For Project model, we assume it's always eligible for retrospective
-        # since Project doesn't have a status field, we skip the status check
-        
-        # Check if retrospective already exists
-        if RetrospectiveTask.objects.filter(campaign=value).exists():
-            raise serializers.ValidationError(
-                "Retrospective already exists for this campaign"
-            )
-        
-        return value
+
+    def validate(self, attrs):
+        """Post-outcome fields are update-only and cannot be provided on create."""
+        attrs = super().validate(attrs)
+        update_only_fields = (
+            'outcome_compared_to_expectation',
+            'biggest_wrong_assumption',
+            'would_make_same_decision_again',
+        )
+        errors = {
+            field: 'This field is update-only and cannot be set during create.'
+            for field in update_only_fields
+            if field in self.initial_data
+        }
+        if errors:
+            raise serializers.ValidationError(errors)
+        return attrs
+
 
 
 class RetrospectiveSummarySerializer(serializers.Serializer):

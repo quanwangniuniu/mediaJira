@@ -17,15 +17,15 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/NotionDraftCreate'
+              $ref: "#/components/schemas/NotionDraftCreate"
       responses:
-        '201':
+        "201":
           description: Created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/NotionDraft'
-        '400':
+                $ref: "#/components/schemas/NotionDraft"
+        "400":
           description: Bad Request
 
     get:
@@ -49,14 +49,14 @@ paths:
             type: integer
             minimum: 1
       responses:
-        '200':
+        "200":
           description: A list of Notion drafts
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/NotionDraft'
+                  $ref: "#/components/schemas/NotionDraft"
 
   /notion-drafts/{id}:
     parameters:
@@ -73,13 +73,13 @@ paths:
       tags:
         - NotionDrafts
       responses:
-        '200':
+        "200":
           description: Notion draft retrieved
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/NotionDraft'
-        '404':
+                $ref: "#/components/schemas/NotionDraft"
+        "404":
           description: Not Found
 
     put:
@@ -93,17 +93,17 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/NotionDraftUpdate'
+              $ref: "#/components/schemas/NotionDraftUpdate"
       responses:
-        '200':
+        "200":
           description: Updated
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/NotionDraft'
-        '400':
+                $ref: "#/components/schemas/NotionDraft"
+        "400":
           description: Bad Request
-        '404':
+        "404":
           description: Not Found
 
     delete:
@@ -112,9 +112,9 @@ paths:
       tags:
         - NotionDrafts
       responses:
-        '204':
+        "204":
           description: No Content
-        '404':
+        "404":
           description: Not Found
 
 components:

@@ -1,32 +1,35 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useState } from 'react';
-import toast from 'react-hot-toast';
-import Modal from '@/components/ui/Modal';
-import NewTaskForm from '@/components/tasks/NewTaskForm';
-import NewBudgetRequestForm from '@/components/tasks/NewBudgetRequestForm';
-import NewAssetForm from '@/components/tasks/NewAssetForm';
-import NewRetrospectiveForm from '@/components/tasks/NewRetrospectiveForm';
-import { useFormValidation } from '@/hooks/useFormValidation';
-import useAuth from '@/hooks/useAuth';
-import { TaskAPI } from '@/lib/api/taskApi';
-import { ProjectAPI } from '@/lib/api/projectApi';
-import { BudgetAPI } from '@/lib/api/budgetApi';
-import { AssetAPI } from '@/lib/api/assetApi';
-import { RetrospectiveAPI, CreateRetrospectiveData } from '@/lib/api/retrospectiveApi';
-import { OptimizationScalingAPI } from '@/lib/api/optimizationScalingApi';
-import { AlertingAPI } from '@/lib/api/alertingApi';
-import { ExperimentAPI } from '@/lib/api/experimentApi';
-import { OptimizationAPI } from '@/lib/api/optimizationApi';
-import { ClientCommunicationAPI } from '@/lib/api/clientCommunicationApi';
-import type { CreateTaskData } from '@/types/task';
-import { ScalingPlanForm } from '@/components/tasks/ScalingPlanForm';
-import AlertTaskForm from '@/components/tasks/AlertTaskForm';
-import { ExperimentForm } from '@/components/tasks/ExperimentForm';
-import { OptimizationForm } from '@/components/tasks/OptimizationForm';
+import { useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
+import Modal from "@/components/ui/Modal";
+import NewTaskForm from "@/components/tasks/NewTaskForm";
+import NewBudgetRequestForm from "@/components/tasks/NewBudgetRequestForm";
+import NewAssetForm from "@/components/tasks/NewAssetForm";
+import NewRetrospectiveForm from "@/components/tasks/NewRetrospectiveForm";
+import { useFormValidation } from "@/hooks/useFormValidation";
+import useAuth from "@/hooks/useAuth";
+import { TaskAPI } from "@/lib/api/taskApi";
+import { ProjectAPI } from "@/lib/api/projectApi";
+import { BudgetAPI } from "@/lib/api/budgetApi";
+import { AssetAPI } from "@/lib/api/assetApi";
+import {
+  RetrospectiveAPI,
+  CreateRetrospectiveData,
+} from "@/lib/api/retrospectiveApi";
+import { OptimizationScalingAPI } from "@/lib/api/optimizationScalingApi";
+import { AlertingAPI } from "@/lib/api/alertingApi";
+import { ExperimentAPI } from "@/lib/api/experimentApi";
+import { OptimizationAPI } from "@/lib/api/optimizationApi";
+import { ClientCommunicationAPI } from "@/lib/api/clientCommunicationApi";
+import type { CreateTaskData } from "@/types/task";
+import { ScalingPlanForm } from "@/components/tasks/ScalingPlanForm";
+import AlertTaskForm from "@/components/tasks/AlertTaskForm";
+import { ExperimentForm } from "@/components/tasks/ExperimentForm";
+import { OptimizationForm } from "@/components/tasks/OptimizationForm";
 import NewClientCommunicationForm, {
   type ClientCommunicationFormData,
-} from '@/components/tasks/NewClientCommunicationForm';
+} from "@/components/tasks/NewClientCommunicationForm";
 
 interface DecisionTaskCreateModalProps {
   isOpen: boolean;
@@ -70,42 +73,48 @@ const DecisionTaskCreateModal = ({
   const [taskData, setTaskData] = useState<Partial<CreateTaskData>>({
     project_id: projectId ?? undefined,
     type: undefined,
-    summary: '',
-    description: '',
+    summary: "",
+    description: "",
     current_approver_id: undefined,
     ...defaultDates,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [budgetData, setBudgetData] = useState({
-    amount: '',
-    currency: '',
+    amount: "",
+    currency: "",
     ad_channel: null,
-    notes: '',
+    notes: "",
     budget_pool: null,
   });
   const [assetData, setAssetData] = useState({
-    tags: '',
-    team: '',
-    notes: '',
+    tags: "",
+    team: "",
+    notes: "",
     file: null,
   });
-  const [retrospectiveData, setRetrospectiveData] = useState<Partial<CreateRetrospectiveData>>({});
-  const [scalingPlanData, setScalingPlanData] = useState<Record<string, any>>({});
+  const [retrospectiveData, setRetrospectiveData] = useState<
+    Partial<CreateRetrospectiveData>
+  >({});
+  const [scalingPlanData, setScalingPlanData] = useState<Record<string, any>>(
+    {},
+  );
   const [alertTaskData, setAlertTaskData] = useState<Record<string, any>>({});
   const [experimentData, setExperimentData] = useState<Record<string, any>>({});
-  const [optimizationData, setOptimizationData] = useState<Record<string, any>>({});
+  const [optimizationData, setOptimizationData] = useState<Record<string, any>>(
+    {},
+  );
   const [communicationData, setCommunicationData] =
     useState<ClientCommunicationFormData>({
-      communication_type: '',
-      stakeholders: '',
+      communication_type: "",
+      stakeholders: "",
       impacted_areas: [],
-      required_actions: '',
-      client_deadline: '',
-      notes: '',
+      required_actions: "",
+      client_deadline: "",
+      notes: "",
     });
   const [resolvedProjectName, setResolvedProjectName] = useState<string | null>(
-    projectName ?? null
+    projectName ?? null,
   );
   const [experimentServerErrors, setExperimentServerErrors] = useState<{
     control_group?: string;
@@ -123,7 +132,7 @@ const DecisionTaskCreateModal = ({
         const project = await ProjectAPI.getProject(projectId);
         setResolvedProjectName(project?.name || null);
       } catch (error) {
-        console.warn('Failed to load project name for task modal:', error);
+        console.warn("Failed to load project name for task modal:", error);
       }
     };
 
@@ -139,76 +148,105 @@ const DecisionTaskCreateModal = ({
   }, [isOpen, projectId]);
 
   const taskValidationRules = {
-    project_id: (value: any) => (!value || value == 0 ? 'Project is required' : ''),
-    type: (value: any) => (!value ? 'Task type is required' : ''),
-    summary: (value: any) => (!value ? 'Task summary is required' : ''),
+    project_id: (value: any) =>
+      !value || value == 0 ? "Project is required" : "",
+    type: (value: any) => (!value ? "Task type is required" : ""),
+    summary: (value: any) => (!value ? "Task summary is required" : ""),
     current_approver_id: (value: any) =>
-      taskData.type === 'budget' && !value
-        ? 'Approver is required for budget'
-        : '',
+      taskData.type === "budget" && !value
+        ? "Approver is required for budget"
+        : "",
   };
 
   const budgetValidationRules = {
-    amount: (value: any) => (!value || value.trim() === '' ? 'Amount is required' : ''),
+    amount: (value: any) =>
+      !value || value.trim() === "" ? "Amount is required" : "",
     currency: (value: any) =>
-      !value || value.trim() === '' ? 'Currency is required' : '',
+      !value || value.trim() === "" ? "Currency is required" : "",
     ad_channel: (value: any) =>
-      !value || value === 0 ? 'Ad channel is required' : '',
+      !value || value === 0 ? "Ad channel is required" : "",
     budget_pool: (value: any) =>
-      !value || value === 0 ? 'Budget pool is required' : '',
+      !value || value === 0 ? "Budget pool is required" : "",
   };
 
   const assetValidationRules = {};
 
   const retrospectiveValidationRules = {
     campaign: (value: any) => {
-      if (!value || value.toString().trim() === '') {
-        return 'Campaign (Project) is required';
+      if (!value || value.toString().trim() === "") {
+        return "Campaign (Project) is required";
       }
-      return '';
+      return "";
+    },
+    decision: (value: any) => {
+      if (!value || value.toString().trim() === "") {
+        return "Decision is required";
+      }
+      return "";
+    },
+    confidence_level: (value: any) => {
+      if (value === undefined || value === null || value === "") {
+        return "Confidence level is required";
+      }
+      const numericValue = Number(value);
+      if (![1, 2, 3, 4, 5].includes(numericValue)) {
+        return "Confidence level must be between 1 and 5";
+      }
+      return "";
+    },
+    primary_assumption: (value: any) => {
+      if (!value || value.toString().trim() === "") {
+        return "Primary assumption is required";
+      }
+      return "";
     },
   };
 
   const scalingValidationRules = {
-    strategy: (value: any) => (!value ? 'Scaling strategy is required' : ''),
+    strategy: (value: any) => (!value ? "Scaling strategy is required" : ""),
   };
 
   const experimentValidationRules = {
     hypothesis: (value: any) =>
-      !value || value.trim() === '' ? 'Hypothesis is required' : '',
+      !value || value.trim() === "" ? "Hypothesis is required" : "",
   };
 
   const communicationValidationRules = {
     communication_type: (value: any) =>
-      !value ? 'Communication type is required' : '',
+      !value ? "Communication type is required" : "",
     impacted_areas: (value: any) =>
       !Array.isArray(value) || value.length === 0
-        ? 'Select at least one impacted area'
-        : '',
+        ? "Select at least one impacted area"
+        : "",
     required_actions: (value: any) =>
-      !value || value.trim() === '' ? 'Required actions are required' : '',
+      !value || value.trim() === "" ? "Required actions are required" : "",
   };
 
   const taskValidation = useFormValidation<CreateTaskData>(taskValidationRules);
   const budgetValidation = useFormValidation(budgetValidationRules);
   const assetValidation = useFormValidation(assetValidationRules);
-  const retrospectiveValidation = useFormValidation(retrospectiveValidationRules);
+  const retrospectiveValidation = useFormValidation(
+    retrospectiveValidationRules,
+  );
   const scalingValidation = useFormValidation(scalingValidationRules);
   const experimentValidation = useFormValidation(experimentValidationRules);
-  const communicationValidation = useFormValidation<ClientCommunicationFormData>(communicationValidationRules);
+  const communicationValidation =
+    useFormValidation<ClientCommunicationFormData>(
+      communicationValidationRules,
+    );
 
   const taskTypeConfig = {
     budget: {
       formData: budgetData,
       validation: budgetValidation,
       api: BudgetAPI.createBudgetRequest,
-      requiredFields: ['amount', 'currency', 'ad_channel', 'budget_pool'],
+      requiredFields: ["amount", "currency", "ad_channel", "budget_pool"],
       getPayload: (createdTask: any) => {
         if (!taskData.current_approver_id) {
-          throw new Error('Approver is required for budget request');
+          throw new Error("Approver is required for budget request");
         }
         if (!budgetData.budget_pool) {
-          throw new Error('Budget pool is required for budget request');
+          throw new Error("Budget pool is required for budget request");
         }
         return {
           task: createdTask.id,
@@ -216,7 +254,7 @@ const DecisionTaskCreateModal = ({
           currency: budgetData.currency,
           ad_channel: budgetData.ad_channel,
           budget_pool_id: budgetData.budget_pool,
-          notes: budgetData.notes || '',
+          notes: budgetData.notes || "",
           current_approver: taskData.current_approver_id,
         };
       },
@@ -225,10 +263,10 @@ const DecisionTaskCreateModal = ({
       formData: assetData,
       validation: assetValidation,
       api: AssetAPI.createAsset,
-      requiredFields: ['tags'],
+      requiredFields: ["tags"],
       getPayload: (createdTask: any) => {
-        const tagsArray = (assetData.tags || '')
-          .split(',')
+        const tagsArray = (assetData.tags || "")
+          .split(",")
           .map((t: string) => t.trim())
           .filter(Boolean);
         const payload: any = {
@@ -248,18 +286,33 @@ const DecisionTaskCreateModal = ({
       formData: retrospectiveData,
       validation: retrospectiveValidation,
       api: RetrospectiveAPI.createRetrospective,
-      requiredFields: ['campaign'],
+      requiredFields: [
+        "campaign",
+        "decision",
+        "confidence_level",
+        "primary_assumption",
+      ],
       getPayload: (createdTask: any) => ({
         campaign: retrospectiveData.campaign || taskData.project_id?.toString(),
-        scheduled_at: retrospectiveData.scheduled_at || new Date().toISOString(),
-        status: retrospectiveData.status || 'scheduled',
+        scheduled_at:
+          retrospectiveData.scheduled_at || new Date().toISOString(),
+        status: retrospectiveData.status || "scheduled",
+        decision: retrospectiveData.decision || "",
+        confidence_level: Number(retrospectiveData.confidence_level) as
+          | 1
+          | 2
+          | 3
+          | 4
+          | 5,
+        primary_assumption: retrospectiveData.primary_assumption || "",
+        key_risk_ignore: retrospectiveData.key_risk_ignore?.trim() || undefined,
       }),
     },
     scaling: {
       formData: scalingPlanData,
       validation: scalingValidation,
       api: OptimizationScalingAPI.createScalingPlan,
-      requiredFields: ['strategy'],
+      requiredFields: ["strategy"],
       getPayload: (createdTask: any) => ({
         task: createdTask.id,
         strategy: scalingPlanData.strategy,
@@ -284,10 +337,10 @@ const DecisionTaskCreateModal = ({
       formData: experimentData,
       validation: experimentValidation,
       api: ExperimentAPI.createExperiment,
-      requiredFields: ['hypothesis'],
+      requiredFields: ["hypothesis"],
       getPayload: (createdTask: any) => ({
         task: createdTask.id,
-        name: experimentData.name || taskData.summary || 'Experiment task',
+        name: experimentData.name || taskData.summary || "Experiment task",
         hypothesis: experimentData.hypothesis,
         expected_outcome: experimentData.expected_outcome,
         description: experimentData.description,
@@ -312,15 +365,19 @@ const DecisionTaskCreateModal = ({
       formData: communicationData,
       validation: communicationValidation,
       api: ClientCommunicationAPI.create,
-      requiredFields: ['communication_type', 'impacted_areas', 'required_actions'],
+      requiredFields: [
+        "communication_type",
+        "impacted_areas",
+        "required_actions",
+      ],
       getPayload: (createdTask: any) => ({
         task: createdTask.id,
         communication_type: communicationData.communication_type || undefined,
-        stakeholders: communicationData.stakeholders || '',
+        stakeholders: communicationData.stakeholders || "",
         impacted_areas: communicationData.impacted_areas || [],
-        required_actions: communicationData.required_actions || '',
+        required_actions: communicationData.required_actions || "",
         client_deadline: communicationData.client_deadline || null,
-        notes: communicationData.notes || '',
+        notes: communicationData.notes || "",
       }),
     },
   };
@@ -361,7 +418,9 @@ const DecisionTaskCreateModal = ({
     setOptimizationData((prev) => ({ ...prev, ...data }));
   };
 
-  const handleCommunicationChange = (data: Partial<ClientCommunicationFormData>) => {
+  const handleCommunicationChange = (
+    data: Partial<ClientCommunicationFormData>,
+  ) => {
     setCommunicationData((prev) => ({ ...prev, ...data }));
   };
 
@@ -370,23 +429,23 @@ const DecisionTaskCreateModal = ({
     setTaskData({
       project_id: projectId ?? undefined,
       type: undefined,
-      summary: '',
-      description: '',
+      summary: "",
+      description: "",
       current_approver_id: undefined,
       start_date: nextDates.start_date,
       due_date: nextDates.due_date,
     });
     setBudgetData({
-      amount: '',
-      currency: '',
+      amount: "",
+      currency: "",
       ad_channel: null,
-      notes: '',
+      notes: "",
       budget_pool: null,
     });
     setAssetData({
-      tags: '',
-      team: '',
-      notes: '',
+      tags: "",
+      team: "",
+      notes: "",
       file: null,
     });
     setRetrospectiveData({});
@@ -396,12 +455,12 @@ const DecisionTaskCreateModal = ({
     setExperimentServerErrors(null);
     setOptimizationData({});
     setCommunicationData({
-      communication_type: '',
-      stakeholders: '',
+      communication_type: "",
+      stakeholders: "",
       impacted_areas: [],
-      required_actions: '',
-      client_deadline: '',
-      notes: '',
+      required_actions: "",
+      client_deadline: "",
+      notes: "",
     });
   };
 
@@ -423,8 +482,8 @@ const DecisionTaskCreateModal = ({
     const payload = config.getPayload(createdTask);
     const response = await config.api(payload);
     // Handle both AxiosResponse (with .data) and direct object responses
-    return (response && typeof response === 'object' && 'data' in response) 
-      ? (response as any).data 
+    return response && typeof response === "object" && "data" in response
+      ? (response as any).data
       : response;
   };
 
@@ -432,17 +491,24 @@ const DecisionTaskCreateModal = ({
     if (isSubmitting) return;
 
     const requiredTaskFields =
-      taskData.type === 'budget'
-        ? ['project_id', 'type', 'summary', 'current_approver_id']
-        : ['project_id', 'type', 'summary'];
+      taskData.type === "budget"
+        ? ["project_id", "type", "summary", "current_approver_id"]
+        : ["project_id", "type", "summary"];
 
-    if (!taskValidation.validateForm(taskData as any, requiredTaskFields as any)) {
+    if (
+      !taskValidation.validateForm(taskData as any, requiredTaskFields as any)
+    ) {
       return;
     }
 
     const config = taskTypeConfig[taskData.type as keyof typeof taskTypeConfig];
     if (config && config.validation && config.requiredFields.length > 0) {
-      if (!config.validation.validateForm(config.formData as any, config.requiredFields as any)) {
+      if (
+        !config.validation.validateForm(
+          config.formData as any,
+          config.requiredFields as any,
+        )
+      ) {
         return;
       }
     }
@@ -450,24 +516,9 @@ const DecisionTaskCreateModal = ({
     try {
       setIsSubmitting(true);
 
-      if (taskData.type === 'retrospective' && taskData.project_id) {
-        try {
-          const existing = await RetrospectiveAPI.getRetrospectives({
-            campaign: String(taskData.project_id),
-          });
-          const items = existing?.data?.results || existing?.data || [];
-          if (Array.isArray(items) && items.length > 0) {
-            toast.error('Retrospective already exists for this project.');
-            return;
-          }
-        } catch (error) {
-          console.warn('Failed to precheck retrospectives:', error);
-        }
-      }
-
       // Ensure required fields are present (should be validated already)
       if (!taskData.project_id || !taskData.type || !taskData.summary) {
-        console.error('Missing required task fields');
+        console.error("Missing required task fields");
         return;
       }
 
@@ -475,10 +526,14 @@ const DecisionTaskCreateModal = ({
         project_id: taskData.project_id,
         type: taskData.type,
         summary: taskData.summary,
-        description: taskData.description || '',
+        description: taskData.description || "",
         current_approver_id:
-          taskData.type === 'report'
-            ? (typeof user?.id === 'number' ? user.id : typeof user?.id === 'string' ? Number(user.id) : undefined)
+          taskData.type === "report"
+            ? typeof user?.id === "number"
+              ? user.id
+              : typeof user?.id === "string"
+              ? Number(user.id)
+              : undefined
             : taskData.current_approver_id,
         start_date: taskData.start_date || null,
         due_date: taskData.due_date || undefined,
@@ -487,15 +542,18 @@ const DecisionTaskCreateModal = ({
       const createdTaskResponse = await TaskAPI.createTask(taskPayload);
       const maybeCreatedTask = createdTaskResponse?.data || createdTaskResponse;
 
-      if (!maybeCreatedTask || typeof (maybeCreatedTask as any).id !== 'number') {
-        toast.error('Failed to create task. Please try again.');
+      if (
+        !maybeCreatedTask ||
+        typeof (maybeCreatedTask as any).id !== "number"
+      ) {
+        toast.error("Failed to create task. Please try again.");
         return;
       }
 
       const createdTask: { id: number } = maybeCreatedTask as { id: number };
 
       try {
-        await TaskAPI.linkTask(createdTask.id, 'decision', String(decisionId));
+        await TaskAPI.linkTask(createdTask.id, "decision", String(decisionId));
       } catch (linkErr: any) {
         await TaskAPI.deleteTask(createdTask.id);
         throw linkErr;
@@ -504,21 +562,24 @@ const DecisionTaskCreateModal = ({
       let createdObject: any = null;
       if (config) {
         try {
-          createdObject = await createTaskTypeObject(taskData.type!, createdTask);
+          createdObject = await createTaskTypeObject(
+            taskData.type!,
+            createdTask,
+          );
         } catch (typeErr: any) {
           await TaskAPI.deleteTask(createdTask.id);
           throw typeErr;
         }
       }
 
-      if (taskData.type === 'asset' && createdObject && assetData.file) {
+      if (taskData.type === "asset" && createdObject && assetData.file) {
         try {
           await AssetAPI.createAssetVersion(String(createdObject.id), {
             file: assetData.file,
           });
         } catch (error) {
           toast.error(
-            'Asset created, but failed to upload initial version file. You can upload it later.'
+            "Asset created, but failed to upload initial version file. You can upload it later.",
           );
         }
       }
@@ -536,14 +597,17 @@ const DecisionTaskCreateModal = ({
       // Handle 400 validation errors inline instead of global alerts
       if (status === 400 && data) {
         // Experiment-specific validation (e.g. control_group / variant_group)
-        if (taskData.type === 'experiment') {
+        if (taskData.type === "experiment") {
           const detail = (data as any).detail ?? data;
-          if (detail && typeof detail === 'object') {
-            const serverErrors: { control_group?: string; variant_group?: string } = {};
-            if (typeof detail.control_group === 'string') {
+          if (detail && typeof detail === "object") {
+            const serverErrors: {
+              control_group?: string;
+              variant_group?: string;
+            } = {};
+            if (typeof detail.control_group === "string") {
               serverErrors.control_group = detail.control_group;
             }
-            if (typeof detail.variant_group === 'string') {
+            if (typeof detail.variant_group === "string") {
               serverErrors.variant_group = detail.variant_group;
             }
             setExperimentServerErrors(serverErrors);
@@ -554,12 +618,12 @@ const DecisionTaskCreateModal = ({
       }
 
       // Non-validation errors: keep a simple console + toast
-      console.error('Error creating task from decision:', error);
+      console.error("Error creating task from decision:", error);
       const fallbackMessage =
-        (typeof data === 'string' && data) ||
-        (typeof data?.detail === 'string' && data.detail) ||
+        (typeof data === "string" && data) ||
+        (typeof data?.detail === "string" && data.detail) ||
         error?.message ||
-        'Failed to create task';
+        "Failed to create task";
       toast.error(fallbackMessage);
     } finally {
       setIsSubmitting(false);
@@ -583,21 +647,23 @@ const DecisionTaskCreateModal = ({
                 Decision Context
               </div>
               <span className="inline-flex items-center rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold text-white">
-                #{decisionSeq ?? 'Seq'}
+                #{decisionSeq ?? "Seq"}
               </span>
             </div>
             <div className="mt-2 grid gap-2 text-xs text-gray-600">
               <div>
-                <span className="font-semibold text-gray-700">Title:</span>{' '}
-                {decisionTitle || 'Untitled decision'}
+                <span className="font-semibold text-gray-700">Title:</span>{" "}
+                {decisionTitle || "Untitled decision"}
               </div>
               <div>
-                <span className="font-semibold text-gray-700">Summary:</span>{' '}
-                {decisionSummary || '—'}
+                <span className="font-semibold text-gray-700">Summary:</span>{" "}
+                {decisionSummary || "—"}
               </div>
               <div>
-                <span className="font-semibold text-gray-700">Selected Option:</span>{' '}
-                {selectedOptionText || '—'}
+                <span className="font-semibold text-gray-700">
+                  Selected Option:
+                </span>{" "}
+                {selectedOptionText || "—"}
               </div>
             </div>
           </div>
@@ -610,7 +676,7 @@ const DecisionTaskCreateModal = ({
             projectName={resolvedProjectName}
           />
 
-          {taskData.type === 'budget' && (
+          {taskData.type === "budget" && (
             <NewBudgetRequestForm
               onBudgetDataChange={handleBudgetDataChange}
               budgetData={budgetData}
@@ -618,7 +684,7 @@ const DecisionTaskCreateModal = ({
               validation={budgetValidation}
             />
           )}
-          {taskData.type === 'asset' && (
+          {taskData.type === "asset" && (
             <NewAssetForm
               onAssetDataChange={handleAssetDataChange}
               assetData={assetData}
@@ -626,7 +692,7 @@ const DecisionTaskCreateModal = ({
               validation={assetValidation}
             />
           )}
-          {taskData.type === 'retrospective' && (
+          {taskData.type === "retrospective" && (
             <NewRetrospectiveForm
               onRetrospectiveDataChange={handleRetrospectiveDataChange}
               retrospectiveData={retrospectiveData}
@@ -634,21 +700,21 @@ const DecisionTaskCreateModal = ({
               validation={retrospectiveValidation}
             />
           )}
-          {taskData.type === 'scaling' && (
+          {taskData.type === "scaling" && (
             <ScalingPlanForm
               mode="create"
               initialPlan={scalingPlanData}
               onChange={handleScalingPlanChange}
             />
           )}
-          {taskData.type === 'alert' && (
+          {taskData.type === "alert" && (
             <AlertTaskForm
               initialData={alertTaskData}
               onChange={handleAlertTaskChange}
               projectId={projectId ?? undefined}
             />
           )}
-          {taskData.type === 'experiment' && (
+          {taskData.type === "experiment" && (
             <ExperimentForm
               mode="create"
               initialData={experimentData}
@@ -656,14 +722,14 @@ const DecisionTaskCreateModal = ({
               serverErrors={experimentServerErrors}
             />
           )}
-          {taskData.type === 'optimization' && (
+          {taskData.type === "optimization" && (
             <OptimizationForm
               mode="create"
               initialData={optimizationData}
               onChange={handleOptimizationChange}
             />
           )}
-          {taskData.type === 'communication' && (
+          {taskData.type === "communication" && (
             <NewClientCommunicationForm
               communicationData={communicationData}
               onCommunicationDataChange={handleCommunicationChange}
@@ -684,7 +750,7 @@ const DecisionTaskCreateModal = ({
             disabled={isSubmitting}
             className="rounded bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isSubmitting ? 'Creating...' : 'Create Task'}
+            {isSubmitting ? "Creating..." : "Create Task"}
           </button>
         </div>
       </div>

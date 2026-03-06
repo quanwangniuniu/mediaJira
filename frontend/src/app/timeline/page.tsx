@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -29,7 +29,7 @@ import { useProjectStore } from '@/lib/projectStore';
 function TimelinePageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const projectIdParam = searchParams.get('project_id');
+  const projectIdParam = searchParams.get("project_id");
   const { activeProject } = useProjectStore();
   const projectId = projectIdParam
     ? Number(projectIdParam)
@@ -38,20 +38,32 @@ function TimelinePageContent() {
   useEffect(() => {
     if (projectIdParam || !activeProject?.id) return;
     const params = new URLSearchParams(searchParams.toString());
-    params.set('project_id', String(activeProject.id));
+    params.set("project_id", String(activeProject.id));
     router.replace(`/timeline?${params.toString()}`);
   }, [projectIdParam, activeProject?.id, router, searchParams]);
 
   const { user } = useAuth();
-  const { tasks, loading, error, fetchTasks, reloadTasks, createTask, updateTask } = useTaskData();
+  const {
+    tasks,
+    loading,
+    error,
+    fetchTasks,
+    reloadTasks,
+    createTask,
+    updateTask,
+  } = useTaskData();
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createModalExpanded, setCreateModalExpanded] = useState(false);
-  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(
+    null,
+  );
   const [projectOptions, setProjectOptions] = useState<any[]>([]);
   const [projectOptionsLoading, setProjectOptionsLoading] = useState(false);
-  const [projectOptionsError, setProjectOptionsError] = useState<string | null>(null);
+  const [projectOptionsError, setProjectOptionsError] = useState<string | null>(
+    null,
+  );
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
-  const [projectSearchQuery, setProjectSearchQuery] = useState('');
+  const [projectSearchQuery, setProjectSearchQuery] = useState("");
   const [recentProjectIds, setRecentProjectIds] = useState<number[]>([]);
 
   const getDefaultTaskDates = () => {
@@ -67,29 +79,31 @@ function TimelinePageContent() {
   const [taskData, setTaskData] = useState<Partial<CreateTaskData>>({
     project_id: undefined,
     type: undefined,
-    summary: '',
-    description: '',
+    summary: "",
+    description: "",
     current_approver_id: undefined,
     ...getDefaultTaskDates(),
   });
-  const [taskType, setTaskType] = useState('');
-  const [contentType, setContentType] = useState('');
+  const [taskType, setTaskType] = useState("");
+  const [contentType, setContentType] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   const [budgetData, setBudgetData] = useState({
-    amount: '',
-    currency: '',
+    amount: "",
+    currency: "",
     ad_channel: null,
-    notes: '',
+    notes: "",
     budget_pool: null,
   });
   const [assetData, setAssetData] = useState({
-    tags: '',
-    team: '',
-    notes: '',
+    tags: "",
+    team: "",
+    notes: "",
     file: null,
   });
-  const [retrospectiveData, setRetrospectiveData] = useState<Partial<CreateRetrospectiveData>>({});
+  const [retrospectiveData, setRetrospectiveData] = useState<
+    Partial<CreateRetrospectiveData>
+  >({});
   const [policyData, setPolicyData] = useState<any>({});
 
   const loadProjectOptions = useCallback(async () => {
@@ -99,8 +113,8 @@ function TimelinePageContent() {
       const projects = await ProjectAPI.getProjects();
       setProjectOptions(projects || []);
     } catch (error) {
-      console.error('Failed to load projects:', error);
-      setProjectOptionsError('Failed to load projects.');
+      console.error("Failed to load projects:", error);
+      setProjectOptionsError("Failed to load projects.");
     } finally {
       setProjectOptionsLoading(false);
     }
@@ -108,7 +122,7 @@ function TimelinePageContent() {
 
   const openProjectPicker = useCallback(async () => {
     setProjectPickerOpen(true);
-    setProjectSearchQuery('');
+    setProjectSearchQuery("");
     if (projectOptions.length === 0) {
       await loadProjectOptions();
     }
@@ -121,8 +135,8 @@ function TimelinePageContent() {
   }, [projectOptions.length, projectOptionsLoading, loadProjectOptions]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const stored = window.localStorage.getItem('recentProjectIds');
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem("recentProjectIds");
     if (!stored) return;
     try {
       const parsed = JSON.parse(stored);
@@ -130,7 +144,7 @@ function TimelinePageContent() {
         setRecentProjectIds(parsed.filter((id) => Number.isFinite(id)));
       }
     } catch (error) {
-      console.warn('Failed to parse recent projects:', error);
+      console.warn("Failed to parse recent projects:", error);
     }
   }, []);
 
@@ -160,56 +174,80 @@ function TimelinePageContent() {
 
   // Form validation rules
   const taskValidationRules = {
-    project_id: (value: any) => (!value || value == 0 ? 'Project is required' : ''),
-    type: (value: any) => (!value ? 'Work type is required' : ''),
-    summary: (value: any) => (!value ? 'Task summary is required' : ''),
+    project_id: (value: any) =>
+      !value || value == 0 ? "Project is required" : "",
+    type: (value: any) => (!value ? "Work type is required" : ""),
+    summary: (value: any) => (!value ? "Task summary is required" : ""),
     current_approver_id: (value: any) =>
-      taskData.type === 'budget' && !value
-        ? 'Approver is required for budget'
-        : '',
+      taskData.type === "budget" && !value
+        ? "Approver is required for budget"
+        : "",
   };
 
   const budgetValidationRules = {
     amount: (value: any) => {
-      if (!value || value.trim() === '') return 'Amount is required';
-      return '';
+      if (!value || value.trim() === "") return "Amount is required";
+      return "";
     },
     currency: (value: any) => {
-      if (!value || value.trim() === '') return 'Currency is required';
-      return '';
+      if (!value || value.trim() === "") return "Currency is required";
+      return "";
     },
     ad_channel: (value: any) =>
-      !value || value === 0 ? 'Ad channel is required' : '',
+      !value || value === 0 ? "Ad channel is required" : "",
     budget_pool: (value: any) =>
-      !value || value === 0 ? 'Budget pool is required' : '',
+      !value || value === 0 ? "Budget pool is required" : "",
   };
 
   const assetValidationRules = {};
 
   const retrospectiveValidationRules = {
     campaign: (value: any) => {
-      if (!value || value.toString().trim() === '')
-        return 'Campaign (Project) is required';
-      return '';
+      if (!value || value.toString().trim() === "")
+        return "Campaign (Project) is required";
+      return "";
+    },
+    decision: (value: any) => {
+      if (!value || value.toString().trim() === "")
+        return "Decision is required";
+      return "";
+    },
+    confidence_level: (value: any) => {
+      if (value === undefined || value === null || value === "") {
+        return "Confidence level is required";
+      }
+      const numericValue = Number(value);
+      if (![1, 2, 3, 4, 5].includes(numericValue)) {
+        return "Confidence level must be between 1 and 5";
+      }
+      return "";
+    },
+    primary_assumption: (value: any) => {
+      if (!value || value.toString().trim() === "")
+        return "Primary assumption is required";
+      return "";
     },
   };
 
   const policyValidationRules = {
     platform: (value: any) => {
-      if (!value || value.trim() === '') return 'Platform is required';
-      return '';
+      if (!value || value.trim() === "") return "Platform is required";
+      return "";
     },
     policy_change_type: (value: any) => {
-      if (!value || value.trim() === '') return 'Policy change type is required';
-      return '';
+      if (!value || value.trim() === "")
+        return "Policy change type is required";
+      return "";
     },
     policy_description: (value: any) => {
-      if (!value || value.trim() === '') return 'Policy description is required';
-      return '';
+      if (!value || value.trim() === "")
+        return "Policy description is required";
+      return "";
     },
     immediate_actions_required: (value: any) => {
-      if (!value || value.trim() === '') return 'Immediate actions required is required';
-      return '';
+      if (!value || value.trim() === "")
+        return "Immediate actions required is required";
+      return "";
     },
   };
 
@@ -217,7 +255,9 @@ function TimelinePageContent() {
   const taskValidation = useFormValidation<CreateTaskData>(taskValidationRules);
   const budgetValidation = useFormValidation(budgetValidationRules);
   const assetValidation = useFormValidation(assetValidationRules);
-  const retrospectiveValidation = useFormValidation(retrospectiveValidationRules);
+  const retrospectiveValidation = useFormValidation(
+    retrospectiveValidationRules,
+  );
   const policyValidation = useFormValidation(policyValidationRules);
 
   // Task type configuration from shared registry (timeline only supports a subset of types)
@@ -277,23 +317,24 @@ function TimelinePageContent() {
 
     try {
       const response = await config.api(payload);
-      const createdObject = (response && typeof response === 'object' && 'data' in response) 
-        ? (response as any).data 
-        : response;
+      const createdObject =
+        response && typeof response === "object" && "data" in response
+          ? (response as any).data
+          : response;
       console.log(`${taskType} created:`, createdObject);
       return createdObject;
     } catch (error: any) {
-      if (taskType === 'retrospective' && error.response?.status === 400) {
+      if (taskType === "retrospective" && error.response?.status === 400) {
         const errorData = error.response.data;
         if (
           (errorData.campaign &&
             Array.isArray(errorData.campaign) &&
-            errorData.campaign[0]?.includes('already exists')) ||
-          (typeof errorData.campaign === 'string' &&
-            errorData.campaign.includes('already exists'))
+            errorData.campaign[0]?.includes("already exists")) ||
+          (typeof errorData.campaign === "string" &&
+            errorData.campaign.includes("already exists"))
         ) {
           console.warn(
-            'Retrospective already exists, attempting to find existing one...'
+            "Retrospective already exists, attempting to find existing one...",
           );
           try {
             const campaignId = payload.campaign;
@@ -306,13 +347,13 @@ function TimelinePageContent() {
               retrospectivesResponse.data.length > 0
             ) {
               console.log(
-                'Found existing retrospective:',
-                retrospectivesResponse.data[0]
+                "Found existing retrospective:",
+                retrospectivesResponse.data[0],
               );
               return retrospectivesResponse.data[0];
             }
           } catch (findError) {
-            console.error('Failed to find existing retrospective:', findError);
+            console.error("Failed to find existing retrospective:", findError);
           }
         }
       }
@@ -326,29 +367,29 @@ function TimelinePageContent() {
     setTaskData({
       project_id: undefined,
       type: undefined,
-      summary: '',
-      description: '',
+      summary: "",
+      description: "",
       current_approver_id: undefined,
       start_date: defaultDates.start_date,
       due_date: defaultDates.due_date,
     });
     setBudgetData({
-      amount: '',
-      currency: '',
+      amount: "",
+      currency: "",
       ad_channel: null,
-      notes: '',
+      notes: "",
       budget_pool: null,
     });
     setAssetData({
-      tags: '',
-      team: '',
-      notes: '',
+      tags: "",
+      team: "",
+      notes: "",
       file: null,
     });
     setRetrospectiveData({});
     setPolicyData({});
-    setTaskType('');
-    setContentType('');
+    setTaskType("");
+    setContentType("");
   };
 
   // Generic function to clear validation errors
@@ -379,13 +420,13 @@ function TimelinePageContent() {
         selectedProjectId,
         ...prev.filter((id) => id !== selectedProjectId),
       ].slice(0, 5);
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem('recentProjectIds', JSON.stringify(next));
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("recentProjectIds", JSON.stringify(next));
       }
       return next;
     });
     const params = new URLSearchParams(searchParams.toString());
-    params.set('project_id', String(selectedProjectId));
+    params.set("project_id", String(selectedProjectId));
     router.push(`/timeline?${params.toString()}`);
   };
 
@@ -393,8 +434,8 @@ function TimelinePageContent() {
     if (!projectSearchQuery.trim()) return projectOptions;
     const query = projectSearchQuery.trim().toLowerCase();
     return projectOptions.filter((project) => {
-      const name = (project.name || '').toLowerCase();
-      const idText = project.id ? String(project.id) : '';
+      const name = (project.name || "").toLowerCase();
+      const idText = project.id ? String(project.id) : "";
       return name.includes(query) || idText.includes(query);
     });
   }, [projectOptions, projectSearchQuery]);
@@ -404,18 +445,14 @@ function TimelinePageContent() {
     const byId = new Map(
       filteredProjects
         .filter((project) => project?.id)
-        .map((project) => [project.id, project])
+        .map((project) => [project.id, project]),
     );
-    return recentProjectIds
-      .map((id) => byId.get(id))
-      .filter(Boolean);
+    return recentProjectIds.map((id) => byId.get(id)).filter(Boolean);
   }, [filteredProjects, recentProjectIds]);
 
   const otherProjects = useMemo(() => {
     const recentSet = new Set(recentProjectIds);
-    return filteredProjects.filter(
-      (project) => !recentSet.has(project?.id)
-    );
+    return filteredProjects.filter((project) => !recentSet.has(project?.id));
   }, [filteredProjects, recentProjectIds]);
 
   const handleTaskDataChange = (data: Partial<CreateTaskData>) => {
@@ -443,15 +480,21 @@ function TimelinePageContent() {
 
   // Submit method to create task and related objects
   const handleSubmitTask = async () => {
-    console.log('Submitting task creation form with data:', isSubmitting, taskData);
+    console.log(
+      "Submitting task creation form with data:",
+      isSubmitting,
+      taskData,
+    );
     if (isSubmitting) return;
 
     // Validate task form first
     const requiredTaskFields =
-      taskData.type === 'budget'
-        ? ['project_id', 'type', 'summary', 'current_approver_id']
-        : ['project_id', 'type', 'summary'];
-    if (!taskValidation.validateForm(taskData as any, requiredTaskFields as any)) {
+      taskData.type === "budget"
+        ? ["project_id", "type", "summary", "current_approver_id"]
+        : ["project_id", "type", "summary"];
+    if (
+      !taskValidation.validateForm(taskData as any, requiredTaskFields as any)
+    ) {
       return;
     }
 
@@ -459,7 +502,10 @@ function TimelinePageContent() {
     const config = taskTypeConfig[taskData.type as keyof typeof taskTypeConfig];
     if (config && config.validation && config.requiredFields.length > 0) {
       if (
-        !config.validation.validateForm(config.formData as any, config.requiredFields as any)
+        !config.validation.validateForm(
+          config.formData as any,
+          config.requiredFields as any,
+        )
       ) {
         return;
       }
@@ -471,7 +517,7 @@ function TimelinePageContent() {
       // Step 1: Create the task
       // Ensure required fields are present (should be validated already)
       if (!taskData.project_id || !taskData.type || !taskData.summary) {
-        console.error('Missing required task fields');
+        console.error("Missing required task fields");
         return;
       }
 
@@ -479,30 +525,34 @@ function TimelinePageContent() {
         project_id: taskData.project_id,
         type: taskData.type,
         summary: taskData.summary,
-        description: taskData.description || '',
+        description: taskData.description || "",
         current_approver_id:
-          taskData.type === 'report' 
-            ? (typeof user?.id === 'number' ? user.id : typeof user?.id === 'string' ? Number(user.id) : undefined)
+          taskData.type === "report"
+            ? typeof user?.id === "number"
+              ? user.id
+              : typeof user?.id === "string"
+              ? Number(user.id)
+              : undefined
             : taskData.current_approver_id,
         start_date: taskData.start_date || null,
         due_date: taskData.due_date || undefined,
       };
 
-      console.log('Creating task with payload:', taskPayload);
+      console.log("Creating task with payload:", taskPayload);
       const createdTask = await createTask(taskPayload);
-      console.log('Task created:', createdTask);
+      console.log("Task created:", createdTask);
 
       // Ensure task has an ID before proceeding
       if (!createdTask.id) {
-        throw new Error('Task was created but has no ID');
+        throw new Error("Task was created but has no ID");
       }
 
       // Step 2: Create the specific type object
-      setContentType(config?.contentType || '');
+      setContentType(config?.contentType || "");
 
       const createdObject = await createTaskTypeObject(
         taskData.type!,
-        createdTask
+        createdTask,
       );
 
       // Step 3: Link the task to the specific type object
@@ -518,10 +568,10 @@ function TimelinePageContent() {
           const linkResponse = await TaskAPI.linkTask(
             createdTask.id,
             config.contentType,
-            createdObject.id.toString()
+            createdObject.id.toString(),
           );
 
-          console.log('Link task response:', linkResponse);
+          console.log("Link task response:", linkResponse);
 
           const updatedTask = {
             ...createdTask,
@@ -532,38 +582,38 @@ function TimelinePageContent() {
 
           updateTask(createdTask.id, updatedTask);
 
-          console.log('Task linked to task type object successfully');
+          console.log("Task linked to task type object successfully");
         } catch (linkError: any) {
-          console.error('Error linking task to object:', linkError);
+          console.error("Error linking task to object:", linkError);
           const errorMsg =
             linkError.response?.data?.error ||
             linkError.response?.data?.message ||
             linkError.message ||
-            'Unknown error';
+            "Unknown error";
           toast.error(`Asset created, but failed to link to task: ${errorMsg}`);
         }
       } else {
-        console.warn('Cannot link task: missing createdObject or contentType', {
+        console.warn("Cannot link task: missing createdObject or contentType", {
           createdObject: !!createdObject,
           contentType: config?.contentType,
         });
       }
 
       // Step 4: For asset tasks, upload initial version file if provided
-      if (taskData.type === 'asset' && createdObject && assetData.file) {
+      if (taskData.type === "asset" && createdObject && assetData.file) {
         try {
           console.log(
-            'Uploading initial version file for asset:',
-            createdObject.id
+            "Uploading initial version file for asset:",
+            createdObject.id,
           );
           await AssetAPI.createAssetVersion(String(createdObject.id), {
             file: assetData.file,
           });
-          console.log('Initial version file uploaded successfully');
+          console.log("Initial version file uploaded successfully");
         } catch (error) {
-          console.error('Error uploading initial version file:', error);
+          console.error("Error uploading initial version file:", error);
           toast.error(
-            'Asset created, but failed to upload initial version file. You can upload it later.'
+            "Asset created, but failed to upload initial version file. You can upload it later.",
           );
         }
       }
@@ -579,10 +629,10 @@ function TimelinePageContent() {
         await reloadTasks();
       }
 
-      console.log('Task creation completed successfully');
+      console.log("Task creation completed successfully");
     } catch (error: any) {
-      console.error('Error creating task:', error);
-      console.error('Error details:', {
+      console.error("Error creating task:", error);
+      console.error("Error details:", {
         response: error.response,
         data: error.response?.data,
         status: error.response?.status,
@@ -590,7 +640,7 @@ function TimelinePageContent() {
       });
 
       // Show more detailed error message
-      let errorMessage = 'Failed to create task';
+      let errorMessage = "Failed to create task";
       if (error.response?.data) {
         if (error.response.data.campaign) {
           errorMessage = `Campaign error: ${
@@ -616,22 +666,24 @@ function TimelinePageContent() {
           errorMessage = error.response.data.message;
         } else if (error.response.data.detail) {
           errorMessage = error.response.data.detail;
-        } else if (typeof error.response.data === 'object') {
+        } else if (typeof error.response.data === "object") {
           const firstError = Object.values(error.response.data)[0];
-          errorMessage = Array.isArray(firstError) ? firstError[0] : String(firstError);
+          errorMessage = Array.isArray(firstError)
+            ? firstError[0]
+            : String(firstError);
         }
       } else if (error.message) {
         errorMessage = error.message;
       }
 
       toast.error(errorMessage);
-      
+
       // Try to reload tasks even on error to ensure list is visible
       if (reloadTasks) {
         try {
           await reloadTasks();
         } catch (reloadError) {
-          console.error('Failed to reload tasks after error:', reloadError);
+          console.error("Failed to reload tasks after error:", reloadError);
         }
       }
     } finally {
@@ -647,26 +699,32 @@ function TimelinePageContent() {
             <h1 className="text-2xl font-semibold text-gray-900">Timeline</h1>
             <button
               onClick={() =>
-                router.push(projectId ? `/tasks?project_id=${projectId}` : '/tasks')
+                router.push(
+                  projectId ? `/tasks?project_id=${projectId}` : "/tasks",
+                )
               }
               className="px-3 py-1.5 rounded text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 hover:border-indigo-300 transition-colors"
             >
               Return to Tasks
             </button>
           </div>
-          <p className="text-sm text-gray-500">Long stories grouped by project.</p>
+          <p className="text-sm text-gray-500">
+            Long stories grouped by project.
+          </p>
         </div>
 
         <div className="mb-6 rounded-xl border border-gray-200 bg-gradient-to-r from-white via-white to-indigo-50/60 p-6 shadow-sm">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="text-sm font-semibold text-gray-900">
-                {projectId ? 'Project selected' : "You haven't selected a project yet."}
+                {projectId
+                  ? "Project selected"
+                  : "You haven't selected a project yet."}
               </div>
               <p className="mt-1 text-sm text-gray-600">
                 {projectId
-                  ? 'Switch projects to see a different timeline.'
-                  : 'Choose a project to view its timeline.'}
+                  ? "Switch projects to see a different timeline."
+                  : "Choose a project to view its timeline."}
               </p>
             </div>
             <div className="w-full sm:max-w-xs">
@@ -682,17 +740,18 @@ function TimelinePageContent() {
                 id="timeline-project-selector"
                 className={`flex w-full items-center justify-between rounded-lg border bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition ${
                   projectId
-                    ? 'border-indigo-400 ring-2 ring-indigo-100'
-                    : 'border-gray-300 hover:border-gray-400'
+                    ? "border-indigo-400 ring-2 ring-indigo-100"
+                    : "border-gray-300 hover:border-gray-400"
                 }`}
               >
                 <span className="truncate">
                   {projectId
                     ? `#${projectId} ${
-                        projectOptions.find((project) => project.id === projectId)
-                          ?.name || 'Unknown'
+                        projectOptions.find(
+                          (project) => project.id === projectId,
+                        )?.name || "Unknown"
                       }`
-                    : 'Select project'}
+                    : "Select project"}
                 </span>
                 <svg
                   className="h-4 w-4 text-gray-400"
@@ -709,7 +768,9 @@ function TimelinePageContent() {
                 </svg>
               </button>
               {projectOptionsError && (
-                <p className="mt-2 text-sm text-red-600">{projectOptionsError}</p>
+                <p className="mt-2 text-sm text-red-600">
+                  {projectOptionsError}
+                </p>
               )}
             </div>
           </div>
@@ -738,7 +799,10 @@ function TimelinePageContent() {
       </div>
 
       {/* Project Picker Modal */}
-      <Modal isOpen={projectPickerOpen} onClose={() => setProjectPickerOpen(false)}>
+      <Modal
+        isOpen={projectPickerOpen}
+        onClose={() => setProjectPickerOpen(false)}
+      >
         <div className="flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-2xl">
           <div className="relative border-b border-slate-100 px-6 py-5">
             <div className="absolute inset-0 bg-gradient-to-r from-indigo-50 via-white to-sky-50" />
@@ -761,7 +825,9 @@ function TimelinePageContent() {
                   </svg>
                 </div>
                 <div>
-                  <h2 className="text-lg font-semibold text-gray-900">Select project</h2>
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    Select project
+                  </h2>
                   <p className="text-sm text-gray-500">
                     Choose a project to load its timeline.
                   </p>
@@ -837,13 +903,13 @@ function TimelinePageContent() {
                       }}
                       className={`group mb-3 w-full rounded-2xl border px-4 py-3 text-left transition ${
                         project.id === projectId
-                          ? 'border-indigo-200 bg-gradient-to-r from-indigo-50 to-white'
-                          : 'border-slate-200 hover:border-indigo-200 hover:bg-indigo-50/50'
+                          ? "border-indigo-200 bg-gradient-to-r from-indigo-50 to-white"
+                          : "border-slate-200 hover:border-indigo-200 hover:bg-indigo-50/50"
                       }`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="text-sm font-semibold text-gray-900">
-                          #{project.id} {project.name || 'Untitled Project'}
+                          #{project.id} {project.name || "Untitled Project"}
                         </div>
                         {project.id === projectId && (
                           <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
@@ -852,7 +918,7 @@ function TimelinePageContent() {
                         )}
                       </div>
                       <div className="mt-1 text-xs text-gray-500">
-                        {project.description || 'No description'}
+                        {project.description || "No description"}
                       </div>
                       <div className="mt-3 h-[1px] w-full bg-gradient-to-r from-transparent via-indigo-100 to-transparent opacity-0 transition group-hover:opacity-100" />
                     </button>
@@ -877,13 +943,13 @@ function TimelinePageContent() {
                       }}
                       className={`group mb-3 w-full rounded-2xl border px-4 py-3 text-left transition ${
                         project.id === projectId
-                          ? 'border-indigo-200 bg-gradient-to-r from-indigo-50 to-white'
-                          : 'border-slate-200 hover:border-indigo-200 hover:bg-indigo-50/50'
+                          ? "border-indigo-200 bg-gradient-to-r from-indigo-50 to-white"
+                          : "border-slate-200 hover:border-indigo-200 hover:bg-indigo-50/50"
                       }`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="text-sm font-semibold text-gray-900">
-                          #{project.id} {project.name || 'Untitled Project'}
+                          #{project.id} {project.name || "Untitled Project"}
                         </div>
                         {project.id === projectId && (
                           <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
@@ -892,7 +958,7 @@ function TimelinePageContent() {
                         )}
                       </div>
                       <div className="mt-1 text-xs text-gray-500">
-                        {project.description || 'No description'}
+                        {project.description || "No description"}
                       </div>
                       <div className="mt-3 h-[1px] w-full bg-gradient-to-r from-transparent via-indigo-100 to-transparent opacity-0 transition group-hover:opacity-100" />
                     </button>
@@ -930,7 +996,7 @@ function TimelinePageContent() {
               disabled={isSubmitting}
               className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-blue-400"
             >
-              {isSubmitting ? 'Creating...' : 'Create'}
+              {isSubmitting ? "Creating..." : "Create"}
             </button>
           </>
         }
@@ -942,7 +1008,7 @@ function TimelinePageContent() {
             validation={taskValidation}
           />
 
-          {taskData.type === 'budget' && (
+          {taskData.type === "budget" && (
             <NewBudgetRequestForm
               onBudgetDataChange={handleBudgetDataChange}
               budgetData={budgetData}
@@ -950,7 +1016,7 @@ function TimelinePageContent() {
               validation={budgetValidation}
             />
           )}
-          {taskData.type === 'asset' && (
+          {taskData.type === "asset" && (
             <NewAssetForm
               onAssetDataChange={handleAssetDataChange}
               assetData={assetData}
@@ -958,7 +1024,7 @@ function TimelinePageContent() {
               validation={assetValidation}
             />
           )}
-          {taskData.type === 'retrospective' && (
+          {taskData.type === "retrospective" && (
             <NewRetrospectiveForm
               onRetrospectiveDataChange={handleRetrospectiveDataChange}
               retrospectiveData={retrospectiveData}
@@ -966,7 +1032,7 @@ function TimelinePageContent() {
               validation={retrospectiveValidation}
             />
           )}
-          {taskData.type === 'platform_policy_update' && (
+          {taskData.type === "platform_policy_update" && (
             <NewPlatformPolicyUpdateForm
               onPolicyDataChange={handlePolicyDataChange}
               policyData={policyData}
