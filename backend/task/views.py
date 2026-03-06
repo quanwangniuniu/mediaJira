@@ -556,7 +556,7 @@ class TaskViewSet(viewsets.ModelViewSet):
     def lock(self, request, pk=None):
         """Lock a task (change status to LOCKED)"""
         task = self.get_object()
-        
+
         # Validate task can be locked
         lockable_statuses = [Task.Status.APPROVED]
         if task.status not in lockable_statuses:
@@ -564,7 +564,22 @@ class TaskViewSet(viewsets.ModelViewSet):
                 {'error': 'Task must be in APPROVED status to be locked'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
+        # Enforce minimum approval count when an approval chain is assigned
+        if task.approval_chain:
+            approved_count = task.approval_records.filter(is_approved=True).count()
+            required = task.approval_chain.effective_required_approvals
+            if approved_count < required:
+                return Response(
+                    {
+                        'error': (
+                            f'Task requires {required} approval(s) before it can be locked. '
+                            f'{approved_count} of {required} approvals completed.'
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
         try:
             # Lock the task
             task.lock()
