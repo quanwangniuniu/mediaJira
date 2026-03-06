@@ -2429,7 +2429,7 @@ export default function TaskDetail({
                     </div>
                   </div>
 
-                  {/* Due Date - editable */}
+                  {/* Due Date -  editable */}
                   <div className={jiraDetailRowClass}>
                     <label className={jiraDetailLabelClass}>Due Date</label>
                     <div className="min-w-0 space-y-1.5">
