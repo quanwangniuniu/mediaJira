@@ -98,16 +98,9 @@ class TaskViewSet(viewsets.ModelViewSet):
             if requested_project_id not in accessible_project_ids:
                 raise PermissionDenied('You do not have access to this project.')
 
-            queryset = queryset.filter(project_id=requested_project_id)
+            # User is a member — also include cross-project tasks where they are the current approver.
+            project_filter = Q(project_id=requested_project_id)
         else:
-            # Previous logic (before all_projects support):
-            # if active_project:
-            #     queryset = queryset.filter(project_id=active_project.id)
-            # elif accessible_project_ids:
-            #     queryset = queryset.filter(project_id__in=accessible_project_ids)
-            # else:
-            #     return Task.objects.none()
-            
             # New logic: support all_projects parameter
             if all_projects and accessible_project_ids:
                 project_filter = Q(project_id__in=accessible_project_ids)
@@ -116,11 +109,11 @@ class TaskViewSet(viewsets.ModelViewSet):
             elif accessible_project_ids:
                 project_filter = Q(project_id__in=accessible_project_ids)
             else:
-                project_filter = Q(pk__in=[])  # empty
+                project_filter = Q(pk__in=[])
 
-            # Also include tasks where user is the designated current approver,
-            # even if they are not a member of that project (cross-project approval chain).
-            queryset = queryset.filter(project_filter | Q(current_approver=user))
+        # Always also include tasks where user is the designated current approver,
+        # even across project boundaries (cross-project approval chain support).
+        queryset = queryset.filter(project_filter | Q(current_approver=user))
 
         # Apply filters
         task_type = self.request.query_params.get('type')
