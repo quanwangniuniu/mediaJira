@@ -885,25 +885,36 @@ export default function RetrospectiveDetail({
                     Outcome Compared To Expectation
                   </label>
                   {isPostOutcomeEditing ? (
-                    <select
-                      value={postOutcomeDraft.outcome_compared_to_expectation}
-                      onChange={(e) =>
-                        updatePostOutcomeDraft(
-                          "outcome_compared_to_expectation",
-                          e.target.value as
-                            | "better"
-                            | "worse"
-                            | "as_expected"
-                            | "",
-                        )
-                      }
-                      className="w-full px-3 py-2 border rounded-md border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    >
-                      <option value="">Not set</option>
-                      <option value="better">Better</option>
-                      <option value="worse">Worse</option>
-                      <option value="as_expected">As expected</option>
-                    </select>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { label: "Better", value: "better" as const },
+                        { label: "Worse", value: "worse" as const },
+                        { label: "As expected", value: "as_expected" as const },
+                      ].map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() =>
+                            updatePostOutcomeDraft(
+                              "outcome_compared_to_expectation",
+                              postOutcomeDraft[
+                                "outcome_compared_to_expectation"
+                              ] === option.value
+                                ? ""
+                                : option.value,
+                            )
+                          }
+                          className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
+                            postOutcomeDraft.outcome_compared_to_expectation ===
+                            option.value
+                              ? "bg-indigo-100 border-indigo-500 text-indigo-700"
+                              : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
                   ) : (
                     <p className="text-sm text-gray-900">
                       {retrospective.outcome_compared_to_expectation
@@ -955,7 +966,11 @@ export default function RetrospectiveDetail({
                           onClick={() =>
                             updatePostOutcomeDraft(
                               "would_make_same_decision_again",
-                              option.value,
+                              postOutcomeDraft[
+                                "would_make_same_decision_again"
+                              ] === option.value
+                                ? ""
+                                : option.value,
                             )
                           }
                           className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
@@ -968,22 +983,6 @@ export default function RetrospectiveDetail({
                           {option.label}
                         </button>
                       ))}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updatePostOutcomeDraft(
-                            "would_make_same_decision_again",
-                            "",
-                          )
-                        }
-                        className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
-                          postOutcomeDraft.would_make_same_decision_again === ""
-                            ? "bg-indigo-100 border-indigo-500 text-indigo-700"
-                            : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
-                        }`}
-                      >
-                        Clear
-                      </button>
                     </div>
                   ) : (
                     <p className="text-sm text-gray-900">
