@@ -216,6 +216,11 @@ const DEBOUNCE_MS = 500; // Debounce delay for batch writes
 const RESIZE_DEBOUNCE_MS = 500; // Debounce delay for resize API calls
 const MAX_ROWS = 100000; // Hard cap for grid size
 const MAX_COLUMNS = 702; // ZZZ (26 * 27) - hard cap for grid size
+// Tile configuration for range loading. Viewports are quantized into these tiles
+// so that small scroll differences map to stable range keys, enabling effective
+// caching and in-flight request deduplication.
+const TILE_ROWS = 50;
+const TILE_COLUMNS = 20;
 const ADD_ROWS_TRIGGER_DISTANCE = 100; // Show "Add rows" UI when within this many pixels of bottom
 const PREFETCH_ROWS_PER_CHUNK = 100; // Rows per request during post-import hydration
 const PREFETCH_CONCURRENCY = 2; // Max concurrent readCellRange requests during hydration
@@ -368,9 +373,60 @@ const findIndexAtOffset = (
   return Math.max(0, Math.min(count - 1, low));
 };
 
+type NormalizedRange = {
+  startRow: number;
+  endRow: number;
+  startColumn: number;
+  endColumn: number;
+};
+
+const normalizeRangeToTile = (
+  startRow: number,
+  endRow: number,
+  startColumn: number,
+  endColumn: number,
+  rowLimit: number,
+  colLimit: number
+): NormalizedRange => {
+  // Clamp to current sheet dimensions to keep keys bounded.
+  const effectiveMaxRow = Math.max(0, Math.min(rowLimit - 1, MAX_ROWS - 1));
+  const effectiveMaxCol = Math.max(0, Math.min(colLimit - 1, MAX_COLUMNS - 1));
+
+  const safeStartRow = Math.max(0, Math.min(startRow, effectiveMaxRow));
+  const safeEndRow = Math.max(safeStartRow, Math.min(endRow, effectiveMaxRow));
+  const safeStartColumn = Math.max(0, Math.min(startColumn, effectiveMaxCol));
+  const safeEndColumn = Math.max(safeStartColumn, Math.min(endColumn, effectiveMaxCol));
+
+  const tileStartRow = Math.floor(safeStartRow / TILE_ROWS) * TILE_ROWS;
+  const tileEndRow = Math.min(
+    effectiveMaxRow,
+    Math.ceil((safeEndRow + 1) / TILE_ROWS) * TILE_ROWS - 1
+  );
+
+  const tileStartColumn = Math.floor(safeStartColumn / TILE_COLUMNS) * TILE_COLUMNS;
+  const tileEndColumn = Math.min(
+    effectiveMaxCol,
+    Math.ceil((safeEndColumn + 1) / TILE_COLUMNS) * TILE_COLUMNS - 1
+  );
+
+  return {
+    startRow: tileStartRow,
+    endRow: tileEndRow,
+    startColumn: tileStartColumn,
+    endColumn: tileEndColumn,
+  };
+};
+
+const makeRangeKey = (range: NormalizedRange): string =>
+  `${range.startRow}-${range.endRow}-${range.startColumn}-${range.endColumn}`;
+
 // Cache cells per sheetId to maintain isolation
 const cellCache = new Map<number, Map<CellKey, CellData>>();
-const loadedRangesCache = new Map<number, Set<string>>(); // Set of range keys: `${startRow}-${endRow}-${startCol}-${endCol}`
+const loadedRangesCache = new Map<number, Set<string>>(); // Set of normalized range keys
+// Track in-flight range requests per sheet so multiple callers share the same promise (keyed by tile)
+const inFlightRangeRequests = new Map<number, Map<string, Promise<void>>>();
+// Track in-flight requests keyed by the exact viewport payload for hard dedup of identical calls
+const inFlightExactRequests = new Map<string, Promise<void>>();
 // Cache dimensions per sheetId
 const dimensionsCache = new Map<number, { rowCount: number; colCount: number }>();
 
@@ -541,6 +597,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   const gridRef = useRef<HTMLDivElement>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const resizeDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollRafIdRef = useRef<number | null>(null);
   const pendingSelectionRef = useRef<{ position: 'start' | 'end' | number } | null>(null);
   const resizeStateRef = useRef<ResizeState | null>(null);
   const fillStateRef = useRef<{
@@ -934,26 +991,43 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     };
   }, [rowCount, colCount, getRowIndexAtOffset, getColumnIndexAtOffset, totalRowHeight, safeDefaultRange]);
 
-  // Check if range is already loaded
+  // Check if a (possibly non-tile-aligned) range is already fully loaded by
+  // normalizing it to a tile-aligned key and consulting the cache.
   const isRangeLoaded = useCallback(
     (startRow: number, endRow: number, startColumn: number, endColumn: number): boolean => {
-      const rangeKey = `${startRow}-${endRow}-${startColumn}-${endColumn}`;
+      const normalized = normalizeRangeToTile(
+        startRow,
+        endRow,
+        startColumn,
+        endColumn,
+        Math.max(1, rowCount),
+        Math.max(1, colCount)
+      );
+      const rangeKey = makeRangeKey(normalized);
       const loadedRanges = loadedRangesCache.get(sheetId);
       return loadedRanges?.has(rangeKey) || false;
     },
-    [sheetId]
+    [sheetId, rowCount, colCount]
   );
 
-  // Mark range as loaded
+  // Mark a range as loaded by recording its normalized tile-aligned key.
   const markRangeLoaded = useCallback(
     (startRow: number, endRow: number, startColumn: number, endColumn: number) => {
-      const rangeKey = `${startRow}-${endRow}-${startColumn}-${endColumn}`;
+      const normalized = normalizeRangeToTile(
+        startRow,
+        endRow,
+        startColumn,
+        endColumn,
+        Math.max(1, rowCount),
+        Math.max(1, colCount)
+      );
+      const rangeKey = makeRangeKey(normalized);
       const loadedRanges = loadedRangesCache.get(sheetId);
       if (loadedRanges) {
         loadedRanges.add(rangeKey);
       }
     },
-    [sheetId]
+    [sheetId, rowCount, colCount]
   );
 
   // Load cells from backend for a range
@@ -965,72 +1039,141 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       endColumn: number,
       force: boolean = false
     ) => {
-      if (!force && isRangeLoaded(startRow, endRow, startColumn, endColumn)) {
-        return; // Already loaded
+      const viewportKey = `${sheetId}:${startRow}-${endRow}-${startColumn}-${endColumn}`;
+      const normalized = normalizeRangeToTile(
+        startRow,
+        endRow,
+        startColumn,
+        endColumn,
+        Math.max(1, rowCount),
+        Math.max(1, colCount)
+      );
+      const rangeKey = makeRangeKey(normalized);
+
+    let inFlightForSheet = inFlightRangeRequests.get(sheetId);
+      if (!inFlightForSheet) {
+        inFlightForSheet = new Map<string, Promise<void>>();
+        inFlightRangeRequests.set(sheetId, inFlightForSheet);
       }
 
-      try {
-        const response = await SpreadsheetAPI.readCellRange(
-          spreadsheetId,
+      const loadedRanges = loadedRangesCache.get(sheetId);
+      const cacheHit = !force && !!loadedRanges && loadedRanges.has(rangeKey);
+
+      // First-tier dedup: exact payload (even when force=true we can still share the same in-flight call).
+      const existingExact = inFlightExactRequests.get(viewportKey);
+      const inFlightExactHit = !!existingExact;
+
+      // Second-tier dedup: tile-based (normalized) in-flight sharing.
+      const existingTile = inFlightForSheet.get(rangeKey);
+      const inFlightTileHit = !!existingTile;
+
+      if (process.env.NODE_ENV === 'development') {
+        // eslint-disable-next-line no-console
+        console.debug('[SpreadsheetGrid][RangeLoad]', {
           sheetId,
-          startRow,
-          endRow,
-          startColumn,
-          endColumn
-        );
-        
-        // Sync grid dimensions from full sheet size (sheet_row_count/sheet_column_count). Enforce minimum DEFAULT_ROWS×DEFAULT_COLUMNS so new/empty sheets are 1000×26 and scrollable.
-        const res = response as typeof response & { sheet_row_count?: number | null; sheet_column_count?: number | null };
-        const sheetRows = res.sheet_row_count != null ? res.sheet_row_count : null;
-        const sheetCols = res.sheet_column_count != null ? res.sheet_column_count : null;
-        if (sheetRows != null && sheetCols != null) {
-          const backendRowCount = Math.min(MAX_ROWS, Math.max(DEFAULT_ROWS, sheetRows));
-          const backendColCount = Math.min(MAX_COLUMNS, Math.max(DEFAULT_COLUMNS, sheetCols));
-          if (backendRowCount !== rowCount || backendColCount !== colCount) {
-            setRowCount(backendRowCount);
-            setColCount(backendColCount);
-            dimensionsCache.set(sheetId, { rowCount: backendRowCount, colCount: backendColCount });
-          }
-          // If backend has fewer columns/rows than we need (e.g. new sheet), persist resize so insert works
-          if (backendRowCount > sheetRows || backendColCount > sheetCols) {
-            void resizeGrid(backendRowCount, backendColCount, true);
-          }
-        }
+          viewport: { startRow, endRow, startColumn, endColumn },
+          normalized,
+          viewportKey,
+          rangeKey,
+          cacheHit,
+          inFlightExactHit,
+          inFlightTileHit,
+          force,
+        });
+      }
 
-        // Update cells from response
-        setCells((prev) => {
-          const next = new Map(prev);
-          const cachedCells = cellCache.get(sheetId) || new Map();
+      if (!force && cacheHit) {
+        return; // Already loaded tile
+      }
 
-          response.cells.forEach((cell) => {
-            const key = getCellKey(cell.row_position, cell.column_position);
-            const fallbackRawInput =
-              cell.raw_input ??
-              cell.formula_value ??
-              cell.string_value ??
-              (cell.number_value != null ? String(cell.number_value) : '') ??
-              (cell.boolean_value != null ? (cell.boolean_value ? 'TRUE' : 'FALSE') : '');
-            const cellData: CellData = {
-              rawInput: fallbackRawInput,
-              computedType: cell.computed_type ?? null,
-              computedNumber: cell.computed_number ?? null,
-              computedString: cell.computed_string ?? null,
-              errorCode: cell.error_code ?? null,
-              isLoaded: true,
-            };
-            next.set(key, cellData);
-            cachedCells.set(key, cellData);
+      // Reuse any existing in-flight request for this exact payload.
+      if (existingExact) {
+        return existingExact;
+      }
+
+      // Or reuse tile-level in-flight (same normalized tile).
+      if (existingTile) {
+        return existingTile;
+      }
+
+      const requestPromise = (async () => {
+        try {
+          const response = await SpreadsheetAPI.readCellRange(
+            spreadsheetId,
+            sheetId,
+            normalized.startRow,
+            normalized.endRow,
+            normalized.startColumn,
+            normalized.endColumn
+          );
+          
+          // Sync grid dimensions from full sheet size (sheet_row_count/sheet_column_count). Enforce minimum DEFAULT_ROWS×DEFAULT_COLUMNS so new/empty sheets are 1000×26 and scrollable.
+          const res = response as typeof response & { sheet_row_count?: number | null; sheet_column_count?: number | null };
+          const sheetRows = res.sheet_row_count != null ? res.sheet_row_count : null;
+          const sheetCols = res.sheet_column_count != null ? res.sheet_column_count : null;
+          if (sheetRows != null && sheetCols != null) {
+            const backendRowCount = Math.min(MAX_ROWS, Math.max(DEFAULT_ROWS, sheetRows));
+            const backendColCount = Math.min(MAX_COLUMNS, Math.max(DEFAULT_COLUMNS, sheetCols));
+            if (backendRowCount !== rowCount || backendColCount !== colCount) {
+              setRowCount(backendRowCount);
+              setColCount(backendColCount);
+              dimensionsCache.set(sheetId, { rowCount: backendRowCount, colCount: backendColCount });
+            }
+            // If backend has fewer columns/rows than we need (e.g. new sheet), persist resize so insert works
+            if (backendRowCount > sheetRows || backendColCount > sheetCols) {
+              void resizeGrid(backendRowCount, backendColCount, true);
+            }
+          }
+
+          // Update cells from response
+          setCells((prev) => {
+            const next = new Map(prev);
+            const cachedCells = cellCache.get(sheetId) || new Map();
+
+            response.cells.forEach((cell) => {
+              const key = getCellKey(cell.row_position, cell.column_position);
+              const fallbackRawInput =
+                cell.raw_input ??
+                cell.formula_value ??
+                cell.string_value ??
+                (cell.number_value != null ? String(cell.number_value) : '') ??
+                (cell.boolean_value != null ? (cell.boolean_value ? 'TRUE' : 'FALSE') : '');
+              const cellData: CellData = {
+                rawInput: fallbackRawInput,
+                computedType: cell.computed_type ?? null,
+                computedNumber: cell.computed_number ?? null,
+                computedString: cell.computed_string ?? null,
+                errorCode: cell.error_code ?? null,
+                isLoaded: true,
+              };
+              next.set(key, cellData);
+              cachedCells.set(key, cellData);
+            });
+
+            cellCache.set(sheetId, cachedCells);
+            return next;
           });
 
-          cellCache.set(sheetId, cachedCells);
-          return next;
-        });
+          // Mark the full tile as loaded so subsequent viewports within this tile hit cache.
+          markRangeLoaded(normalized.startRow, normalized.endRow, normalized.startColumn, normalized.endColumn);
+        } catch (error: any) {
+          console.error('Failed to load cell range:', error);
+          // Don't show toast for background loading errors
+        } finally {
+          // Clean up in-flight tracking regardless of success/failure
+          inFlightExactRequests.delete(viewportKey);
+          const currentForSheet = inFlightRangeRequests.get(sheetId);
+          if (currentForSheet) {
+            currentForSheet.delete(rangeKey);
+          }
+        }
+      })();
 
-        markRangeLoaded(startRow, endRow, startColumn, endColumn);
-      } catch (error: any) {
-        console.error('Failed to load cell range:', error);
-        // Don't show toast for background loading errors
-      }
+      // Track in-flight for both exact payload and normalized tile so callers can reuse the same promise.
+      inFlightExactRequests.set(viewportKey, requestPromise);
+      inFlightForSheet.set(rangeKey, requestPromise);
+
+      return requestPromise;
     },
     [spreadsheetId, sheetId, isRangeLoaded, markRangeLoaded, resizeGrid, rowCount, colCount]
   );
@@ -1084,6 +1227,17 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   const resetSheetCaches = useCallback(() => {
     cellCache.set(sheetId, new Map());
     loadedRangesCache.set(sheetId, new Set());
+    const inFlightForSheet = inFlightRangeRequests.get(sheetId);
+    if (inFlightForSheet) {
+      inFlightForSheet.clear();
+      inFlightRangeRequests.delete(sheetId);
+    }
+    // Clear any exact in-flight requests for this sheet
+    for (const key of Array.from(inFlightExactRequests.keys())) {
+      if (key.startsWith(`${sheetId}:`)) {
+        inFlightExactRequests.delete(key);
+      }
+    }
     setCells(new Map());
   }, [sheetId]);
 
@@ -1654,34 +1808,46 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     return () => clearTimeout(timer);
   }, [sheetId, computeVisibleRange, loadCellRange]);
 
-  // Handle scroll to load more cells (no auto-expand)
+  // Handle scroll to load more cells (no auto-expand). We schedule work in
+  // requestAnimationFrame so we compute the viewport and trigger range loads
+  // at most once per frame even if the browser fires many scroll events.
   const handleScroll = useCallback(() => {
-    const range = computeVisibleRange();
-    loadCellRange(range.startRow, range.endRow, range.startColumn, range.endColumn);
-    setVisibleRange({
-      startRow: range.startRow,
-      endRow: range.endRow,
-      startCol: range.startColumn,
-      endCol: range.endColumn,
-    });
+    if (!gridRef.current) return;
 
-    // Show "Add rows" UI when near bottom of grid
-    if (gridRef.current) {
-      const container = gridRef.current;
-      const scrollTop = container.scrollTop;
-      const scrollHeight = container.scrollHeight;
-      const clientHeight = container.clientHeight;
-      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-      const isNearBottom = distanceFromBottom < ADD_ROWS_TRIGGER_DISTANCE;
-      const isAtMaxRows = rowCount >= MAX_ROWS;
-
-      // Show UI if near bottom and not at max
-      if (isNearBottom && !isAtMaxRows && range.endRow >= rowCount - 10) {
-        setShowAddRowsUI(true);
-      } else {
-        setShowAddRowsUI(false);
-      }
+    if (scrollRafIdRef.current != null) {
+      cancelAnimationFrame(scrollRafIdRef.current);
     }
+
+    scrollRafIdRef.current = requestAnimationFrame(() => {
+      scrollRafIdRef.current = null;
+
+      const range = computeVisibleRange();
+      loadCellRange(range.startRow, range.endRow, range.startColumn, range.endColumn);
+      setVisibleRange({
+        startRow: range.startRow,
+        endRow: range.endRow,
+        startCol: range.startColumn,
+        endCol: range.endColumn,
+      });
+
+      // Show "Add rows" UI when near bottom of grid
+      if (gridRef.current) {
+        const container = gridRef.current;
+        const scrollTop = container.scrollTop;
+        const scrollHeight = container.scrollHeight;
+        const clientHeight = container.clientHeight;
+        const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+        const isNearBottom = distanceFromBottom < ADD_ROWS_TRIGGER_DISTANCE;
+        const isAtMaxRows = rowCount >= MAX_ROWS;
+
+        // Show UI if near bottom and not at max
+        if (isNearBottom && !isAtMaxRows && range.endRow >= rowCount - 10) {
+          setShowAddRowsUI(true);
+        } else {
+          setShowAddRowsUI(false);
+        }
+      }
+    });
   }, [computeVisibleRange, loadCellRange, rowCount]);
 
   // Recompute visible range if dimensions change (e.g., after expansion)
@@ -3530,6 +3696,9 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       if (resizeDebounceTimerRef.current) {
         clearTimeout(resizeDebounceTimerRef.current);
       }
+       if (scrollRafIdRef.current != null) {
+         cancelAnimationFrame(scrollRafIdRef.current);
+       }
     };
   }, []);
 
@@ -4478,23 +4647,46 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   );
 
   // Derived ranges for virtualized rendering (clamp so we never render 0 rows/cols when grid has content)
-  const visibleStartRow = Math.max(0, visibleRange.startRow);
-  const visibleEndRow =
+  const visibleStartRowRaw = Math.max(0, visibleRange.startRow);
+  const visibleEndRowRaw =
     rowCount <= 0
       ? -1
-      : Math.max(visibleStartRow, Math.min(rowCount - 1, visibleRange.endRow));
+      : Math.max(visibleStartRowRaw, Math.min(rowCount - 1, visibleRange.endRow));
   const visibleStartCol = Math.max(0, visibleRange.startCol);
   const visibleEndCol =
     colCount <= 0
       ? -1
       : Math.max(visibleStartCol, Math.min(colCount - 1, visibleRange.endCol));
+  // Number of frozen rows (typically 0 or 1) – clamp to valid range
+  const frozenRows = Math.max(0, Math.min(frozenRowCount, rowCount));
+
+  // For virtualized rendering of *non-frozen* rows, never start before the first non-frozen row.
+  const visibleStartRow = Math.max(frozenRows, visibleStartRowRaw);
+  const visibleEndRow =
+    rowCount <= frozenRows
+      ? frozenRows - 1
+      : Math.max(visibleStartRow, visibleEndRowRaw);
+
   let visibleRowCount = Math.max(0, visibleEndRow - visibleStartRow + 1);
   let visibleColCount = Math.max(0, visibleEndCol - visibleStartCol + 1);
   if (rowCount > 0 && visibleRowCount === 0) visibleRowCount = 1;
   if (colCount > 0 && visibleColCount === 0) visibleColCount = 1;
 
-  const topSpacerHeight = getRowOffset(visibleStartRow);
-  const bottomSpacerHeight = Math.max(0, totalRowHeight - getRowOffset(visibleEndRow + 1));
+  // Spacers only apply to the non-frozen region. Frozen rows are always rendered explicitly.
+  let topSpacerHeight = 0;
+  let bottomSpacerHeight = 0;
+  if (rowCount > 0) {
+    if (frozenRows > 0) {
+      const frozenHeight = getRowOffset(frozenRows);
+      const nonFrozenStartOffset = getRowOffset(visibleStartRow);
+      const nonFrozenEndOffset = getRowOffset(visibleEndRow + 1);
+      topSpacerHeight = Math.max(0, nonFrozenStartOffset - frozenHeight);
+      bottomSpacerHeight = Math.max(0, totalRowHeight - nonFrozenEndOffset);
+    } else {
+      topSpacerHeight = getRowOffset(visibleStartRow);
+      bottomSpacerHeight = Math.max(0, totalRowHeight - getRowOffset(visibleEndRow + 1));
+    }
+  }
   const leftSpacerWidth = getColumnOffset(visibleStartCol);
   const rightSpacerWidth = Math.max(0, totalColumnWidth - getColumnOffset(visibleEndCol + 1));
 
@@ -5277,6 +5469,202 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
 
           {/* Grid Body */}
           <tbody>
+            {/* Frozen rows: always rendered so they remain sticky even when scrolled far down. */}
+            {Array.from({ length: frozenRows }).map((_, rowIndex) => {
+              const row = rowIndex; // 0-based for API
+              const rowHeight = getRowHeight(row);
+              const rowBaseStyle = getCellBaseStyle(rowHeight);
+              const frozen = isFrozenRow(row);
+              const frozenStickyStyle: React.CSSProperties = frozen
+                ? {
+                    position: 'sticky',
+                    top: `${getFrozenRowStickyTop(row)}px`,
+                    zIndex: 15,
+                    backgroundColor: isRowHeaderSelected(row) ? 'rgb(191 219 254)' : 'rgb(243 244 246)',
+                  }
+                : {};
+              const frozenDataStickyStyle: React.CSSProperties = frozen
+                ? {
+                    position: 'sticky',
+                    top: `${getFrozenRowStickyTop(row)}px`,
+                    zIndex: 14,
+                  }
+                : {};
+              return (
+                <tr key={row}>
+                  {/* Row Number */}
+                  <td
+                    className={`border border-gray-300 text-xs font-semibold text-gray-600 text-center sticky left-0 z-10 relative overflow-visible ${
+                      isRowHeaderSelected(row) ? 'bg-blue-100' : 'bg-gray-100'
+                    }`}
+                    style={{ ...rowBaseStyle, ...frozenStickyStyle }}
+                    data-testid={`row-header-${row}`}
+                    onClick={() => handleRowHeaderClick(row)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      selectRow(row);
+                      openHeaderMenu('row', row, e.clientX, e.clientY);
+                    }}
+                  >
+                    {row + 1}
+                    <div
+                      data-testid={`row-resize-handle-${row}`}
+                      className="absolute left-0"
+                      style={{
+                        bottom: `-${RESIZE_HANDLE_SIZE / 2}px`,
+                        width: '100%',
+                        height: `${RESIZE_HANDLE_SIZE}px`,
+                        cursor: 'row-resize',
+                      }}
+                      onPointerDown={(e) => startResize(e, 'row', row)}
+                      onPointerMove={handleResizePointerMove}
+                      onPointerUp={handleResizePointerUp}
+                      onPointerCancel={handleResizePointerUp}
+                    />
+                  </td>
+
+                  {/* Left spacer */}
+                  <td
+                    className="border border-gray-300 p-0"
+                    style={{
+                      width: `${leftSpacerWidth}px`,
+                      ...rowBaseStyle,
+                      ...(frozen ? { ...frozenDataStickyStyle, backgroundColor: 'white' } : {}),
+                    }}
+                  />
+
+                  {/* Data Cells */}
+                  {Array.from({ length: visibleColCount }).map((_, colOffset) => {
+                    const col = visibleStartCol + colOffset; // 0-based for API
+                    const colWidth = getColumnWidth(col);
+                    const key = getCellKey(row, col);
+                    const isActive = activeCell && activeCell.row === row && activeCell.col === col;
+                    const isHighlighted =
+                      highlightCell != null &&
+                      highlightCell.row === row &&
+                      highlightCell.col === col;
+                    const isInSelection = isCellInSelection(row, col);
+                    const isEditing = editingCell === key;
+                    const showFillHandle = Boolean(
+                      isActive && isSingleCellSelection && !isEditing && !isFilling
+                    );
+                    const displayValue = isEditing ? editValue : getCellDisplayValue(row, col);
+                    const highlightColor = getHighlightColor(row, col);
+                    const hasHighlight = Boolean(highlightColor);
+                    
+                    // Determine cell styling based on selection state
+                    let cellClassName = 'border border-gray-300 p-0 relative align-top';
+                    if (isEditing) {
+                      cellClassName += ' ring-2 ring-blue-600 ring-inset';
+                    } else if (isActive && isInSelection) {
+                      // Active cell within selection: thicker border
+                      cellClassName += ' ring-2 ring-blue-500 ring-inset';
+                      if (!hasHighlight) {
+                        cellClassName += ' bg-blue-50';
+                      }
+                    } else if (isActive) {
+                      // Active cell without selection
+                      cellClassName += ' ring-2 ring-blue-500 ring-inset';
+                    } else if (isInSelection) {
+                      // Cell in selection range (but not active)
+                      if (!hasHighlight) {
+                        cellClassName += ' bg-blue-100';
+                      }
+                    }
+                    if (isCellInFillPreview(row, col)) {
+                      if (!hasHighlight) {
+                        cellClassName += ' bg-blue-50';
+                      }
+                    }
+                    if (isHighlighted) {
+                      cellClassName += ' ring-2 ring-amber-400 ring-inset bg-amber-50';
+                    }
+
+                    return (
+                      <td
+                        key={`${row}-${col}`}
+                        className={cellClassName}
+                        onMouseDown={(e) => handleCellMouseDown(e, row, col)}
+                        onDoubleClick={() => handleCellDoubleClick(row, col)}
+                        style={{
+                          width: `${colWidth}px`,
+                          minWidth: `${colWidth}px`,
+                          ...rowBaseStyle,
+                          ...(frozen
+                            ? {
+                                ...frozenDataStickyStyle,
+                                backgroundColor:
+                                  highlightColor ??
+                                  (isInSelection
+                                    ? isActive
+                                      ? 'rgb(239 246 255)'
+                                      : 'rgb(219 234 254)'
+                                    : 'white'),
+                              }
+                            : {}),
+                          ...(!frozen && highlightColor ? { backgroundColor: highlightColor } : {}),
+                        }}
+                        data-row={row}
+                        data-col={col}
+                      >
+                        {isEditing ? (
+                          <input
+                            ref={inputRef}
+                            type="text"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onBlur={handleInputBlur}
+                            // Stop propagation so grid-level handlers never see
+                            // key events while editing. The input's own handler
+                            // (handleInputKeyDown) takes care of Enter/Escape.
+                            onKeyDown={(e) => {
+                              e.stopPropagation();
+                              handleInputKeyDown(e);
+                            }}
+                            className="w-full"
+                            style={{ width: `${colWidth}px`, minWidth: `${colWidth}px`, ...getCellInputStyle(rowHeight) }}
+                          />
+                        ) : (
+                          <div
+                            className="text-gray-900"
+                            style={{
+                              ...getCellContentStyle(rowHeight),
+                              fontWeight: getCellFormat(row, col).bold ? 700 : undefined,
+                              fontStyle: getCellFormat(row, col).italic ? 'italic' : undefined,
+                              textDecoration: getCellFormat(row, col).strikethrough ? 'line-through' : undefined,
+                              color: getCellFormat(row, col).textColor ?? undefined,
+                              fontFamily: getCellFormat(row, col).fontFamily ?? undefined,
+                              fontSize: getCellFormat(row, col).fontSize != null ? `${getCellFormat(row, col).fontSize}px` : undefined,
+                            }}
+                          >
+                            {displayValue}
+                          </div>
+                        )}
+                        {showFillHandle && (
+                          <div
+                            className="absolute bottom-0 right-0 h-2 w-2 bg-blue-600 border border-white cursor-crosshair"
+                            onPointerDown={(e) => handleFillHandlePointerDown(e, row, col)}
+                          />
+                        )}
+                      </td>
+                    );
+                  })}
+
+                  {/* Right spacer */}
+                  <td
+                    className="border border-gray-300 p-0"
+                    style={{
+                      width: `${rightSpacerWidth}px`,
+                      ...rowBaseStyle,
+                      ...(frozen ? { ...frozenDataStickyStyle, backgroundColor: 'white' } : {}),
+                    }}
+                  />
+                </tr>
+              );
+            })}
+
+            {/* Spacer for non-frozen rows that are scrolled out above the current viewport */}
             {topSpacerHeight > 0 && (
               <tr>
                 <td
@@ -5286,8 +5674,9 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               </tr>
             )}
 
+            {/* Virtualized non-frozen rows */}
             {Array.from({ length: visibleRowCount }).map((_, rowOffset) => {
-              const row = visibleStartRow + rowOffset; // 0-based for API
+              const row = visibleStartRow + rowOffset; // 0-based for API, starts at first non-frozen row
               const rowHeight = getRowHeight(row);
               const rowBaseStyle = getCellBaseStyle(rowHeight);
               const frozen = isFrozenRow(row);

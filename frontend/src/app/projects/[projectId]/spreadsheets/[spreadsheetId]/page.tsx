@@ -908,7 +908,7 @@ export default function SpreadsheetDetailPage() {
 
   return (
     <ProtectedRoute>
-      <Layout>
+      <Layout mainScrollMode="container">
         {/* Full viewport height, no page scroll: only the grid container scrolls. */}
         <div className="h-full min-h-0 overflow-hidden bg-white flex flex-col">
           {/* Header */}
@@ -1070,8 +1070,9 @@ export default function SpreadsheetDetailPage() {
           {/* Spreadsheet Content Area: flex-1 + min-h-0 so it gets bounded height and grid scrolls inside. */}
           <div className="flex-1 min-h-0 overflow-hidden bg-gray-50 flex flex-col">
             {activeSheet ? (
-              <div className="flex-1 min-h-0 flex h-full overflow-hidden">
-                <div className="flex-1 min-h-0 overflow-hidden">
+              <div className="flex-1 min-h-0 min-w-0 flex h-full overflow-hidden">
+                {/* Center column: grid container. min-w-0 is critical to prevent it from forcing the flex row wider than the viewport. */}
+                <div className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
                   <SpreadsheetGrid
                     ref={gridRef}
                     spreadsheetId={Number(spreadsheetId)}
@@ -1151,6 +1152,7 @@ export default function SpreadsheetDetailPage() {
                     onHydrationStatusChange={status => setSheetHydrationReady(status === 'ready')}
                   />
                 </div>
+                {/* Right column: Pattern panel remains fixed-width and always visible while the grid scrolls inside its own container. */}
                 <PatternAgentPanel
                   items={agentSteps}
                   patterns={patterns}
