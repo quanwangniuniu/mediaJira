@@ -32,6 +32,7 @@ export const TaskAPI = {
     object_id?: string;
     include_subtasks?: boolean;
     all_projects?: boolean;
+    page?: number;
   }) => {
     const queryParams: any = { ...params };
     if (queryParams.include_subtasks !== undefined) {
