@@ -37,6 +37,8 @@ class TaskSerializer(serializers.ModelSerializer):
     parent_relationship = serializers.SerializerMethodField()
     order_in_project = serializers.IntegerField(required=False)
     approval_chain_progress = serializers.SerializerMethodField()
+    can_lock = serializers.SerializerMethodField()
+    approvals_summary = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -47,8 +49,13 @@ class TaskSerializer(serializers.ModelSerializer):
             'content_type', 'object_id', 'start_date', 'due_date',
             'is_subtask', 'parent_relationship', 'order_in_project',
             'anomaly_status', 'approval_chain_progress',
+            'can_lock', 'approvals_summary',
         ]
-        read_only_fields = ['id', 'status', 'owner', 'content_type', 'object_id', 'is_subtask', 'parent_relationship', 'anomaly_status', 'approval_chain_progress']
+        read_only_fields = [
+            'id', 'status', 'owner', 'content_type', 'object_id',
+            'is_subtask', 'parent_relationship', 'anomaly_status',
+            'approval_chain_progress', 'can_lock', 'approvals_summary',
+        ]
 
     def get_approval_chain_progress(self, obj):
         """
@@ -135,7 +142,41 @@ class TaskSerializer(serializers.ModelSerializer):
             'next_approver': UserSummarySerializer(next_step.approver).data if next_step else None,
             'steps': steps,
         }
-    
+
+    def get_can_lock(self, obj):
+        """
+        Returns True if the task is allowed to be locked right now.
+
+        Rules:
+        - Task must be in APPROVED status.
+        - If an approval chain is assigned, the number of approved records
+          must meet the chain's effective_required_approvals threshold.
+        - Legacy tasks (no chain) can always be locked once APPROVED.
+        """
+        if obj.status != 'APPROVED':
+            return False
+        if not obj.approval_chain:
+            return True  # Legacy mode: no minimum required
+        approved_count = obj.approval_records.filter(is_approved=True).count()
+        return approved_count >= obj.approval_chain.effective_required_approvals
+
+    def get_approvals_summary(self, obj):
+        """
+        Returns a human-readable approval progress summary for chain-mode tasks.
+
+        Example: { "approved_count": 1, "required_count": 2, "display": "1 of 2 approvals" }
+        Returns None for legacy tasks (no chain assigned).
+        """
+        if not obj.approval_chain:
+            return None
+        approved_count = obj.approval_records.filter(is_approved=True).count()
+        required = obj.approval_chain.effective_required_approvals
+        return {
+            'approved_count': approved_count,
+            'required_count': required,
+            'display': f'{approved_count} of {required} approvals',
+        }
+
     def create(self, validated_data):
         """Create a new task"""
         user = self.context['request'].user
@@ -397,6 +438,22 @@ class TaskApprovalSerializer(serializers.Serializer):
         if value not in ['approve', 'reject']:
             raise serializers.ValidationError("Action must be either 'approve' or 'reject'")
         return value
+
+    def validate(self, attrs):
+        """Require a non-empty comment when rejecting a task."""
+        action = attrs.get('action')
+        comment = attrs.get('comment', '')
+
+        if isinstance(comment, str):
+            comment = comment.strip()
+            attrs['comment'] = comment
+
+        if action == 'reject' and not comment:
+            raise serializers.ValidationError({
+                'comment': 'Comment is required when rejecting a task'
+            })
+
+        return attrs
 
 
 class TaskForwardSerializer(serializers.Serializer):

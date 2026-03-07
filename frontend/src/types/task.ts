@@ -51,6 +51,12 @@ export interface TaskData {
   parent_relationship?: any; // Parent relationship if this is a subtask
   order_in_project?: number; // Order of task within its project
   approval_chain_progress?: ApprovalChainProgress | null;
+  can_lock?: boolean;
+  approvals_summary?: {
+    approved_count: number;
+    required_count: number;
+    display: string;
+  } | null;
 }
 
 // Type for creating a new task (current_approver_id is user ID)

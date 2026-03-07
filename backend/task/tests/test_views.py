@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
-from task.models import Task
+from task.models import Task, ApprovalRecord
 from core.models import Project, Organization, Team, AdChannel, ProjectMember
 from budget_approval.models import BudgetPool, BudgetRequest
 from asset.models import Asset
@@ -70,6 +70,10 @@ class TaskAPITest(TestCase):
         # Setup API client
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
+
+        # Setup approver client (authenticated as self.approver)
+        self.approver_client = APIClient()
+        self.approver_client.force_authenticate(user=self.approver)
     
     def create_task_with_status(self, status, **kwargs):
         """
@@ -905,14 +909,14 @@ class TaskAPITest(TestCase):
             project=self.project,
             current_approver=self.approver
         )
-        
+
         url = reverse('task-make-approval', kwargs={'pk': task.id})
         data = {
             'action': 'approve',
             'comment': 'Approved for budget allocation'
         }
-        
-        response = self.client.post(url, data, format='json')
+
+        response = self.approver_client.post(url, data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
@@ -971,14 +975,14 @@ class TaskAPITest(TestCase):
             project=self.project,
             current_approver=self.approver
         )
-        
+
         url = reverse('task-make-approval', kwargs={'pk': task.id})
         data = {
             'action': 'reject',
             'comment': 'Insufficient budget documentation'
         }
-        
-        response = self.client.post(url, data, format='json')
+
+        response = self.approver_client.post(url, data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
@@ -1098,15 +1102,15 @@ class TaskAPITest(TestCase):
         # Approve again (second step)
         url = reverse('task-make-approval', kwargs={'pk': task.id})
         data = {'action': 'approve', 'comment': 'Second approval'}
-        
-        response = self.client.post(url, data, format='json')
-        
+
+        response = self.approver_client.post(url, data, format='json')
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        
+
         # Check response contains approval_record and task
         self.assertIn('approval_record', response.data)
         self.assertIn('task', response.data)
-        
+
         # Check approval record data
         approval_record = response.data['approval_record']
         self.assertIn('id', approval_record)
@@ -1114,7 +1118,7 @@ class TaskAPITest(TestCase):
         self.assertIn('is_approved', approval_record)
         self.assertIn('comment', approval_record)
         self.assertIn('step_number', approval_record)
-        
+
         self.assertEqual(approval_record['approved_by']['id'], self.approver.id)
         self.assertTrue(approval_record['is_approved'])
         self.assertEqual(approval_record['comment'], 'Second approval')
@@ -1138,15 +1142,15 @@ class TaskAPITest(TestCase):
             project=self.project,
             current_approver=self.approver
         )
-        
+
         url = reverse('task-make-approval', kwargs={'pk': task.id})
         data = {'action': 'invalid_action', 'comment': 'Should not work'}
-        
-        response = self.client.post(url, data, format='json')
-        
+
+        response = self.approver_client.post(url, data, format='json')
+
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(task.approval_records.count(), 0)
-    
+
     def test_make_approval_missing_action(self):
         """Test make-approval with missing action"""
         task = self.create_task_with_status(
@@ -1157,12 +1161,12 @@ class TaskAPITest(TestCase):
             project=self.project,
             current_approver=self.approver
         )
-        
+
         url = reverse('task-make-approval', kwargs={'pk': task.id})
         data = {'comment': 'Should not work'}
-        
-        response = self.client.post(url, data, format='json')
-        
+
+        response = self.approver_client.post(url, data, format='json')
+
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(task.approval_records.count(), 0)
     
@@ -1777,8 +1781,11 @@ class TaskAPITest(TestCase):
         task.current_approval_step = 1
         task.save()
 
+        step1_client = APIClient()
+        step1_client.force_authenticate(user=step1_approver)
+
         url = reverse('task-make-approval', kwargs={'pk': task.id})
-        response = self.client.post(url, {'action': 'approve', 'comment': 'Step 1 done'}, format='json')
+        response = step1_client.post(url, {'action': 'approve', 'comment': 'Step 1 done'}, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         task_data = response.data['task']
@@ -1841,8 +1848,11 @@ class TaskAPITest(TestCase):
             step_number=1
         )
 
+        step2_client = APIClient()
+        step2_client.force_authenticate(user=step2_approver)
+
         url = reverse('task-make-approval', kwargs={'pk': task.id})
-        response = self.client.post(url, {'action': 'approve', 'comment': 'Final approval'}, format='json')
+        response = step2_client.post(url, {'action': 'approve', 'comment': 'Final approval'}, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         task_data = response.data['task']
@@ -1858,3 +1868,302 @@ class TaskAPITest(TestCase):
         final_record = task.approval_records.get(step_number=2)
         self.assertTrue(final_record.is_approved)
         self.assertEqual(final_record.comment, 'Final approval')
+
+    # --- SMP-499: Minimum Approvals Before Lock Tests ---
+
+    def test_lock_blocked_when_chain_not_fully_approved(self):
+        """Lock must be blocked when approval chain steps are not all completed."""
+        from task.models import ApprovalChain, ApprovalChainStep
+
+        step1_approver = User.objects.create_user(
+            email='smp499_step1@example.com',
+            username='smp499_step1',
+            password='testpass123'
+        )
+        step2_approver = User.objects.create_user(
+            email='smp499_step2@example.com',
+            username='smp499_step2',
+            password='testpass123'
+        )
+        chain = ApprovalChain.objects.create(
+            name='Buyer → Client',
+            project=self.project,
+            task_type='budget'
+        )
+        ApprovalChainStep.objects.create(chain=chain, order=1, approver=step1_approver)
+        ApprovalChainStep.objects.create(chain=chain, order=2, approver=step2_approver)
+
+        # Task is APPROVED but only step 1 has been approved (step 2 pending)
+        task = self.create_task_with_status(
+            Task.Status.APPROVED,
+            summary='Budget Task Partial',
+            type='budget',
+            owner=self.user,
+            project=self.project,
+        )
+        task.approval_chain = chain
+        task.current_approval_step = 2
+        task.save()
+
+        # Record only step 1 approval
+        ApprovalRecord.objects.create(
+            task=task,
+            approved_by=step1_approver,
+            is_approved=True,
+            comment='Step 1 done',
+            step_number=1
+        )
+
+        url = reverse('task-lock', kwargs={'pk': task.id})
+        response = self.client.post(url, {}, format='json')
+
+        # Must be blocked: only 1 of 2 approvals completed
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response.data)
+
+        # Task status must not have changed
+        task = Task.objects.get(pk=task.pk)
+        self.assertEqual(task.status, Task.Status.APPROVED)
+
+    def test_lock_allowed_when_chain_fully_approved(self):
+        """Lock must succeed when all chain steps have been approved."""
+        from task.models import ApprovalChain, ApprovalChainStep
+
+        step1_approver = User.objects.create_user(
+            email='smp499_full1@example.com',
+            username='smp499_full1',
+            password='testpass123'
+        )
+        step2_approver = User.objects.create_user(
+            email='smp499_full2@example.com',
+            username='smp499_full2',
+            password='testpass123'
+        )
+        chain = ApprovalChain.objects.create(
+            name='Buyer → Client',
+            project=self.project,
+            task_type='report'
+        )
+        ApprovalChainStep.objects.create(chain=chain, order=1, approver=step1_approver)
+        ApprovalChainStep.objects.create(chain=chain, order=2, approver=step2_approver)
+
+        # Task is APPROVED with both steps approved
+        task = self.create_task_with_status(
+            Task.Status.APPROVED,
+            summary='Report Task Full',
+            type='report',
+            owner=self.user,
+            project=self.project,
+        )
+        task.approval_chain = chain
+        task.current_approval_step = 2
+        task.save()
+
+        ApprovalRecord.objects.create(
+            task=task, approved_by=step1_approver,
+            is_approved=True, comment='Step 1', step_number=1
+        )
+        ApprovalRecord.objects.create(
+            task=task, approved_by=step2_approver,
+            is_approved=True, comment='Step 2', step_number=2
+        )
+
+        url = reverse('task-lock', kwargs={'pk': task.id})
+        response = self.client.post(url, {}, format='json')
+
+        # Must succeed: all 2 of 2 approvals are done
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['task']['status'], 'LOCKED')
+
+        task = Task.objects.get(pk=task.pk)
+        self.assertEqual(task.status, Task.Status.LOCKED)
+
+    def test_lock_legacy_mode_no_chain_still_works(self):
+        """Legacy tasks (no approval chain) must still be lockable after APPROVED."""
+        task = self.create_task_with_status(
+            Task.Status.APPROVED,
+            summary='Legacy Task',
+            type='budget',
+            owner=self.user,
+            project=self.project,
+            current_approver=self.approver,
+        )
+        # No approval_chain assigned (legacy mode)
+        self.assertIsNone(task.approval_chain)
+
+        url = reverse('task-lock', kwargs={'pk': task.id})
+        response = self.client.post(url, {}, format='json')
+
+        # Must succeed: legacy mode has no minimum requirement
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['task']['status'], 'LOCKED')
+
+    def test_lock_blocked_with_custom_required_approvals(self):
+        """Lock is blocked when required_approvals is set and not yet met."""
+        from task.models import ApprovalChain, ApprovalChainStep
+
+        step1_approver = User.objects.create_user(
+            email='smp499_custom1@example.com',
+            username='smp499_custom1',
+            password='testpass123'
+        )
+        step2_approver = User.objects.create_user(
+            email='smp499_custom2@example.com',
+            username='smp499_custom2',
+            password='testpass123'
+        )
+        step3_approver = User.objects.create_user(
+            email='smp499_custom3@example.com',
+            username='smp499_custom3',
+            password='testpass123'
+        )
+        # 3-step chain but only 2 approvals required (custom required_approvals=2)
+        chain = ApprovalChain.objects.create(
+            name='Buyer → Lead → Client',
+            project=self.project,
+            task_type='experiment',
+            required_approvals=2
+        )
+        ApprovalChainStep.objects.create(chain=chain, order=1, approver=step1_approver)
+        ApprovalChainStep.objects.create(chain=chain, order=2, approver=step2_approver)
+        ApprovalChainStep.objects.create(chain=chain, order=3, approver=step3_approver)
+
+        task = self.create_task_with_status(
+            Task.Status.APPROVED,
+            summary='Experiment Task Custom',
+            type='experiment',
+            owner=self.user,
+            project=self.project,
+        )
+        task.approval_chain = chain
+        task.current_approval_step = 2
+        task.save()
+
+        # Only 1 approval so far — required is 2
+        ApprovalRecord.objects.create(
+            task=task, approved_by=step1_approver,
+            is_approved=True, comment='Step 1', step_number=1
+        )
+
+        url = reverse('task-lock', kwargs={'pk': task.id})
+        response = self.client.post(url, {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response.data)
+
+    def test_lock_allowed_with_custom_required_approvals_met(self):
+        """Lock is allowed when custom required_approvals threshold is met."""
+        from task.models import ApprovalChain, ApprovalChainStep
+
+        step1_approver = User.objects.create_user(
+            email='smp499_cmet1@example.com',
+            username='smp499_cmet1',
+            password='testpass123'
+        )
+        step2_approver = User.objects.create_user(
+            email='smp499_cmet2@example.com',
+            username='smp499_cmet2',
+            password='testpass123'
+        )
+        step3_approver = User.objects.create_user(
+            email='smp499_cmet3@example.com',
+            username='smp499_cmet3',
+            password='testpass123'
+        )
+        # 3-step chain, only 2 required
+        chain = ApprovalChain.objects.create(
+            name='Buyer → Lead → Client',
+            project=self.project,
+            task_type='scaling',
+            required_approvals=2
+        )
+        ApprovalChainStep.objects.create(chain=chain, order=1, approver=step1_approver)
+        ApprovalChainStep.objects.create(chain=chain, order=2, approver=step2_approver)
+        ApprovalChainStep.objects.create(chain=chain, order=3, approver=step3_approver)
+
+        task = self.create_task_with_status(
+            Task.Status.APPROVED,
+            summary='Scaling Task Custom Met',
+            type='scaling',
+            owner=self.user,
+            project=self.project,
+        )
+        task.approval_chain = chain
+        task.current_approval_step = 2
+        task.save()
+
+        # 2 approvals recorded — required is 2, so threshold is met
+        ApprovalRecord.objects.create(
+            task=task, approved_by=step1_approver,
+            is_approved=True, comment='Step 1', step_number=1
+        )
+        ApprovalRecord.objects.create(
+            task=task, approved_by=step2_approver,
+            is_approved=True, comment='Step 2', step_number=2
+        )
+
+        url = reverse('task-lock', kwargs={'pk': task.id})
+        response = self.client.post(url, {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['task']['status'], 'LOCKED')
+
+    def test_serializer_can_lock_and_approvals_summary(self):
+        """can_lock and approvals_summary fields are correctly returned in task response."""
+        from task.models import ApprovalChain, ApprovalChainStep
+
+        step1_approver = User.objects.create_user(
+            email='smp499_ser1@example.com',
+            username='smp499_ser1',
+            password='testpass123'
+        )
+        step2_approver = User.objects.create_user(
+            email='smp499_ser2@example.com',
+            username='smp499_ser2',
+            password='testpass123'
+        )
+        chain = ApprovalChain.objects.create(
+            name='Buyer → Client',
+            project=self.project,
+            task_type='alert'
+        )
+        ApprovalChainStep.objects.create(chain=chain, order=1, approver=step1_approver)
+        ApprovalChainStep.objects.create(chain=chain, order=2, approver=step2_approver)
+
+        task = self.create_task_with_status(
+            Task.Status.APPROVED,
+            summary='Alert Task Serializer',
+            type='alert',
+            owner=self.user,
+            project=self.project,
+        )
+        task.approval_chain = chain
+        task.current_approval_step = 2
+        task.save()
+
+        # Only step 1 approved — can_lock should be False
+        ApprovalRecord.objects.create(
+            task=task, approved_by=step1_approver,
+            is_approved=True, comment='Step 1', step_number=1
+        )
+
+        url = reverse('task-detail', kwargs={'pk': task.id})
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data['can_lock'])
+        self.assertEqual(response.data['approvals_summary']['approved_count'], 1)
+        self.assertEqual(response.data['approvals_summary']['required_count'], 2)
+        self.assertEqual(response.data['approvals_summary']['display'], '1 of 2 approvals')
+
+        # Now add step 2 approval — can_lock should become True
+        ApprovalRecord.objects.create(
+            task=task, approved_by=step2_approver,
+            is_approved=True, comment='Step 2', step_number=2
+        )
+
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['can_lock'])
+        self.assertEqual(response.data['approvals_summary']['approved_count'], 2)
+        self.assertEqual(response.data['approvals_summary']['display'], '2 of 2 approvals')
