@@ -9,6 +9,7 @@ import type { TaskData } from '@/types/task';
 import { dateToX, getColumnWidth, toDate, widthFromRange } from './timelineUtils';
 import type { TimelineColumn, TimelineScale } from './timelineUtils';
 import { TaskAPI } from '@/lib/api/taskApi';
+import { getTaskTypeLabel } from '@/lib/taskTypeLabels';
 import { cn } from '@/lib/utils';
 import ConfirmDialog from '@/components/common/ConfirmDialog';
 
@@ -27,30 +28,6 @@ const TYPE_TONE_CLASSES: Record<string, string> = {
   experiment: 'bg-amber-100 text-amber-700',
   optimization: 'bg-violet-100 text-violet-700',
   communication: 'bg-cyan-100 text-cyan-700',
-};
-
-const formatTypeLabel = (value?: string | null) => {
-  if (!value) return 'Task';
-  const normalized = value.toLowerCase();
-  const labelMap: Record<string, string> = {
-    task: 'Task',
-    budget: 'Budget Request',
-    asset: 'Asset',
-    retrospective: 'Retrospective',
-    report: 'Report',
-    scaling: 'Scaling',
-    alert: 'Alert',
-    experiment: 'Experiment',
-    optimization: 'Optimization',
-    communication: 'Communication',
-    platform_policy_update: 'Platform Policy Update',
-  };
-  if (labelMap[normalized]) return labelMap[normalized];
-  return normalized
-    .replace(/[_-]+/g, ' ')
-    .split(' ')
-    .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
-    .join(' ');
 };
 
 const getTypeTone = (value?: string | null) => {
@@ -136,7 +113,7 @@ const TaskRow = ({
   const safeEnd = endDate.getTime() < startDate.getTime() ? new Date(startDate.getTime() + minDurationMs) : endDate;
   const width = widthFromRange(startDate, safeEnd, rangeStart, rangeEnd, columns, 10);
   const left = dateToX(startDate, rangeStart, rangeEnd, columns);
-  const typeLabel = formatTypeLabel(task.type);
+  const typeLabel = getTaskTypeLabel(task.type);
   const typeTone = getTypeTone(task.type);
   const resolvedIssueKey = issueKey || buildIssueKey(task);
   const isDone = DONE_STATUSES.has((task.status || '').toUpperCase());
