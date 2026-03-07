@@ -1470,6 +1470,11 @@ export default function TaskDetail({
 
   // Handle reject button click
   const handleReject = async () => {
+    if (!reviewComment.trim()) {
+      toast.error("Comment is required when rejecting a task");
+      return;
+    }
+
     try {
       // Call task make_approval API
       const taskResponse = await TaskAPI.makeApproval(task.id!, {
@@ -1505,6 +1510,7 @@ export default function TaskDetail({
       if (taskResponse.data.task) {
         Object.assign(task, taskResponse.data.task);
         updateTask(task.id!, taskResponse.data.task);
+        setShowRevise(true);
       }
 
       toast.success("Task rejected");

@@ -439,6 +439,22 @@ class TaskApprovalSerializer(serializers.Serializer):
             raise serializers.ValidationError("Action must be either 'approve' or 'reject'")
         return value
 
+    def validate(self, attrs):
+        """Require a non-empty comment when rejecting a task."""
+        action = attrs.get('action')
+        comment = attrs.get('comment', '')
+
+        if isinstance(comment, str):
+            comment = comment.strip()
+            attrs['comment'] = comment
+
+        if action == 'reject' and not comment:
+            raise serializers.ValidationError({
+                'comment': 'Comment is required when rejecting a task'
+            })
+
+        return attrs
+
 
 class TaskForwardSerializer(serializers.Serializer):
     """Serializer for task forward requests"""
