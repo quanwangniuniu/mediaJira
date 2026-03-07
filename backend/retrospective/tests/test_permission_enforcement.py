@@ -109,13 +109,22 @@ class PermissionEnforcementTest(TestCase):
         )
         
         self.client = APIClient()
+
+    def _retrospective_payload(self):
+        return {
+            'campaign': str(self.campaign.id),
+            'decision': 'Prioritize high-ROI segments',
+            'confidence_level': 4,
+            'primary_assumption': 'Segment-level performance remains consistent',
+            'key_risk_ignore': '',
+        }
     
     def test_data_analyst_can_create_retrospective(self):
         """Test that data analysts can create retrospectives"""
         self.client.force_authenticate(user=self.data_analyst)
         
         url = '/api/retrospective/retrospectives/'
-        data = {'campaign': str(self.campaign.id)}
+        data = self._retrospective_payload()
         response = self.client.post(url, data)
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -399,6 +408,15 @@ class ReportApprovalWorkflowTest(TestCase):
         self.approver.user_permissions.add(permission)
         
         self.client = APIClient()
+
+    def _retrospective_payload(self):
+        return {
+            'campaign': str(self.campaign.id),
+            'decision': 'Increase spend on proven audience',
+            'confidence_level': 5,
+            'primary_assumption': 'Audience behavior is stable this quarter',
+            'key_risk_ignore': '',
+        }
     
     def test_complete_approval_workflow(self):
         """Test complete workflow from creation to approval"""
@@ -406,7 +424,7 @@ class ReportApprovalWorkflowTest(TestCase):
         self.client.force_authenticate(user=self.analyst)
         
         url = '/api/retrospective/retrospectives/'
-        data = {'campaign': str(self.campaign.id)}
+        data = self._retrospective_payload()
         response = self.client.post(url, data)
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)

@@ -1,4 +1,4 @@
-import api from '../api';
+import api from "../api";
 
 // Retrospective task type definitions
 export interface RetrospectiveTaskData {
@@ -6,9 +6,16 @@ export interface RetrospectiveTaskData {
   campaign: string; // Project ID (UUID)
   campaign_name: string;
   campaign_description?: string;
-  status: 'scheduled' | 'in_progress' | 'completed' | 'reported' | 'cancelled';
+  status: "scheduled" | "in_progress" | "completed" | "reported" | "cancelled";
   status_display: string;
   scheduled_at: string;
+  decision: string;
+  confidence_level: 1 | 2 | 3 | 4 | 5;
+  primary_assumption: string;
+  key_risk_ignore?: string | null;
+  outcome_compared_to_expectation?: "better" | "worse" | "as_expected" | null;
+  biggest_wrong_assumption?: string | null;
+  would_make_same_decision_again?: "yes" | "no" | null;
   started_at?: string | null;
   completed_at?: string | null;
   duration_formatted?: string | null;
@@ -24,11 +31,14 @@ export interface RetrospectiveTaskData {
   insight_count: number;
 }
 
-
 export interface CreateRetrospectiveData {
   campaign: string; // Project ID (UUID)
   scheduled_at?: string;
-  status?: 'scheduled' | 'in_progress' | 'completed' | 'reported' | 'cancelled';
+  status?: "scheduled" | "in_progress" | "completed" | "reported" | "cancelled";
+  decision: string;
+  confidence_level: 1 | 2 | 3 | 4 | 5;
+  primary_assumption: string;
+  key_risk_ignore?: string;
 }
 
 export interface ReportApprovalData {
@@ -36,28 +46,44 @@ export interface ReportApprovalData {
   comments?: string;
 }
 
+export interface UpdateRetrospectiveData {
+  scheduled_at?: string;
+  status?: "scheduled" | "in_progress" | "completed" | "reported" | "cancelled";
+  decision?: string;
+  confidence_level?: 1 | 2 | 3 | 4 | 5;
+  primary_assumption?: string;
+  key_risk_ignore?: string | null;
+  outcome_compared_to_expectation?: "better" | "worse" | "as_expected" | null;
+  biggest_wrong_assumption?: string | null;
+  would_make_same_decision_again?: "yes" | "no" | null;
+}
+
 export const RetrospectiveAPI = {
   // Create a new retrospective task
   createRetrospective: (data: CreateRetrospectiveData) =>
-    api.post('/api/retrospective/retrospectives/', data),
+    api.post("/api/retrospective/retrospectives/", data),
 
   // Get all retrospectives with optional filters
   getRetrospectives: (params?: {
     status?: string;
     campaign?: string;
     created_by?: number;
-  }) => api.get('/api/retrospective/retrospectives/', { params }),
+  }) => api.get("/api/retrospective/retrospectives/", { params }),
 
   // Get a specific retrospective task
   getRetrospective: (id: string) =>
     api.get(`/api/retrospective/retrospectives/${id}/`),
+
+  // Update a retrospective task
+  updateRetrospective: (id: string, data: UpdateRetrospectiveData) =>
+    api.patch(`/api/retrospective/retrospectives/${id}/`, data),
 
   // Start retrospective analysis
   startAnalysis: (id: string) =>
     api.post(`/api/retrospective/retrospectives/${id}/start_analysis/`),
 
   // Generate report for retrospective
-  generateReport: (id: string, format: 'pdf' | 'pptx' = 'pdf') =>
+  generateReport: (id: string, format: "pdf" | "pptx" = "pdf") =>
     api.post(`/api/retrospective/retrospectives/${id}/generate_report/`, {
       retrospective_id: id,
       format,
@@ -70,4 +96,3 @@ export const RetrospectiveAPI = {
       ...data,
     }),
 };
-
