@@ -1457,9 +1457,14 @@ export default function TaskDetail({
         "Task approved successfully. Status updated to:",
         taskResponse.data.task?.status,
       );
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error approving task:", error);
-      toast.error("Failed to approve task. Please try again.");
+      const message =
+        error?.response?.data?.error ||
+        error?.response?.data?.detail ||
+        error?.message ||
+        "Failed to approve task. Please try again.";
+      toast.error(message);
     }
   };
 
@@ -2347,11 +2352,20 @@ export default function TaskDetail({
                         <option value="UNDER_REVIEW">Under Review</option>
                         <option value="APPROVED">Approved</option>
                         <option value="REJECTED">Rejected</option>
-                        <option value="LOCKED">Locked</option>
+                        <option value="LOCKED" disabled={task?.can_lock === false}>
+                          Locked{task?.approvals_summary && task.approvals_summary.approved_count < task.approvals_summary.required_count ? ` (${task.approvals_summary.display})` : ""}
+                        </option>
                         <option value="CANCELLED">Cancelled</option>
                       </select>
                     </div>
                   </div>
+                  {/* Approvals progress hint (SMP-499) */}
+                  {task?.approvals_summary &&
+                    task.approvals_summary.approved_count < task.approvals_summary.required_count && (
+                    <div className="mt-1 text-xs text-amber-600">
+                      {task.approvals_summary.display} required to lock
+                    </div>
+                  )}
                   {/* Work type - locked */}
                   <div className={jiraDetailRowClass}>
                     <label className={jiraDetailLabelClass}>Work type</label>
