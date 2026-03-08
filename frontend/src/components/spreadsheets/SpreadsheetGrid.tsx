@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
-import { Undo2, Redo2, Bold, Italic, Strikethrough, Palette, ChevronLeft, ChevronRight, Snowflake } from 'lucide-react';
+import { Undo2, Redo2, Bold, Italic, Strikethrough, Palette, ChevronLeft, ChevronRight, ChevronDown, Snowflake } from 'lucide-react';
 import { SpreadsheetAPI } from '@/lib/api/spreadsheetApi';
 import toast from 'react-hot-toast';
 import Modal from '@/components/ui/Modal';
@@ -170,17 +170,24 @@ interface FormatStyleEntry {
   ops: FormatStyleOp[];
 }
 
+interface SortHistoryEntry {
+  previous_order: Array<{ row_id: number; position: number }>;
+  new_order: Array<{ row_id: number; position: number }>;
+}
+
 type UndoEntry =
   | { type: 'cell'; entry: HistoryEntry }
   | { type: 'color'; entry: ColorHistoryEntry }
   | { type: 'format'; entry: FormatStyleEntry }
-  | { type: 'structure'; op: StructureOp };
+  | { type: 'structure'; op: StructureOp }
+  | { type: 'sort'; entry: SortHistoryEntry };
 
 type RedoEntry =
   | { type: 'cell'; entry: HistoryEntry }
   | { type: 'color'; entry: ColorRedoEntry }
   | { type: 'format'; entry: FormatStyleEntry }
-  | { type: 'structure'; entry: StructureRedoEntry };
+  | { type: 'structure'; entry: StructureRedoEntry }
+  | { type: 'sort'; entry: SortHistoryEntry };
 
 interface ResizeState {
   type: 'col' | 'row';
@@ -580,6 +587,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     x: number;
     y: number;
   } | null>(null);
+  const [sortMenu, setSortMenu] = useState<{ colIndex: number; x: number; y: number } | null>(null);
+  const sortPriorityHistoryRef = useRef<number[]>([]); // Most recent sort column first (used as tie-breakers)
   const [isReverting, setIsReverting] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [formulaBarValue, setFormulaBarValue] = useState<string>('');
@@ -653,6 +662,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     setRedoStack([]);
     setMode('navigation');
     setNavigationLocked(false);
+    sortPriorityHistoryRef.current = [];
   }, [sheetId]);
 
   /**
@@ -1589,6 +1599,55 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     [selectColumn]
   );
 
+  const openSortMenu = useCallback((colIndex: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setSortMenu({ colIndex, x: e.clientX, y: e.clientY });
+  }, []);
+
+  const [isSorting, setIsSorting] = useState(false);
+
+  const handleColumnSort = useCallback(
+    async (sortCol: number, direction: 'asc' | 'desc') => {
+      if (isSorting || rowCount <= 0 || colCount <= 0) return;
+      setSortMenu(null);
+      setIsSorting(true);
+      try {
+        const prevSort = sortPriorityHistoryRef.current.filter((c) => c !== sortCol);
+        const previousSortColumns = prevSort.slice(0, 19);
+        const result = await SpreadsheetAPI.sortSheet(spreadsheetId, sheetId, {
+          column_position: sortCol,
+          direction,
+          has_header: true,
+          previous_sort_columns: previousSortColumns,
+        });
+        sortPriorityHistoryRef.current = [sortCol, ...previousSortColumns];
+
+        resetSheetCaches();
+        await loadCellRange(visibleRange.startRow, visibleRange.endRow, visibleRange.startCol, visibleRange.endCol, true);
+
+        setUndoStack((u) => [...u, { type: 'sort', entry: { previous_order: result.previous_order, new_order: result.new_order } }]);
+        setRedoStack([]);
+        toast.success(`Sorted by column ${columnIndexToLabel(sortCol)} ${direction === 'asc' ? 'A→Z' : 'Z→A'}`);
+      } catch (error: any) {
+        console.error('Sort failed:', error);
+        toast.error(error?.response?.data?.detail ?? error?.message ?? 'Sort failed');
+      } finally {
+        setIsSorting(false);
+      }
+    },
+    [
+      isSorting,
+      rowCount,
+      colCount,
+      spreadsheetId,
+      sheetId,
+      resetSheetCaches,
+      loadCellRange,
+      visibleRange,
+    ]
+  );
+
   const performUndoStructure = useCallback(
     async (op: StructureOp) => {
       if (isReverting) return;
@@ -1693,6 +1752,24 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       return cellData?.rawInput ?? '';
     },
     [cells]
+  );
+
+  const applyUndoSort = useCallback(
+    async (entry: SortHistoryEntry) => {
+      await SpreadsheetAPI.reorderRows(spreadsheetId, sheetId, { order: entry.previous_order });
+      resetSheetCaches();
+      await loadCellRange(visibleRange.startRow, visibleRange.endRow, visibleRange.startCol, visibleRange.endCol, true);
+    },
+    [spreadsheetId, sheetId, resetSheetCaches, loadCellRange, visibleRange]
+  );
+
+  const applyRedoSort = useCallback(
+    async (entry: SortHistoryEntry) => {
+      await SpreadsheetAPI.reorderRows(spreadsheetId, sheetId, { order: entry.new_order });
+      resetSheetCaches();
+      await loadCellRange(visibleRange.startRow, visibleRange.endRow, visibleRange.startCol, visibleRange.endCol, true);
+    },
+    [spreadsheetId, sheetId, resetSheetCaches, loadCellRange, visibleRange]
   );
 
   const recordFormulaCommit = useCallback(
@@ -2521,6 +2598,10 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       setRedoStack((prev) => [...prev, { type: 'structure', entry: { type: last.op.type, count: last.op.count, position: last.op.position } }]);
       await performUndoStructure(last.op);
       toast.success('Undo complete');
+    } else if (last.type === 'sort') {
+      setRedoStack((prev) => [...prev, last]);
+      await applyUndoSort(last.entry);
+      toast.success('Undo complete');
     }
   }, [
     undoStack,
@@ -2532,6 +2613,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     applyUndoColor,
     applyUndoFormat,
     performUndoStructure,
+    applyUndoSort,
   ]);
 
   const applyRedoCell = useCallback((entry: HistoryEntry) => {
@@ -2699,8 +2781,19 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         toast.error('Failed to redo');
         setRedoStack((prev) => [...prev, last]);
       }
+    } else if (last.type === 'sort') {
+      setUndoStack((prev) => [...prev, last]);
+      try {
+        await applyRedoSort(last.entry);
+        toast.success('Redo complete');
+      } catch (error: any) {
+        console.error('Failed to redo sort:', error);
+        toast.error('Failed to redo');
+        setUndoStack((prev) => prev.slice(0, -1));
+        setRedoStack((prev) => [...prev, last]);
+      }
     }
-  }, [redoStack, handleInsertRow, handleInsertColumn, handleDeleteRow, handleDeleteColumn, applyRedoCell, applyRedoColor, applyRedoFormat]);
+  }, [redoStack, handleInsertRow, handleInsertColumn, handleDeleteRow, handleDeleteColumn, applyRedoCell, applyRedoColor, applyRedoFormat, applyRedoSort]);
 
   const canRedo = redoStack.length > 0;
 
@@ -4270,6 +4363,24 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     };
   }, [headerMenu]);
 
+  useEffect(() => {
+    if (!sortMenu) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('[data-sort-menu]') || target.closest('[data-col-sort-trigger]')) return;
+      setSortMenu(null);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSortMenu(null);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [sortMenu]);
+
   const selectedCellKey = activeCell ? getCellKey(activeCell.row, activeCell.col) : null;
   const editingCellCoords = editingCell ? parseCellKey(editingCell) : null;
   const selectionRange = useMemo(() => computeSelectionRange(), [computeSelectionRange]);
@@ -5297,6 +5408,36 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           document.body
         )}
 
+      {sortMenu &&
+        createPortal(
+          <div
+            className="fixed z-[1000] min-w-[160px] rounded-md border border-gray-200 bg-white shadow-lg py-1"
+            style={{ top: sortMenu.y, left: sortMenu.x }}
+            data-sort-menu
+            role="menu"
+          >
+            <button
+              type="button"
+              onClick={() => void handleColumnSort(sortMenu.colIndex, 'asc')}
+              disabled={isSorting}
+              className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+              role="menuitem"
+            >
+              Sort A → Z
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleColumnSort(sortMenu.colIndex, 'desc')}
+              disabled={isSorting}
+              className="w-full px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+              role="menuitem"
+            >
+              Sort Z → A
+            </button>
+          </div>,
+          document.body
+        )}
+
       <div className="flex items-center gap-2 px-2 py-2 border-b border-gray-200 bg-white">
         <span className="text-xs font-semibold text-gray-500">fx</span>
         <input
@@ -5442,7 +5583,19 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                     openHeaderMenu('col', colIndex, e.clientX, e.clientY);
                   }}
                 >
-                  {columnIndexToLabel(colIndex)}
+                  <div className="flex items-center justify-center gap-0.5">
+                    <span>{columnIndexToLabel(colIndex)}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => openSortMenu(colIndex, e)}
+                      className="p-0.5 rounded hover:bg-gray-300/80 text-gray-500 hover:text-gray-700"
+                      aria-label={`Sort column ${columnIndexToLabel(colIndex)}`}
+                      data-testid={`col-sort-${colIndex}`}
+                      data-col-sort-trigger
+                    >
+                      <ChevronDown className="h-3 w-3" />
+                    </button>
+                  </div>
                   <div
                     data-testid={`col-resize-handle-${colIndex}`}
                     className="absolute top-0"

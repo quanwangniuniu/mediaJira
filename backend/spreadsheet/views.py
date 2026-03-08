@@ -33,6 +33,7 @@ from .serializers import (
     CellRangeReadSerializer, CellRangeResponseSerializer, CellSerializer,
     SheetInsertSerializer, SheetDeleteSerializer,
     CellBatchUpdateSerializer, CellBatchUpdateResponseSerializer,
+    SheetSortSerializer, SheetReorderSerializer,
     WorkflowPatternCreateSerializer, WorkflowPatternListSerializer, WorkflowPatternDetailSerializer,
     PatternApplySerializer, PatternJobStatusSerializer,
     SpreadsheetHighlightSerializer, SpreadsheetHighlightBatchSerializer,
@@ -435,6 +436,50 @@ class SheetResizeView(APIView):
         
         response_serializer = SheetResizeResponseSerializer(result)
         return Response(response_serializer.data)
+
+
+class SheetSortView(APIView):
+    """Sort rows by column (updates SheetRow.position only, no cell rewrite)"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+
+        serializer = SheetSortSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            result = SheetService.sort_rows(
+                sheet=sheet,
+                column_position=serializer.validated_data['column_position'],
+                direction=serializer.validated_data['direction'],
+                has_header=serializer.validated_data['has_header'],
+                previous_sort_columns=serializer.validated_data.get('previous_sort_columns') or [],
+            )
+        except DjangoValidationError as e:
+            raise ValidationError({'error': str(e)})
+
+        return Response(result)
+
+
+class SheetReorderView(APIView):
+    """Reorder rows by position mapping (for undo/redo)"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+
+        serializer = SheetReorderSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            SheetService.reorder_rows(sheet=sheet, order=serializer.validated_data['order'])
+        except DjangoValidationError as e:
+            raise ValidationError({'error': str(e)})
+
+        return Response({'status': 'ok'})
 
 
 class SheetRowListView(APIView):

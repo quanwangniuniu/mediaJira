@@ -350,6 +350,29 @@ class CellBatchUpdateResponseSerializer(serializers.Serializer):
     cells = CellSerializer(many=True, required=False)
 
 
+class SheetSortSerializer(serializers.Serializer):
+    """Serializer for sheet sort request"""
+    column_position = serializers.IntegerField(min_value=0)
+    direction = serializers.ChoiceField(choices=['asc', 'desc'])
+    has_header = serializers.BooleanField(default=True)
+    previous_sort_columns = serializers.ListField(
+        child=serializers.IntegerField(min_value=0),
+        required=False,
+        default=list
+    )
+
+
+class SheetReorderSerializer(serializers.Serializer):
+    """Serializer for row reorder (undo/redo)"""
+    order = serializers.ListField(min_length=1)
+
+    def validate_order(self, value):
+        for item in value:
+            if not isinstance(item, dict) or 'row_id' not in item or 'position' not in item:
+                raise serializers.ValidationError("Each item must have row_id and position")
+        return value
+
+
 class WorkflowPatternStepSerializer(serializers.ModelSerializer):
     class Meta:
         model = WorkflowPatternStep

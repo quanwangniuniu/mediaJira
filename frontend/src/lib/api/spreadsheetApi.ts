@@ -122,6 +122,48 @@ export const SpreadsheetAPI = {
     return response.data;
   },
 
+  // Sort rows by column (updates SheetRow.position only, no cell rewrite)
+  sortSheet: async (
+    spreadsheetId: number,
+    sheetId: number,
+    params: {
+      column_position: number;
+      direction: 'asc' | 'desc';
+      has_header: boolean;
+      previous_sort_columns?: number[];
+    }
+  ): Promise<{
+    previous_order: Array<{ row_id: number; position: number }>;
+    new_order: Array<{ row_id: number; position: number }>;
+  }> => {
+    const response = await api.post<{
+      previous_order: Array<{ row_id: number; position: number }>;
+      new_order: Array<{ row_id: number; position: number }>;
+    }>(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/sort/`,
+      {
+        column_position: params.column_position,
+        direction: params.direction,
+        has_header: params.has_header,
+        previous_sort_columns: params.previous_sort_columns ?? [],
+      }
+    );
+    return response.data;
+  },
+
+  // Reorder rows by position (for undo/redo)
+  reorderRows: async (
+    spreadsheetId: number,
+    sheetId: number,
+    params: { order: Array<{ row_id: number; position: number }> }
+  ): Promise<{ status: string }> => {
+    const response = await api.post<{ status: string }>(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/reorder-rows/`,
+      { order: params.order }
+    );
+    return response.data;
+  },
+
   // Delete a sheet (soft delete) via project-scoped endpoint
   deleteSheet: async (projectId: number, spreadsheetId: number, sheetId: number): Promise<void> => {
     await api.delete(

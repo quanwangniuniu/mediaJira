@@ -15,7 +15,9 @@ urlpatterns = [
     path('spreadsheets/<int:spreadsheet_id>/sheets/', views.SheetListView.as_view(), name='sheet-list'),
     path('spreadsheets/<int:spreadsheet_id>/sheets/<int:id>/', views.SheetDetailView.as_view(), name='sheet-detail'),
     path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/resize/', views.SheetResizeView.as_view(), name='sheet-resize'),
-    
+    path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/sort/', views.SheetSortView.as_view(), name='sheet-sort'),
+    path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/reorder-rows/', views.SheetReorderView.as_view(), name='sheet-reorder-rows'),
+
     # Rows and Columns (read-only)
     path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/rows/', views.SheetRowListView.as_view(), name='sheet-row-list'),
     path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/columns/', views.SheetColumnListView.as_view(), name='sheet-column-list'),

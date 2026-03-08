@@ -648,6 +648,141 @@ class SheetService:
         }
 
     @staticmethod
+    def _cell_sort_tuple(cell, ascending: bool) -> Tuple[int, float, str]:
+        """Return (type_order, num_val, str_val) for use in sort key. Empty sorts last."""
+        empty = cell is None or (
+            getattr(cell, 'computed_number', None) is None
+            and not ((getattr(cell, 'computed_string', None) or '').strip())
+            and not ((getattr(cell, 'raw_input', None) or '').strip())
+        )
+        if empty:
+            return (2, 0.0, '')
+        num = getattr(cell, 'computed_number', None)
+        try:
+            n = float(num) if num is not None else None
+        except (TypeError, InvalidOperation, ValueError):
+            n = None
+        s = (getattr(cell, 'computed_string', None) or '') or (str(num) if num is not None else '') or (getattr(cell, 'raw_input', None) or '')
+        if n is not None and not (isinstance(n, float) and (n != n)):
+            return (0, n if ascending else -n, '')
+        return (1, 0.0, s or '')
+
+    @staticmethod
+    @transaction.atomic
+    def sort_rows(
+        sheet: Sheet,
+        column_position: int,
+        direction: str,
+        has_header: bool = True,
+        previous_sort_columns: Optional[List[int]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Sort rows by updating SheetRow.position. Does NOT rewrite cells.
+        Header row (position 0) is kept fixed when has_header=True.
+        """
+        direction = (direction or 'asc').lower()
+        if direction not in ('asc', 'desc'):
+            raise ValidationError("direction must be 'asc' or 'desc'")
+        ascending = direction == 'asc'
+
+        rows = list(
+            SheetRow.objects.filter(sheet=sheet, is_deleted=False)
+            .order_by('position')
+            .select_related('sheet')
+        )
+        if not rows:
+            return {'previous_order': [], 'new_order': []}
+
+        if has_header:
+            header_row = rows[0] if rows[0].position == 0 else None
+            data_rows = [r for r in rows if r.position > 0]
+        else:
+            header_row = None
+            data_rows = rows
+
+        if not data_rows:
+            return {'previous_order': [{'row_id': r.id, 'position': r.position} for r in rows], 'new_order': [{'row_id': r.id, 'position': r.position} for r in rows]}
+
+        prev_cols = previous_sort_columns or []
+        tie_cols = [column_position] + [c for c in prev_cols if c != column_position]
+        used_cols = set(tie_cols)
+        max_col = max(
+            SheetColumn.objects.filter(sheet=sheet, is_deleted=False).values_list('position', flat=True),
+            default=0
+        )
+        for c in range(max_col + 1):
+            if c not in used_cols:
+                tie_cols.append(c)
+
+        data_row_ids = [r.id for r in data_rows]
+        sort_col_positions = list(dict.fromkeys(tie_cols))
+
+        cells = list(
+            Cell.objects.filter(
+                sheet=sheet,
+                row_id__in=data_row_ids,
+                column__position__in=sort_col_positions,
+                is_deleted=False
+            ).select_related('row', 'column')
+        )
+
+        row_cells: Dict[int, Dict[int, Cell]] = {}
+        for r_id in data_row_ids:
+            row_cells[r_id] = {}
+        for c in cells:
+            if c.column and c.row_id in row_cells:
+                row_cells[c.row_id][c.column.position] = c
+
+        def key_fn(r: SheetRow) -> Tuple:
+            return tuple(
+                SheetService._cell_sort_tuple(row_cells.get(r.id, {}).get(col), ascending)
+                for col in tie_cols
+            ) + (r.id,)
+
+        sorted_rows = sorted(data_rows, key=key_fn)
+
+        previous_order = [{'row_id': r.id, 'position': r.position} for r in rows]
+        new_positions = []
+        pos = 0
+        if header_row:
+            new_positions.append((header_row.id, 0))
+            pos = 1
+        for r in sorted_rows:
+            new_positions.append((r.id, pos))
+            pos += 1
+
+        offset = 1_000_000
+        for row_id, new_pos in new_positions:
+            SheetRow.objects.filter(sheet=sheet, id=row_id, is_deleted=False).update(position=F('position') + offset)
+        for row_id, new_pos in new_positions:
+            SheetRow.objects.filter(sheet=sheet, id=row_id, is_deleted=False).update(position=new_pos)
+
+        new_order = [{'row_id': rid, 'position': p} for rid, p in new_positions]
+
+        return {'previous_order': previous_order, 'new_order': new_order}
+
+    @staticmethod
+    @transaction.atomic
+    def reorder_rows(sheet: Sheet, order: List[Dict[str, int]]) -> None:
+        """
+        Update SheetRow.position according to the given mapping. Used for undo/redo.
+        order: [{"row_id": int, "position": int}, ...]
+        """
+        if not order:
+            return
+        offset = 1_000_000
+        for item in order:
+            rid = item.get('row_id')
+            pos = item.get('position')
+            if rid is not None and pos is not None:
+                SheetRow.objects.filter(sheet=sheet, id=rid, is_deleted=False).update(position=F('position') + offset)
+        for item in order:
+            rid = item.get('row_id')
+            pos = item.get('position')
+            if rid is not None and pos is not None:
+                SheetRow.objects.filter(sheet=sheet, id=rid, is_deleted=False).update(position=pos)
+
+    @staticmethod
     @transaction.atomic
     def revert_structure_operation(
         sheet: Sheet,
