@@ -37,6 +37,8 @@ class TaskSerializer(serializers.ModelSerializer):
     parent_relationship = serializers.SerializerMethodField()
     order_in_project = serializers.IntegerField(required=False)
     approval_chain_progress = serializers.SerializerMethodField()
+    can_lock = serializers.SerializerMethodField()
+    approvals_summary = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -47,8 +49,13 @@ class TaskSerializer(serializers.ModelSerializer):
             'content_type', 'object_id', 'start_date', 'due_date',
             'is_subtask', 'parent_relationship', 'order_in_project',
             'anomaly_status', 'approval_chain_progress',
+            'can_lock', 'approvals_summary',
         ]
-        read_only_fields = ['id', 'status', 'owner', 'content_type', 'object_id', 'is_subtask', 'parent_relationship', 'anomaly_status', 'approval_chain_progress']
+        read_only_fields = [
+            'id', 'status', 'owner', 'content_type', 'object_id',
+            'is_subtask', 'parent_relationship', 'anomaly_status',
+            'approval_chain_progress', 'can_lock', 'approvals_summary',
+        ]
 
     def get_approval_chain_progress(self, obj):
         """
@@ -135,7 +142,41 @@ class TaskSerializer(serializers.ModelSerializer):
             'next_approver': UserSummarySerializer(next_step.approver).data if next_step else None,
             'steps': steps,
         }
-    
+
+    def get_can_lock(self, obj):
+        """
+        Returns True if the task is allowed to be locked right now.
+
+        Rules:
+        - Task must be in APPROVED status.
+        - If an approval chain is assigned, the number of approved records
+          must meet the chain's effective_required_approvals threshold.
+        - Legacy tasks (no chain) can always be locked once APPROVED.
+        """
+        if obj.status != 'APPROVED':
+            return False
+        if not obj.approval_chain:
+            return True  # Legacy mode: no minimum required
+        approved_count = obj.approval_records.filter(is_approved=True).count()
+        return approved_count >= obj.approval_chain.effective_required_approvals
+
+    def get_approvals_summary(self, obj):
+        """
+        Returns a human-readable approval progress summary for chain-mode tasks.
+
+        Example: { "approved_count": 1, "required_count": 2, "display": "1 of 2 approvals" }
+        Returns None for legacy tasks (no chain assigned).
+        """
+        if not obj.approval_chain:
+            return None
+        approved_count = obj.approval_records.filter(is_approved=True).count()
+        required = obj.approval_chain.effective_required_approvals
+        return {
+            'approved_count': approved_count,
+            'required_count': required,
+            'display': f'{approved_count} of {required} approvals',
+        }
+
     def create(self, validated_data):
         """Create a new task"""
         user = self.context['request'].user
@@ -271,10 +312,12 @@ class TaskSerializer(serializers.ModelSerializer):
         return attrs
     
     def validate_type(self, value):
-        """Validate task type"""
-        valid_types = ['budget', 'asset', 'retrospective', 'report', 'scaling', 'alert', 'experiment', 'optimization', 'communication', 'platform_policy_update']
+        """Validate task type against Task model choices."""
+        valid_types = [choice[0] for choice in Task._meta.get_field('type').choices]
         if value not in valid_types:
-            raise serializers.ValidationError(f"Invalid task type. Must be one of: {valid_types}")
+            raise serializers.ValidationError(
+                f"Invalid task type. Must be one of: {valid_types}"
+            )
         return value
     
     content_type = serializers.SerializerMethodField()
@@ -331,59 +374,46 @@ class TaskLinkSerializer(serializers.Serializer):
     """Serializer for linking task to an object"""
     content_type = serializers.CharField()
     object_id = serializers.CharField()
-    
-    def validate_content_type(self, value):
-        """Validate content type"""
-        valid_content_types = [
-            'budgetrequest',
-            'asset',
-            'retrospectivetask',
-            'scalingplan', 'alerttask', 'experiment',
-            'optimization',
-            'clientcommunication',
-            'reporttask',
-            'decision',
-            'platformpolicyupdate',
-        ]
-        if value not in valid_content_types:
-            raise serializers.ValidationError(f"Invalid content type. Must be one of: {valid_content_types}")
-        return value
-    
+
     def validate(self, data):
-        """Validate the link data"""
-        content_type = data['content_type']
-        object_id = data['object_id']
-        
+        """Validate the link data: normalize content_type, resolve ContentType once, then fetch object."""
+        content_type = (data['content_type'] or '').strip().lower()
+        object_id = (data['object_id'] or '').strip()
+        data['content_type'] = content_type
+        data['object_id'] = object_id
+
         try:
-            # Get the content type
             ct = ContentType.objects.get(model=content_type)
-            
-            # Try to get the object
-            model_class = ct.model_class()
-            if model_class is None:
-                raise serializers.ValidationError(f"Content type '{content_type}' not found")
-            
-            # For UUID fields (like RetrospectiveTask), convert string to UUID
-            if content_type == 'retrospectivetask':
-                import uuid
-                try:
-                    object_uuid = uuid.UUID(object_id)
-                    obj = model_class.objects.get(id=object_uuid)
-                except (ValueError, model_class.DoesNotExist):
-                    raise serializers.ValidationError(f"Object with id '{object_id}' not found")
-            else:
-                # For integer fields
-                try:
-                    obj = model_class.objects.get(id=object_id)
-                except (ValueError, model_class.DoesNotExist):
-                    raise serializers.ValidationError(f"Object with id '{object_id}' not found")
-            
-            # Store the object in validated_data for later use
-            data['linked_object'] = obj
-            
         except ContentType.DoesNotExist:
-            raise serializers.ValidationError(f"Content type '{content_type}' not found")
-        
+            raise serializers.ValidationError({
+                'content_type': f"Content type '{content_type}' not found."
+            })
+
+        model_class = ct.model_class()
+        if model_class is None:
+            raise serializers.ValidationError({
+                'content_type': f"Content type '{content_type}' has no model class."
+            })
+
+        # For UUID fields (e.g. RetrospectiveTask), convert string to UUID
+        if content_type == 'retrospectivetask':
+            import uuid
+            try:
+                object_uuid = uuid.UUID(object_id)
+                obj = model_class.objects.get(id=object_uuid)
+            except (ValueError, model_class.DoesNotExist):
+                raise serializers.ValidationError({
+                    'object_id': f"Object with id '{object_id}' not found."
+                })
+        else:
+            try:
+                obj = model_class.objects.get(id=object_id)
+            except (ValueError, model_class.DoesNotExist):
+                raise serializers.ValidationError({
+                    'object_id': f"Object with id '{object_id}' not found."
+                })
+
+        data['linked_object'] = obj
         return data
 
 
@@ -397,6 +427,22 @@ class TaskApprovalSerializer(serializers.Serializer):
         if value not in ['approve', 'reject']:
             raise serializers.ValidationError("Action must be either 'approve' or 'reject'")
         return value
+
+    def validate(self, attrs):
+        """Require a non-empty comment when rejecting a task."""
+        action = attrs.get('action')
+        comment = attrs.get('comment', '')
+
+        if isinstance(comment, str):
+            comment = comment.strip()
+            attrs['comment'] = comment
+
+        if action == 'reject' and not comment:
+            raise serializers.ValidationError({
+                'comment': 'Comment is required when rejecting a task'
+            })
+
+        return attrs
 
 
 class TaskForwardSerializer(serializers.Serializer):

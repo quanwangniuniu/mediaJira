@@ -43,6 +43,10 @@ import JiraBoardView from "@/components/jira-ticket/JiraBoardView";
 import JiraSummaryView from "@/components/jira-ticket/JiraSummaryView";
 import JiraTasksView from "@/components/jira-ticket/JiraTasksView";
 import TimelineViewComponent from "@/components/tasks/timeline/TimelineView";
+import {
+  TASK_TYPE_CONFIG_STATIC,
+  defaultReportContext,
+} from "@/lib/taskTypeConfigRegistry";
 
 const BOARD_TYPE_ORDER = [
   "task",
@@ -258,11 +262,6 @@ function TasksPageContent() {
   });
   const [policyData, setPolicyData] = useState({});
 
-  const defaultReportContext = {
-    reporting_period: null,
-    situation: "",
-    what_changed: "",
-  };
   const [reportData, setReportData] = useState({
     audience_type: "client",
     audience_details: "",
@@ -316,11 +315,9 @@ function TasksPageContent() {
     const byId = new Map(
       filteredProjects
         .filter((project) => project?.id)
-        .map((project) => [project.id, project])
+        .map((project) => [project.id, project]),
     );
-    return pinnedProjectIds
-      .map((id) => byId.get(id))
-      .filter(Boolean);
+    return pinnedProjectIds.map((id) => byId.get(id)).filter(Boolean);
   }, [filteredProjects, pinnedProjectIds]);
 
   const recentProjects = useMemo(() => {
@@ -328,7 +325,7 @@ function TasksPageContent() {
     const byId = new Map(
       filteredProjects
         .filter((project) => project?.id)
-        .map((project) => [project.id, project])
+        .map((project) => [project.id, project]),
     );
     return recentProjectIds
       .map((id) => byId.get(id))
@@ -339,8 +336,7 @@ function TasksPageContent() {
     const recentSet = new Set(recentProjectIds);
     const pinnedSet = new Set(pinnedProjectIds);
     return filteredProjects.filter(
-      (project) =>
-        !recentSet.has(project?.id) && !pinnedSet.has(project?.id)
+      (project) => !recentSet.has(project?.id) && !pinnedSet.has(project?.id),
     );
   }, [filteredProjects, recentProjectIds, pinnedProjectIds]);
 
@@ -523,292 +519,6 @@ function TasksPageContent() {
     }));
   }, [projectId]);
 
-  // Task type configuration - defines how each task type should be handled
-  const taskTypeConfig = {
-    budget: {
-      contentType: "budgetrequest",
-      formData: budgetData,
-      setFormData: setBudgetData,
-      validation: null, // Will be set below
-      api: BudgetAPI.createBudgetRequest,
-      formComponent: NewBudgetRequestForm,
-      requiredFields: ["amount", "currency", "ad_channel", "budget_pool"],
-      getPayload: (createdTask) => {
-        // Ensure current_approver is provided
-        if (!taskData.current_approver_id) {
-          throw new Error("Approver is required for budget request");
-        }
-        // Ensure budget_pool is provided
-        if (!budgetData.budget_pool) {
-          throw new Error("Budget pool is required for budget request");
-        }
-        return {
-          task: createdTask.id,
-          amount: budgetData.amount,
-          currency: budgetData.currency,
-          ad_channel: budgetData.ad_channel,
-          budget_pool_id: budgetData.budget_pool,
-          notes: budgetData.notes || "",
-          current_approver: taskData.current_approver_id,
-        };
-      },
-    },
-    asset: {
-      contentType: "asset",
-      formData: assetData,
-      setFormData: setAssetData,
-      validation: null, // Will be set below
-      api: AssetAPI.createAsset,
-      formComponent: NewAssetForm,
-      requiredFields: ["tags"], // Tags are required
-      getPayload: (createdTask) => {
-        const tagsArray = (assetData.tags || "")
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean);
-        const payload = {
-          task: createdTask.id,
-          tags: tagsArray,
-        };
-        if (assetData.team) {
-          const teamNum = Number(assetData.team);
-          if (!Number.isNaN(teamNum)) {
-            payload.team = teamNum;
-          }
-        }
-        return payload;
-      },
-    },
-    retrospective: {
-      contentType: "retrospectivetask",
-      formData: retrospectiveData,
-      setFormData: setRetrospectiveData,
-      validation: null, // Will be set below
-      api: RetrospectiveAPI.createRetrospective,
-      formComponent: NewRetrospectiveForm,
-      requiredFields: ["campaign"],
-      getPayload: (createdTask) => ({
-        campaign: retrospectiveData.campaign || taskData.project_id?.toString(),
-        scheduled_at:
-          retrospectiveData.scheduled_at || new Date().toISOString(),
-        status: retrospectiveData.status || "scheduled",
-      }),
-    },
-    scaling: {
-      contentType: "scalingplan",
-      formData: scalingPlanData,
-      setFormData: setScalingPlanData,
-      validation: null,
-      api: OptimizationScalingAPI.createScalingPlan,
-      formComponent: ScalingPlanForm,
-      requiredFields: ["strategy"],
-      getPayload: (createdTask) => {
-        if (!createdTask?.id) {
-          throw new Error("Task ID is required to create scaling plan");
-        }
-        return {
-          task: createdTask.id,
-          strategy: scalingPlanData.strategy || "horizontal",
-          scaling_target: scalingPlanData.scaling_target || "",
-          risk_considerations: scalingPlanData.risk_considerations || "",
-          max_scaling_limit: scalingPlanData.max_scaling_limit || "",
-          stop_conditions: scalingPlanData.stop_conditions || "",
-          expected_outcomes: scalingPlanData.expected_outcomes || "",
-          affected_entities: scalingPlanData.affected_entities || null,
-        };
-      },
-    },
-    alert: {
-      contentType: "alerttask",
-      formData: alertData,
-      setFormData: setAlertData,
-      validation: null,
-      api: AlertingAPI.createAlertTask,
-      formComponent: AlertTaskForm,
-      requiredFields: ["alert_type", "severity"],
-      getPayload: (createdTask) => {
-        if (!createdTask?.id) {
-          throw new Error("Task ID is required to create alert details");
-        }
-        const rawMetricValue = alertData.change_value
-          ? Number(alertData.change_value)
-          : null;
-        const rawCurrentValue = alertData.current_value
-          ? Number(alertData.current_value)
-          : null;
-        const rawPreviousValue = alertData.previous_value
-          ? Number(alertData.previous_value)
-          : null;
-        const metricValue = Number.isNaN(rawMetricValue) ? null : rawMetricValue;
-        const currentValue = Number.isNaN(rawCurrentValue)
-          ? null
-          : rawCurrentValue;
-        const previousValue = Number.isNaN(rawPreviousValue)
-          ? null
-          : rawPreviousValue;
-        const investigationNotes =
-          alertData.investigation_notes ||
-          [
-            alertData.investigation_assumption
-              ? `Assumption: ${alertData.investigation_assumption}`
-              : null,
-          ]
-            .filter(Boolean)
-            .join(" | ");
-        const resolutionSteps =
-          alertData.resolution_steps ||
-          [
-            ...(alertData.resolution_actions || []),
-            alertData.resolution_notes || null,
-          ]
-            .filter(Boolean)
-            .join(" | ");
-        return {
-          task: createdTask.id,
-          alert_type: alertData.alert_type || "spend_spike",
-          severity: alertData.severity || "medium",
-          status: alertData.status || "open",
-          affected_entities: alertData.affected_entities || [],
-          initial_metrics: {
-            metric_key: alertData.metric_key || "spend",
-            change_type: alertData.change_type || "percent",
-            change_value: metricValue,
-            change_window: alertData.change_window || "daily",
-            current_value: currentValue,
-            previous_value: previousValue,
-          },
-          assigned_to: alertData.assigned_to
-            ? Number(alertData.assigned_to)
-            : null,
-          acknowledged_by: alertData.acknowledged_by
-            ? Number(alertData.acknowledged_by)
-            : null,
-          investigation_notes: investigationNotes,
-          resolution_steps: resolutionSteps,
-          related_references: alertData.related_references || [],
-          postmortem_root_cause: alertData.postmortem_root_cause || "",
-          postmortem_prevention: alertData.postmortem_prevention || "",
-        };
-      },
-    },
-    communication: {
-      contentType: "clientcommunication",
-      formData: communicationData,
-      setFormData: setCommunicationData,
-      validation: null, // will be set below
-      api: ClientCommunicationAPI.create,
-      formComponent: NewClientCommunicationForm,
-      requiredFields: ["communication_type", "required_actions", "impacted_areas"],
-      getPayload: (createdTask) => {
-        if (!createdTask?.id) {
-          throw new Error("Task ID is required to create client communication");
-        }
-        // Validate impacted_areas is not empty
-        if (!communicationData.impacted_areas || communicationData.impacted_areas.length === 0) {
-          throw new Error("At least one impacted area is required");
-        }
-        // Validate required fields
-        if (!communicationData.communication_type) {
-          throw new Error("Communication type is required");
-        }
-        if (!communicationData.required_actions || communicationData.required_actions.trim() === "") {
-          throw new Error("Required actions is required");
-        }
-        return {
-          task: createdTask.id,
-          communication_type: communicationData.communication_type,
-          stakeholders: communicationData.stakeholders || "",
-          impacted_areas: communicationData.impacted_areas,
-          required_actions: communicationData.required_actions,
-          client_deadline: communicationData.client_deadline && communicationData.client_deadline.trim() !== "" 
-            ? communicationData.client_deadline 
-            : null,
-          notes: communicationData.notes || "",
-        };
-      },
-    },
-    experiment: {
-      contentType: "experiment",
-      formData: experimentData,
-      setFormData: setExperimentData,
-      validation: null,
-      api: ExperimentAPI.createExperiment,
-      formComponent: ExperimentForm,
-      requiredFields: ["hypothesis"],
-      getPayload: (createdTask) => ({
-        task: createdTask.id,
-        name: taskData.summary || "Experiment task",
-        hypothesis: experimentData.hypothesis || "",
-        expected_outcome: experimentData.expected_outcome,
-        description: experimentData.description,
-        control_group: experimentData.control_group,
-        variant_group: experimentData.variant_group,
-        success_metric: experimentData.success_metric,
-        constraints: experimentData.constraints,
-        status: experimentData.status,
-      }),
-    },
-    optimization: {
-      contentType: "optimization",
-      formData: optimizationData,
-      setFormData: setOptimizationData,
-      validation: null,
-      api: OptimizationAPI.createOptimization,
-      formComponent: OptimizationForm,
-      requiredFields: [],
-      getPayload: (createdTask) => ({
-        task: createdTask.id,
-        ...optimizationData,
-      }),
-    },
-    report: {
-      contentType: "reporttask",
-      formData: reportData,
-      setFormData: setReportData,
-      validation: null,
-      api: ReportAPI.createReport,
-      formComponent: ReportForm,
-      requiredFields: ["outcome_summary"],
-      getPayload: (createdTask) => ({
-        task: createdTask.id,
-        audience_type: reportData.audience_type,
-        audience_details: reportData.audience_details || "",
-        context: reportData.context || defaultReportContext,
-        outcome_summary: reportData.outcome_summary || "",
-        narrative_explanation: reportData.narrative_explanation || "",
-        key_actions: reportData.key_actions || [],
-      }),
-    },
-    platform_policy_update: {
-      contentType: "platformpolicyupdate",
-      formData: policyData,
-      setFormData: setPolicyData,
-      validation: null,
-      api: PolicyAPI.create,
-      formComponent: NewPlatformPolicyUpdateForm,
-      requiredFields: ["platform", "policy_change_type", "policy_description", "immediate_actions_required"],
-      getPayload: (createdTask) => {
-        const parseCommaSeparated = (val) => (val || "").split(",").map((s) => s.trim()).filter(Boolean);
-        return {
-          task_id: createdTask.id,
-          platform: policyData.platform,
-          policy_change_type: policyData.policy_change_type,
-          policy_description: policyData.policy_description,
-          policy_reference_url: policyData.policy_reference_url || undefined,
-          effective_date: policyData.effective_date || undefined,
-          affected_campaigns: parseCommaSeparated(policyData.affected_campaigns),
-          affected_ad_sets: parseCommaSeparated(policyData.affected_ad_sets),
-          affected_assets: parseCommaSeparated(policyData.affected_assets),
-          performance_impact: policyData.performance_impact || "",
-          budget_impact: policyData.budget_impact || "",
-          compliance_risk: policyData.compliance_risk || "",
-          immediate_actions_required: policyData.immediate_actions_required,
-          action_deadline: policyData.action_deadline || undefined,
-        };
-      },
-    },
-  };
-
   // Form validation rules
   const taskValidationRules = {
     project_id: (value) => (!value || value == 0 ? "Project is required" : ""),
@@ -872,6 +582,26 @@ function TasksPageContent() {
         return "Campaign (Project) is required";
       return "";
     },
+    decision: (value) => {
+      if (!value || value.toString().trim() === "")
+        return "Decision is required";
+      return "";
+    },
+    confidence_level: (value) => {
+      if (value === undefined || value === null || value === "") {
+        return "Confidence level is required";
+      }
+      const numericValue = Number(value);
+      if (![1, 2, 3, 4, 5].includes(numericValue)) {
+        return "Confidence level must be between 1 and 5";
+      }
+      return "";
+    },
+    primary_assumption: (value) => {
+      if (!value || value.toString().trim() === "")
+        return "Primary assumption is required";
+      return "";
+    },
   };
 
   const alertValidationRules = {
@@ -910,10 +640,16 @@ function TasksPageContent() {
   };
 
   const policyValidationRules = {
-    platform: (value) => (!value || value.trim() === "" ? "Platform is required" : ""),
-    policy_change_type: (value) => (!value || value.trim() === "" ? "Policy change type is required" : ""),
-    policy_description: (value) => (!value || value.trim() === "" ? "Policy description is required" : ""),
-    immediate_actions_required: (value) => (!value || value.trim() === "" ? "Immediate actions required is required" : ""),
+    platform: (value) =>
+      !value || value.trim() === "" ? "Platform is required" : "",
+    policy_change_type: (value) =>
+      !value || value.trim() === "" ? "Policy change type is required" : "",
+    policy_description: (value) =>
+      !value || value.trim() === "" ? "Policy description is required" : "",
+    immediate_actions_required: (value) =>
+      !value || value.trim() === ""
+        ? "Immediate actions required is required"
+        : "",
   };
 
   // Initialize validation hooks
@@ -922,23 +658,90 @@ function TasksPageContent() {
   const budgetPoolValidation = useFormValidation(budgetPoolValidationRules);
   const assetValidation = useFormValidation(assetValidationRules);
   const retrospectiveValidation = useFormValidation(
-    retrospectiveValidationRules
+    retrospectiveValidationRules,
   );
   const alertValidation = useFormValidation(alertValidationRules);
   const experimentValidation = useFormValidation(experimentValidationRules);
   const communicationValidation = useFormValidation(
-    communicationValidationRules
+    communicationValidationRules,
   );
   const policyValidation = useFormValidation(policyValidationRules);
 
-  // Assign validation hooks to config
-  taskTypeConfig.budget.validation = budgetValidation;
-  taskTypeConfig.asset.validation = assetValidation;
-  taskTypeConfig.retrospective.validation = retrospectiveValidation;
-  taskTypeConfig.alert.validation = alertValidation;
-  taskTypeConfig.experiment.validation = experimentValidation;
-  taskTypeConfig.communication.validation = communicationValidation;
-  taskTypeConfig.platform_policy_update.validation = policyValidation;
+  // Task type configuration from shared registry; pages wire in local form state and validation
+  const taskTypeConfig = useMemo(() => {
+    const formStateByType = {
+      budget: { formData: budgetData, setFormData: setBudgetData, validation: budgetValidation },
+      asset: { formData: assetData, setFormData: setAssetData, validation: assetValidation },
+      retrospective: {
+        formData: retrospectiveData,
+        setFormData: setRetrospectiveData,
+        validation: retrospectiveValidation,
+      },
+      scaling: {
+        formData: scalingPlanData,
+        setFormData: setScalingPlanData,
+        validation: null,
+      },
+      alert: { formData: alertData, setFormData: setAlertData, validation: alertValidation },
+      communication: {
+        formData: communicationData,
+        setFormData: setCommunicationData,
+        validation: communicationValidation,
+      },
+      experiment: {
+        formData: experimentData,
+        setFormData: setExperimentData,
+        validation: experimentValidation,
+      },
+      optimization: {
+        formData: optimizationData,
+        setFormData: setOptimizationData,
+        validation: null,
+      },
+      report: {
+        formData: reportData,
+        setFormData: setReportData,
+        validation: null,
+      },
+      platform_policy_update: {
+        formData: policyData,
+        setFormData: setPolicyData,
+        validation: policyValidation,
+      },
+    };
+    const config = {};
+    for (const [key, staticConfig] of Object.entries(TASK_TYPE_CONFIG_STATIC)) {
+      const { formData, setFormData, validation } = formStateByType[key] || {};
+      config[key] = {
+        ...staticConfig,
+        formData,
+        setFormData,
+        validation: validation ?? null,
+        getPayload: (createdTask) =>
+          staticConfig.getPayload(formData, taskData, createdTask),
+      };
+    }
+    return config;
+  }, [
+    budgetData,
+    assetData,
+    retrospectiveData,
+    scalingPlanData,
+    alertData,
+    communicationData,
+    experimentData,
+    optimizationData,
+    reportData,
+    policyData,
+    taskData,
+    budgetValidation,
+    assetValidation,
+    retrospectiveValidation,
+    alertValidation,
+    experimentValidation,
+    communicationValidation,
+    policyValidation,
+  ]);
 
   // Filter tasks by search query
   const filteredTasks = useMemo(() => {
@@ -953,12 +756,12 @@ function TasksPageContent() {
         task.owner?.username?.toLowerCase().includes(query) ||
         task.project?.name?.toLowerCase().includes(query) ||
         task.status?.toLowerCase().includes(query) ||
-        task.type?.toLowerCase().includes(query)
+        task.type?.toLowerCase().includes(query),
     );
   }, [parentTasksOnly, searchQuery]);
 
   const configuredBoardTypeKeys = Object.keys(taskTypeConfig).map(
-    normalizeBoardTypeKey
+    normalizeBoardTypeKey,
   );
 
   const boardTypeKeys = useMemo(() => {
@@ -977,7 +780,7 @@ function TasksPageContent() {
     });
 
     const remaining = Array.from(allKeys).sort((a, b) =>
-      formatBoardTypeLabel(a).localeCompare(formatBoardTypeLabel(b))
+      formatBoardTypeLabel(a).localeCompare(formatBoardTypeLabel(b)),
     );
 
     return [...ordered, ...remaining];
@@ -1113,7 +916,7 @@ function TasksPageContent() {
     const typeBreakdown = boardData?.types_of_work || [];
     const totalFromTypes = typeBreakdown.reduce(
       (sum, item) => sum + (item.count || 0),
-      0
+      0,
     );
     const fallbackTotal = boardData?.status_overview?.total_work_items || 0;
     return {
@@ -1138,7 +941,7 @@ function TasksPageContent() {
 
   const boardColumns = useMemo(
     () => boardTypeKeys.map((typeKey) => getBoardColumnMeta(typeKey)),
-    [boardTypeKeys]
+    [boardTypeKeys],
   );
 
   const getTicketKey = (task) => {
@@ -1176,7 +979,7 @@ function TasksPageContent() {
     const todayDay = new Date(
       today.getFullYear(),
       today.getMonth(),
-      today.getDate()
+      today.getDate(),
     );
     if (dueDay < todayDay) return "danger";
     return "warning";
@@ -1277,7 +1080,7 @@ function TasksPageContent() {
             errorData.campaign.includes("already exists"))
         ) {
           console.warn(
-            "Retrospective already exists, attempting to find existing one..."
+            "Retrospective already exists, attempting to find existing one...",
           );
 
           // Try to find existing retrospective for this campaign
@@ -1293,7 +1096,7 @@ function TasksPageContent() {
             ) {
               console.log(
                 "Found existing retrospective:",
-                retrospectivesResponse.data[0]
+                retrospectivesResponse.data[0],
               );
               return retrospectivesResponse.data[0];
             }
@@ -1323,12 +1126,11 @@ function TasksPageContent() {
   // Generic function to reset form data. initialWorkType: when opening from a board column, pre-fill Work Type.
   const resetFormData = (
     projectOverride = projectId ?? null,
-    initialWorkType = ""
+    initialWorkType = "",
   ) => {
     const defaultDates = getDefaultTaskDates();
     const workType =
-      initialWorkType &&
-      VALID_BOARD_WORK_TYPES.includes(initialWorkType)
+      initialWorkType && VALID_BOARD_WORK_TYPES.includes(initialWorkType)
         ? initialWorkType
         : "";
     setTaskData({
@@ -1418,16 +1220,18 @@ function TasksPageContent() {
   // Open create task modal with fresh form state.
   // When opening from a board column: (sectionKey) only — sectionKey is the column work type.
   // When opening from timeline/elsewhere: (projectIdOverride?) — optional project id.
-  const handleOpenCreateTaskModal = (projectIdOverrideOrSectionKey, sectionKeyArg) => {
+  const handleOpenCreateTaskModal = (
+    projectIdOverrideOrSectionKey,
+    sectionKeyArg,
+  ) => {
     const isSectionKeyOnly =
       typeof projectIdOverrideOrSectionKey === "string" &&
       projectIdOverrideOrSectionKey.length > 0;
-    const resolvedProjectId =
-      isSectionKeyOnly
-        ? projectId ?? null
-        : typeof projectIdOverrideOrSectionKey === "number"
-          ? projectIdOverrideOrSectionKey
-          : projectId ?? null;
+    const resolvedProjectId = isSectionKeyOnly
+      ? projectId ?? null
+      : typeof projectIdOverrideOrSectionKey === "number"
+      ? projectIdOverrideOrSectionKey
+      : projectId ?? null;
     const initialWorkType = isSectionKeyOnly
       ? projectIdOverrideOrSectionKey
       : sectionKeyArg ?? "";
@@ -1447,7 +1251,7 @@ function TasksPageContent() {
     console.log(
       "Submitting task creation form with data11:",
       isSubmitting,
-      taskData
+      taskData,
     );
     if (isSubmitting) return;
 
@@ -1491,11 +1295,11 @@ function TasksPageContent() {
       console.log("Creating task with payload:", taskPayload);
       console.log(
         "taskData.current_approver_id:",
-        taskData.current_approver_id
+        taskData.current_approver_id,
       );
       console.log(
         "taskData.current_approver_id type:",
-        typeof taskData.current_approver_id
+        typeof taskData.current_approver_id,
       );
       const createdTask = await createTask(taskPayload);
       console.log("Task created:", createdTask);
@@ -1505,7 +1309,7 @@ function TasksPageContent() {
 
       const createdObject = await createTaskTypeObject(
         taskData.type,
-        createdTask
+        createdTask,
       );
 
       // Step 3: Link the task to the specific type object
@@ -1523,7 +1327,7 @@ function TasksPageContent() {
           const linkResponse = await TaskAPI.linkTask(
             createdTask.id,
             config.contentType,
-            createdObject.id.toString()
+            createdObject.id.toString(),
           );
 
           console.log("Link task response:", linkResponse);
@@ -1570,7 +1374,7 @@ function TasksPageContent() {
         try {
           console.log(
             "Uploading initial version file for asset:",
-            createdObject.id
+            createdObject.id,
           );
           await AssetAPI.createAssetVersion(String(createdObject.id), {
             file: assetData.file,
@@ -1581,7 +1385,7 @@ function TasksPageContent() {
           // Don't fail the entire task creation if file upload fails
           // User can upload the file later
           toast.error(
-            "Asset created, but failed to upload initial version file. You can upload it later."
+            "Asset created, but failed to upload initial version file. You can upload it later.",
           );
         }
       }
@@ -1611,10 +1415,10 @@ function TasksPageContent() {
       if (error.response?.data) {
         // Handle validation errors - check for common fields first
         const errorData = error.response.data;
-        
+
         // Collect all error messages
         const errorMessages = [];
-        
+
         // Check for specific field errors
         const fieldMappings = {
           campaign: "Campaign",
@@ -1628,7 +1432,7 @@ function TasksPageContent() {
           communication_type: "Communication type",
           required_actions: "Required actions",
         };
-        
+
         for (const [field, label] of Object.entries(fieldMappings)) {
           if (errorData[field]) {
             const fieldError = Array.isArray(errorData[field])
@@ -1637,7 +1441,7 @@ function TasksPageContent() {
             errorMessages.push(`${label}: ${fieldError}`);
           }
         }
-        
+
         // Handle non_field_errors if present
         if (errorData.non_field_errors) {
           const nonFieldErrors = Array.isArray(errorData.non_field_errors)
@@ -1645,14 +1449,14 @@ function TasksPageContent() {
             : [errorData.non_field_errors];
           errorMessages.push(...nonFieldErrors);
         }
-        
+
         // Handle generic error/message fields
         if (errorData.error) {
           errorMessages.push(errorData.error);
         } else if (errorData.message) {
           errorMessages.push(errorData.message);
         }
-        
+
         // If no specific errors found, try to extract from object
         if (errorMessages.length === 0 && typeof errorData === "object") {
           const firstError = Object.values(errorData)[0];
@@ -1661,15 +1465,18 @@ function TasksPageContent() {
           } else if (typeof firstError === "string") {
             errorMessages.push(firstError);
           } else if (typeof firstError === "object") {
-            errorMessages.push("Validation error: " + JSON.stringify(firstError));
+            errorMessages.push(
+              "Validation error: " + JSON.stringify(firstError),
+            );
           } else {
             errorMessages.push(String(firstError) || "Validation error");
           }
         }
-        
-        errorMessage = errorMessages.length > 0 
-          ? errorMessages.join(". ") 
-          : "Validation error occurred";
+
+        errorMessage =
+          errorMessages.length > 0
+            ? errorMessages.join(". ")
+            : "Validation error occurred";
       } else if (error.message) {
         errorMessage = error.message;
       }
@@ -1851,8 +1658,9 @@ function TasksPageContent() {
                     </p>
                     <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700">
                       {`Current project: #${projectId} ${
-                        projectOptions.find((project) => project.id === projectId)
-                          ?.name || "Unknown"
+                        projectOptions.find(
+                          (project) => project.id === projectId,
+                        )?.name || "Unknown"
                       }`}
                     </div>
                   </div>
@@ -1865,7 +1673,9 @@ function TasksPageContent() {
                       Switch project
                     </button>
                     {projectOptionsError && (
-                      <p className="mt-2 text-sm text-red-600">{projectOptionsError}</p>
+                      <p className="mt-2 text-sm text-red-600">
+                        {projectOptionsError}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -1996,7 +1806,10 @@ function TasksPageContent() {
                                 tabIndex={0}
                                 aria-label="Unpin project"
                                 onKeyDown={(event) => {
-                                  if (event.key === "Enter" || event.key === " ") {
+                                  if (
+                                    event.key === "Enter" ||
+                                    event.key === " "
+                                  ) {
                                     event.preventDefault();
                                     togglePinProject(project.id);
                                   }
@@ -2080,7 +1893,10 @@ function TasksPageContent() {
                                 tabIndex={0}
                                 aria-label="Pin project"
                                 onKeyDown={(event) => {
-                                  if (event.key === "Enter" || event.key === " ") {
+                                  if (
+                                    event.key === "Enter" ||
+                                    event.key === " "
+                                  ) {
                                     event.preventDefault();
                                     togglePinProject(project.id);
                                   }
@@ -2166,7 +1982,10 @@ function TasksPageContent() {
                                 tabIndex={0}
                                 aria-label="Pin project"
                                 onKeyDown={(event) => {
-                                  if (event.key === "Enter" || event.key === " ") {
+                                  if (
+                                    event.key === "Enter" ||
+                                    event.key === " "
+                                  ) {
                                     event.preventDefault();
                                     togglePinProject(project.id);
                                   }
@@ -2204,10 +2023,10 @@ function TasksPageContent() {
                               </div>
                               <div className="text-xs text-slate-500">
                                 <span className="sm:hidden">Lead: </span>
-                          {project.owner?.name ||
-                            project.owner?.username ||
-                            project.owner?.email ||
-                            "Unassigned"}
+                                {project.owner?.name ||
+                                  project.owner?.username ||
+                                  project.owner?.email ||
+                                  "Unassigned"}
                               </div>
                               <div className="text-xs">
                                 <span className="sm:hidden">Status: </span>
@@ -2233,9 +2052,7 @@ function TasksPageContent() {
 
           {projectId && activeTab === "summary" && (
             <div className="mt-6 space-y-6">
-              {boardLoading && (
-                <TasksWorkspaceSkeleton mode="summary" />
-              )}
+              {boardLoading && <TasksWorkspaceSkeleton mode="summary" />}
 
               {!boardLoading && boardError && (
                 <div className="text-center py-8">
@@ -2566,7 +2383,7 @@ function TasksPageContent() {
                       <li key={field}>
                         {field}: {error}
                       </li>
-                    ) : null
+                    ) : null,
                 )}
               </ul>
             </div>
@@ -2613,7 +2430,7 @@ function TasksPageContent() {
                     ad_channel:
                       budgetPoolData.ad_channel ||
                       Number(
-                        form.querySelector('[name="ad_channel"]')?.value
+                        form.querySelector('[name="ad_channel"]')?.value,
                       ) ||
                       null,
                     total_amount:

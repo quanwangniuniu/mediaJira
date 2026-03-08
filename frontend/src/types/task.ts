@@ -28,7 +28,8 @@ export interface TaskData {
   owner?: UserSummary;
   owner_id?: number | null; // Write-only for updates
   project_id: number; // Required for creation
-  type: "budget" | "asset" | "retrospective" | "report" | "scaling" | "alert" | "experiment" | "optimization" | "communication" | "platform_policy_update"; // Valid task types
+  /** Task type; valid values come from GET /api/task-types/ */
+  type: string;
   summary: string;
   description?: string;
   current_approver?: UserSummary; // For display (from API response)
@@ -51,12 +52,19 @@ export interface TaskData {
   parent_relationship?: any; // Parent relationship if this is a subtask
   order_in_project?: number; // Order of task within its project
   approval_chain_progress?: ApprovalChainProgress | null;
+  can_lock?: boolean;
+  approvals_summary?: {
+    approved_count: number;
+    required_count: number;
+    display: string;
+  } | null;
 }
 
 // Type for creating a new task (current_approver_id is user ID)
 export interface CreateTaskData {
   project_id: number;
-  type: "budget" | "asset" | "retrospective" | "report" | "scaling" | "alert" | "experiment" | "optimization" | "communication" | "platform_policy_update";
+  /** Task type; valid values come from GET /api/task-types/ */
+  type: string;
   summary: string;
   description?: string;
   current_approver_id?: number; // User ID for creation
