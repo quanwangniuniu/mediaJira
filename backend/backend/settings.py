@@ -86,6 +86,7 @@ INSTALLED_APPS = [
     'policy.apps.PolicyConfig',
     'campaign.apps.CampaignConfig',
     'slack_integration.apps.SlackIntegrationConfig',
+    'agent.apps.AgentConfig',
 ]
 
 MIDDLEWARE = [
