@@ -23,6 +23,7 @@ import { ExperimentAPI } from "@/lib/api/experimentApi";
 import { OptimizationAPI } from "@/lib/api/optimizationApi";
 import { ClientCommunicationAPI } from "@/lib/api/clientCommunicationApi";
 import type { CreateTaskData } from "@/types/task";
+import type { DecisionRiskLevel } from "@/types/decision";
 import { ScalingPlanForm } from "@/components/tasks/ScalingPlanForm";
 import AlertTaskForm from "@/components/tasks/AlertTaskForm";
 import { ExperimentForm } from "@/components/tasks/ExperimentForm";
@@ -42,6 +43,8 @@ interface DecisionTaskCreateModalProps {
   decisionLink: string;
   projectId?: number | null;
   projectName?: string | null;
+  decisionRiskLevel?: DecisionRiskLevel | null;
+  decisionApprovedBy?: number | null;
   onCreated?: () => void;
 }
 
@@ -66,16 +69,20 @@ const DecisionTaskCreateModal = ({
   decisionLink,
   projectId,
   projectName,
+  decisionRiskLevel,
+  decisionApprovedBy,
   onCreated,
 }: DecisionTaskCreateModalProps) => {
   const { user } = useAuth();
   const defaultDates = useMemo(() => getDefaultTaskDates(), []);
+  const isHighRiskDecision = decisionRiskLevel === "HIGH";
   const [taskData, setTaskData] = useState<Partial<CreateTaskData>>({
     project_id: projectId ?? undefined,
     type: undefined,
     summary: "",
     description: "",
-    current_approver_id: undefined,
+    current_approver_id:
+      isHighRiskDecision && decisionApprovedBy ? decisionApprovedBy : undefined,
     ...defaultDates,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -144,8 +151,12 @@ const DecisionTaskCreateModal = ({
     setTaskData((prev) => ({
       ...prev,
       project_id: projectId ?? undefined,
+      current_approver_id:
+        isHighRiskDecision && decisionApprovedBy
+          ? decisionApprovedBy
+          : prev.current_approver_id,
     }));
-  }, [isOpen, projectId]);
+  }, [isOpen, projectId, isHighRiskDecision, decisionApprovedBy]);
 
   const taskValidationRules = {
     project_id: (value: any) =>
@@ -153,8 +164,8 @@ const DecisionTaskCreateModal = ({
     type: (value: any) => (!value ? "Task type is required" : ""),
     summary: (value: any) => (!value ? "Task summary is required" : ""),
     current_approver_id: (value: any) =>
-      taskData.type === "budget" && !value
-        ? "Approver is required for budget"
+      (taskData.type === "budget" || isHighRiskDecision) && !value
+        ? "Approver is required"
         : "",
   };
 
@@ -431,7 +442,8 @@ const DecisionTaskCreateModal = ({
       type: undefined,
       summary: "",
       description: "",
-      current_approver_id: undefined,
+      current_approver_id:
+        isHighRiskDecision && decisionApprovedBy ? decisionApprovedBy : undefined,
       start_date: nextDates.start_date,
       due_date: nextDates.due_date,
     });
@@ -490,8 +502,9 @@ const DecisionTaskCreateModal = ({
   const handleSubmitTask = async () => {
     if (isSubmitting) return;
 
+    const isApproverRequired = taskData.type === "budget" || isHighRiskDecision;
     const requiredTaskFields =
-      taskData.type === "budget"
+      isApproverRequired
         ? ["project_id", "type", "summary", "current_approver_id"]
         : ["project_id", "type", "summary"];
 
@@ -674,6 +687,7 @@ const DecisionTaskCreateModal = ({
             validation={taskValidation}
             lockProject={Boolean(projectId)}
             projectName={resolvedProjectName}
+            isApproverRequired={taskData.type === "budget" || isHighRiskDecision}
           />
 
           {taskData.type === "budget" && (

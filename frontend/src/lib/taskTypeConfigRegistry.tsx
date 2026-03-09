@@ -93,11 +93,20 @@ export const TASK_TYPE_CONFIG_STATIC: Record<string, TaskTypeConfigStatic> = {
     contentType: "retrospectivetask",
     api: RetrospectiveAPI.createRetrospective,
     formComponent: NewRetrospectiveForm,
-    requiredFields: ["campaign"],
+    requiredFields: [
+      "campaign",
+      "decision",
+      "confidence_level",
+      "primary_assumption",
+    ],
     getPayload: (formData, taskData, createdTask) => ({
       campaign: formData.campaign || taskData.project_id?.toString(),
       scheduled_at: formData.scheduled_at || new Date().toISOString(),
       status: formData.status || "scheduled",
+      decision: formData.decision || "",
+      confidence_level: Number(formData.confidence_level) as 1 | 2 | 3 | 4 | 5,
+      primary_assumption: formData.primary_assumption || "",
+      key_risk_ignore: formData.key_risk_ignore?.trim() || undefined,
     }),
   },
   scaling: {

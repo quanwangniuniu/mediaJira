@@ -1422,6 +1422,9 @@ function TasksPageContent() {
         // Check for specific field errors
         const fieldMappings = {
           campaign: "Campaign",
+          decision: "Decision",
+          confidence_level: "Confidence level",
+          primary_assumption: "Primary assumption",
           scheduled_at: "Scheduled at",
           status: "Status",
           project_id: "Project",

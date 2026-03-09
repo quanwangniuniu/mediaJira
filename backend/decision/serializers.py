@@ -478,6 +478,8 @@ class DecisionCommittedSerializer(serializers.ModelSerializer):
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)
     createdBy = serializers.IntegerField(source="author_id", read_only=True)
     committedAt = serializers.DateTimeField(source="committed_at", read_only=True)
+    approvedAt = serializers.DateTimeField(source="approved_at", read_only=True)
+    approvedBy = serializers.IntegerField(source="approved_by_id", read_only=True)
     isReferenceCase = serializers.BooleanField(source="is_reference_case", read_only=True)
     projectSeq = serializers.IntegerField(source="project_seq", read_only=True)
     signals = CommittedSignalSerializer(many=True, read_only=True)
@@ -500,6 +502,8 @@ class DecisionCommittedSerializer(serializers.ModelSerializer):
             "createdAt",
             "createdBy",
             "committedAt",
+            "approvedAt",
+            "approvedBy",
             "isReferenceCase",
             "signals",
             "options",
