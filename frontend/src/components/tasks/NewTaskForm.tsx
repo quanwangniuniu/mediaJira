@@ -15,6 +15,7 @@ interface NewTaskFormProps {
   validation: ReturnType<typeof useFormValidation<CreateTaskData>>;
   lockProject?: boolean;
   projectName?: string | null;
+  isApproverRequired?: boolean;
 }
 
 export default function NewTaskForm({
@@ -23,6 +24,7 @@ export default function NewTaskForm({
   validation,
   lockProject = false,
   projectName = null,
+  isApproverRequired = false,
 }: NewTaskFormProps) {
   const { errors, validateField, clearFieldError, setErrors } = validation;
   const [loadingApprovers, setLoadingApprovers] = useState(false);
@@ -313,9 +315,7 @@ export default function NewTaskForm({
           htmlFor="task-approver"
           className="mb-1 block text-sm font-medium text-gray-700"
         >
-          {taskData.type === "budget"
-            ? "Assign an approver *"
-            : "Assign an approver"}
+          {isApproverRequired ? "Assign an approver *" : "Assign an approver"}
         </label>
         <select
           id="task-approver"
@@ -327,8 +327,7 @@ export default function NewTaskForm({
           className={`w-full rounded-md border px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
             errors.current_approver_id ? "border-red-500" : "border-gray-300"
           }`}
-          // Only required when task type is 'budget'
-          required={taskData.type === "budget"}
+          required={isApproverRequired}
         >
           <option value="" disabled>
             {loadingApprovers ? "Loading approvers..." : "Select an approver"}
