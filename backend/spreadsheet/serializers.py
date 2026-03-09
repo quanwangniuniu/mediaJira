@@ -356,10 +356,38 @@ class SheetSortSerializer(serializers.Serializer):
     direction = serializers.ChoiceField(choices=['asc', 'desc'])
     has_header = serializers.BooleanField(default=True)
     previous_sort_columns = serializers.ListField(
-        child=serializers.IntegerField(min_value=0),
         required=False,
         default=list
     )
+
+    def validate_previous_sort_columns(self, value):
+        """
+        Accept backward-compatible `number[]` and new history entries:
+        [{column_position: number, direction: 'asc' | 'desc'}].
+        """
+        normalized = []
+        for item in value:
+            if isinstance(item, int):
+                if item < 0:
+                    raise serializers.ValidationError("Column positions must be >= 0")
+                normalized.append(item)
+                continue
+
+            if not isinstance(item, dict):
+                raise serializers.ValidationError(
+                    "Each previous sort entry must be an integer column position or an object"
+                )
+
+            col = item.get('column_position')
+            direction = item.get('direction')
+            if not isinstance(col, int) or col < 0:
+                raise serializers.ValidationError("column_position must be an integer >= 0")
+            if direction not in ('asc', 'desc'):
+                raise serializers.ValidationError("direction must be 'asc' or 'desc'")
+
+            normalized.append({'column_position': col, 'direction': direction})
+
+        return normalized
 
 
 class SheetReorderSerializer(serializers.Serializer):

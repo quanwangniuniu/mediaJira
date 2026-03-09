@@ -130,7 +130,7 @@ export const SpreadsheetAPI = {
       column_position: number;
       direction: 'asc' | 'desc';
       has_header: boolean;
-      previous_sort_columns?: number[];
+      previous_sort_columns?: Array<number | { column_position: number; direction: 'asc' | 'desc' }>;
     }
   ): Promise<{
     previous_order: Array<{ row_id: number; position: number }>;
