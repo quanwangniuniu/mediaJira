@@ -180,6 +180,12 @@ interface SortColumnHistoryEntry {
   direction: 'asc' | 'desc';
 }
 
+interface ParsedColumnFilter {
+  operator: '>=' | '>' | '<=' | '<' | '=';
+  rawValue: string;
+  numericValue: number | null;
+}
+
 type UndoEntry =
   | { type: 'cell'; entry: HistoryEntry }
   | { type: 'color'; entry: ColorHistoryEntry }
@@ -247,6 +253,22 @@ const DEFAULT_CELL_FORMAT: CellFormat = {
   fontFamily: null,
   fontSize: null,
   numberFormat: null,
+};
+
+const parseColumnFilterExpression = (input: string): ParsedColumnFilter | null => {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  const match = trimmed.match(/^(>=|<=|>|<|=)?\s*(.*?)\s*$/);
+  if (!match) return null;
+  const operator = (match[1] ?? '=') as ParsedColumnFilter['operator'];
+  const rawValue = (match[2] ?? '').trim();
+  if (!rawValue) return null;
+  const numericCandidate = Number(rawValue);
+  return {
+    operator,
+    rawValue,
+    numericValue: Number.isFinite(numericCandidate) ? numericCandidate : null,
+  };
 };
 
 const HIGHLIGHT_COLORS = [
@@ -594,6 +616,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   } | null>(null);
   const [sortMenu, setSortMenu] = useState<{ colIndex: number; x: number; y: number } | null>(null);
   const sortHistoryRef = useRef<SortColumnHistoryEntry[]>([]); // Most recent sort first, with direction per column
+  const [columnFilters, setColumnFilters] = useState<Record<number, string>>({});
+  const [columnFilterOrder, setColumnFilterOrder] = useState<number[]>([]);
   const [isReverting, setIsReverting] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [formulaBarValue, setFormulaBarValue] = useState<string>('');
@@ -668,6 +692,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     setMode('navigation');
     setNavigationLocked(false);
     sortHistoryRef.current = [];
+    setColumnFilters({});
+    setColumnFilterOrder([]);
   }, [sheetId]);
 
   /**
@@ -1615,6 +1641,27 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     const entry = sortHistoryRef.current.find((item) => item.column_position === colIndex);
     return entry?.direction ?? null;
   }, []);
+  const hasColumnFilter = useCallback(
+    (colIndex: number): boolean => Boolean((columnFilters[colIndex] ?? '').trim()),
+    [columnFilters]
+  );
+  const getActiveFilterExpression = useCallback(
+    (colIndex: number): string => columnFilters[colIndex] ?? '',
+    [columnFilters]
+  );
+  const handleColumnFilterChange = useCallback((colIndex: number, value: string) => {
+    setColumnFilters((prev) => {
+      const next = { ...prev };
+      if (!value.trim()) delete next[colIndex];
+      else next[colIndex] = value;
+      return next;
+    });
+    setColumnFilterOrder((prev) => {
+      const withoutCurrent = prev.filter((col) => col !== colIndex);
+      if (!value.trim()) return withoutCurrent;
+      return [...withoutCurrent, colIndex];
+    });
+  }, []);
 
   const handleColumnSort = useCallback(
     async (sortCol: number, direction: 'asc' | 'desc') => {
@@ -1656,6 +1703,41 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       loadCellRange,
       visibleRange,
     ]
+  );
+
+  const doesCellMatchFilter = useCallback(
+    (row: number, col: number, filter: ParsedColumnFilter): boolean => {
+      const key = getCellKey(row, col);
+      const cellData = cells.get(key);
+      const rawInput = (cellData?.rawInput ?? '').trim();
+      const displayText =
+        (cellData?.computedString != null ? String(cellData.computedString) : null) ??
+        (cellData?.computedNumber != null ? String(cellData.computedNumber) : null) ??
+        rawInput;
+      const normalizedCellText = displayText.trim();
+
+      const rawNumeric = Number(rawInput);
+      const computedNumeric = Number(cellData?.computedNumber);
+      const numericValue = Number.isFinite(computedNumeric)
+        ? computedNumeric
+        : Number.isFinite(rawNumeric)
+        ? rawNumeric
+        : null;
+
+      if (filter.operator === '=') {
+        if (filter.numericValue != null && numericValue != null) {
+          return numericValue === filter.numericValue;
+        }
+        return normalizedCellText.toLowerCase() === filter.rawValue.toLowerCase();
+      }
+
+      if (numericValue == null || filter.numericValue == null) return false;
+      if (filter.operator === '>=') return numericValue >= filter.numericValue;
+      if (filter.operator === '>') return numericValue > filter.numericValue;
+      if (filter.operator === '<=') return numericValue <= filter.numericValue;
+      return numericValue < filter.numericValue;
+    },
+    [cells]
   );
 
   const performUndoStructure = useCallback(
@@ -4780,6 +4862,23 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       : Math.max(visibleStartCol, Math.min(colCount - 1, visibleRange.endCol));
   // Number of frozen rows (typically 0 or 1) – clamp to valid range
   const frozenRows = Math.max(0, Math.min(frozenRowCount, rowCount));
+  const activeColumnFilters = useMemo(
+    () => {
+      const orderedCols = [
+        ...columnFilterOrder,
+        ...Object.keys(columnFilters).map(Number).filter((col) => !columnFilterOrder.includes(col)),
+      ];
+      return orderedCols
+        .map((col) => {
+          const parsed = parseColumnFilterExpression(columnFilters[col] ?? '');
+          if (!parsed) return null;
+          return { col, filter: parsed };
+        })
+        .filter((entry): entry is { col: number; filter: ParsedColumnFilter } => entry !== null);
+    },
+    [columnFilters, columnFilterOrder]
+  );
+  const hasActiveFilters = activeColumnFilters.length > 0;
 
   // For virtualized rendering of *non-frozen* rows, never start before the first non-frozen row.
   const visibleStartRow = Math.max(frozenRows, visibleStartRowRaw);
@@ -4796,7 +4895,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   // Spacers only apply to the non-frozen region. Frozen rows are always rendered explicitly.
   let topSpacerHeight = 0;
   let bottomSpacerHeight = 0;
-  if (rowCount > 0) {
+  if (rowCount > 0 && !hasActiveFilters) {
     if (frozenRows > 0) {
       const frozenHeight = getRowOffset(frozenRows);
       const nonFrozenStartOffset = getRowOffset(visibleStartRow);
@@ -4808,6 +4907,22 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       bottomSpacerHeight = Math.max(0, totalRowHeight - getRowOffset(visibleEndRow + 1));
     }
   }
+  const renderedNonFrozenRows = useMemo(() => {
+    if (!hasActiveFilters) {
+      return Array.from({ length: visibleRowCount }, (_, rowOffset) => visibleStartRow + rowOffset);
+    }
+    let rows = Array.from({ length: Math.max(0, rowCount - frozenRows) }, (_, idx) => frozenRows + idx);
+    for (const { col, filter } of activeColumnFilters) {
+      rows = rows.filter((row) => doesCellMatchFilter(row, col, filter));
+      if (!rows.length) break;
+    }
+    return rows;
+  }, [hasActiveFilters, visibleRowCount, visibleStartRow, frozenRows, rowCount, activeColumnFilters, doesCellMatchFilter]);
+  const renderedNonFrozenHeight = useMemo(
+    () => renderedNonFrozenRows.reduce((acc, row) => acc + getRowHeight(row), 0),
+    [renderedNonFrozenRows, getRowHeight]
+  );
+  const bodyTableHeight = hasActiveFilters ? getRowOffset(frozenRows) + renderedNonFrozenHeight : totalRowHeight;
   const leftSpacerWidth = getColumnOffset(visibleStartCol);
   const rightSpacerWidth = Math.max(0, totalColumnWidth - getColumnOffset(visibleEndCol + 1));
 
@@ -5421,11 +5536,25 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       {sortMenu &&
         createPortal(
           <div
-            className="fixed z-[1000] min-w-[160px] rounded-md border border-gray-200 bg-white shadow-lg py-1"
+            className="fixed z-[1000] min-w-[200px] rounded-md border border-gray-200 bg-white shadow-lg py-1"
             style={{ top: sortMenu.y, left: sortMenu.x }}
             data-sort-menu
             role="menu"
           >
+            <div className="px-3 py-2 border-b border-gray-100">
+              <div className="mb-1 flex items-center justify-between text-[11px] font-semibold text-gray-600">
+                <span>Filter</span>
+                {hasColumnFilter(sortMenu.colIndex) ? <Check className="h-3 w-3 text-blue-600" /> : null}
+              </div>
+              <input
+                type="text"
+                value={getActiveFilterExpression(sortMenu.colIndex)}
+                onChange={(e) => handleColumnFilterChange(sortMenu.colIndex, e.target.value)}
+                placeholder="e.g. >= 7, = abc"
+                className="w-full rounded border border-gray-200 px-2 py-1 text-xs text-gray-900 focus:border-blue-400 focus:outline-none"
+                aria-label={`Filter column ${columnIndexToLabel(sortMenu.colIndex)}`}
+              />
+            </div>
             <button
               type="button"
               onClick={() => void handleColumnSort(sortMenu.colIndex, 'asc')}
@@ -5598,12 +5727,15 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                     <button
                       type="button"
                       onClick={(e) => openSortMenu(colIndex, e)}
-                      className="p-0.5 rounded hover:bg-gray-300/80 text-gray-500 hover:text-gray-700"
+                      className="relative p-0.5 rounded hover:bg-gray-300/80 text-gray-500 hover:text-gray-700"
                       aria-label={`Sort column ${columnIndexToLabel(colIndex)}`}
                       data-testid={`col-sort-${colIndex}`}
                       data-col-sort-trigger
                     >
                       <ChevronDown className="h-3 w-3" />
+                      {hasColumnFilter(colIndex) ? (
+                        <Check className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-white text-blue-600" />
+                      ) : null}
                     </button>
                   </div>
                   <div
@@ -5638,8 +5770,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           style={{
             tableLayout: 'fixed',
             width: `${ROW_NUMBER_WIDTH + totalColumnWidth}px`,
-            height: `${totalRowHeight}px`,
-            minHeight: `${totalRowHeight}px`,
+            height: `${bodyTableHeight}px`,
+            minHeight: `${bodyTableHeight}px`,
           }}
         >
           <colgroup>
@@ -5864,9 +5996,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               </tr>
             )}
 
-            {/* Virtualized non-frozen rows */}
-            {Array.from({ length: visibleRowCount }).map((_, rowOffset) => {
-              const row = visibleStartRow + rowOffset; // 0-based for API, starts at first non-frozen row
+            {/* Non-frozen rows: virtualized by viewport unless filters are active */}
+            {renderedNonFrozenRows.map((row) => {
               const rowHeight = getRowHeight(row);
               const rowBaseStyle = getCellBaseStyle(rowHeight);
               const frozen = isFrozenRow(row);
