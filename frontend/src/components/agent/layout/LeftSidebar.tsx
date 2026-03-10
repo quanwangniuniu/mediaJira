@@ -68,23 +68,23 @@ export function LeftSidebar() {
   }, [])
 
   return (
-    <div className="w-60 h-full bg-zinc-950 border-r border-zinc-800 flex flex-col">
+    <div className="w-60 h-full bg-background border-r border-border flex flex-col">
       {/* Project Header */}
-      <div className="px-4 py-4 border-b border-zinc-800">
+      <div className="px-4 py-4 border-b border-border">
         <div className="flex items-center gap-2">
-          <span className="text-lg font-bold text-zinc-100">MediaJira</span>
+          <span className="text-lg font-bold text-foreground">MediaJira</span>
           <span className="relative flex h-2 w-2" title="Connected">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
           </span>
         </div>
-        <p className="text-xs text-zinc-500 mt-1">AI Agent Dashboard</p>
+        <p className="text-xs text-muted-foreground mt-1">AI Agent Dashboard</p>
       </div>
 
       {/* Navigation */}
       <nav className="flex-1 py-2 overflow-y-auto">
         <div className="px-3 mb-2">
-          <span className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider">Workspaces</span>
+          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Workspaces</span>
         </div>
         {navItems.map(({ id, label, icon: Icon }) => {
           const isActive = activeView === id
@@ -95,8 +95,8 @@ export function LeftSidebar() {
               className={cn(
                 "w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors border-l-2",
                 isActive
-                  ? "border-blue-500 bg-zinc-800/50 text-zinc-100"
-                  : "border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/30"
+                  ? "border-blue-500 bg-muted/50 text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"
               )}
             >
               <Icon className="w-4 h-4" />
@@ -107,10 +107,10 @@ export function LeftSidebar() {
       </nav>
 
       {/* Bottom Section */}
-      <div className="border-t border-zinc-800">
+      <div className="border-t border-border">
         {/* Workflow Progress */}
         <div className="px-4 py-3">
-          <span className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider">Workflow</span>
+          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Workflow</span>
           <div className="mt-2">
             {workflowSteps.map(({ step, label, active }, index) => (
               <div key={step}>
@@ -120,12 +120,12 @@ export function LeftSidebar() {
                       "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold",
                       active
                         ? "bg-blue-500 text-white"
-                        : "bg-zinc-800 text-zinc-500"
+                        : "bg-muted text-muted-foreground"
                     )}
                   >
                     {step}
                   </div>
-                  <span className={cn("text-xs", active ? "text-zinc-200" : "text-zinc-500")}>
+                  <span className={cn("text-xs", active ? "text-foreground" : "text-muted-foreground")}>
                     {label}
                   </span>
                 </div>
@@ -134,7 +134,7 @@ export function LeftSidebar() {
                   <div className="flex ml-[9px]">
                     <div className={cn(
                       "w-px h-2",
-                      active ? "bg-blue-500/50" : "bg-zinc-800"
+                      active ? "bg-blue-500/50" : "bg-muted"
                     )} />
                   </div>
                 )}
@@ -144,16 +144,16 @@ export function LeftSidebar() {
         </div>
 
         {/* Recent Sessions */}
-        <div className="px-4 py-3 border-t border-zinc-800">
-          <span className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider">Recent</span>
+        <div className="px-4 py-3 border-t border-border">
+          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Recent</span>
           <div className="mt-2 space-y-1.5">
             {recentSessions.length === 0 ? (
-              <span className="text-xs text-zinc-600">No recent sessions</span>
+              <span className="text-xs text-muted-foreground/60">No recent sessions</span>
             ) : (
               recentSessions.map(({ title, time }) => (
                 <div key={title} className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-400 truncate max-w-[140px]">{title}</span>
-                  <span className="text-[10px] text-zinc-600">{time}</span>
+                  <span className="text-xs text-muted-foreground truncate max-w-[140px]">{title}</span>
+                  <span className="text-[10px] text-muted-foreground/60">{time}</span>
                 </div>
               ))
             )}
@@ -161,11 +161,11 @@ export function LeftSidebar() {
         </div>
 
         {/* Settings */}
-        <div className="relative px-4 py-3 border-t border-zinc-800">
+        <div className="relative px-4 py-3 border-t border-border">
           <SettingsPanel isOpen={showSettings} onClose={() => setShowSettings(false)} />
           <button
             onClick={() => setShowSettings((prev) => !prev)}
-            className="flex items-center gap-2 text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-card-foreground transition-colors"
           >
             <Settings className="w-4 h-4" />
             <span>Settings</span>

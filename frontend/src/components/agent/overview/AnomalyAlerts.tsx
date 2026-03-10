@@ -73,18 +73,18 @@ export function AnomalyAlerts({ anomalies, loading }: AnomalyAlertsProps) {
   }
 
   return (
-    <Card className="bg-zinc-900 border-zinc-800">
+    <Card className="bg-card border-border">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium text-zinc-300">Anomaly Alerts</CardTitle>
-          <span className="text-xs text-zinc-500">{alerts.length} active</span>
+          <CardTitle className="text-sm font-medium text-card-foreground">Anomaly Alerts</CardTitle>
+          <span className="text-xs text-muted-foreground">{alerts.length} active</span>
         </div>
       </CardHeader>
       <CardContent className="space-y-1.5">
         {loading ? (
-          <p className="text-sm text-zinc-500 text-center py-4">Loading alerts...</p>
+          <p className="text-sm text-muted-foreground text-center py-4">Loading alerts...</p>
         ) : alerts.length === 0 ? (
-          <p className="text-sm text-zinc-500 text-center py-4">{AGENT_MESSAGES.EMPTY_ANOMALY_ALERTS}</p>
+          <p className="text-sm text-muted-foreground text-center py-4">{AGENT_MESSAGES.EMPTY_ANOMALY_ALERTS}</p>
         ) : (
           alerts.map((alert) => {
             const style = severityStyles[alert.severity]
@@ -92,12 +92,12 @@ export function AnomalyAlerts({ anomalies, loading }: AnomalyAlertsProps) {
             return (
               <div
                 key={alert.id}
-                className="flex items-center gap-3 rounded-lg bg-zinc-800/50 px-3 py-2"
+                className="flex items-center gap-3 rounded-lg bg-muted/50 px-3 py-2"
               >
                 <Icon className={cn("w-4 h-4 shrink-0", style.iconColor)} />
                 <div className="flex-1 min-w-0">
-                  <span className="text-sm text-zinc-200">{alert.metric}</span>
-                  <span className="text-xs text-zinc-500 ml-2">{alert.campaign}</span>
+                  <span className="text-sm text-foreground">{alert.metric}</span>
+                  <span className="text-xs text-muted-foreground ml-2">{alert.campaign}</span>
                 </div>
                 <span className={cn("text-xs font-medium shrink-0", style.deltaColor)}>
                   {alert.delta}
@@ -108,7 +108,7 @@ export function AnomalyAlerts({ anomalies, loading }: AnomalyAlertsProps) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-6 w-6 p-0 text-zinc-500 hover:text-zinc-300 shrink-0"
+                  className="h-6 w-6 p-0 text-muted-foreground hover:text-card-foreground shrink-0"
                   onClick={() => dismissAlert(alert.id)}
                 >
                   <X className="w-3 h-3" />

@@ -51,18 +51,18 @@ export function PerformanceChart() {
   }, [])
 
   return (
-    <Card className="bg-zinc-900 border-zinc-800">
+    <Card className="bg-card border-border">
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium text-zinc-300">Performance Trend</CardTitle>
+        <CardTitle className="text-sm font-medium text-card-foreground">Performance Trend</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="h-[280px]">
           {loading ? (
-            <div className="h-full flex items-center justify-center text-zinc-500 text-sm">
+            <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
               Loading trend data...
             </div>
           ) : data.length === 0 ? (
-            <div className="h-full flex items-center justify-center text-zinc-500 text-sm">
+            <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
               {AGENT_MESSAGES.EMPTY_PERFORMANCE_CHART}
             </div>
           ) : (
