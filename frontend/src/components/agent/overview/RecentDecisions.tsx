@@ -46,7 +46,11 @@ const riskLabels: Record<string, string> = {
   high: "High Risk",
 }
 
-export function RecentDecisions() {
+interface RecentDecisionsProps {
+  compact?: boolean
+}
+
+export function RecentDecisions({ compact = false }: RecentDecisionsProps) {
   const [decisions, setDecisions] = useState<DecisionItem[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -75,46 +79,52 @@ export function RecentDecisions() {
     }
   }
 
+  const content = (
+    <div className="space-y-2">
+      {loading ? (
+        <p className="text-sm text-muted-foreground text-center py-4">Loading decisions...</p>
+      ) : decisions.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-4">No decisions yet</p>
+      ) : (
+        decisions.map((d) => (
+          <div key={d.id} className="rounded-lg bg-muted/50 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-muted-foreground/60 font-mono">#{d.id}</span>
+                  <p className="text-sm text-foreground truncate">{d.title}</p>
+                </div>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[10px] text-muted-foreground">{d.author}</span>
+                  <span className="text-[10px] text-muted-foreground/60">|</span>
+                  <span className="text-[10px] text-muted-foreground">{formatDate(d.created_at)}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Badge variant="outline" className={cn("text-[10px]", statusStyles[d.status] || statusStyles.draft)}>
+                  {statusLabels[d.status] || d.status}
+                </Badge>
+                {d.risk_level && (
+                  <Badge variant="outline" className={cn("text-[10px]", riskStyles[d.risk_level] || "")}>
+                    {riskLabels[d.risk_level] || d.risk_level}
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  )
+
+  if (compact) return content
+
   return (
     <Card className="bg-card border-border">
       <CardHeader className="pb-3">
         <CardTitle className="text-sm font-medium text-card-foreground">Recent Decisions</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-2">
-        {loading ? (
-          <p className="text-sm text-muted-foreground text-center py-4">Loading decisions...</p>
-        ) : decisions.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-4">No decisions yet</p>
-        ) : (
-          decisions.map((d) => (
-            <div key={d.id} className="rounded-lg bg-muted/50 p-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-muted-foreground/60 font-mono">#{d.id}</span>
-                    <p className="text-sm text-foreground truncate">{d.title}</p>
-                  </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[10px] text-muted-foreground">{d.author}</span>
-                    <span className="text-[10px] text-muted-foreground/60">|</span>
-                    <span className="text-[10px] text-muted-foreground">{formatDate(d.created_at)}</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <Badge variant="outline" className={cn("text-[10px]", statusStyles[d.status] || statusStyles.draft)}>
-                    {statusLabels[d.status] || d.status}
-                  </Badge>
-                  {d.risk_level && (
-                    <Badge variant="outline" className={cn("text-[10px]", riskStyles[d.risk_level] || "")}>
-                      {riskLabels[d.risk_level] || d.risk_level}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))
-        )}
-      </CardContent>
+      <CardContent>{content}</CardContent>
     </Card>
   )
 }

@@ -25,6 +25,7 @@ interface AnomalyAlertsProps {
     roas?: number
   }[]
   loading: boolean
+  compact?: boolean
 }
 
 const severityStyles = {
@@ -51,7 +52,7 @@ function mapSeverity(s: string): "critical" | "warning" | "info" {
   return "info"
 }
 
-export function AnomalyAlerts({ anomalies, loading }: AnomalyAlertsProps) {
+export function AnomalyAlerts({ anomalies, loading, compact = false }: AnomalyAlertsProps) {
   const [alerts, setAlerts] = useState<Alert[]>([])
 
   useEffect(() => {
@@ -72,6 +73,49 @@ export function AnomalyAlerts({ anomalies, loading }: AnomalyAlertsProps) {
     setAlerts((prev) => prev.filter((a) => a.id !== id))
   }
 
+  const content = (
+    <div className="space-y-1.5">
+      {loading ? (
+        <p className="text-sm text-muted-foreground text-center py-4">Loading alerts...</p>
+      ) : alerts.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-4">{AGENT_MESSAGES.EMPTY_ANOMALY_ALERTS}</p>
+      ) : (
+        alerts.map((alert) => {
+          const style = severityStyles[alert.severity]
+          const Icon = style.icon
+          return (
+            <div
+              key={alert.id}
+              className="flex items-center gap-3 rounded-lg bg-muted/50 px-3 py-2"
+            >
+              <Icon className={cn("w-4 h-4 shrink-0", style.iconColor)} />
+              <div className="flex-1 min-w-0">
+                <span className="text-sm text-foreground">{alert.metric}</span>
+                <span className="text-xs text-muted-foreground ml-2">{alert.campaign}</span>
+              </div>
+              <span className={cn("text-xs font-medium shrink-0", style.deltaColor)}>
+                {alert.delta}
+              </span>
+              <Button variant="ghost" size="sm" className="h-6 text-xs text-blue-400 hover:text-blue-300 px-2 shrink-0">
+                View
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0 text-muted-foreground hover:text-card-foreground shrink-0"
+                onClick={() => dismissAlert(alert.id)}
+              >
+                <X className="w-3 h-3" />
+              </Button>
+            </div>
+          )
+        })
+      )}
+    </div>
+  )
+
+  if (compact) return content
+
   return (
     <Card className="bg-card border-border">
       <CardHeader className="pb-3">
@@ -80,44 +124,7 @@ export function AnomalyAlerts({ anomalies, loading }: AnomalyAlertsProps) {
           <span className="text-xs text-muted-foreground">{alerts.length} active</span>
         </div>
       </CardHeader>
-      <CardContent className="space-y-1.5">
-        {loading ? (
-          <p className="text-sm text-muted-foreground text-center py-4">Loading alerts...</p>
-        ) : alerts.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-4">{AGENT_MESSAGES.EMPTY_ANOMALY_ALERTS}</p>
-        ) : (
-          alerts.map((alert) => {
-            const style = severityStyles[alert.severity]
-            const Icon = style.icon
-            return (
-              <div
-                key={alert.id}
-                className="flex items-center gap-3 rounded-lg bg-muted/50 px-3 py-2"
-              >
-                <Icon className={cn("w-4 h-4 shrink-0", style.iconColor)} />
-                <div className="flex-1 min-w-0">
-                  <span className="text-sm text-foreground">{alert.metric}</span>
-                  <span className="text-xs text-muted-foreground ml-2">{alert.campaign}</span>
-                </div>
-                <span className={cn("text-xs font-medium shrink-0", style.deltaColor)}>
-                  {alert.delta}
-                </span>
-                <Button variant="ghost" size="sm" className="h-6 text-xs text-blue-400 hover:text-blue-300 px-2 shrink-0">
-                  View
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0 text-muted-foreground hover:text-card-foreground shrink-0"
-                  onClick={() => dismissAlert(alert.id)}
-                >
-                  <X className="w-3 h-3" />
-                </Button>
-              </div>
-            )
-          })
-        )}
-      </CardContent>
+      <CardContent>{content}</CardContent>
     </Card>
   )
 }
