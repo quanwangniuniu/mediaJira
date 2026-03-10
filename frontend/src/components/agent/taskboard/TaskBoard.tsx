@@ -1,10 +1,13 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { FilterBar } from "./FilterBar"
 import { KanbanColumn, type ColumnStatus } from "./KanbanColumn"
 import type { Task, TaskType, TaskPriority } from "./TaskCard"
 import { TaskAPI } from "@/lib/api/taskApi"
+import { useBatchManage } from "@/hooks/useBatchManage"
+import ConfirmDialog from "@/components/common/ConfirmDialog"
+import toast from "react-hot-toast"
 
 const columns: ColumnStatus[] = ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "APPROVED"]
 
@@ -32,6 +35,7 @@ export function TaskBoard() {
   const [typeFilter, setTypeFilter] = useState("all")
   const [priorityFilter, setPriorityFilter] = useState("all")
   const [ownerFilter, setOwnerFilter] = useState("all")
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -69,6 +73,22 @@ export function TaskBoard() {
     return () => { cancelled = true }
   }, [])
 
+  const batchDeleteFn = useCallback(async (id: string | number) => {
+    await TaskAPI.deleteTask(Number(id))
+  }, [])
+
+  const batchDeleteComplete = useCallback((deletedIds: (string | number)[]) => {
+    const idSet = new Set(deletedIds.map(String))
+    setTasks((prev) => prev.filter((t) => !idSet.has(t.id)))
+    toast.success(`Deleted ${deletedIds.length} task${deletedIds.length > 1 ? "s" : ""}`)
+  }, [])
+
+  const batch = useBatchManage({
+    items: tasks.map((t) => ({ id: t.id })),
+    deleteFn: batchDeleteFn,
+    onDeleteComplete: batchDeleteComplete,
+  })
+
   // Extract unique owners for filter dropdown
   const owners = Array.from(
     new Map(tasks.map((t) => [t.owner.initials, t.owner])).values()
@@ -99,6 +119,17 @@ export function TaskBoard() {
         onPriorityChange={setPriorityFilter}
         onOwnerChange={setOwnerFilter}
         owners={owners}
+        isManaging={batch.isManaging}
+        onEnterManage={batch.enterManageMode}
+        onExitManage={batch.exitManageMode}
+        selectedCount={batch.selectedCount}
+        isAllSelected={batch.isAllSelected}
+        isIndeterminate={batch.isIndeterminate}
+        onSelectAll={batch.selectAll}
+        onDeselectAll={batch.deselectAll}
+        onDeleteClick={() => setShowDeleteConfirm(true)}
+        isDeleting={batch.isDeleting}
+        hasItems={tasks.length > 0}
       />
 
       <div className="flex gap-4 flex-1 overflow-hidden">
@@ -107,9 +138,27 @@ export function TaskBoard() {
             key={status}
             status={status}
             tasks={filteredTasks.filter((t) => t.status === status)}
+            isManaging={batch.isManaging}
+            selectedIds={batch.selectedIds}
+            exitingIds={batch.exitingIds}
+            onToggleSelect={batch.toggleSelect}
           />
         ))}
       </div>
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Delete Tasks"
+        message={`Are you sure you want to delete ${batch.selectedCount} task${batch.selectedCount > 1 ? "s" : ""}? This action cannot be undone.`}
+        type="danger"
+        confirmText="Delete"
+        cancelText="Cancel"
+        onConfirm={() => {
+          setShowDeleteConfirm(false)
+          batch.deleteSelected()
+        }}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   )
 }

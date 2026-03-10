@@ -8,6 +8,7 @@ from .views import (
     DataReportDetailView,
     DataReportSummaryView,
     DataUploadView,
+    FileUploadAnalyzeView,
     DecisionStatsView,
     DecisionRecentView,
 )
@@ -23,6 +24,7 @@ urlpatterns = [
     path('data/reports/summary/', DataReportSummaryView.as_view(), name='agent-data-reports-summary'),
     path('data/reports/<uuid:file_id>/', DataReportDetailView.as_view(), name='agent-data-report-detail'),
     path('data/upload/', DataUploadView.as_view(), name='agent-data-upload'),
+    path('upload-analyze/', FileUploadAnalyzeView.as_view(), name='agent-upload-analyze'),
     path('decisions/stats/', DecisionStatsView.as_view(), name='agent-decision-stats'),
     path('decisions/recent/', DecisionRecentView.as_view(), name='agent-decision-recent'),
 ]

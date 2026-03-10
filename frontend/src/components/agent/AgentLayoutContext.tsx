@@ -23,13 +23,22 @@ function getSystemTheme(): "light" | "dark" {
 }
 
 export function AgentLayoutProvider({ children }: { children: ReactNode }) {
-  const [activeView, setActiveView] = useState<AgentView>("overview")
+  const [activeView, setActiveViewState] = useState<AgentView>("overview")
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true)
   const [theme, setThemeState] = useState<AgentTheme>("dark")
   const [systemTheme, setSystemTheme] = useState<"light" | "dark">("dark")
 
-  // Load persisted theme on mount
+  const setActiveView = (view: AgentView) => {
+    setActiveViewState(view)
+    sessionStorage.setItem("agent-active-view", view)
+  }
+
+  // Load persisted view + theme on mount
   useEffect(() => {
+    const storedView = sessionStorage.getItem("agent-active-view") as AgentView | null
+    if (storedView && ["overview", "spreadsheets", "decisions", "tasks", "agent"].includes(storedView)) {
+      setActiveViewState(storedView)
+    }
     const stored = localStorage.getItem("agent-theme") as AgentTheme | null
     if (stored && ["light", "dark", "system"].includes(stored)) {
       setThemeState(stored)

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import {
   Plus,
   X,
@@ -13,6 +13,8 @@ import {
   FileText,
   Shield,
   ChevronLeft,
+  Settings2,
+  Trash2,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -23,7 +25,12 @@ import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
+import { Checkbox } from "@/components/ui/checkbox"
+import ConfirmDialog from "@/components/common/ConfirmDialog"
 import { AgentAPI } from "@/lib/api/agentApi"
+import { DecisionAPI } from "@/lib/api/decisionApi"
+import { useBatchManage } from "@/hooks/useBatchManage"
+import toast from "react-hot-toast"
 
 // ─── Types ────────────────────────────────────────────
 
@@ -84,6 +91,23 @@ export function DecisionEditor() {
   const [viewMode, setViewMode] = useState<"list" | "edit">("list")
   const [decisionList, setDecisionList] = useState<DecisionListItem[]>([])
   const [listLoading, setListLoading] = useState(true)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+
+  const batchDeleteFn = useCallback(async (id: string | number) => {
+    await DecisionAPI.deleteDecision(Number(id))
+  }, [])
+
+  const batchDeleteComplete = useCallback((deletedIds: (string | number)[]) => {
+    const idSet = new Set(deletedIds.map(Number))
+    setDecisionList((prev) => prev.filter((d) => !idSet.has(d.id)))
+    toast.success(`Deleted ${deletedIds.length} decision${deletedIds.length > 1 ? "s" : ""}`)
+  }, [])
+
+  const batch = useBatchManage({
+    items: decisionList.map((d) => ({ id: d.id })),
+    deleteFn: batchDeleteFn,
+    onDeleteComplete: batchDeleteComplete,
+  })
 
   // Form state
   const [title, setTitle] = useState("")
@@ -211,16 +235,53 @@ export function DecisionEditor() {
     return (
       <div className="flex-1 overflow-y-auto p-6">
         <div className="max-w-4xl mx-auto space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold text-foreground">Decisions</h1>
-              <p className="text-sm text-muted-foreground mt-1">View and manage advertising decisions</p>
+          {/* Header: normal mode vs manage mode */}
+          {batch.isManaging ? (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Checkbox
+                  checked={batch.isAllSelected ? true : batch.isIndeterminate ? "indeterminate" : false}
+                  onCheckedChange={() => batch.isAllSelected ? batch.deselectAll() : batch.selectAll()}
+                />
+                <span className="text-sm text-muted-foreground">
+                  {batch.selectedCount > 0 ? `${batch.selectedCount} selected` : "Select items"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={batch.selectedCount === 0 || batch.isDeleting}
+                  onClick={() => setShowDeleteConfirm(true)}
+                >
+                  <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                  Delete ({batch.selectedCount})
+                </Button>
+                <Button size="sm" variant="outline" onClick={batch.exitManageMode} disabled={batch.isDeleting}>
+                  Exit
+                </Button>
+              </div>
             </div>
-            <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={createNew}>
-              <Plus className="w-3.5 h-3.5 mr-1.5" />
-              New Decision
-            </Button>
-          </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-xl font-bold text-foreground">Decisions</h1>
+                <p className="text-sm text-muted-foreground mt-1">View and manage advertising decisions</p>
+              </div>
+              <div className="flex items-center gap-2">
+                {decisionList.length > 0 && (
+                  <Button size="sm" variant="outline" onClick={batch.enterManageMode}>
+                    <Settings2 className="w-3.5 h-3.5 mr-1.5" />
+                    Manage
+                  </Button>
+                )}
+                <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={createNew}>
+                  <Plus className="w-3.5 h-3.5 mr-1.5" />
+                  New Decision
+                </Button>
+              </div>
+            </div>
+          )}
 
           {listLoading ? (
             <div className="text-center py-8 text-muted-foreground text-sm">Loading decisions...</div>
@@ -231,35 +292,74 @@ export function DecisionEditor() {
           ) : (
             <div className="space-y-2">
               {decisionList.map((d) => (
-                <Card
+                <div
                   key={d.id}
-                  className="bg-card border-border cursor-pointer hover:border-input transition-colors"
-                  onClick={() => loadDecision(d)}
+                  className={cn(
+                    "transition-all duration-300",
+                    batch.isExiting(d.id) && "opacity-0 scale-95 max-h-0 overflow-hidden"
+                  )}
                 >
-                  <CardContent className="py-3 px-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs text-muted-foreground/60 font-mono">#{d.id}</span>
-                        <span className="text-sm text-foreground">{d.title}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className={cn("text-[10px]", statusStyles[d.status] || statusStyles.draft)}>
-                          {d.status}
-                        </Badge>
-                        {d.risk_level && (
-                          <Badge variant="outline" className={cn("text-[10px]", riskColors[d.risk_level] || "")}>
-                            {d.risk_level}
+                  <Card
+                    className={cn(
+                      "bg-card border-border cursor-pointer transition-colors",
+                      batch.isManaging && batch.selectedIds.has(d.id)
+                        ? "border-blue-500/50 bg-blue-500/5"
+                        : "hover:border-input"
+                    )}
+                    onClick={() => {
+                      if (batch.isManaging) {
+                        batch.toggleSelect(d.id)
+                      } else {
+                        loadDecision(d)
+                      }
+                    }}
+                  >
+                    <CardContent className="py-3 px-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          {batch.isManaging && (
+                            <Checkbox
+                              checked={batch.selectedIds.has(d.id)}
+                              onCheckedChange={() => batch.toggleSelect(d.id)}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          )}
+                          <span className="text-xs text-muted-foreground/60 font-mono">#{d.id}</span>
+                          <span className="text-sm text-foreground">{d.title}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className={cn("text-[10px]", statusStyles[d.status] || statusStyles.draft)}>
+                            {d.status}
                           </Badge>
-                        )}
-                        <span className="text-xs text-muted-foreground">{d.author}</span>
+                          {d.risk_level && (
+                            <Badge variant="outline" className={cn("text-[10px]", riskColors[d.risk_level] || "")}>
+                              {d.risk_level}
+                            </Badge>
+                          )}
+                          <span className="text-xs text-muted-foreground">{d.author}</span>
+                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
+                </div>
               ))}
             </div>
           )}
         </div>
+
+        <ConfirmDialog
+          isOpen={showDeleteConfirm}
+          title="Delete Decisions"
+          message={`Are you sure you want to delete ${batch.selectedCount} decision${batch.selectedCount > 1 ? "s" : ""}? This action cannot be undone.`}
+          type="danger"
+          confirmText="Delete"
+          cancelText="Cancel"
+          onConfirm={() => {
+            setShowDeleteConfirm(false)
+            batch.deleteSelected()
+          }}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
       </div>
     )
   }

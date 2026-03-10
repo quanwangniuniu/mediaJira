@@ -13,6 +13,7 @@ from decision.models import Decision, Signal, Option
 from task.models import Task
 from .models import AgentSession, AgentMessage, AgentWorkflowRun, ImportedCSVFile
 from . import data_service
+from . import file_parser
 
 logger = logging.getLogger(__name__)
 
@@ -206,8 +207,13 @@ class AgentOrchestrator:
         self.project = project
         self.session = session
 
-    def handle_message(self, message, spreadsheet_id=None, csv_filename=None, action=None):
+    def handle_message(self, message, spreadsheet_id=None, csv_filename=None, action=None, file_id=None):
         """Main entry point. Yields SSE chunks as dicts."""
+        # file_id takes priority over csv_filename
+        if file_id:
+            yield from self.analyze_file(file_id)
+            yield {"type": "done"}
+            return
         if action == 'analyze' and csv_filename:
             yield from self.analyze_csv(csv_filename)
         elif action == 'analyze' and spreadsheet_id:
@@ -246,6 +252,65 @@ class AgentOrchestrator:
                 ),
             }
         yield {"type": "done"}
+
+    def analyze_file(self, file_id):
+        """Analyse any uploaded file (CSV/Excel) by its DB id."""
+        yield {"type": "text", "content": "Analyzing file data..."}
+
+        try:
+            record = ImportedCSVFile.objects.get(
+                id=file_id, project=self.project, is_deleted=False,
+            )
+        except ImportedCSVFile.DoesNotExist:
+            yield {"type": "error", "content": f"File {file_id} not found."}
+            return
+
+        csv_dir = data_service._get_csv_dir()
+        filepath = os.path.join(csv_dir, os.path.basename(record.filename))
+
+        if not os.path.isfile(filepath):
+            yield {"type": "error", "content": "File not found on disk."}
+            return
+
+        try:
+            spreadsheet_data = file_parser.parse_file_to_json(filepath, record.filename)
+        except Exception as e:
+            yield {"type": "error", "content": f"Failed to parse file: {e}"}
+            return
+
+        workflow_run = AgentWorkflowRun.objects.create(
+            session=self.session,
+            status='analyzing',
+        )
+
+        try:
+            analysis = _run_analysis(spreadsheet_data, user_id=self.user.id)
+        except RuntimeError as e:
+            workflow_run.status = 'failed'
+            workflow_run.error_message = str(e)
+            workflow_run.save()
+            yield {"type": "error", "content": str(e)}
+            return
+
+        workflow_run.analysis_result = analysis
+        workflow_run.status = 'awaiting_confirmation'
+        workflow_run.save()
+
+        anomalies = analysis.get("anomalies", [])
+        summary_parts = [f"Found {len(anomalies)} anomalies:"]
+        for a in anomalies:
+            summary_parts.append(f"- {a.get('description', str(a))}")
+
+        yield {
+            "type": "analysis",
+            "content": "\n".join(summary_parts),
+            "data": analysis,
+        }
+        yield {
+            "type": "confirmation_request",
+            "content": "Would you like me to create a Decision draft based on this analysis?",
+            "data": {"workflow_run_id": str(workflow_run.id)},
+        }
 
     def analyze_spreadsheet(self, spreadsheet_id):
         """Read spreadsheet data via ORM, send to LLM for analysis."""

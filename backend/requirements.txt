@@ -81,3 +81,4 @@ PyJWT==2.8.0  # JWT verification with clock tolerance (leeway)
 
 # AI Agent
 anthropic>=0.40.0
+openpyxl>=3.1.0

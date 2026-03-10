@@ -3,17 +3,39 @@ import {
   AgentSession,
   AgentSessionDetail,
   CreateSessionRequest,
+  UpdateSessionRequest,
   AgentChatRequest,
   AgentSpreadsheet,
   SSEEvent,
 } from '@/types/agent';
 
+/** Build auth headers for SSE fetch requests (mirrors Axios interceptor logic). */
+function getSSEAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  const authStorage = typeof window !== 'undefined'
+    ? localStorage.getItem('auth-storage')
+    : null;
+  if (authStorage) {
+    try {
+      const parsed = JSON.parse(authStorage);
+      const token = parsed.state?.token;
+      const orgToken = parsed.state?.organizationAccessToken;
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      if (orgToken) headers['X-Organization-Token'] = orgToken;
+    } catch {
+      // ignore parse errors
+    }
+  }
+  return headers;
+}
+
 export const AgentAPI = {
   // ==================== Session CRUD ====================
 
   listSessions: async (): Promise<AgentSession[]> => {
-    const response = await api.get<AgentSession[]>('/api/agent/sessions/');
-    return response.data;
+    const response = await api.get('/api/agent/sessions/');
+    const data = response.data;
+    return Array.isArray(data) ? data : (data.results || []);
   },
 
   createSession: async (data: CreateSessionRequest): Promise<AgentSession> => {
@@ -21,14 +43,22 @@ export const AgentAPI = {
     return response.data;
   },
 
-  getSession: async (sessionId: number): Promise<AgentSessionDetail> => {
+  getSession: async (sessionId: string | number): Promise<AgentSessionDetail> => {
     const response = await api.get<AgentSessionDetail>(
       `/api/agent/sessions/${sessionId}/`
     );
     return response.data;
   },
 
-  deleteSession: async (sessionId: number): Promise<void> => {
+  updateSession: async (sessionId: string | number, data: UpdateSessionRequest): Promise<AgentSession> => {
+    const response = await api.patch<AgentSession>(
+      `/api/agent/sessions/${sessionId}/`,
+      data
+    );
+    return response.data;
+  },
+
+  deleteSession: async (sessionId: string | number): Promise<void> => {
     await api.delete(`/api/agent/sessions/${sessionId}/`);
   },
 
@@ -43,29 +73,11 @@ export const AgentAPI = {
   ): AbortController => {
     const controller = new AbortController();
 
-    // Build auth headers matching the shared axios instance
-    const authStorage = typeof window !== 'undefined'
-      ? localStorage.getItem('auth-storage')
-      : null;
-    let token: string | null = null;
-    let organizationToken: string | null = null;
-
-    if (authStorage) {
-      try {
-        const parsed = JSON.parse(authStorage);
-        token = parsed.state?.token ?? null;
-        organizationToken = parsed.state?.organizationAccessToken ?? null;
-      } catch {
-        // ignore parse errors
-      }
-    }
-
     const headers: Record<string, string> = {
+      ...getSSEAuthHeaders(),
       'Content-Type': 'application/json',
       'Accept': 'text/event-stream',
     };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    if (organizationToken) headers['X-Organization-Token'] = organizationToken;
 
     // Determine base URL (match axios instance config)
     const baseURL =
@@ -153,13 +165,107 @@ export const AgentAPI = {
     return response.data;
   },
 
-  uploadCSV: async (file: File) => {
+  uploadFile: async (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
     const response = await api.post('/api/agent/data/upload/', formData, {
       timeout: 60000, // 60s for file upload
     });
     return response.data;
+  },
+
+  /** @deprecated Use uploadFile instead */
+  uploadCSV: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post('/api/agent/data/upload/', formData, {
+      timeout: 60000,
+    });
+    return response.data;
+  },
+
+  /**
+   * Upload a file and stream back analysis results via SSE.
+   * Returns an AbortController to cancel the request.
+   */
+  uploadAndAnalyze: (
+    file: File,
+    sessionId: string | null,
+    onEvent: (event: SSEEvent) => void,
+    onError?: (error: Error) => void,
+    onDone?: () => void
+  ): AbortController => {
+    const controller = new AbortController();
+
+    const headers: Record<string, string> = {
+      ...getSSEAuthHeaders(),
+      'Accept': 'text/event-stream',
+    };
+
+    const formData = new FormData();
+    formData.append('file', file);
+    if (sessionId) formData.append('session_id', sessionId);
+
+    const baseURL =
+      (typeof process !== 'undefined' &&
+        process.env?.NEXT_PUBLIC_API_URL?.trim()) ||
+      '';
+
+    fetch(`${baseURL}/api/agent/upload-analyze/`, {
+      method: 'POST',
+      headers,
+      body: formData,
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const errText = await response.text().catch(() => 'Unknown error');
+          throw new Error(`Upload-analyze failed (${response.status}): ${errText}`);
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error('No response body');
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith(':')) continue;
+
+            if (trimmed.startsWith('data: ')) {
+              const jsonStr = trimmed.slice(6);
+              try {
+                const event: SSEEvent = JSON.parse(jsonStr);
+                onEvent(event);
+                if (event.type === 'done') {
+                  onDone?.();
+                  return;
+                }
+              } catch {
+                // skip malformed JSON
+              }
+            }
+          }
+        }
+
+        onDone?.();
+      })
+      .catch((err) => {
+        if (err.name === 'AbortError') return;
+        onError?.(err);
+      });
+
+    return controller;
   },
 
   fetchReportsSummary: async () => {

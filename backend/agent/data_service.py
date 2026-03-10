@@ -1,9 +1,11 @@
 """
-Service for reading and saving CSV report files for agent analysis.
+Service for reading and saving CSV / Excel report files for agent analysis.
 """
 import csv
 import os
 import logging
+
+ALLOWED_EXTENSIONS = ('.csv', '.xlsx', '.xls')
 
 from django.conf import settings
 
@@ -159,6 +161,95 @@ def save_uploaded_csv(uploaded_file, user, project):
     except Exception as e:
         logger.error(f"Error saving uploaded CSV: {e}")
         # Clean up partial file
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        return None
+
+
+def save_uploaded_file(uploaded_file, user, project):
+    """Save an uploaded file (CSV/Excel) to disk and create a database record.
+
+    Unlike save_uploaded_csv(), this preserves the original extension and
+    counts rows/columns appropriately for Excel files.
+
+    Returns dict with file info, or None on error.
+    """
+    csv_dir = _get_csv_dir()
+    os.makedirs(csv_dir, exist_ok=True)
+
+    original_name = os.path.basename(uploaded_file.name)
+    safe_name = original_name
+    ext = os.path.splitext(safe_name)[1].lower()
+
+    if ext not in ALLOWED_EXTENSIONS:
+        logger.error(f"Unsupported file extension: {ext}")
+        return None
+
+    filepath = os.path.join(csv_dir, safe_name)
+
+    # De-duplicate filename
+    counter = 1
+    base, file_ext = os.path.splitext(safe_name)
+    while os.path.exists(filepath):
+        safe_name = f"{base}({counter}){file_ext}"
+        filepath = os.path.join(csv_dir, safe_name)
+        counter += 1
+
+    try:
+        with open(filepath, 'wb') as f:
+            for chunk in uploaded_file.chunks():
+                f.write(chunk)
+
+        row_count = 0
+        col_count = 0
+
+        if ext == '.csv':
+            with open(filepath, 'r', encoding='utf-8-sig') as f:
+                reader = csv.reader(f)
+                header = next(reader, None)
+                col_count = len(header) if header else 0
+                for _ in reader:
+                    row_count += 1
+        elif ext in ('.xlsx', '.xls'):
+            try:
+                import openpyxl
+                wb = openpyxl.load_workbook(filepath, data_only=True, read_only=True)
+                for ws in wb.worksheets:
+                    ws_rows = 0
+                    ws_cols = 0
+                    for i, row_vals in enumerate(ws.iter_rows(values_only=True)):
+                        if i == 0:
+                            ws_cols = len([c for c in row_vals if c is not None])
+                        else:
+                            ws_rows += 1
+                    row_count += ws_rows
+                    col_count = max(col_count, ws_cols)
+                wb.close()
+            except ImportError:
+                logger.warning("openpyxl not installed, cannot count Excel rows/cols")
+
+        file_size = os.path.getsize(filepath)
+
+        record = ImportedCSVFile.objects.create(
+            filename=safe_name,
+            original_filename=original_name,
+            user=user,
+            project=project,
+            row_count=row_count,
+            column_count=col_count,
+            file_size=file_size,
+        )
+
+        return {
+            'id': str(record.id),
+            'filename': safe_name,
+            'original_filename': original_name,
+            'row_count': row_count,
+            'column_count': col_count,
+            'file_size': file_size,
+        }
+    except Exception as e:
+        logger.error(f"Error saving uploaded file: {e}")
         if os.path.exists(filepath):
             os.remove(filepath)
         return None

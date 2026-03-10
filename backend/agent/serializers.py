@@ -3,9 +3,11 @@ from .models import AgentSession, AgentMessage, AgentWorkflowRun, ImportedCSVFil
 
 
 class AgentMessageSerializer(serializers.ModelSerializer):
+    data = serializers.JSONField(source='metadata', read_only=True)
+
     class Meta:
         model = AgentMessage
-        fields = ['id', 'role', 'content', 'message_type', 'metadata', 'created_at']
+        fields = ['id', 'role', 'content', 'message_type', 'data', 'created_at']
         read_only_fields = ['id', 'created_at']
 
 
@@ -27,7 +29,7 @@ class AgentSessionDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = AgentSession
         fields = ['id', 'title', 'status', 'created_at', 'updated_at', 'messages']
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'status', 'created_at', 'updated_at']
 
 
 class AgentWorkflowRunSerializer(serializers.ModelSerializer):
@@ -56,9 +58,10 @@ class ChatInputSerializer(serializers.Serializer):
     message = serializers.CharField(required=True)
     spreadsheet_id = serializers.IntegerField(required=False, allow_null=True)
     csv_filename = serializers.RegexField(
-        r'^[\w\-. ()]+\.csv$', required=False, allow_null=True,
+        r'^[\w\-. ()]+\.(csv|xlsx|xls)$', required=False, allow_null=True,
         error_messages={'invalid': 'Invalid filename format.'}
     )
+    file_id = serializers.UUIDField(required=False, allow_null=True)
     action = serializers.ChoiceField(
         choices=['analyze', 'confirm_decision', 'create_tasks'],
         required=False,

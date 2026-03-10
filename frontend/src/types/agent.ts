@@ -3,16 +3,22 @@
 // ==================== Session Types ====================
 
 export interface AgentSession {
-  id: number;
+  id: string;
   project_id: number;
   created_by: number;
   title?: string | null;
+  status?: string;
   created_at: string;
   updated_at: string;
+  message_count?: number;
 }
 
 export interface AgentSessionDetail extends AgentSession {
   messages: AgentMessage[];
+}
+
+export interface UpdateSessionRequest {
+  title?: string;
 }
 
 export interface CreateSessionRequest {
@@ -24,10 +30,11 @@ export interface CreateSessionRequest {
 export type AgentMessageRole = 'user' | 'assistant';
 
 export interface AgentMessage {
-  id: number;
+  id: string;
   session_id: number;
   role: AgentMessageRole;
   content: string;
+  message_type?: string;
   created_at: string;
   data?: AgentMessageData | null;
 }
@@ -36,6 +43,15 @@ export interface AgentMessageData {
   anomalies?: AnomalyItem[];
   decision_id?: number;
   task_ids?: number[];
+  suggested_decision?: SuggestedDecision;
+  recommended_tasks?: RecommendedTask[];
+  file_id?: string;
+  workflow_run_id?: string;
+  session_id?: string;
+  filename?: string;
+  original_filename?: string;
+  row_count?: number;
+  column_count?: number;
 }
 
 // ==================== SSE Stream Types ====================
@@ -46,6 +62,7 @@ export type SSEEventType =
   | 'confirmation_request'
   | 'decision_draft'
   | 'task_created'
+  | 'file_uploaded'
   | 'done'
   | 'error';
 
@@ -96,7 +113,7 @@ export interface AgentSpreadsheet {
 
 export interface AgentChatState {
   sessions: AgentSession[];
-  currentSessionId: number | null;
+  currentSessionId: string | null;
   messages: AgentMessage[];
   isStreaming: boolean;
   streamingContent: string;
@@ -117,3 +134,31 @@ export interface ImportedCSVFile {
 }
 
 export type DataPanelTab = 'spreadsheet' | 'decisions' | 'tasks';
+
+// ==================== Analysis Result Types ====================
+
+export interface AnalysisResult {
+  anomalies: AnomalyItem[];
+  suggested_decision?: SuggestedDecision;
+  recommended_tasks?: RecommendedTask[];
+}
+
+export interface SuggestedDecision {
+  title: string;
+  context_summary: string;
+  reasoning: string;
+  risk_level: 'LOW' | 'MEDIUM' | 'HIGH';
+  confidence: number;
+  options: DecisionOption[];
+}
+
+export interface DecisionOption {
+  text: string;
+  order: number;
+}
+
+export interface RecommendedTask {
+  type: string;
+  summary: string;
+  priority: 'HIGH' | 'MEDIUM' | 'LOW';
+}

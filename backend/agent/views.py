@@ -3,11 +3,26 @@ import logging
 
 from django.db.models import Count
 from django.http import StreamingHttpResponse
+from django.utils.translation import activate as activate_language
 from rest_framework import viewsets, status
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.renderers import BaseRenderer, JSONRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+
+class EventStreamRenderer(BaseRenderer):
+    """Renderer that accepts text/event-stream for SSE endpoints."""
+    media_type = 'text/event-stream'
+    format = 'event-stream'
+    charset = 'utf-8'
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        # Error responses (DRF Response) fall through here; serialize as JSON.
+        if data is None:
+            return b''
+        return json.dumps(data).encode('utf-8')
 
 from core.models import Project, ProjectMember
 from decision.models import Decision
@@ -40,7 +55,8 @@ def _get_user_project(request):
 
 class AgentSessionViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
-    http_method_names = ['get', 'post', 'delete', 'head', 'options']
+    pagination_class = None
+    http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
 
     def get_serializer_class(self):
         if self.action == 'list':
@@ -55,6 +71,9 @@ class AgentSessionViewSet(viewsets.ModelViewSet):
         )
         if project:
             qs = qs.filter(project=project)
+        qs = qs.order_by('-created_at')
+        if self.action == 'list':
+            return qs[:50]
         return qs
 
     def perform_create(self, serializer):
@@ -72,8 +91,10 @@ class AgentSessionViewSet(viewsets.ModelViewSet):
 
 class ChatView(APIView):
     permission_classes = [IsAuthenticated]
+    renderer_classes = [EventStreamRenderer, JSONRenderer]
 
     def post(self, request, session_id):
+        activate_language('en')
         serializer = ChatInputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -92,6 +113,7 @@ class ChatView(APIView):
         message_text = serializer.validated_data['message']
         spreadsheet_id = serializer.validated_data.get('spreadsheet_id')
         csv_filename = serializer.validated_data.get('csv_filename')
+        file_id = serializer.validated_data.get('file_id')
         action = serializer.validated_data.get('action')
 
         # Auto-generate title from first message
@@ -127,6 +149,7 @@ class ChatView(APIView):
                 spreadsheet_id=spreadsheet_id,
                 csv_filename=csv_filename,
                 action=action,
+                file_id=file_id,
             ):
                 chunk_type = chunk.get('type', 'text')
                 content = chunk.get('content', '')
@@ -248,9 +271,10 @@ class DataUploadView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if not file.name.lower().endswith('.csv'):
+        allowed_exts = ('.csv', '.xlsx', '.xls')
+        if not file.name.lower().endswith(allowed_exts):
             return Response(
-                {"detail": "Only CSV files are accepted."},
+                {"detail": "Only CSV and Excel files are accepted."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -261,13 +285,137 @@ class DataUploadView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        result = data_service.save_uploaded_csv(file, request.user, project)
+        result = data_service.save_uploaded_file(file, request.user, project)
         if result is None:
             return Response(
                 {"detail": "Failed to save file."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         return Response(result, status=status.HTTP_201_CREATED)
+
+
+class FileUploadAnalyzeView(APIView):
+    """POST /api/agent/upload-analyze/ — upload a file and stream analysis."""
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+    renderer_classes = [EventStreamRenderer, JSONRenderer]
+
+    def post(self, request):
+        activate_language('en')
+        project = _get_user_project(request)
+        if not project:
+            return Response(
+                {"detail": "No active project."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        file = request.FILES.get('file')
+        if not file:
+            return Response(
+                {"detail": "No file provided."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        allowed_exts = ('.csv', '.xlsx', '.xls')
+        if not file.name.lower().endswith(allowed_exts):
+            return Response(
+                {"detail": "Only CSV and Excel files are accepted."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        max_size = 10 * 1024 * 1024  # 10MB
+        if file.size > max_size:
+            return Response(
+                {"detail": "File too large (max 10MB)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Save file
+        result = data_service.save_uploaded_file(file, request.user, project)
+        if result is None:
+            return Response(
+                {"detail": "Failed to save file."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        # Create or reuse session
+        session_id = request.data.get('session_id')
+        if session_id:
+            try:
+                session = AgentSession.objects.get(
+                    id=session_id, user=request.user, is_deleted=False,
+                )
+            except AgentSession.DoesNotExist:
+                session = AgentSession.objects.create(
+                    user=request.user, project=project,
+                    title=f"Analysis: {result['original_filename']}",
+                )
+        else:
+            session = AgentSession.objects.create(
+                user=request.user, project=project,
+                title=f"Analysis: {result['original_filename']}",
+            )
+
+        orchestrator = AgentOrchestrator(
+            user=request.user, project=project, session=session,
+        )
+
+        def event_stream():
+            # Immediately emit file_uploaded event
+            file_event = {
+                "type": "file_uploaded",
+                "content": f"Uploaded \"{result['original_filename']}\" ({result['row_count']} rows, {result['column_count']} columns).",
+                "data": {
+                    "file_id": result['id'],
+                    "filename": result['filename'],
+                    "original_filename": result['original_filename'],
+                    "row_count": result['row_count'],
+                    "column_count": result['column_count'],
+                },
+            }
+            yield f"data: {json.dumps(file_event)}\n\n"
+
+            # Run analysis
+            assistant_content_parts = []
+            assistant_metadata = {"file_id": result['id']}
+            last_message_type = 'text'
+
+            for chunk in orchestrator.analyze_file(result['id']):
+                chunk_type = chunk.get('type', 'text')
+                content = chunk.get('content', '')
+                data = chunk.get('data')
+
+                assistant_content_parts.append(content)
+                last_message_type = chunk_type
+                if data:
+                    assistant_metadata.update(data)
+
+                yield f"data: {json.dumps(chunk, default=str)}\n\n"
+
+            # Save assistant message
+            if assistant_content_parts:
+                AgentMessage.objects.create(
+                    session=session,
+                    role='assistant',
+                    content='\n'.join(assistant_content_parts),
+                    message_type=last_message_type,
+                    metadata=assistant_metadata,
+                )
+
+            # Done event with session_id
+            done_event = {
+                "type": "done",
+                "data": {"session_id": str(session.id)},
+            }
+            yield f"data: {json.dumps(done_event)}\n\n"
+
+        response = StreamingHttpResponse(
+            event_stream(),
+            content_type='text/event-stream',
+        )
+        response['Cache-Control'] = 'no-cache'
+        response['X-Accel-Buffering'] = 'no'
+        return response
 
 
 class DataReportSummaryView(APIView):

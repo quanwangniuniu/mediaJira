@@ -1,4 +1,5 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
 
 export type TaskType =
@@ -65,42 +66,69 @@ const priorityColors: Record<TaskPriority, string> = {
   LOWEST: "bg-zinc-500",
 }
 
-export function TaskCard({ task }: { task: Task }) {
-  return (
-    <div className="rounded-lg border border-border bg-card p-3 shadow-sm hover:border-muted-foreground/30 transition-colors">
-      <div className="flex flex-col gap-2">
-        <p className="text-sm font-medium text-card-foreground line-clamp-1">
-          {task.summary}
-        </p>
+interface TaskCardProps {
+  task: Task
+  isManaging?: boolean
+  isSelected?: boolean
+  onToggleSelect?: () => void
+}
 
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span
-              className={cn(
-                "rounded-full px-2 py-0.5 text-xs font-medium",
-                typeColors[task.type]
-              )}
-            >
-              {typeLabels[task.type]}
-            </span>
-            <span
-              className={cn(
-                "size-2 rounded-full shrink-0",
-                priorityColors[task.priority]
-              )}
-              title={task.priority}
+export function TaskCard({ task, isManaging, isSelected, onToggleSelect }: TaskCardProps) {
+  return (
+    <div
+      className={cn(
+        "rounded-lg border bg-card p-3 shadow-sm transition-colors",
+        isManaging && isSelected
+          ? "border-blue-500/50 bg-blue-500/5"
+          : "border-border hover:border-muted-foreground/30",
+        isManaging && "cursor-pointer"
+      )}
+      onClick={isManaging ? onToggleSelect : undefined}
+    >
+      <div className="flex gap-2">
+        {isManaging && (
+          <div className="flex items-center pt-0.5">
+            <Checkbox
+              checked={isSelected}
+              onCheckedChange={onToggleSelect}
+              onClick={(e) => e.stopPropagation()}
             />
           </div>
+        )}
+        <div className="flex flex-col gap-2 flex-1 min-w-0">
+          <p className="text-sm font-medium text-card-foreground line-clamp-1">
+            {task.summary}
+          </p>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">
-              {task.dueDate}
-            </span>
-            <Avatar className="size-6">
-              <AvatarFallback className="text-[10px] bg-secondary text-secondary-foreground">
-                {task.owner.initials}
-              </AvatarFallback>
-            </Avatar>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span
+                className={cn(
+                  "rounded-full px-2 py-0.5 text-xs font-medium",
+                  typeColors[task.type]
+                )}
+              >
+                {typeLabels[task.type]}
+              </span>
+              <span
+                className={cn(
+                  "size-2 rounded-full shrink-0",
+                  priorityColors[task.priority]
+                )}
+                title={task.priority}
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">
+                {task.dueDate}
+              </span>
+              <Avatar className="size-6">
+                <AvatarFallback className="text-[10px] bg-secondary text-secondary-foreground">
+                  {task.owner.initials}
+                </AvatarFallback>
+              </Avatar>
+            </div>
           </div>
         </div>
       </div>

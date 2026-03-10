@@ -1,12 +1,17 @@
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { TaskCard, type Task } from "./TaskCard"
+import { cn } from "@/lib/utils"
 
 export type ColumnStatus = "DRAFT" | "SUBMITTED" | "UNDER_REVIEW" | "APPROVED"
 
 interface KanbanColumnProps {
   status: ColumnStatus
   tasks: Task[]
+  isManaging?: boolean
+  selectedIds?: Set<string | number>
+  exitingIds?: Set<string | number>
+  onToggleSelect?: (id: string | number) => void
 }
 
 const statusLabels: Record<ColumnStatus, string> = {
@@ -16,7 +21,7 @@ const statusLabels: Record<ColumnStatus, string> = {
   APPROVED: "Approved",
 }
 
-export function KanbanColumn({ status, tasks }: KanbanColumnProps) {
+export function KanbanColumn({ status, tasks, isManaging, selectedIds, exitingIds, onToggleSelect }: KanbanColumnProps) {
   return (
     <div className="flex min-w-[280px] flex-1 flex-col rounded-lg bg-card/50">
       <div className="flex items-center justify-between p-3 border-b border-border">
@@ -31,7 +36,20 @@ export function KanbanColumn({ status, tasks }: KanbanColumnProps) {
       <ScrollArea className="flex-1">
         <div className="flex flex-col gap-2 p-3">
           {tasks.map((task) => (
-            <TaskCard key={task.id} task={task} />
+            <div
+              key={task.id}
+              className={cn(
+                "transition-all duration-300",
+                exitingIds?.has(task.id) && "opacity-0 scale-95 max-h-0 overflow-hidden"
+              )}
+            >
+              <TaskCard
+                task={task}
+                isManaging={isManaging}
+                isSelected={selectedIds?.has(task.id)}
+                onToggleSelect={() => onToggleSelect?.(task.id)}
+              />
+            </div>
           ))}
         </div>
       </ScrollArea>
