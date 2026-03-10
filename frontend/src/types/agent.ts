@@ -16,7 +16,7 @@ export interface AgentSessionDetail extends AgentSession {
 }
 
 export interface CreateSessionRequest {
-  project_id: number;
+  project_id?: number;
 }
 
 // ==================== Message Types ====================
@@ -43,6 +43,7 @@ export interface AgentMessageData {
 export type SSEEventType =
   | 'text'
   | 'analysis'
+  | 'confirmation_request'
   | 'decision_draft'
   | 'task_created'
   | 'done'
@@ -61,6 +62,7 @@ export type AgentAction = 'analyze' | 'confirm_decision' | 'create_tasks';
 export interface AgentChatRequest {
   message: string;
   spreadsheet_id?: number;
+  csv_filename?: string;
   action?: AgentAction;
 }
 
@@ -100,6 +102,18 @@ export interface AgentChatState {
   streamingContent: string;
   streamingEvents: SSEEvent[];
   error: string | null;
+}
+
+// ==================== Imported CSV File ====================
+
+export interface ImportedCSVFile {
+  id: string;
+  filename: string;
+  original_filename: string;
+  row_count: number;
+  column_count: number;
+  file_size: number;
+  created_at: string;
 }
 
 export type DataPanelTab = 'spreadsheet' | 'decisions' | 'tasks';

@@ -35,7 +35,7 @@ export const AgentAPI = {
   // ==================== Chat (SSE Streaming) ====================
 
   sendMessage: (
-    sessionId: number,
+    sessionId: number | string,
     data: AgentChatRequest,
     onEvent: (event: SSEEvent) => void,
     onError?: (error: Error) => void,
@@ -138,6 +138,39 @@ export const AgentAPI = {
     const response = await api.get<AgentSpreadsheet[]>(
       '/api/agent/spreadsheets/'
     );
+    return response.data;
+  },
+
+  // ==================== Data Reports (CSV) ====================
+
+  fetchReports: async () => {
+    const response = await api.get('/api/agent/data/reports/');
+    return response.data;
+  },
+
+  fetchReportData: async (fileId: string) => {
+    const response = await api.get(`/api/agent/data/reports/${fileId}/`);
+    return response.data;
+  },
+
+  uploadCSV: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post('/api/agent/data/upload/', formData);
+    return response.data;
+  },
+
+  deleteReport: async (fileId: string): Promise<void> => {
+    await api.delete(`/api/agent/data/reports/${fileId}/`);
+  },
+
+  fetchDecisionStats: async () => {
+    const response = await api.get('/api/agent/decisions/stats/');
+    return response.data;
+  },
+
+  fetchRecentDecisions: async () => {
+    const response = await api.get('/api/agent/decisions/recent/');
     return response.data;
   },
 };
