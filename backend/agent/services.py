@@ -230,18 +230,12 @@ class AgentOrchestrator:
                 yield {"type": "error", "content": "No pending analysis to confirm."}
         elif action == 'create_tasks':
             workflow_run = self.session.workflow_runs.filter(
-                status='creating_tasks'
+                analysis_result__isnull=False
             ).order_by('-created_at').first()
-            if not workflow_run:
-                workflow_run = self.session.workflow_runs.filter(
-                    decision__isnull=False
-                ).order_by('-created_at').first()
-            if workflow_run and workflow_run.decision_id:
-                yield from self.create_tasks_from_decision(
-                    workflow_run.decision_id, workflow_run
-                )
+            if workflow_run and workflow_run.analysis_result:
+                yield from self.create_tasks_from_analysis(workflow_run)
             else:
-                yield {"type": "error", "content": "No decision found to create tasks from."}
+                yield {"type": "error", "content": "No analysis found to create tasks from."}
         else:
             # General chat — echo back with guidance
             yield {
@@ -500,54 +494,49 @@ class AgentOrchestrator:
             "data": {"decision_id": decision.id},
         }
 
-    def create_tasks_from_decision(self, decision_id, workflow_run=None):
-        """Create Tasks based on a Decision and its analysis."""
+    def create_tasks_from_analysis(self, workflow_run):
+        """Create Tasks directly from analysis results, optionally linking to Decision if it exists."""
         yield {"type": "text", "content": "Creating tasks..."}
 
-        try:
-            decision = Decision.objects.get(id=decision_id)
-        except Decision.DoesNotExist:
-            yield {"type": "error", "content": f"Decision {decision_id} not found."}
-            return
-
-        decision_ct = ContentType.objects.get_for_model(Decision)
-
-        analysis = {}
-        if workflow_run:
-            analysis = workflow_run.analysis_result or {}
-
+        analysis = workflow_run.analysis_result or {}
         recommended_tasks = analysis.get("recommended_tasks", [])
         if not recommended_tasks:
-            # Fallback: create a generic task
-            recommended_tasks = [
-                {
-                    "type": "optimization",
-                    "summary": f"Review and act on: {decision.title}",
-                    "priority": "MEDIUM",
-                }
-            ]
+            yield {"type": "error", "content": "No recommended tasks found in analysis."}
+            return
+
+        # If a decision exists, link tasks to it; otherwise leave unlinked
+        decision = workflow_run.decision
+        if decision:
+            decision_ct = ContentType.objects.get_for_model(Decision)
+            link_kwargs = {
+                "content_type": decision_ct,
+                "object_id": str(decision.id),
+            }
+            desc_suffix = f" (Decision: {decision.title})"
+        else:
+            link_kwargs = {}
+            desc_suffix = ""
 
         task_ids = []
         for task_data in recommended_tasks:
+            summary = task_data.get("summary", "AI Agent Generated Task")[:255]
             task = Task.objects.create(
-                summary=task_data.get("summary", "AI Agent Generated Task"),
-                description=f"Auto-generated from Decision: {decision.title}",
+                summary=summary,
+                description=f"Auto-generated from AI analysis{desc_suffix}",
                 type=task_data.get("type", "optimization"),
                 priority=task_data.get("priority", "MEDIUM"),
                 project=self.project,
                 owner=self.user,
-                content_type=decision_ct,
-                object_id=str(decision.id),
+                **link_kwargs,
             )
             task_ids.append(task.id)
 
-        if workflow_run:
-            workflow_run.created_tasks = task_ids
-            workflow_run.status = 'completed'
-            workflow_run.save()
+        workflow_run.created_tasks = task_ids
+        workflow_run.status = 'completed'
+        workflow_run.save()
 
         yield {
             "type": "task_created",
             "content": f"Created {len(task_ids)} tasks.",
-            "data": {"task_ids": task_ids, "decision_id": decision_id},
+            "data": {"task_ids": task_ids, "decision_id": decision.id if decision else None},
         }

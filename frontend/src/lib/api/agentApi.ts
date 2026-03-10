@@ -93,8 +93,21 @@ export const AgentAPI = {
     })
       .then(async (response) => {
         if (!response.ok) {
-          const errText = await response.text().catch(() => 'Unknown error');
-          throw new Error(`Agent chat failed (${response.status}): ${errText}`);
+          let errMessage: string;
+          if (response.status === 504) {
+            errMessage = 'Request timed out. Please try again.';
+          } else if (response.status >= 500) {
+            errMessage = 'Server error. Please try again.';
+          } else {
+            const errText = await response.text().catch(() => '');
+            try {
+              const errJson = JSON.parse(errText);
+              errMessage = errJson.detail || `Request failed (${response.status})`;
+            } catch {
+              errMessage = `Request failed (${response.status})`;
+            }
+          }
+          throw new Error(errMessage);
         }
 
         const reader = response.body?.getReader();
@@ -200,8 +213,21 @@ export const AgentAPI = {
     })
       .then(async (response) => {
         if (!response.ok) {
-          const errText = await response.text().catch(() => 'Unknown error');
-          throw new Error(`Upload-analyze failed (${response.status}): ${errText}`);
+          let errMessage: string;
+          if (response.status === 504) {
+            errMessage = 'Request timed out. Please try again.';
+          } else if (response.status >= 500) {
+            errMessage = 'Server error. Please try again.';
+          } else {
+            const errText = await response.text().catch(() => '');
+            try {
+              const errJson = JSON.parse(errText);
+              errMessage = errJson.detail || `Upload failed (${response.status})`;
+            } catch {
+              errMessage = `Upload failed (${response.status})`;
+            }
+          }
+          throw new Error(errMessage);
         }
 
         const reader = response.body?.getReader();
