@@ -30,6 +30,7 @@ import ConfirmDialog from "@/components/common/ConfirmDialog"
 import { AgentAPI } from "@/lib/api/agentApi"
 import { DecisionAPI } from "@/lib/api/decisionApi"
 import { useBatchManage } from "@/hooks/useBatchManage"
+import { useProjectStore } from "@/lib/projectStore"
 import toast from "react-hot-toast"
 
 // ─── Types ────────────────────────────────────────────
@@ -109,6 +110,12 @@ export function DecisionEditor() {
     onDeleteComplete: batchDeleteComplete,
   })
 
+  // Editing state
+  const [editingDecisionId, setEditingDecisionId] = useState<number | null>(null)
+  const [editingStatus, setEditingStatus] = useState<string>("draft")
+  const [isSaving, setIsSaving] = useState(false)
+  const activeProject = useProjectStore((s) => s.activeProject)
+
   // Form state
   const [title, setTitle] = useState("")
   const [context, setContext] = useState("")
@@ -148,15 +155,68 @@ export function DecisionEditor() {
     return () => { cancelled = true }
   }, [])
 
-  const loadDecision = (d: DecisionListItem) => {
+  const loadDecision = async (d: DecisionListItem) => {
+    // Set basic info immediately and switch to edit view
     setTitle(d.title)
+    setPriority((d.risk_level as "low" | "medium" | "high") || "medium")
     setContext("")
     setReasoning("")
     setSignals([])
     setOptions([])
     setSelectedOption("")
-    setPriority((d.risk_level as "low" | "medium" | "high") || "medium")
+    setEditingDecisionId(d.id)
+    setEditingStatus(d.status || "draft")
     setViewMode("edit")
+
+    // Fetch full decision detail to populate context, reasoning, signals, options
+    try {
+      let detail: { contextSummary?: string | null; reasoning?: string | null; options?: { text: string; isSelected: boolean }[]; signals?: { id: number; type: string; description: string; severity?: string | null }[] } | null = null
+
+      // Try draft endpoint first, then committed
+      try {
+        detail = await DecisionAPI.getDraft(d.id)
+      } catch {
+        try {
+          detail = await DecisionAPI.getDecision(d.id)
+        } catch {
+          // neither worked
+        }
+      }
+
+      if (detail) {
+        if (detail.contextSummary) setContext(detail.contextSummary)
+        if (detail.reasoning) setReasoning(detail.reasoning)
+
+        // Map API signals to local Signal type
+        if (detail.signals && detail.signals.length > 0) {
+          setSignals(detail.signals.map((s) => ({
+            id: String(s.id),
+            type: (s.type === "trend" ? "trend" : s.type === "alert" ? "alert" : "metric") as Signal["type"],
+            label: s.description || "Signal",
+            value: s.severity || "",
+          })))
+        }
+
+        // Map API options to local Option type
+        if (detail.options && detail.options.length > 0) {
+          const mappedOptions = detail.options.map((o, i) => ({
+            id: `o${i}-${Date.now()}`,
+            title: o.text,
+            description: "",
+            expectedImpact: "",
+            riskLevel: "medium" as const,
+          }))
+          setOptions(mappedOptions)
+          // Set selected option
+          const selectedIdx = detail.options.findIndex((o) => o.isSelected)
+          if (selectedIdx >= 0) {
+            setSelectedOption(mappedOptions[selectedIdx].id)
+          }
+        }
+      }
+    } catch {
+      // Keep what we have from the list item
+    }
   }
 
   const createNew = () => {
@@ -167,6 +227,8 @@ export function DecisionEditor() {
     setOptions([])
     setSelectedOption("")
     setPriority("medium")
+    setEditingDecisionId(null)
+    setEditingStatus("draft")
     setViewMode("edit")
   }
 
@@ -228,6 +290,92 @@ export function DecisionEditor() {
     setOptions((prev) => prev.filter((o) => o.id !== id))
     if (selectedOption === id) setSelectedOption("")
   }
+
+  // ─── Save / Submit ────────────────────────────────────
+
+  const refreshList = async () => {
+    try {
+      const data = await AgentAPI.fetchRecentDecisions()
+      setDecisionList(data)
+    } catch {
+      // ignore
+    }
+  }
+
+  const saveDraft = async (skipLoadingState = false) => {
+    if (!skipLoadingState) setIsSaving(true)
+    try {
+      const payload = {
+        title,
+        contextSummary: context,
+        reasoning,
+        riskLevel: priority.toUpperCase(),
+        options: options.map((o) => ({
+          text: o.title,
+          isSelected: selectedOption === o.id,
+        })),
+      }
+
+      let id = editingDecisionId
+      if (!id) {
+        const projectId = activeProject?.id
+        if (!projectId) {
+          toast.error("No active project selected")
+          if (!skipLoadingState) setIsSaving(false)
+          return null
+        }
+        const draft = await DecisionAPI.createDraft(projectId)
+        id = draft.id
+        setEditingDecisionId(id)
+      }
+
+      await DecisionAPI.patchDraft(id, payload)
+      toast.success("Draft saved")
+      await refreshList()
+      return id
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || "Failed to save draft"
+      toast.error(detail)
+      return null
+    } finally {
+      if (!skipLoadingState) setIsSaving(false)
+    }
+  }
+
+  const submitForReview = async () => {
+    setIsSaving(true)
+    try {
+      const id = await saveDraft(true)
+      if (!id) return
+      await DecisionAPI.commit(id)
+      toast.success("Decision submitted")
+      await refreshList()
+      setViewMode("list")
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || "Failed to submit"
+      toast.error(detail)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // ─── Listen for open-decision event ───────────────────
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (!detail?.decisionId) return
+      const found = decisionList.find((d) => d.id === detail.decisionId)
+      if (found) {
+        loadDecision(found)
+      } else {
+        // Fallback: decisionList may not be loaded yet, load directly by id
+        loadDecision({ id: detail.decisionId, title: "", status: "draft", risk_level: "", author: "", created_at: "" })
+      }
+    }
+    window.addEventListener("agent:open-decision", handler)
+    return () => window.removeEventListener("agent:open-decision", handler)
+  }, [decisionList])
 
   // ─── List View ────────────────────────────────────────
 
@@ -383,22 +531,31 @@ export function DecisionEditor() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="border-input text-card-foreground">
-              Save Draft
-            </Button>
-            <Button
-              size="sm"
-              disabled={!allPassed}
-              className={cn(
-                allPassed
-                  ? "bg-blue-600 hover:bg-blue-700 text-white"
-                  : "bg-input text-muted-foreground cursor-not-allowed"
-              )}
-            >
-              Submit for Review
-            </Button>
-          </div>
+          {editingStatus === "draft" && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-input text-card-foreground"
+                onClick={saveDraft}
+                disabled={isSaving}
+              >
+                {isSaving ? "Saving..." : "Save Draft"}
+              </Button>
+              <Button
+                size="sm"
+                disabled={!allPassed || isSaving}
+                onClick={submitForReview}
+                className={cn(
+                  allPassed && !isSaving
+                    ? "bg-blue-600 hover:bg-blue-700 text-white"
+                    : "bg-input text-muted-foreground cursor-not-allowed"
+                )}
+              >
+                Submit for Review
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Validation Status Bar */}

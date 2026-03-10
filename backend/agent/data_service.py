@@ -293,8 +293,7 @@ def get_reports_summary(project):
     avg_roas = total_revenue / total_cost if total_cost > 0 else 0
 
     sorted_campaigns = sorted(campaign_data, key=lambda x: x['roas'], reverse=True)
-    top5 = sorted_campaigns[:5]
-    bottom5 = sorted_campaigns[-5:] if len(sorted_campaigns) > 5 else []
+    top10 = sorted_campaigns[:10]
 
     return {
         'total_cost': round(total_cost, 2),
@@ -302,8 +301,8 @@ def get_reports_summary(project):
         'avg_roas': round(avg_roas, 2),
         'active_campaigns': total_rows,
         'file_count': records.count(),
-        'top_campaigns': top5,
-        'bottom_campaigns': bottom5,
+        'top_campaigns': top10,
+        'bottom_campaigns': [],
     }
 
 

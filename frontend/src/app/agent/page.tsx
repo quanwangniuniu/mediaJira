@@ -4,7 +4,6 @@ import { useAgentLayout } from "@/components/agent/AgentLayoutContext"
 import { OverviewDashboard } from "@/components/agent/overview/OverviewDashboard"
 import { SpreadsheetView } from "@/components/agent/spreadsheet/SpreadsheetView"
 import { TaskBoard } from "@/components/agent/taskboard/TaskBoard"
-import { AgentChatPage } from "@/components/agent/chat/AgentChatPage"
 import { DecisionEditor } from "@/components/agent/decision/DecisionEditor"
 
 export default function AgentPage() {
@@ -16,7 +15,6 @@ export default function AgentPage() {
       {activeView === "spreadsheets" && <SpreadsheetView />}
       {activeView === "decisions" && <DecisionEditor />}
       {activeView === "tasks" && <TaskBoard />}
-      {activeView === "agent" && <AgentChatPage />}
     </>
   )
 }

@@ -63,7 +63,7 @@ export function AnomalyAlerts({ anomalies, loading, compact = false }: AnomalyAl
           severity: mapSeverity(a.severity),
           metric: a.description,
           campaign: a.campaign,
-          delta: a.roas !== undefined ? `ROAS: ${a.roas}` : `$${a.cost.toLocaleString()}`,
+          delta: a.roas !== undefined ? `ROAS: ${a.roas}` : a.cost != null ? `$${a.cost.toLocaleString()}` : "",
         }))
       )
     }
@@ -96,9 +96,6 @@ export function AnomalyAlerts({ anomalies, loading, compact = false }: AnomalyAl
               <span className={cn("text-xs font-medium shrink-0", style.deltaColor)}>
                 {alert.delta}
               </span>
-              <Button variant="ghost" size="sm" className="h-6 text-xs text-blue-400 hover:text-blue-300 px-2 shrink-0">
-                View
-              </Button>
               <Button
                 variant="ghost"
                 size="sm"

@@ -48,9 +48,10 @@ const riskLabels: Record<string, string> = {
 
 interface RecentDecisionsProps {
   compact?: boolean
+  onSelect?: (decisionId: number) => void
 }
 
-export function RecentDecisions({ compact = false }: RecentDecisionsProps) {
+export function RecentDecisions({ compact = false, onSelect }: RecentDecisionsProps) {
   const [decisions, setDecisions] = useState<DecisionItem[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -87,7 +88,11 @@ export function RecentDecisions({ compact = false }: RecentDecisionsProps) {
         <p className="text-sm text-muted-foreground text-center py-4">No decisions yet</p>
       ) : (
         decisions.map((d) => (
-          <div key={d.id} className="rounded-lg bg-muted/50 p-3">
+          <div
+            key={d.id}
+            className={cn("rounded-lg bg-muted/50 p-3", onSelect && "cursor-pointer hover:bg-muted")}
+            onClick={() => onSelect?.(d.id)}
+          >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">

@@ -36,7 +36,7 @@ export function useAgentChat(): UseAgentChatReturn {
     (sessionId: number, request: AgentChatRequest) => {
       // Add user message immediately
       const userMsg: AgentMessage = {
-        id: Date.now(),
+        id: String(Date.now()),
         session_id: sessionId,
         role: 'user',
         content: request.message,
@@ -97,7 +97,7 @@ export function useAgentChat(): UseAgentChatReturn {
         () => {
           // Finalize: add assistant message with full content
           const assistantMsg: AgentMessage = {
-            id: Date.now() + 1,
+            id: String(Date.now() + 1),
             session_id: sessionId,
             role: 'assistant',
             content: accumulatedContent,

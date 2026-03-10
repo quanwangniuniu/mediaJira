@@ -1,9 +1,9 @@
 "use client"
 
-import { useEffect, useState, useRef, useCallback } from "react"
+import { useEffect, useState, useRef } from "react"
 import {
-  LayoutDashboard, Table, GitBranch, CheckSquare, Bot,
-  Settings, Clock, Plus, Pencil, Check, X, Settings2, Trash2,
+  LayoutDashboard, Table, GitBranch, CheckSquare,
+  Settings, Clock, Plus, Pencil, Check, X, Settings2, Trash2, Bot,
 } from "lucide-react"
 import { useAgentLayout, type AgentView } from "../AgentLayoutContext"
 import { cn } from "@/lib/utils"
@@ -17,7 +17,6 @@ const navItems: { id: AgentView; label: string; icon: React.ElementType }[] = [
   { id: "spreadsheets", label: "Spreadsheets", icon: Table },
   { id: "decisions", label: "Decisions", icon: GitBranch },
   { id: "tasks", label: "Tasks", icon: CheckSquare },
-  { id: "agent", label: "AI Agent", icon: Bot },
 ]
 
 interface SessionItem {
@@ -41,7 +40,7 @@ function formatTimeAgo(iso: string): string {
 }
 
 export function LeftSidebar() {
-  const { activeView, setActiveView } = useAgentLayout()
+  const { activeView, setActiveView, openFloatingChat, floatingChat, isInSnapZone } = useAgentLayout()
   const [recentSessions, setRecentSessions] = useState<SessionItem[]>([])
   const [showSettings, setShowSettings] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -78,12 +77,12 @@ export function LeftSidebar() {
     loadSessions()
   }, [])
 
-  // Refresh sessions when switching to agent view
+  // Refresh sessions when floating chat opens (replaces old "agent view" refresh)
   useEffect(() => {
-    if (activeView === "agent") {
+    if (floatingChat.mode !== "closed") {
       loadSessions()
     }
-  }, [activeView])
+  }, [floatingChat.mode])
 
   // Refresh sessions when a new session is created
   useEffect(() => {
@@ -100,16 +99,15 @@ export function LeftSidebar() {
     }
   }, [editingId])
 
-  const handleNewChat = () => {
-    // Clear stored session so AgentChatPage shows WelcomeScreen
+  const handleNewChat = (e: React.MouseEvent) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     sessionStorage.removeItem("agent-session-id")
-    window.dispatchEvent(new CustomEvent("agent:new-chat"))
-    setActiveView("agent")
+    openFloatingChat(null, rect)
   }
 
-  const handleSelectSession = (sessionId: string) => {
-    window.dispatchEvent(new CustomEvent("agent:load-session", { detail: { sessionId } }))
-    setActiveView("agent")
+  const handleSelectSession = (sessionId: string, e: React.MouseEvent) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    openFloatingChat(sessionId, rect)
   }
 
   const startRename = (session: SessionItem, e: React.MouseEvent) => {
@@ -128,6 +126,7 @@ export function LeftSidebar() {
       setRecentSessions((prev) =>
         prev.map((s) => s.id === editingId ? { ...s, title: editTitle.trim() } : s)
       )
+      window.dispatchEvent(new CustomEvent("agent:sessions-changed"))
     } catch {
       // revert silently
     }
@@ -188,7 +187,12 @@ export function LeftSidebar() {
       </nav>
 
       {/* Recent Sessions */}
-      <div className="flex-1 overflow-y-auto border-t border-border">
+      <div
+        className={cn(
+          "flex-1 overflow-y-auto border-t border-border transition-all duration-200",
+          isInSnapZone && "ring-2 ring-blue-500/50 bg-blue-500/5 ring-inset"
+        )}
+      >
         <div className="px-4 pt-3 pb-1 flex items-center justify-between">
           <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Recent</span>
           <div className="flex items-center gap-1">
@@ -235,6 +239,15 @@ export function LeftSidebar() {
             )}
           </div>
         </div>
+        <div className="px-3 pb-2">
+          <button
+            onClick={handleNewChat}
+            className="w-full flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-primary/5 transition-colors"
+          >
+            <Bot className="w-4 h-4 text-primary" />
+            <span>New Dialogue</span>
+          </button>
+        </div>
         <div className="px-2 pb-2 space-y-0.5">
           {recentSessions.length === 0 ? (
             <span className="px-2 text-xs text-muted-foreground/60">No recent sessions</span>
@@ -242,6 +255,7 @@ export function LeftSidebar() {
             recentSessions.map((session) => (
               <div
                 key={session.id}
+                data-session-id={session.id}
                 className={cn(
                   "transition-all duration-300",
                   batch.isExiting(session.id) && "opacity-0 scale-95 -translate-x-2"
@@ -283,8 +297,11 @@ export function LeftSidebar() {
                   </button>
                 ) : (
                   <button
-                    onClick={() => handleSelectSession(session.id)}
-                    className="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted/50 transition-colors group"
+                    onClick={(e) => handleSelectSession(session.id, e)}
+                    className={cn(
+                      "w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted/50 transition-colors group",
+                      floatingChat.sessionId === session.id && floatingChat.mode !== "closed" && "bg-muted/50"
+                    )}
                   >
                     <Clock className="w-3 h-3 text-muted-foreground/60 shrink-0" />
                     <span className="text-xs text-muted-foreground group-hover:text-foreground truncate flex-1">

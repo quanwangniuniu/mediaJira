@@ -13,7 +13,6 @@ import { debugLog } from "@/lib/agentDebug"
 export function SpreadsheetView() {
   const [reports, setReports] = useState<ImportedCSVFile[]>([])
   const [selectedSheet, setSelectedSheet] = useState("")
-  const [uploading, setUploading] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -28,28 +27,6 @@ export function SpreadsheetView() {
     }
     load()
   }, [])
-
-  const handleUpload = async (file: File) => {
-    setUploading(true)
-    debugLog("upload", "Starting:", file.name)
-    try {
-      const result = await AgentAPI.uploadCSV(file)
-      const list = await AgentAPI.fetchReports()
-      setReports(list)
-      setSelectedSheet(result.filename)
-      toast.success(`CSV uploaded — ${result.original_filename} (${result.row_count} rows)`)
-      debugLog("upload", "Success:", result.filename)
-    } catch (err: any) {
-      const detail = err?.response?.data?.detail
-      const message = err?.code === 'ECONNABORTED'
-        ? 'Upload timed out — file may be too large'
-        : detail || 'Failed to upload CSV'
-      toast.error(message)
-      debugLog("upload", "Failed:", err)
-    } finally {
-      setUploading(false)
-    }
-  }
 
   const handleDelete = async (fileId: string) => {
     try {
@@ -74,9 +51,7 @@ export function SpreadsheetView() {
         reports={reports}
         selectedSheet={selectedSheet}
         onSheetChange={setSelectedSheet}
-        onUpload={handleUpload}
         onDelete={handleDelete}
-        uploading={uploading}
       />
       <DataTable fileId={reports.find((r) => r.filename === selectedSheet)?.id ?? ""} />
       <AnalysisResults filename={selectedSheet} />

@@ -5,6 +5,7 @@ import { AgentLayoutProvider, useAgentLayout } from "@/components/agent/AgentLay
 import { LeftSidebar } from "@/components/agent/layout/LeftSidebar"
 import { TopBar } from "@/components/agent/layout/TopBar"
 import { RightPanel } from "@/components/agent/layout/RightPanel"
+import { FloatingChatWindow } from "@/components/agent/chat/FloatingChatWindow"
 
 function AgentThemeWrapper({ children }: { children: React.ReactNode }) {
   const { resolvedTheme } = useAgentLayout()
@@ -44,6 +45,9 @@ function AgentThemeWrapper({ children }: { children: React.ReactNode }) {
 
         {/* Right Panel */}
         <RightPanel />
+
+        {/* Floating Chat Window */}
+        <FloatingChatWindow />
       </div>
     </div>
   )

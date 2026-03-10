@@ -66,7 +66,7 @@ export function OverviewDashboard() {
 
       {/* Bottom Row */}
       <div className="grid grid-cols-2 gap-4">
-        <CampaignRanking topCampaigns={campaignData.top} bottomCampaigns={campaignData.bottom} />
+        <CampaignRanking topCampaigns={campaignData.top} />
         <ActivityFeed />
       </div>
     </div>

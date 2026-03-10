@@ -10,7 +10,6 @@ const viewLabels: Record<AgentView, string> = {
   spreadsheets: "Spreadsheet Analysis",
   decisions: "Decision Editor",
   tasks: "Task Board",
-  agent: "AI Agent",
 }
 
 export function TopBar() {

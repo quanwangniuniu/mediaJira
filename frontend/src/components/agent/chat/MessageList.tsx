@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react"
 import { Bot, User, FileSpreadsheet, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { AGENT_MESSAGES } from "@/lib/agentMessages"
 import { AnomalyCard } from "./AnomalyCard"
 import { DecisionCard } from "./DecisionCard"
 import { TaskListCard } from "./TaskListCard"
@@ -78,7 +79,8 @@ export function MessageList({ messages, onAction, onNavigate }: MessageListProps
                   "rounded-lg px-4 py-2.5 text-sm whitespace-pre-wrap",
                   message.role === "assistant"
                     ? "bg-muted text-foreground"
-                    : "bg-primary text-primary-foreground"
+                    : "bg-primary text-primary-foreground",
+                  message.role === "assistant" && message.content === AGENT_MESSAGES.CHAT_THINKING && "animate-pulse"
                 )}
               >
                 {message.content}

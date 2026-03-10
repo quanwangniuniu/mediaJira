@@ -9,6 +9,19 @@ import { AgentAPI } from "@/lib/api/agentApi"
 import type { SSEEvent, AgentAction, AgentMessage, AnalysisResult } from "@/types/agent"
 import { AGENT_MESSAGES } from "@/lib/agentMessages"
 
+/** Broadcast anomalies from restored messages to RightPanel Alerts. */
+function broadcastRestoredAnomalies(messages: AgentMessage[]) {
+  // Find the last message with anomalies and broadcast it
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].data?.anomalies) {
+      window.dispatchEvent(new CustomEvent("agent:analysis-complete", {
+        detail: { anomalies: messages[i].data!.anomalies }
+      }))
+      break
+    }
+  }
+}
+
 /** Restore a persisted AgentMessage into a ChatMessage with correct type & navigation. */
 function restoreMessage(m: AgentMessage): ChatMessage {
   let type: ChatMessage["type"] = "text"
@@ -41,7 +54,7 @@ function restoreMessage(m: AgentMessage): ChatMessage {
 }
 
 export function AgentChatPage() {
-  const { setActiveView } = useAgentLayout()
+  const { setActiveView, floatingChat, toggleMaximize } = useAgentLayout()
   const [sessionId, setSessionIdState] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
@@ -71,6 +84,7 @@ export function AgentChatPage() {
           setSessionIdState(String(session.id))
           setHasStarted(true)
           setMessages(session.messages.map(restoreMessage))
+          broadcastRestoredAnomalies(session.messages)
         })
         .catch(() => {
           sessionStorage.removeItem("agent-session-id")
@@ -97,8 +111,8 @@ export function AgentChatPage() {
         const session = await AgentAPI.getSession(detail.sessionId)
         setSessionId(String(session.id))
         setHasStarted(true)
-
         setMessages(session.messages.map(restoreMessage))
+        broadcastRestoredAnomalies(session.messages)
       } catch {
         // Session not found — stay on welcome
       }
@@ -175,6 +189,12 @@ export function AgentChatPage() {
             suggestedDecision: analysisData?.suggested_decision,
             recommendedTasks: analysisData?.recommended_tasks,
           })
+          // Broadcast to RightPanel Alerts
+          if (analysisData?.anomalies) {
+            window.dispatchEvent(new CustomEvent("agent:analysis-complete", {
+              detail: { anomalies: analysisData.anomalies }
+            }))
+          }
         } else if (event.type === "confirmation_request") {
           contentParts.push(event.content || "")
           updateMessage(aiMsgId, { content: contentParts.join("\n") })
@@ -250,6 +270,12 @@ export function AgentChatPage() {
             suggestedDecision: data.suggested_decision,
             recommendedTasks: data.recommended_tasks,
           })
+          // Broadcast to RightPanel Alerts
+          if (data.anomalies) {
+            window.dispatchEvent(new CustomEvent("agent:analysis-complete", {
+              detail: { anomalies: data.anomalies }
+            }))
+          }
         }
         if (event.type === "decision_draft" && event.data) {
           updateMessage(aiMsgId, { content: contentParts.join("\n") })
@@ -335,7 +361,7 @@ export function AgentChatPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <MessageList messages={messages} onAction={handleAction} onNavigate={(view) => setActiveView(view as AgentView)} />
+      <MessageList messages={messages} onAction={handleAction} onNavigate={(view) => { setActiveView(view as AgentView); if (floatingChat.mode === "maximized") toggleMaximize() }} />
       <ChatInput
         onSend={handleSendMessage}
         onFileUpload={handleFileUpload}

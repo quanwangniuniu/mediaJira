@@ -1,23 +1,39 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useAgentLayout } from "../AgentLayoutContext"
 import { cn } from "@/lib/utils"
 import { AnomalyAlerts } from "../overview/AnomalyAlerts"
 import { RecentDecisions } from "../overview/RecentDecisions"
 
-type TabValue = "alerts" | "decisions" | "notes"
+type TabValue = "alerts" | "decisions"
 
 const tabs: { value: TabValue; label: string }[] = [
   { value: "alerts", label: "Alerts" },
   { value: "decisions", label: "Decisions" },
-  { value: "notes", label: "Notes" },
 ]
 
 export function RightPanel() {
-  const { isRightPanelOpen } = useAgentLayout()
-  const [notes, setNotes] = useState("")
+  const { isRightPanelOpen, setActiveView } = useAgentLayout()
   const [activeTab, setActiveTab] = useState<TabValue>("alerts")
+  const [anomalies, setAnomalies] = useState<{ type: string; severity: string; campaign: string; description: string; cost: number; roas?: number }[]>([])
+
+  // Listen for analysis-complete events from chat
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail?.anomalies) {
+        setAnomalies(detail.anomalies)
+      }
+    }
+    window.addEventListener("agent:analysis-complete", handler)
+    return () => window.removeEventListener("agent:analysis-complete", handler)
+  }, [])
+
+  const handleDecisionSelect = (decisionId: number) => {
+    setActiveView("decisions")
+    window.dispatchEvent(new CustomEvent("agent:open-decision", { detail: { decisionId } }))
+  }
 
   return (
     <div
@@ -49,22 +65,12 @@ export function RightPanel() {
         <div className="flex-1 overflow-y-auto">
           {/* Alerts Tab */}
           <div className={cn("p-3", activeTab !== "alerts" && "hidden")}>
-            <AnomalyAlerts anomalies={[]} loading={false} compact />
+            <AnomalyAlerts anomalies={anomalies} loading={false} compact />
           </div>
 
           {/* Decisions Tab */}
           <div className={cn("p-3", activeTab !== "decisions" && "hidden")}>
-            <RecentDecisions compact />
-          </div>
-
-          {/* Notes Tab */}
-          <div className={cn("flex-1 flex flex-col px-3 py-2", activeTab !== "notes" && "hidden")}>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Type notes here... (Markdown supported)"
-              className="w-full h-full min-h-[200px] bg-card border border-border rounded-lg p-3 text-sm text-card-foreground placeholder:text-muted-foreground/60 resize-none focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
+            <RecentDecisions compact onSelect={handleDecisionSelect} />
           </div>
         </div>
       </div>
