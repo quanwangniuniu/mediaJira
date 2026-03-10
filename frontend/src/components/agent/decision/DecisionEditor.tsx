@@ -311,9 +311,10 @@ export function DecisionEditor() {
         contextSummary: context,
         reasoning,
         riskLevel: priority.toUpperCase(),
-        options: options.map((o) => ({
+        options: options.map((o, index) => ({
           text: o.title,
           isSelected: selectedOption === o.id,
+          order: index,
         })),
       }
 
@@ -326,11 +327,16 @@ export function DecisionEditor() {
           return null
         }
         const draft = await DecisionAPI.createDraft(projectId)
+        if (!draft.id) {
+          toast.error("Failed to create draft")
+          if (!skipLoadingState) setIsSaving(false)
+          return null
+        }
         id = draft.id
         setEditingDecisionId(id)
       }
 
-      await DecisionAPI.patchDraft(id, payload)
+      await DecisionAPI.patchDraft(id!, payload)
       toast.success("Draft saved")
       await refreshList()
       return id
@@ -535,7 +541,7 @@ export function DecisionEditor() {
                 variant="outline"
                 size="sm"
                 className="border-input text-card-foreground"
-                onClick={saveDraft}
+                onClick={() => saveDraft()}
                 disabled={isSaving}
               >
                 {isSaving ? "Saving..." : "Save Draft"}
