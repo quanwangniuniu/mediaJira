@@ -50,11 +50,12 @@ function restoreMessage(m: AgentMessage): ChatMessage {
     recommendedTasks: m.data?.recommended_tasks,
     navigateTo,
     navigateLabel,
+    decisionId: m.data?.decision_id ? Number(m.data.decision_id) : undefined,
   }
 }
 
 export function AgentChatPage() {
-  const { setActiveView, floatingChat, toggleMaximize } = useAgentLayout()
+  const { setActiveView, floatingChat, toggleMaximize, setPendingDecisionId } = useAgentLayout()
   const [sessionId, setSessionIdState] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
@@ -278,10 +279,22 @@ export function AgentChatPage() {
           }
         }
         if (event.type === "decision_draft" && event.data) {
-          updateMessage(aiMsgId, { content: contentParts.join("\n") })
+          const decisionId = event.data?.decision_id
+          updateMessage(aiMsgId, {
+            content: contentParts.join("\n"),
+            type: "decision_created",
+            navigateTo: "decisions",
+            navigateLabel: "Go to Decisions",
+            decisionId: decisionId ? Number(decisionId) : undefined,
+          })
         }
         if (event.type === "task_created" && event.data) {
-          updateMessage(aiMsgId, { content: contentParts.join("\n") })
+          updateMessage(aiMsgId, {
+            content: contentParts.join("\n"),
+            type: "tasks_created",
+            navigateTo: "tasks",
+            navigateLabel: "Go to Tasks",
+          })
         }
       },
       (error) => {
@@ -323,11 +336,13 @@ export function AgentChatPage() {
         }
 
         if (event.type === "decision_draft") {
+          const decisionId = event.data?.decision_id
           updateMessage(aiMsgId, {
             content: contentParts.join("\n"),
             type: "decision_created",
             navigateTo: "decisions",
             navigateLabel: "Go to Decisions",
+            decisionId: decisionId ? Number(decisionId) : undefined,
           })
         }
         if (event.type === "task_created") {
@@ -361,7 +376,13 @@ export function AgentChatPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <MessageList messages={messages} onAction={handleAction} onNavigate={(view) => { setActiveView(view as AgentView); if (floatingChat.mode === "maximized") toggleMaximize() }} />
+      <MessageList messages={messages} onAction={handleAction} onNavigate={(view, msg) => {
+        setActiveView(view as AgentView)
+        if (floatingChat.mode === "maximized") toggleMaximize()
+        if (view === "decisions" && msg?.decisionId) {
+          setPendingDecisionId(msg.decisionId)
+        }
+      }} />
       <ChatInput
         onSend={handleSendMessage}
         onFileUpload={handleFileUpload}

@@ -23,12 +23,13 @@ export interface ChatMessage {
   fileName?: string
   navigateTo?: string
   navigateLabel?: string
+  decisionId?: number
 }
 
 interface MessageListProps {
   messages: ChatMessage[]
   onAction?: (action: string) => void
-  onNavigate?: (view: string) => void
+  onNavigate?: (view: string, message?: ChatMessage) => void
 }
 
 export function MessageList({ messages, onAction, onNavigate }: MessageListProps) {
@@ -93,7 +94,7 @@ export function MessageList({ messages, onAction, onNavigate }: MessageListProps
                 size="sm"
                 variant="outline"
                 className="gap-2"
-                onClick={() => onNavigate?.(message.navigateTo!)}
+                onClick={() => onNavigate?.(message.navigateTo!, message)}
               >
                 {message.navigateLabel}
                 <ArrowRight className="h-3.5 w-3.5" />

@@ -5,6 +5,7 @@ import { useAgentLayout } from "../AgentLayoutContext"
 import { cn } from "@/lib/utils"
 import { AnomalyAlerts } from "../overview/AnomalyAlerts"
 import { RecentDecisions } from "../overview/RecentDecisions"
+import { AgentAPI } from "@/lib/api/agentApi"
 
 type TabValue = "alerts" | "decisions"
 
@@ -14,9 +15,16 @@ const tabs: { value: TabValue; label: string }[] = [
 ]
 
 export function RightPanel() {
-  const { isRightPanelOpen, setActiveView } = useAgentLayout()
+  const { isRightPanelOpen, setActiveView, setPendingDecisionId } = useAgentLayout()
   const [activeTab, setActiveTab] = useState<TabValue>("alerts")
   const [anomalies, setAnomalies] = useState<{ type: string; severity: string; campaign: string; description: string; cost: number; roas?: number }[]>([])
+
+  // Load latest anomalies from backend on mount
+  useEffect(() => {
+    AgentAPI.fetchLatestAnomalies()
+      .then((data) => { if (data?.length) setAnomalies(data) })
+      .catch(() => {})
+  }, [])
 
   // Listen for analysis-complete events from chat
   useEffect(() => {
@@ -32,7 +40,7 @@ export function RightPanel() {
 
   const handleDecisionSelect = (decisionId: number) => {
     setActiveView("decisions")
-    window.dispatchEvent(new CustomEvent("agent:open-decision", { detail: { decisionId } }))
+    setPendingDecisionId(decisionId)
   }
 
   return (

@@ -7,6 +7,8 @@ import type { Task, TaskType, TaskPriority } from "./TaskCard"
 import { TaskAPI } from "@/lib/api/taskApi"
 import { useBatchManage } from "@/hooks/useBatchManage"
 import ConfirmDialog from "@/components/common/ConfirmDialog"
+import { TaskDetailModal } from "./TaskDetailModal"
+import { NewTaskModal } from "./NewTaskModal"
 import toast from "react-hot-toast"
 
 const columns: ColumnStatus[] = ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "APPROVED"]
@@ -36,42 +38,48 @@ export function TaskBoard() {
   const [priorityFilter, setPriorityFilter] = useState("all")
   const [ownerFilter, setOwnerFilter] = useState("all")
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [showNewTask, setShowNewTask] = useState(false)
+
+  const reload = useCallback(async () => {
+    try {
+      const response = await TaskAPI.getTasks()
+      const results = response.data.results || response.data || []
+      const mapped: Task[] = results.map((t: Record<string, unknown>) => {
+        const ownerObj = t.owner as Record<string, string> | null
+        const ownerName = ownerObj
+          ? `${ownerObj.first_name || ""} ${ownerObj.last_name || ""}`.trim() || ownerObj.email || "Unknown"
+          : "Unassigned"
+        return {
+          id: String(t.id),
+          summary: (t.summary as string) || "Untitled",
+          type: (t.type as TaskType) || "execution",
+          priority: (t.priority as TaskPriority) || "MEDIUM",
+          status: (t.status as string) || "DRAFT",
+          dueDate: formatDate(t.due_date as string | null),
+          owner: {
+            name: ownerName,
+            initials: getInitials(ownerName),
+          },
+        }
+      })
+      setTasks(mapped)
+    } catch {
+      setTasks([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    let cancelled = false
-    async function load() {
-      try {
-        const response = await TaskAPI.getTasks()
-        if (cancelled) return
-        const results = response.data.results || response.data || []
-        const mapped: Task[] = results.map((t: Record<string, unknown>) => {
-          const ownerObj = t.owner as Record<string, string> | null
-          const ownerName = ownerObj
-            ? `${ownerObj.first_name || ""} ${ownerObj.last_name || ""}`.trim() || ownerObj.email || "Unknown"
-            : "Unassigned"
-          return {
-            id: String(t.id),
-            summary: (t.summary as string) || "Untitled",
-            type: (t.type as TaskType) || "execution",
-            priority: (t.priority as TaskPriority) || "MEDIUM",
-            status: (t.status as string) || "DRAFT",
-            dueDate: formatDate(t.due_date as string | null),
-            owner: {
-              name: ownerName,
-              initials: getInitials(ownerName),
-            },
-          }
-        })
-        setTasks(mapped)
-      } catch {
-        setTasks([])
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
-    return () => { cancelled = true }
-  }, [])
+    reload()
+  }, [reload])
+
+  useEffect(() => {
+    const handler = () => { reload() }
+    window.addEventListener("agent:tasks-changed", handler)
+    return () => window.removeEventListener("agent:tasks-changed", handler)
+  }, [reload])
 
   const batchDeleteFn = useCallback(async (id: string | number) => {
     await TaskAPI.deleteTask(Number(id))
@@ -130,6 +138,7 @@ export function TaskBoard() {
         onDeleteClick={() => setShowDeleteConfirm(true)}
         isDeleting={batch.isDeleting}
         hasItems={tasks.length > 0}
+        onNewTask={() => setShowNewTask(true)}
       />
 
       <div className="flex gap-4 flex-1 overflow-hidden">
@@ -142,9 +151,13 @@ export function TaskBoard() {
             selectedIds={batch.selectedIds}
             exitingIds={batch.exitingIds}
             onToggleSelect={batch.toggleSelect}
+            onCardClick={(task) => setSelectedTask(task)}
           />
         ))}
       </div>
+
+      <TaskDetailModal task={selectedTask} onClose={() => setSelectedTask(null)} />
+      <NewTaskModal open={showNewTask} onClose={() => setShowNewTask(false)} onCreated={reload} />
 
       <ConfirmDialog
         isOpen={showDeleteConfirm}

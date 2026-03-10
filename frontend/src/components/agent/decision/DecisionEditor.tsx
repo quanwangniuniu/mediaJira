@@ -31,6 +31,7 @@ import { AgentAPI } from "@/lib/api/agentApi"
 import { DecisionAPI } from "@/lib/api/decisionApi"
 import { useBatchManage } from "@/hooks/useBatchManage"
 import { useProjectStore } from "@/lib/projectStore"
+import { useAgentLayout } from "@/components/agent/AgentLayoutContext"
 import toast from "react-hot-toast"
 
 // ─── Types ────────────────────────────────────────────
@@ -359,23 +360,20 @@ export function DecisionEditor() {
     }
   }
 
-  // ─── Listen for open-decision event ───────────────────
+  // ─── Consume pendingDecisionId from context ───────────────────
+
+  const { pendingDecisionId, setPendingDecisionId } = useAgentLayout()
 
   useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail
-      if (!detail?.decisionId) return
-      const found = decisionList.find((d) => d.id === detail.decisionId)
-      if (found) {
-        loadDecision(found)
-      } else {
-        // Fallback: decisionList may not be loaded yet, load directly by id
-        loadDecision({ id: detail.decisionId, title: "", status: "draft", risk_level: "", author: "", created_at: "" })
-      }
+    if (!pendingDecisionId || listLoading) return
+    const found = decisionList.find((d) => d.id === pendingDecisionId)
+    if (found) {
+      loadDecision(found)
+    } else {
+      loadDecision({ id: pendingDecisionId, title: "", status: "draft", risk_level: "", author: "", created_at: "" })
     }
-    window.addEventListener("agent:open-decision", handler)
-    return () => window.removeEventListener("agent:open-decision", handler)
-  }, [decisionList])
+    setPendingDecisionId(null)
+  }, [pendingDecisionId, listLoading, decisionList])
 
   // ─── List View ────────────────────────────────────────
 

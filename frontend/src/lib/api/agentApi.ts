@@ -286,4 +286,9 @@ export const AgentAPI = {
     const response = await api.get('/api/agent/decisions/recent/');
     return response.data;
   },
+
+  fetchLatestAnomalies: async () => {
+    const response = await api.get('/api/agent/anomalies/latest/');
+    return response.data;
+  },
 };

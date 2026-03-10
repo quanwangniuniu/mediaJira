@@ -31,6 +31,7 @@ interface FilterBarProps {
   onDeleteClick?: () => void
   isDeleting?: boolean
   hasItems?: boolean
+  onNewTask?: () => void
 }
 
 export function FilterBar({
@@ -52,6 +53,7 @@ export function FilterBar({
   onDeleteClick,
   isDeleting,
   hasItems,
+  onNewTask,
 }: FilterBarProps) {
   if (isManaging) {
     return (
@@ -142,7 +144,7 @@ export function FilterBar({
             Manage
           </Button>
         )}
-        <Button>
+        <Button onClick={onNewTask}>
           <Plus className="size-4" />
           New Task
         </Button>

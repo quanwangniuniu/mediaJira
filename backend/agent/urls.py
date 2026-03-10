@@ -11,6 +11,7 @@ from .views import (
     FileUploadAnalyzeView,
     DecisionStatsView,
     DecisionRecentView,
+    AnomalyLatestView,
 )
 
 router = DefaultRouter()
@@ -27,4 +28,5 @@ urlpatterns = [
     path('upload-analyze/', FileUploadAnalyzeView.as_view(), name='agent-upload-analyze'),
     path('decisions/stats/', DecisionStatsView.as_view(), name='agent-decision-stats'),
     path('decisions/recent/', DecisionRecentView.as_view(), name='agent-decision-recent'),
+    path('anomalies/latest/', AnomalyLatestView.as_view(), name='agent-anomaly-latest'),
 ]

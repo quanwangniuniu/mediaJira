@@ -481,3 +481,31 @@ class DecisionRecentView(APIView):
                 'created_at': d.created_at.isoformat(),
             })
         return Response(result)
+
+
+class AnomalyLatestView(APIView):
+    """GET /api/agent/anomalies/latest/ — latest anomalies from most recent analysis."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        project = _get_user_project(request)
+        if not project:
+            return Response(
+                {"detail": "No active project."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Find the most recent assistant message that has anomalies in metadata
+        msg = (
+            AgentMessage.objects
+            .filter(
+                session__project=project,
+                session__user=request.user,
+                role='assistant',
+            )
+            .filter(metadata__has_key='anomalies')
+            .order_by('-created_at')
+            .first()
+        )
+        if not msg or not msg.metadata.get('anomalies'):
+            return Response([])
+        return Response(msg.metadata['anomalies'])

@@ -71,9 +71,10 @@ interface TaskCardProps {
   isManaging?: boolean
   isSelected?: boolean
   onToggleSelect?: () => void
+  onClick?: () => void
 }
 
-export function TaskCard({ task, isManaging, isSelected, onToggleSelect }: TaskCardProps) {
+export function TaskCard({ task, isManaging, isSelected, onToggleSelect, onClick }: TaskCardProps) {
   return (
     <div
       className={cn(
@@ -81,9 +82,9 @@ export function TaskCard({ task, isManaging, isSelected, onToggleSelect }: TaskC
         isManaging && isSelected
           ? "border-blue-500/50 bg-blue-500/5"
           : "border-border hover:border-muted-foreground/30",
-        isManaging && "cursor-pointer"
+        isManaging ? "cursor-pointer" : onClick ? "cursor-pointer" : ""
       )}
-      onClick={isManaging ? onToggleSelect : undefined}
+      onClick={isManaging ? onToggleSelect : onClick}
     >
       <div className="flex gap-2">
         {isManaging && (
