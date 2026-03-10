@@ -8,7 +8,39 @@ from rest_framework import status
 
 from core.models import Organization, Project, CustomUser
 from .models import AgentSession, AgentMessage, AgentWorkflowRun
-from .services import AgentOrchestrator, _mock_analysis
+from .services import AgentOrchestrator
+
+
+def _test_analysis_data():
+    """Minimal valid analysis structure for tests."""
+    return {
+        "anomalies": [
+            {
+                "metric": "ROAS",
+                "movement": "SHARP_DECREASE",
+                "scope_type": "CAMPAIGN",
+                "scope_value": "Test Campaign",
+                "delta_value": -20.0,
+                "delta_unit": "PERCENT",
+                "period": "LAST_7_DAYS",
+                "description": "Test Campaign ROAS dropped 20%",
+            },
+        ],
+        "suggested_decision": {
+            "title": "Test Decision",
+            "context_summary": "Test context",
+            "reasoning": "Test reasoning",
+            "risk_level": "MEDIUM",
+            "confidence": 3,
+            "options": [
+                {"text": "Option A", "order": 0},
+                {"text": "Option B", "order": 1},
+            ],
+        },
+        "recommended_tasks": [
+            {"type": "optimization", "summary": "Test task", "priority": "MEDIUM"},
+        ],
+    }
 
 
 class AgentModelTests(TestCase):
@@ -254,13 +286,6 @@ class OrchestratorTests(TestCase):
             project=self.project,
         )
 
-    def test_mock_analysis_returns_valid_structure(self):
-        result = _mock_analysis("Test Sheet")
-        self.assertIn('anomalies', result)
-        self.assertIn('suggested_decision', result)
-        self.assertIn('recommended_tasks', result)
-        self.assertEqual(len(result['anomalies']), 3)
-
     def test_handle_message_general_chat(self):
         orchestrator = AgentOrchestrator(self.user, self.project, self.session)
         chunks = list(orchestrator.handle_message("hello"))
@@ -271,7 +296,7 @@ class OrchestratorTests(TestCase):
     def test_create_decision_draft(self):
         from decision.models import Decision, Signal, Option
         orchestrator = AgentOrchestrator(self.user, self.project, self.session)
-        analysis = _mock_analysis("Test Sheet")
+        analysis = _test_analysis_data()
         chunks = list(orchestrator.create_decision_draft(analysis))
         types = [c['type'] for c in chunks]
         self.assertIn('decision_draft', types)
@@ -296,7 +321,7 @@ class OrchestratorTests(TestCase):
         workflow_run = AgentWorkflowRun.objects.create(
             session=self.session,
             decision=decision,
-            analysis_result=_mock_analysis("Test"),
+            analysis_result=_test_analysis_data(),
         )
         orchestrator = AgentOrchestrator(self.user, self.project, self.session)
         chunks = list(orchestrator.create_tasks_from_decision(decision.id, workflow_run))

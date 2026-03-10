@@ -1,15 +1,18 @@
 import json
 import logging
 import os
+import requests
 from decimal import Decimal
 
+from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import Max
 
 from spreadsheet.models import Spreadsheet, Sheet, Cell
 from decision.models import Decision, Signal, Option
 from task.models import Task
-from .models import AgentSession, AgentMessage, AgentWorkflowRun
+from .models import AgentSession, AgentMessage, AgentWorkflowRun, ImportedCSVFile
+from . import data_service
 
 logger = logging.getLogger(__name__)
 
@@ -25,61 +28,6 @@ def _get_llm_client():
     except ImportError:
         logger.warning("anthropic package not installed, using mock LLM")
         return None
-
-
-def _mock_analysis(spreadsheet_name):
-    """Return realistic mock analysis data when no API key is available."""
-    return {
-        "anomalies": [
-            {
-                "metric": "ROAS",
-                "movement": "SHARP_DECREASE",
-                "scope_type": "CAMPAIGN",
-                "scope_value": "Campaign Alpha",
-                "delta_value": -35.0,
-                "delta_unit": "PERCENT",
-                "period": "LAST_7_DAYS",
-                "description": f"Campaign Alpha ROAS dropped 35% week-over-week in {spreadsheet_name}",
-            },
-            {
-                "metric": "CPA",
-                "movement": "SHARP_INCREASE",
-                "scope_type": "CAMPAIGN",
-                "scope_value": "Campaign Beta",
-                "delta_value": 28.0,
-                "delta_unit": "PERCENT",
-                "period": "LAST_7_DAYS",
-                "description": "Campaign Beta CPA increased 28% week-over-week",
-            },
-            {
-                "metric": "CTR",
-                "movement": "MODERATE_DECREASE",
-                "scope_type": "AD_SET",
-                "scope_value": "Ad Set Gamma",
-                "delta_value": -15.0,
-                "delta_unit": "PERCENT",
-                "period": "LAST_3_DAYS",
-                "description": "Ad Set Gamma CTR declined 15% over last 3 days",
-            },
-        ],
-        "suggested_decision": {
-            "title": f"Performance Anomaly Review — {spreadsheet_name}",
-            "context_summary": "Multiple campaigns showing concerning performance trends that require immediate attention.",
-            "reasoning": "ROAS drop in Campaign Alpha combined with CPA spike in Campaign Beta suggests audience fatigue or creative burnout. CTR decline in Ad Set Gamma may indicate ad frequency issues.",
-            "risk_level": "HIGH",
-            "confidence": 4,
-            "options": [
-                {"text": "Pause underperforming campaigns and reallocate budget to top performers", "order": 0},
-                {"text": "Refresh creatives for Campaign Alpha and Beta while maintaining current budget", "order": 1},
-                {"text": "Reduce budget by 20% across affected campaigns and monitor for 48 hours", "order": 2},
-            ],
-        },
-        "recommended_tasks": [
-            {"type": "optimization", "summary": "Optimize Campaign Alpha — address ROAS decline", "priority": "HIGH"},
-            {"type": "alert", "summary": "Monitor Campaign Beta CPA trend", "priority": "MEDIUM"},
-            {"type": "asset", "summary": "Prepare new creatives for Ad Set Gamma", "priority": "MEDIUM"},
-        ],
-    }
 
 
 def _extract_spreadsheet_data(spreadsheet):
@@ -152,15 +100,117 @@ def _call_llm(client, spreadsheet_data):
     return json.loads(text)
 
 
+def _get_dify_config():
+    """Return Dify API config if configured, else None."""
+    api_url = getattr(settings, 'DIFY_API_URL', os.environ.get('DIFY_API_URL'))
+    api_key = getattr(settings, 'DIFY_API_KEY', os.environ.get('DIFY_API_KEY'))
+    if api_url and api_key:
+        return {'url': api_url, 'key': api_key}
+    return None
+
+
+def _call_dify(spreadsheet_data, user_id=None):
+    """Call Dify workflow API to analyze spreadsheet data.
+
+    Dify workflows accept inputs and return structured outputs.
+    Expected workflow: Input (spreadsheet_data JSON) → LLM analysis → structured output.
+    """
+    config = _get_dify_config()
+    if not config:
+        raise RuntimeError("Dify not configured (DIFY_API_URL / DIFY_API_KEY missing)")
+
+    api_url = config['url'].rstrip('/')
+    headers = {
+        'Authorization': f"Bearer {config['key']}",
+        'Content-Type': 'application/json',
+    }
+
+    payload = {
+        'inputs': {
+            'spreadsheet_data': json.dumps(spreadsheet_data, default=str),
+        },
+        'response_mode': 'blocking',
+        'user': str(user_id or 'agent'),
+    }
+
+    response = requests.post(
+        f"{api_url}/v1/workflows/run",
+        headers=headers,
+        json=payload,
+        timeout=120,
+    )
+
+    if response.status_code != 200:
+        logger.error(f"Dify API error: HTTP {response.status_code}")
+        raise RuntimeError(f"Dify API returned {response.status_code}")
+
+    result = response.json()
+
+    # Dify workflow output is in data.outputs
+    outputs = result.get('data', {}).get('outputs', {})
+
+    # The workflow should return our expected JSON structure.
+    # It may be in a 'result' or 'text' key, or directly as structured data.
+    if isinstance(outputs, dict):
+        # If the output has our expected keys directly
+        if 'anomalies' in outputs:
+            return outputs
+        # If wrapped in a 'result' or 'text' key
+        for key in ('result', 'text', 'output', 'analysis'):
+            val = outputs.get(key)
+            if val:
+                if isinstance(val, str):
+                    try:
+                        return json.loads(val)
+                    except json.JSONDecodeError:
+                        pass
+                elif isinstance(val, dict) and 'anomalies' in val:
+                    return val
+
+    # Fallback: try to parse the entire output as our structure
+    logger.warning(f"Unexpected Dify output format, falling back. Keys: {list(outputs.keys()) if isinstance(outputs, dict) else type(outputs)}")
+    raise RuntimeError("Dify returned unexpected output format")
+
+
+def _run_analysis(spreadsheet_data, user_id=None):
+    """Run analysis using the best available provider: Dify > Claude.
+
+    Raises RuntimeError if no provider is configured or all providers fail.
+    """
+    # 1. Try Dify first if configured
+    dify_config = _get_dify_config()
+    if dify_config:
+        try:
+            return _call_dify(spreadsheet_data, user_id)
+        except Exception as e:
+            logger.error(f"Dify call failed, falling back to Claude: {e}")
+
+    # 2. Try Claude API
+    client = _get_llm_client()
+    if client:
+        try:
+            return _call_llm(client, spreadsheet_data)
+        except Exception as e:
+            logger.error(f"LLM call failed: {e}")
+
+    # 3. No LLM available
+    raise RuntimeError(
+        "No analysis provider available. Configure DIFY_API_URL/DIFY_API_KEY "
+        "or ANTHROPIC_API_KEY to enable analysis."
+    )
+
+
 class AgentOrchestrator:
     def __init__(self, user, project, session):
         self.user = user
         self.project = project
         self.session = session
 
-    def handle_message(self, message, spreadsheet_id=None, action=None):
+    def handle_message(self, message, spreadsheet_id=None, csv_filename=None, action=None):
         """Main entry point. Yields SSE chunks as dicts."""
-        if action == 'analyze' and spreadsheet_id:
+        if action == 'analyze' and csv_filename:
+            yield from self.analyze_csv(csv_filename)
+        elif action == 'analyze' and spreadsheet_id:
             yield from self.analyze_spreadsheet(spreadsheet_id)
         elif action == 'confirm_decision':
             workflow_run = self.session.workflow_runs.filter(
@@ -219,15 +269,14 @@ class AgentOrchestrator:
 
         spreadsheet_data = _extract_spreadsheet_data(spreadsheet)
 
-        client = _get_llm_client()
-        if client:
-            try:
-                analysis = _call_llm(client, spreadsheet_data)
-            except Exception as e:
-                logger.error(f"LLM call failed: {e}")
-                analysis = _mock_analysis(spreadsheet.name)
-        else:
-            analysis = _mock_analysis(spreadsheet.name)
+        try:
+            analysis = _run_analysis(spreadsheet_data, user_id=self.user.id)
+        except RuntimeError as e:
+            workflow_run.status = 'failed'
+            workflow_run.error_message = str(e)
+            workflow_run.save()
+            yield {"type": "error", "content": str(e)}
+            return
 
         workflow_run.analysis_result = analysis
         workflow_run.status = 'awaiting_confirmation'
@@ -237,6 +286,76 @@ class AgentOrchestrator:
         summary_parts = [f"Found {len(anomalies)} anomalies:"]
         for a in anomalies:
             summary_parts.append(f"- {a['description']}")
+
+        yield {
+            "type": "analysis",
+            "content": "\n".join(summary_parts),
+            "data": analysis,
+        }
+        yield {
+            "type": "confirmation_request",
+            "content": "Would you like me to create a Decision draft based on this analysis?",
+            "data": {"workflow_run_id": str(workflow_run.id)},
+        }
+
+    def analyze_csv(self, csv_filename):
+        """Read an uploaded CSV file from disk, send to LLM for analysis."""
+        yield {"type": "text", "content": "Analyzing CSV data..."}
+
+        safe_name = os.path.basename(csv_filename)
+
+        # Verify file belongs to this project
+        record = ImportedCSVFile.objects.filter(
+            filename=safe_name, project=self.project, is_deleted=False
+        ).first()
+        if not record:
+            yield {"type": "error", "content": f"CSV file not found: {safe_name}"}
+            return
+
+        csv_dir = data_service._get_csv_dir()
+        filepath = os.path.join(csv_dir, safe_name)
+
+        if not os.path.isfile(filepath):
+            yield {"type": "error", "content": f"CSV file not found on disk: {safe_name}"}
+            return
+
+        columns, rows = data_service._read_csv_file(filepath)
+        if not rows:
+            yield {"type": "error", "content": "CSV file is empty or could not be parsed."}
+            return
+
+        workflow_run = AgentWorkflowRun.objects.create(
+            session=self.session,
+            status='analyzing',
+        )
+
+        # Build spreadsheet-like data structure for the analysis pipeline
+        spreadsheet_data = {
+            "name": safe_name,
+            "sheets": [{
+                "name": "Sheet1",
+                "columns": columns,
+                "rows": rows[:100],  # limit rows sent to LLM
+            }],
+        }
+
+        try:
+            analysis = _run_analysis(spreadsheet_data, user_id=self.user.id)
+        except RuntimeError as e:
+            workflow_run.status = 'failed'
+            workflow_run.error_message = str(e)
+            workflow_run.save()
+            yield {"type": "error", "content": str(e)}
+            return
+
+        workflow_run.analysis_result = analysis
+        workflow_run.status = 'awaiting_confirmation'
+        workflow_run.save()
+
+        anomalies = analysis.get("anomalies", [])
+        summary_parts = [f"Found {len(anomalies)} anomalies:"]
+        for a in anomalies:
+            summary_parts.append(f"- {a.get('description', str(a))}")
 
         yield {
             "type": "analysis",
