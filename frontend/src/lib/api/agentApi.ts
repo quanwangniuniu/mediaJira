@@ -165,25 +165,6 @@ export const AgentAPI = {
     return response.data;
   },
 
-  uploadFile: async (file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    const response = await api.post('/api/agent/data/upload/', formData, {
-      timeout: 60000, // 60s for file upload
-    });
-    return response.data;
-  },
-
-  /** @deprecated Use uploadFile instead */
-  uploadCSV: async (file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    const response = await api.post('/api/agent/data/upload/', formData, {
-      timeout: 60000,
-    });
-    return response.data;
-  },
-
   /**
    * Upload a file and stream back analysis results via SSE.
    * Returns an AbortController to cancel the request.

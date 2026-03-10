@@ -111,16 +111,6 @@ export interface AgentSpreadsheet {
 
 // ==================== UI State Types ====================
 
-export interface AgentChatState {
-  sessions: AgentSession[];
-  currentSessionId: string | null;
-  messages: AgentMessage[];
-  isStreaming: boolean;
-  streamingContent: string;
-  streamingEvents: SSEEvent[];
-  error: string | null;
-}
-
 // ==================== Imported CSV File ====================
 
 export interface ImportedCSVFile {
@@ -132,8 +122,6 @@ export interface ImportedCSVFile {
   file_size: number;
   created_at: string;
 }
-
-export type DataPanelTab = 'spreadsheet' | 'decisions' | 'tasks';
 
 // ==================== Analysis Result Types ====================
 
