@@ -156,7 +156,14 @@ export const AgentAPI = {
   uploadCSV: async (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
-    const response = await api.post('/api/agent/data/upload/', formData);
+    const response = await api.post('/api/agent/data/upload/', formData, {
+      timeout: 60000, // 60s for file upload
+    });
+    return response.data;
+  },
+
+  fetchReportsSummary: async () => {
+    const response = await api.get('/api/agent/data/reports/summary/');
     return response.data;
   },
 

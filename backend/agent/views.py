@@ -270,6 +270,23 @@ class DataUploadView(APIView):
         return Response(result, status=status.HTTP_201_CREATED)
 
 
+class DataReportSummaryView(APIView):
+    """GET /api/agent/data/reports/summary/ — aggregated KPI data."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        project = _get_user_project(request)
+        if not project:
+            return Response(
+                {"detail": "No active project."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        summary = data_service.get_reports_summary(project)
+        if summary is None:
+            return Response({"detail": "No data available."}, status=status.HTTP_200_OK)
+        return Response(summary)
+
+
 class DecisionStatsView(APIView):
     """GET /api/agent/decisions/stats/ — Decision status counts."""
     permission_classes = [IsAuthenticated]

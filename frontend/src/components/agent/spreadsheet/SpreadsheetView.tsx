@@ -13,7 +13,6 @@ import { debugLog } from "@/lib/agentDebug"
 export function SpreadsheetView() {
   const [reports, setReports] = useState<ImportedCSVFile[]>([])
   const [selectedSheet, setSelectedSheet] = useState("")
-  const [granularity, setGranularity] = useState("campaign")
   const [uploading, setUploading] = useState(false)
 
   useEffect(() => {
@@ -38,10 +37,14 @@ export function SpreadsheetView() {
       const list = await AgentAPI.fetchReports()
       setReports(list)
       setSelectedSheet(result.filename)
-      toast.success(AGENT_MESSAGES.UPLOAD_SUCCESS)
+      toast.success(`CSV uploaded — ${result.original_filename} (${result.row_count} rows)`)
       debugLog("upload", "Success:", result.filename)
-    } catch (err) {
-      toast.error(AGENT_MESSAGES.UPLOAD_FAILED)
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail
+      const message = err?.code === 'ECONNABORTED'
+        ? 'Upload timed out — file may be too large'
+        : detail || 'Failed to upload CSV'
+      toast.error(message)
       debugLog("upload", "Failed:", err)
     } finally {
       setUploading(false)
@@ -71,8 +74,6 @@ export function SpreadsheetView() {
         reports={reports}
         selectedSheet={selectedSheet}
         onSheetChange={setSelectedSheet}
-        granularity={granularity}
-        onGranularityChange={setGranularity}
         onUpload={handleUpload}
         onDelete={handleDelete}
         uploading={uploading}

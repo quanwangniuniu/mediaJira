@@ -18,8 +18,6 @@ interface SpreadsheetHeaderProps {
   reports: ImportedCSVFile[]
   selectedSheet: string
   onSheetChange: (value: string) => void
-  granularity: string
-  onGranularityChange: (value: string) => void
   onUpload: (file: File) => void
   onDelete: (fileId: string) => void
   uploading?: boolean
@@ -29,8 +27,6 @@ export function SpreadsheetHeader({
   reports,
   selectedSheet,
   onSheetChange,
-  granularity,
-  onGranularityChange,
   onUpload,
   onDelete,
   uploading = false,
@@ -71,21 +67,6 @@ export function SpreadsheetHeader({
           </Button>
         )}
 
-        <div className="flex items-center bg-muted rounded-lg p-0.5">
-          {["Campaign", "AdSet", "Ad"].map((level) => (
-            <button
-              key={level}
-              onClick={() => onGranularityChange(level.toLowerCase())}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                granularity === level.toLowerCase()
-                  ? "bg-input text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {level}
-            </button>
-          ))}
-        </div>
       </div>
 
       <div className="flex items-center gap-2">

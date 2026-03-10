@@ -43,7 +43,11 @@ export function DataTable({ fileId }: DataTableProps) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!fileId) return
+    if (!fileId) {
+      setLoading(false)
+      setData([])
+      return
+    }
     let cancelled = false
     setLoading(true)
     async function load() {

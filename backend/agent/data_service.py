@@ -164,6 +164,58 @@ def save_uploaded_csv(uploaded_file, user, project):
         return None
 
 
+def get_reports_summary(project):
+    """Aggregate KPI data from all imported CSV files for the project."""
+    records = ImportedCSVFile.objects.filter(project=project, is_deleted=False)
+    if not records.exists():
+        return None
+
+    total_cost = 0
+    total_revenue = 0
+    total_rows = 0
+    campaign_data = []
+
+    csv_dir = _get_csv_dir()
+    for record in records:
+        filepath = os.path.join(csv_dir, os.path.basename(record.filename))
+        if not os.path.isfile(filepath):
+            continue
+        columns, rows = _read_csv_file(filepath)
+        for row in rows:
+            cost = row.get('Cost', 0) or 0
+            revenue = row.get('Total Revenue', row.get('Revenue', 0)) or 0
+            roas = row.get('ROAS', 0) or 0
+            name = row.get('Name', 'Unknown')
+            if isinstance(cost, (int, float)):
+                total_cost += cost
+            if isinstance(revenue, (int, float)):
+                total_revenue += revenue
+            total_rows += 1
+            if isinstance(cost, (int, float)) and cost > 0:
+                campaign_data.append({
+                    'name': name,
+                    'cost': cost,
+                    'revenue': revenue if isinstance(revenue, (int, float)) else 0,
+                    'roas': roas if isinstance(roas, (int, float)) else 0,
+                })
+
+    avg_roas = total_revenue / total_cost if total_cost > 0 else 0
+
+    sorted_campaigns = sorted(campaign_data, key=lambda x: x['roas'], reverse=True)
+    top5 = sorted_campaigns[:5]
+    bottom5 = sorted_campaigns[-5:] if len(sorted_campaigns) > 5 else []
+
+    return {
+        'total_cost': round(total_cost, 2),
+        'total_revenue': round(total_revenue, 2),
+        'avg_roas': round(avg_roas, 2),
+        'active_campaigns': total_rows,
+        'file_count': records.count(),
+        'top_campaigns': top5,
+        'bottom_campaigns': bottom5,
+    }
+
+
 def delete_report(file_id, project):
     """Soft-delete an imported CSV file record. Does NOT delete the disk file.
 
