@@ -326,7 +326,7 @@ export function DecisionEditor() {
           return null
         }
         const draft = await DecisionAPI.createDraft(projectId)
-        id = draft.id
+        id = draft.id ?? null
         setEditingDecisionId(id)
       }
 
