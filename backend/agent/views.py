@@ -1,13 +1,16 @@
 import json
 import logging
 
+from django.db.models import Count
 from django.http import StreamingHttpResponse
 from rest_framework import viewsets, status
+from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.models import Project
+from core.models import Project, ProjectMember
+from decision.models import Decision
 from spreadsheet.models import Spreadsheet
 from .models import AgentSession, AgentMessage
 from .serializers import (
@@ -16,16 +19,20 @@ from .serializers import (
     ChatInputSerializer,
 )
 from .services import AgentOrchestrator
+from . import data_service
 
 logger = logging.getLogger(__name__)
 
 
 def _get_user_project(request):
-    """Get the active project for the current user."""
+    """Get the active project for the current user, with membership check."""
     project_id = request.headers.get('X-Project-Id') or request.query_params.get('project_id')
     if project_id:
         try:
-            return Project.objects.get(id=project_id, is_deleted=False)
+            project = Project.objects.get(id=project_id, is_deleted=False)
+            if not ProjectMember.objects.filter(project=project, user=request.user).exists():
+                return None
+            return project
         except Project.DoesNotExist:
             return None
     return getattr(request.user, 'active_project', None)
@@ -84,6 +91,7 @@ class ChatView(APIView):
 
         message_text = serializer.validated_data['message']
         spreadsheet_id = serializer.validated_data.get('spreadsheet_id')
+        csv_filename = serializer.validated_data.get('csv_filename')
         action = serializer.validated_data.get('action')
 
         # Auto-generate title from first message
@@ -117,6 +125,7 @@ class ChatView(APIView):
             for chunk in orchestrator.handle_message(
                 message_text,
                 spreadsheet_id=spreadsheet_id,
+                csv_filename=csv_filename,
                 action=action,
             ):
                 chunk_type = chunk.get('type', 'text')
@@ -166,3 +175,144 @@ class SpreadsheetListView(APIView):
             is_deleted=False,
         ).values('id', 'name', 'created_at').order_by('-created_at')
         return Response(list(spreadsheets))
+
+
+
+class DataReportListView(APIView):
+    """GET /api/agent/data/reports/ — list imported CSV files."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        project = _get_user_project(request)
+        if not project:
+            return Response(
+                {"detail": "No active project."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        reports = data_service.list_reports(project)
+        return Response(reports)
+
+
+class DataReportDetailView(APIView):
+    """GET/DELETE /api/agent/data/reports/<uuid:file_id>/"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, file_id):
+        project = _get_user_project(request)
+        if not project:
+            return Response(
+                {"detail": "No active project."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        data = data_service.get_report_data(file_id, project)
+        if data is None:
+            return Response(
+                {"detail": "Report not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(data)
+
+    def delete(self, request, file_id):
+        project = _get_user_project(request)
+        if not project:
+            return Response(
+                {"detail": "No active project."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        deleted = data_service.delete_report(file_id, project)
+        if not deleted:
+            return Response(
+                {"detail": "File not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class DataUploadView(APIView):
+    """POST /api/agent/data/upload/ — upload a CSV file."""
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        project = _get_user_project(request)
+        if not project:
+            return Response(
+                {"detail": "No active project."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        file = request.FILES.get('file')
+        if not file:
+            return Response(
+                {"detail": "No file provided."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not file.name.lower().endswith('.csv'):
+            return Response(
+                {"detail": "Only CSV files are accepted."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        max_size = 10 * 1024 * 1024  # 10MB
+        if file.size > max_size:
+            return Response(
+                {"detail": "File too large (max 10MB)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        result = data_service.save_uploaded_csv(file, request.user, project)
+        if result is None:
+            return Response(
+                {"detail": "Failed to save file."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        return Response(result, status=status.HTTP_201_CREATED)
+
+
+class DecisionStatsView(APIView):
+    """GET /api/agent/decisions/stats/ — Decision status counts."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        project = _get_user_project(request)
+        if not project:
+            return Response(
+                {"detail": "No active project."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        qs = Decision.objects.filter(project=project, is_deleted=False)
+
+        counts = qs.values('status').annotate(count=Count('id'))
+        stats = {}
+        for item in counts:
+            stats[item['status'].lower()] = item['count']
+        return Response(stats)
+
+
+class DecisionRecentView(APIView):
+    """GET /api/agent/decisions/recent/ — latest 5 decisions."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        project = _get_user_project(request)
+        if not project:
+            return Response(
+                {"detail": "No active project."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        qs = Decision.objects.filter(project=project, is_deleted=False)
+
+        decisions = qs.order_by('-created_at')[:5]
+        result = []
+        for d in decisions:
+            result.append({
+                'id': d.id,
+                'title': d.title or f'Decision #{d.project_seq}',
+                'status': d.status.lower(),
+                'risk_level': (d.risk_level or '').lower(),
+                'confidence': d.confidence,
+                'author': d.author.get_full_name() if d.author else 'AI Agent',
+                'created_at': d.created_at.isoformat(),
+            })
+        return Response(result)

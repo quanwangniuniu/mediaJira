@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import AgentSession, AgentMessage, AgentWorkflowRun
+from .models import AgentSession, AgentMessage, AgentWorkflowRun, ImportedCSVFile
 
 
 class AgentMessageSerializer(serializers.ModelSerializer):
@@ -41,9 +41,24 @@ class AgentWorkflowRunSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
+class ImportedCSVFileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ImportedCSVFile
+        fields = [
+            'id', 'filename', 'original_filename',
+            'row_count', 'column_count', 'file_size',
+            'created_at',
+        ]
+        read_only_fields = ['id', 'created_at']
+
+
 class ChatInputSerializer(serializers.Serializer):
     message = serializers.CharField(required=True)
     spreadsheet_id = serializers.IntegerField(required=False, allow_null=True)
+    csv_filename = serializers.RegexField(
+        r'^[\w\-. ()]+\.csv$', required=False, allow_null=True,
+        error_messages={'invalid': 'Invalid filename format.'}
+    )
     action = serializers.ChoiceField(
         choices=['analyze', 'confirm_decision', 'create_tasks'],
         required=False,

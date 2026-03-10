@@ -1,0 +1,182 @@
+"""
+Service for reading and saving CSV report files for agent analysis.
+"""
+import csv
+import os
+import logging
+
+from django.conf import settings
+
+from .models import ImportedCSVFile
+
+logger = logging.getLogger(__name__)
+
+
+def _get_csv_dir():
+    return getattr(settings, 'AGENT_CSV_DIR', os.path.join(settings.BASE_DIR, 'agent_data'))
+
+
+def _parse_number(value):
+    """Try to parse a string as a number, return None if not possible."""
+    if value is None or value == '' or value == '-':
+        return None
+    try:
+        cleaned = value.replace(',', '')
+        if '.' in cleaned:
+            return float(cleaned)
+        return int(cleaned)
+    except (ValueError, AttributeError):
+        return None
+
+
+def _read_csv_file(filepath):
+    """Read a CSV file and return (columns, rows) where rows are list of dicts."""
+    rows = []
+    columns = []
+    try:
+        with open(filepath, 'r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f)
+            columns = reader.fieldnames or []
+            for row in reader:
+                parsed = {}
+                for col in columns:
+                    raw = row.get(col, '')
+                    num = _parse_number(raw)
+                    parsed[col] = num if num is not None else raw
+                rows.append(parsed)
+    except Exception as e:
+        logger.error(f"Error reading CSV {filepath}: {e}")
+    return columns, rows
+
+
+def list_reports(project):
+    """List all imported CSV files for the given project from database."""
+    records = ImportedCSVFile.objects.filter(
+        project=project,
+        is_deleted=False,
+    )
+    return [
+        {
+            'id': str(record.id),
+            'filename': record.filename,
+            'original_filename': record.original_filename,
+            'row_count': record.row_count,
+            'column_count': record.column_count,
+            'file_size': record.file_size,
+            'created_at': record.created_at.isoformat(),
+        }
+        for record in records
+    ]
+
+
+def get_report_data(file_id, project):
+    """Read a specific CSV file by database ID and return full parsed data."""
+    try:
+        record = ImportedCSVFile.objects.get(
+            id=file_id,
+            project=project,
+            is_deleted=False,
+        )
+    except ImportedCSVFile.DoesNotExist:
+        return None
+
+    csv_dir = _get_csv_dir()
+    safe_name = os.path.basename(record.filename)
+    filepath = os.path.join(csv_dir, safe_name)
+
+    if not os.path.isfile(filepath):
+        return None
+
+    columns, rows = _read_csv_file(filepath)
+    return {
+        'filename': safe_name,
+        'columns': columns,
+        'rows': rows,
+        'row_count': len(rows),
+    }
+
+
+def save_uploaded_csv(uploaded_file, user, project):
+    """Save an uploaded CSV file to disk and create a database record.
+
+    Returns dict with file info, or None on error.
+    """
+    csv_dir = _get_csv_dir()
+    os.makedirs(csv_dir, exist_ok=True)
+
+    # Sanitize filename
+    original_name = os.path.basename(uploaded_file.name)
+    safe_name = original_name
+    if not safe_name.lower().endswith('.csv'):
+        safe_name += '.csv'
+
+    filepath = os.path.join(csv_dir, safe_name)
+
+    # If file already exists, add a number suffix
+    counter = 1
+    base, ext = os.path.splitext(safe_name)
+    while os.path.exists(filepath):
+        safe_name = f"{base}({counter}){ext}"
+        filepath = os.path.join(csv_dir, safe_name)
+        counter += 1
+
+    try:
+        with open(filepath, 'wb') as f:
+            for chunk in uploaded_file.chunks():
+                f.write(chunk)
+
+        # Count rows and columns
+        row_count = 0
+        col_count = 0
+        with open(filepath, 'r', encoding='utf-8-sig') as f:
+            reader = csv.reader(f)
+            header = next(reader, None)
+            col_count = len(header) if header else 0
+            for _ in reader:
+                row_count += 1
+
+        file_size = os.path.getsize(filepath)
+
+        # Create database record
+        record = ImportedCSVFile.objects.create(
+            filename=safe_name,
+            original_filename=original_name,
+            user=user,
+            project=project,
+            row_count=row_count,
+            column_count=col_count,
+            file_size=file_size,
+        )
+
+        return {
+            'id': str(record.id),
+            'filename': safe_name,
+            'original_filename': original_name,
+            'row_count': row_count,
+            'column_count': col_count,
+            'file_size': file_size,
+        }
+    except Exception as e:
+        logger.error(f"Error saving uploaded CSV: {e}")
+        # Clean up partial file
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        return None
+
+
+def delete_report(file_id, project):
+    """Soft-delete an imported CSV file record. Does NOT delete the disk file.
+
+    Returns True if deleted, False if not found.
+    """
+    try:
+        record = ImportedCSVFile.objects.get(
+            id=file_id,
+            project=project,
+            is_deleted=False,
+        )
+        record.is_deleted = True
+        record.save(update_fields=['is_deleted', 'updated_at'])
+        return True
+    except ImportedCSVFile.DoesNotExist:
+        return False
