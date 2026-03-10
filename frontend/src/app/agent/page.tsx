@@ -10,11 +10,11 @@ export default function AgentPage() {
   const { activeView } = useAgentLayout()
 
   return (
-    <>
+    <div data-tour="tour-main-content" className="h-full">
       {activeView === "overview" && <OverviewDashboard />}
       {activeView === "spreadsheets" && <SpreadsheetView />}
       {activeView === "decisions" && <DecisionEditor />}
       {activeView === "tasks" && <TaskBoard />}
-    </>
+    </div>
   )
 }

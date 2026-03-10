@@ -52,24 +52,54 @@ function mapSeverity(s: string): "critical" | "warning" | "info" {
   return "info"
 }
 
+const DISMISSED_KEY = "agent-dismissed-alerts"
+
+function getDismissedKeys(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(DISMISSED_KEY) || "[]")
+  } catch {
+    return []
+  }
+}
+
+function addDismissedKey(key: string) {
+  const keys = getDismissedKeys()
+  if (!keys.includes(key)) {
+    keys.push(key)
+    localStorage.setItem(DISMISSED_KEY, JSON.stringify(keys))
+  }
+}
+
+// Build a stable key from anomaly data so dismissals survive refresh
+function alertKey(a: { campaign: string; description: string }): string {
+  return `${a.campaign}::${a.description}`
+}
+
 export function AnomalyAlerts({ anomalies, loading, compact = false }: AnomalyAlertsProps) {
   const [alerts, setAlerts] = useState<Alert[]>([])
 
   useEffect(() => {
     if (anomalies.length > 0) {
+      const dismissed = getDismissedKeys()
       setAlerts(
-        anomalies.map((a, i) => ({
-          id: i + 1,
-          severity: mapSeverity(a.severity),
-          metric: a.description,
-          campaign: a.campaign,
-          delta: a.roas !== undefined ? `ROAS: ${a.roas}` : a.cost != null ? `$${a.cost.toLocaleString()}` : "",
-        }))
+        anomalies
+          .filter((a) => !dismissed.includes(alertKey(a)))
+          .map((a, i) => ({
+            id: i + 1,
+            severity: mapSeverity(a.severity),
+            metric: a.description,
+            campaign: a.campaign,
+            delta: a.roas !== undefined ? `ROAS: ${a.roas}` : a.cost != null ? `$${a.cost.toLocaleString()}` : "",
+          }))
       )
     }
   }, [anomalies])
 
   const dismissAlert = (id: number) => {
+    const target = alerts.find((a) => a.id === id)
+    if (target) {
+      addDismissedKey(alertKey({ campaign: target.campaign, description: target.metric }))
+    }
     setAlerts((prev) => prev.filter((a) => a.id !== id))
   }
 

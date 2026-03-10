@@ -26,11 +26,12 @@ export function RightPanel() {
       .catch(() => {})
   }, [])
 
-  // Listen for analysis-complete events from chat
+  // Listen for analysis-complete events from chat — new analysis resets dismissed alerts
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail
       if (detail?.anomalies) {
+        localStorage.removeItem("agent-dismissed-alerts")
         setAnomalies(detail.anomalies)
       }
     }
@@ -45,6 +46,7 @@ export function RightPanel() {
 
   return (
     <div
+      data-tour="tour-right-panel"
       className={cn(
         "h-full border-l border-border bg-background transition-all duration-300 overflow-hidden",
         isRightPanelOpen ? "w-80" : "w-0"

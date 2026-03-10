@@ -6,12 +6,35 @@ import { LeftSidebar } from "@/components/agent/layout/LeftSidebar"
 import { TopBar } from "@/components/agent/layout/TopBar"
 import { RightPanel } from "@/components/agent/layout/RightPanel"
 import { FloatingChatWindow } from "@/components/agent/chat/FloatingChatWindow"
+import { AgentTour } from "@/components/agent/onboarding/AgentTour"
+
+const TOUR_KEY = "agent-tour-completed"
 
 function AgentThemeWrapper({ children }: { children: React.ReactNode }) {
   const { resolvedTheme } = useAgentLayout()
   const [mounted, setMounted] = useState(false)
+  const [showTour, setShowTour] = useState(false)
 
   useEffect(() => setMounted(true), [])
+
+  // Check if tour should auto-start on first visit
+  useEffect(() => {
+    if (mounted && !localStorage.getItem(TOUR_KEY)) {
+      setShowTour(true)
+    }
+  }, [mounted])
+
+  // Listen for restart-tour event from Settings
+  useEffect(() => {
+    const handler = () => setShowTour(true)
+    window.addEventListener("agent:restart-tour", handler)
+    return () => window.removeEventListener("agent:restart-tour", handler)
+  }, [])
+
+  const handleTourComplete = () => {
+    setShowTour(false)
+    localStorage.setItem(TOUR_KEY, "true")
+  }
 
   // Sync dark class on documentElement for Radix Portal compatibility
   useEffect(() => {
@@ -49,6 +72,9 @@ function AgentThemeWrapper({ children }: { children: React.ReactNode }) {
         {/* Floating Chat Window */}
         <FloatingChatWindow />
       </div>
+
+      {/* Onboarding Tour */}
+      {showTour && <AgentTour onComplete={handleTourComplete} />}
     </div>
   )
 }

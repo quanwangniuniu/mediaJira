@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { X } from "lucide-react"
+import { X, RotateCcw } from "lucide-react"
 import { getDebugMode, setDebugMode } from "@/lib/agentDebug"
 
 interface SettingsPanelProps {
@@ -55,7 +55,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
       </div>
 
       {/* Body */}
-      <div className="px-4 py-3">
+      <div className="px-4 py-3 space-y-3">
         <div className="flex items-center justify-between">
           <div>
             <span className="text-sm text-card-foreground">Debug Mode</span>
@@ -74,6 +74,27 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                 debugEnabled ? "translate-x-[18px]" : "translate-x-[3px]"
               }`}
             />
+          </button>
+        </div>
+
+        {/* Restart Tour */}
+        <div className="flex items-center justify-between pt-2 border-t border-border">
+          <div>
+            <span className="text-sm text-card-foreground">Agent Tour</span>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Replay the onboarding walkthrough
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              localStorage.removeItem("agent-tour-completed")
+              window.dispatchEvent(new CustomEvent("agent:restart-tour"))
+              onClose()
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-md transition-colors"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            Restart
           </button>
         </div>
       </div>
