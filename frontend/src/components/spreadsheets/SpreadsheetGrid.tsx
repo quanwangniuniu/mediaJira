@@ -5772,6 +5772,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
             width: `${ROW_NUMBER_WIDTH + totalColumnWidth}px`,
             height: `${bodyTableHeight}px`,
             minHeight: `${bodyTableHeight}px`,
+            //marginTop: '1px',
           }}
         >
           <colgroup>
