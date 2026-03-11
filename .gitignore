@@ -20,3 +20,4 @@ package*.json
 frontend/storybook-static/
 backend/venv/
 docker-compose.dev.override.yml
+.claude/

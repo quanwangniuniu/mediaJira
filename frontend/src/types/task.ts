@@ -67,6 +67,7 @@ export interface CreateTaskData {
   type: string;
   summary: string;
   description?: string;
+  priority?: string;
   current_approver_id?: number; // User ID for creation
   start_date?: string | null; // Date field
   due_date?: string;
