@@ -6,7 +6,7 @@ from django.test import TestCase
 from rest_framework.test import APITestCase, APIClient
 from rest_framework import status
 
-from core.models import Organization, Project, CustomUser
+from core.models import Organization, Project, ProjectMember, CustomUser
 from .models import AgentSession, AgentMessage, AgentWorkflowRun
 from .services import AgentOrchestrator
 
@@ -133,7 +133,7 @@ class AgentSessionAPITests(APITestCase):
             HTTP_X_PROJECT_ID=str(self.project.id),
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(len(response.data), 1)
 
     def test_retrieve_session(self):
         session = AgentSession.objects.create(
@@ -247,6 +247,7 @@ class SpreadsheetListAPITests(APITestCase):
             organization=self.org,
             owner=self.user,
         )
+        ProjectMember.objects.create(user=self.user, project=self.project, is_active=True)
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
 
@@ -324,7 +325,7 @@ class OrchestratorTests(TestCase):
             analysis_result=_test_analysis_data(),
         )
         orchestrator = AgentOrchestrator(self.user, self.project, self.session)
-        chunks = list(orchestrator.create_tasks_from_decision(decision.id, workflow_run))
+        chunks = list(orchestrator.create_tasks_from_analysis(workflow_run))
         types = [c['type'] for c in chunks]
         self.assertIn('task_created', types)
 
