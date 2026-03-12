@@ -124,6 +124,8 @@ export interface DecisionCommittedResponse {
   createdAt?: string;
   createdBy?: number | null;
   committedAt?: string | null;
+  approvedAt?: string | null;
+  approvedBy?: number | null;
   isReferenceCase?: boolean;
   options?: DecisionOptionDraft[];
   signals?: DecisionSignalDraft[];

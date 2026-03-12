@@ -117,6 +117,10 @@ const TaskRow = ({
   const typeTone = getTypeTone(task.type);
   const resolvedIssueKey = issueKey || buildIssueKey(task);
   const isDone = DONE_STATUSES.has((task.status || '').toUpperCase());
+  const isDraft =
+    (task.status || '').toUpperCase() === 'DRAFT' ||
+    (task as TaskData & { backendStatus?: string }).backendStatus === 'DRAFT' ||
+    task.draft_payload != null;
 
   return (
     <>
@@ -173,6 +177,11 @@ const TaskRow = ({
             <span className="shrink-0 whitespace-nowrap text-[10px] font-medium text-slate-400">
               {resolvedIssueKey}
             </span>
+            {isDraft ? (
+              <span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+                Draft
+              </span>
+            ) : null}
             <span
               className="truncate font-medium text-slate-800"
               style={{ maxWidth: Math.max(140, leftColumnWidth - 200) }}
@@ -193,7 +202,7 @@ const TaskRow = ({
               </span>
             ) : null}
           </div>
-          <span className={cn('rounded px-2 py-0.5 text-[10px] font-semibold', typeTone)}>
+          <span className={cn('shrink-0 rounded px-2 py-0.5 text-[10px] font-semibold', typeTone)}>
             {typeLabel}
           </span>
         </button>

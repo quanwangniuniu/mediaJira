@@ -82,8 +82,9 @@ services:
         condition: service_healthy
       # sonarqube:
       #   condition: service_healthy
-    # volumes:
-    #   - sonar-token-data:/token
+    volumes:
+      # - sonar-token-data:/token
+      - ../agentdoc/databackup:/app/agent_data
     command: ["/bin/bash", "/app/entrypoint-dev"]
     logging:
       driver: "json-file"

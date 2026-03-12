@@ -13,6 +13,13 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './e2e',
+  /* Start Next.js so you don't have to run frontend/backend manually. */
+  webServer: {
+    command: 'npm run dev',
+    url: process.env.BASE_URL || 'http://localhost:3000',
+    reuseExistingServer: !process.env.CI,
+    timeout: 60_000,
+  },
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
@@ -25,8 +32,8 @@ export default defineConfig({
   reporter: 'html',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
-    /* Base URL to use in actions like `await page.goto('')`. */
-    baseURL: process.env.BASE_URL || 'http://localhost',
+    /* Base URL to use in actions like `await page.goto('')`. Next.js dev runs on 3000. */
+    baseURL: process.env.BASE_URL || 'http://localhost:3000',
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
@@ -35,7 +42,10 @@ export default defineConfig({
 
   /* Configure projects */
   projects: [
-    { name: 'setup', testMatch: /.*\.setup\.ts/ },
+    /* Global auth setup (real login) – only for non-auth e2e; do not run when testing e2e/auth only */
+    { name: 'setup', testMatch: /^auth\.setup\.ts$/ },
+    /* Auth-folder setup (mocked login) – runs when testing e2e/auth */
+    { name: 'auth-setup', testMatch: /^auth\/auth\.setup\.ts$/ },
     {
       name: 'chromium',
       use: {
@@ -43,6 +53,7 @@ export default defineConfig({
         storageState: 'e2e/.auth/user.json',
       },
       dependencies: ['setup'],
+      testIgnore: /^auth\//,
     },
     {
       name: 'firefox',
@@ -51,6 +62,7 @@ export default defineConfig({
         storageState: 'e2e/.auth/user.json',
       },
       dependencies: ['setup'],
+      testIgnore: /^auth\//,
     },
     {
       name: 'webkit',
@@ -59,6 +71,37 @@ export default defineConfig({
         storageState: 'e2e/.auth/user.json',
       },
       dependencies: ['setup'],
+      testIgnore: /^auth\//,
+    },
+    {
+      name: 'auth-chromium',
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: 'e2e/auth/.auth/user.json',
+      },
+      dependencies: ['auth-setup'],
+      testMatch: /^auth\//,
+      testIgnore: /\.setup\.ts$/,
+    },
+    {
+      name: 'auth-firefox',
+      use: {
+        ...devices['Desktop Firefox'],
+        storageState: 'e2e/auth/.auth/user.json',
+      },
+      dependencies: ['auth-setup'],
+      testMatch: /^auth\//,
+      testIgnore: /\.setup\.ts$/,
+    },
+    {
+      name: 'auth-webkit',
+      use: {
+        ...devices['Desktop Safari'],
+        storageState: 'e2e/auth/.auth/user.json',
+      },
+      dependencies: ['auth-setup'],
+      testMatch: /^auth\//,
+      testIgnore: /\.setup\.ts$/,
     },
   ],
 });

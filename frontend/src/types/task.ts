@@ -52,6 +52,14 @@ export interface TaskData {
   parent_relationship?: any; // Parent relationship if this is a subtask
   order_in_project?: number; // Order of task within its project
   approval_chain_progress?: ApprovalChainProgress | null;
+  can_lock?: boolean;
+  approvals_summary?: {
+    approved_count: number;
+    required_count: number;
+    display: string;
+  } | null;
+  /** Draft-only: persisted create-panel state (backend stores JSON) */
+  draft_payload?: unknown | null;
 }
 
 // Type for creating a new task (current_approver_id is user ID)
@@ -61,9 +69,14 @@ export interface CreateTaskData {
   type: string;
   summary: string;
   description?: string;
+  priority?: string;
   current_approver_id?: number; // User ID for creation
   start_date?: string | null; // Date field
   due_date?: string;
+  /** If true, task stays in DRAFT and draft_payload is persisted. */
+  create_as_draft?: boolean;
+  /** Draft-only: persisted create-panel state (backend stores JSON) */
+  draft_payload?: unknown | null;
 }
 
 export interface UserSummary {

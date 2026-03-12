@@ -4,8 +4,11 @@ from core.models import Project, ProjectMember
 from core.utils.project import get_user_active_project
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
+from django.db.utils import OperationalError, ProgrammingError
 import logging
 import mimetypes
+import traceback
+
 logger = logging.getLogger(__name__)
 
 User = get_user_model()
@@ -33,10 +36,15 @@ class TaskSerializer(serializers.ModelSerializer):
     project_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     current_approver = UserSummarySerializer(read_only=True)
     current_approver_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    create_as_draft = serializers.BooleanField(write_only=True, required=False, default=False)
+    draft_payload = serializers.JSONField(required=False, allow_null=True)
     is_subtask = serializers.BooleanField(read_only=True)
     parent_relationship = serializers.SerializerMethodField()
     order_in_project = serializers.IntegerField(required=False)
     approval_chain_progress = serializers.SerializerMethodField()
+    can_lock = serializers.SerializerMethodField()
+    approvals_summary = serializers.SerializerMethodField()
+    content_type = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -47,8 +55,25 @@ class TaskSerializer(serializers.ModelSerializer):
             'content_type', 'object_id', 'start_date', 'due_date',
             'is_subtask', 'parent_relationship', 'order_in_project',
             'anomaly_status', 'approval_chain_progress',
+            'can_lock', 'approvals_summary',
+            'create_as_draft', 'draft_payload',
         ]
-        read_only_fields = ['id', 'status', 'owner', 'content_type', 'object_id', 'is_subtask', 'parent_relationship', 'anomaly_status', 'approval_chain_progress']
+        read_only_fields = [
+            'id', 'status', 'owner', 'content_type', 'object_id',
+            'is_subtask', 'parent_relationship', 'anomaly_status',
+            'approval_chain_progress', 'can_lock', 'approvals_summary',
+        ]
+
+    def get_content_type(self, obj):
+        """
+        Represent the linked object's content type as its model name string.
+
+        For example, a BudgetRequest link should return "budgetrequest"
+        instead of the internal ContentType primary key.
+        """
+        if not obj.content_type:
+            return None
+        return obj.content_type.model
 
     def get_approval_chain_progress(self, obj):
         """
@@ -135,57 +160,150 @@ class TaskSerializer(serializers.ModelSerializer):
             'next_approver': UserSummarySerializer(next_step.approver).data if next_step else None,
             'steps': steps,
         }
-    
+
+    def get_can_lock(self, obj):
+        """
+        Returns True if the task is allowed to be locked right now.
+
+        Rules:
+        - Task must be in APPROVED status.
+        - If an approval chain is assigned, the number of approved records
+          must meet the chain's effective_required_approvals threshold.
+        - Legacy tasks (no chain) can always be locked once APPROVED.
+        """
+        if obj.status != 'APPROVED':
+            return False
+        if not obj.approval_chain:
+            return True  # Legacy mode: no minimum required
+        approved_count = obj.approval_records.filter(is_approved=True).count()
+        return approved_count >= obj.approval_chain.effective_required_approvals
+
+    def get_approvals_summary(self, obj):
+        """
+        Returns a human-readable approval progress summary for chain-mode tasks.
+
+        Example: { "approved_count": 1, "required_count": 2, "display": "1 of 2 approvals" }
+        Returns None for legacy tasks (no chain assigned).
+        """
+        if not obj.approval_chain:
+            return None
+        approved_count = obj.approval_records.filter(is_approved=True).count()
+        required = obj.approval_chain.effective_required_approvals
+        return {
+            'approved_count': approved_count,
+            'required_count': required,
+            'display': f'{approved_count} of {required} approvals',
+        }
+
+    def get_parent_relationship(self, obj):
+        """Get parent relationship information for subtasks"""
+        if not obj.is_subtask:
+            return None
+        hierarchy = obj.parent_relationship.first()
+        if hierarchy:
+            return [{
+                'parent_task_id': hierarchy.parent_task_id,
+            }]
+        return None
+
+    def _resolve_project(self, user, project_id):
+        """Return project from id or from user's active project."""
+        if project_id is not None:
+            try:
+                return Project.objects.get(id=project_id)
+            except Project.DoesNotExist:
+                raise serializers.ValidationError({'project_id': 'Project not found'})
+
+        project = get_user_active_project(user)
+        if not project:
+            raise serializers.ValidationError({
+                'project_id': 'Active project is required. Set an active project or provide project_id.'
+            })
+        return project
+
+    def _ensure_project_membership(self, user, project):
+        """Ensure the user can access the project."""
+        has_membership = ProjectMember.objects.filter(
+            user=user,
+            project=project,
+            is_active=True,
+        ).exists()
+        if not has_membership:
+            raise serializers.ValidationError({
+                'project_id': 'You do not have access to this project.'
+            })
+
     def create(self, validated_data):
         """Create a new task"""
-        user = self.context['request'].user
-        validated_data['owner'] = user
+        create_as_draft = validated_data.pop('create_as_draft', False)
+        # Never persist draft payload on non-draft creates.
+        if not create_as_draft:
+            validated_data.pop('draft_payload', None)
 
-        project = self._resolve_project(user, validated_data.pop('project_id', None))
-        self._ensure_project_membership(user, project)
-        validated_data['project'] = project
-        
-        # Get current_approver from current_approver_id
-        current_approver_id = validated_data.pop('current_approver_id', None)
-        logger.debug(f"DEBUG: current_approver_id from pop: {current_approver_id}")
-        logger.debug(f"DEBUG: current_approver_id type: {type(current_approver_id)}")
-        
-        if current_approver_id is not None:
-            try:
-                current_approver = User.objects.get(id=current_approver_id)
-            except User.DoesNotExist:
-                raise serializers.ValidationError({'current_approver_id': 'User not found'})
-
-            # Ensure approver is a member of the same project
-            has_membership = ProjectMember.objects.filter(
-                user=current_approver,
-                project=project,
-                is_active=True,
-            ).exists()
-            if not has_membership:
-                raise serializers.ValidationError({
-                    'current_approver_id': 'Approver must be a member of the project.'
-                })
-
-            validated_data['current_approver'] = current_approver
-            logger.debug(f"DEBUG: Set current_approver to: {current_approver}")
-        else:
-            print(f"DEBUG: current_approver_id is None, not setting current_approver")
-        
-        # Create the task
-        task = super().create(validated_data)
-        
-        # Submit the task to change status from DRAFT to SUBMITTED
-        # This ensures the task is in the correct state for approval workflow
         try:
-            task.submit()
-            task.save()
-            logger.debug(f"DEBUG: Task {task.id} status changed from DRAFT to SUBMITTED")
+            user = self.context['request'].user
+            validated_data['owner'] = user
+
+            project = self._resolve_project(user, validated_data.pop('project_id', None))
+            self._ensure_project_membership(user, project)
+            validated_data['project'] = project
+
+            # Get current_approver from current_approver_id
+            current_approver_id = validated_data.pop('current_approver_id', None)
+            logger.debug(f"DEBUG: current_approver_id from pop: {current_approver_id}")
+            logger.debug(f"DEBUG: current_approver_id type: {type(current_approver_id)}")
+
+            if current_approver_id is not None:
+                try:
+                    current_approver = User.objects.get(id=current_approver_id)
+                except User.DoesNotExist:
+                    raise serializers.ValidationError({'current_approver_id': 'User not found'})
+
+                # Ensure approver is a member of the same project
+                has_membership = ProjectMember.objects.filter(
+                    user=current_approver,
+                    project=project,
+                    is_active=True,
+                ).exists()
+                if not has_membership:
+                    raise serializers.ValidationError({
+                        'current_approver_id': 'Approver must be a member of the project.'
+                    })
+
+                validated_data['current_approver'] = current_approver
+                logger.debug(f"DEBUG: Set current_approver to: {current_approver}")
+            else:
+                print(f"DEBUG: current_approver_id is None, not setting current_approver")
+
+            # Create the task (catch missing draft_payload column so we return 400 + clear message)
+            try:
+                task = super().create(validated_data)
+            except (OperationalError, ProgrammingError) as db_err:
+                err_msg = str(db_err).lower()
+                if "draft_payload" in err_msg or "no such column" in err_msg or ("column" in err_msg and "does not exist" in err_msg):
+                    raise serializers.ValidationError({
+                        "draft_payload": "Database migration required for draft support. Run: python manage.py migrate task"
+                    }) from db_err
+                raise
+
+            # Default behavior: auto-submit newly created tasks (DRAFT -> SUBMITTED).
+            # Draft creation explicitly opts out and keeps status=DRAFT.
+            if not create_as_draft:
+                try:
+                    task.submit()
+                    task.save()
+                    logger.debug(
+                        f"DEBUG: Task {task.id} status changed from DRAFT to SUBMITTED"
+                    )
+                except Exception as e:
+                    logger.error(f"ERROR: Failed to submit task {task.id}: {e}")
+                    # Don't fail the creation, but log the error
+
+            return task
         except Exception as e:
-            logger.error(f"ERROR: Failed to submit task {task.id}: {e}")
-            # Don't fail the creation, but log the error
-        
-        return task
+            tb = traceback.format_exc()
+            logger.error("TaskSerializer.create exception: %s\n%s", e, tb)
+            raise
     
     def update(self, instance, validated_data):
         """Update a task"""
@@ -263,12 +381,27 @@ class TaskSerializer(serializers.ModelSerializer):
     
     def validate(self, attrs):
         """Validate the data"""
+        # Only allow updating draft_payload while task is in DRAFT.
+        if self.instance and 'draft_payload' in attrs:
+            # Allow clearing draft_payload (null) at any status for cleanup.
+            if attrs.get('draft_payload') is not None and self.instance.status != Task.Status.DRAFT:
+                raise serializers.ValidationError({
+                    'draft_payload': 'draft_payload can only be updated while task is in DRAFT status.'
+                })
+
         # For updates, reject type field if provided
         if self.instance and 'type' in attrs:
             raise serializers.ValidationError({
                 'type': 'Task type cannot be modified after creation.'
             })
         return attrs
+
+
+class TaskListSerializer(TaskSerializer):
+    """List serializer omitting large draft payloads."""
+
+    class Meta(TaskSerializer.Meta):
+        fields = [f for f in TaskSerializer.Meta.fields if f != 'draft_payload']
     
     def validate_type(self, value):
         """Validate task type against Task model choices."""
@@ -289,44 +422,6 @@ class TaskSerializer(serializers.ModelSerializer):
     def get_object_id(self, obj):
         """Get object id as string"""
         return obj.object_id
-
-    def get_parent_relationship(self, obj):
-        """Get parent relationship information for subtasks"""
-        if not obj.is_subtask:
-            return None
-        hierarchy = obj.parent_relationship.first()
-        if hierarchy:
-            return [{
-                'parent_task_id': hierarchy.parent_task_id,
-            }]
-        return None
-
-    def _resolve_project(self, user, project_id):
-        """Return project from id or from user's active project."""
-        if project_id is not None:
-            try:
-                return Project.objects.get(id=project_id)
-            except Project.DoesNotExist:
-                raise serializers.ValidationError({'project_id': 'Project not found'})
-
-        project = get_user_active_project(user)
-        if not project:
-            raise serializers.ValidationError({
-                'project_id': 'Active project is required. Set an active project or provide project_id.'
-            })
-        return project
-
-    def _ensure_project_membership(self, user, project):
-        """Ensure the user can access the project."""
-        has_membership = ProjectMember.objects.filter(
-            user=user,
-            project=project,
-            is_active=True,
-        ).exists()
-        if not has_membership:
-            raise serializers.ValidationError({
-                'project_id': 'You do not have access to this project.'
-            })
 
 
 class TaskLinkSerializer(serializers.Serializer):
@@ -386,6 +481,22 @@ class TaskApprovalSerializer(serializers.Serializer):
         if value not in ['approve', 'reject']:
             raise serializers.ValidationError("Action must be either 'approve' or 'reject'")
         return value
+
+    def validate(self, attrs):
+        """Require a non-empty comment when rejecting a task."""
+        action = attrs.get('action')
+        comment = attrs.get('comment', '')
+
+        if isinstance(comment, str):
+            comment = comment.strip()
+            attrs['comment'] = comment
+
+        if action == 'reject' and not comment:
+            raise serializers.ValidationError({
+                'comment': 'Comment is required when rejecting a task'
+            })
+
+        return attrs
 
 
 class TaskForwardSerializer(serializers.Serializer):
