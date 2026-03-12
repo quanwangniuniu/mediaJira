@@ -23,6 +23,7 @@ import TaskRow from './TaskRow';
 import { buildTimelineColumns, dateToX } from './timelineUtils';
 import type { TimelineScale } from './timelineUtils';
 import { TaskAPI } from '@/lib/api/taskApi';
+import { getTaskTypeLabel } from '@/lib/taskTypeLabels';
 
 type WorkTypeFilter = 'all' | string;
 
@@ -63,34 +64,9 @@ const normalizeRange = (start: Date, end: Date) => ({
   end: endOfDay(end),
 });
 
-const TASK_TYPE_LABELS: Record<string, string> = {
-  task: 'Task',
-  budget: 'Budget Request',
-  asset: 'Asset',
-  retrospective: 'Retrospective',
-  report: 'Report',
-  scaling: 'Scaling',
-  alert: 'Alert',
-  experiment: 'Experiment',
-  optimization: 'Optimization',
-  communication: 'Communication',
-  platform_policy_update: 'Platform Policy Update',
-};
-
 const normalizeTaskType = (value?: string | null) => {
   if (!value) return 'task';
   return value.toLowerCase();
-};
-
-const formatTaskTypeLabel = (value?: string | null) => {
-  if (!value) return TASK_TYPE_LABELS.task;
-  const normalized = value.toLowerCase();
-  if (TASK_TYPE_LABELS[normalized]) return TASK_TYPE_LABELS[normalized];
-  return normalized
-    .replace(/[_-]+/g, ' ')
-    .split(' ')
-    .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
-    .join(' ');
 };
 
 const taskMatchesSearch = (task: TaskData, query: string) => {
@@ -158,7 +134,7 @@ const TimelineView = ({
     );
     return [
       { value: 'all', label: 'All work types' },
-      ...values.map((value) => ({ value, label: formatTaskTypeLabel(value) })),
+      ...values.map((value) => ({ value, label: getTaskTypeLabel(value) })),
     ];
   }, [tasks]);
 

@@ -217,23 +217,27 @@ const DecisionPage = () => {
     setDirty(true);
   };
 
+  const buildDraftPayload = useCallback(
+    () => ({
+      title: title || null,
+      contextSummary: contextSummary || null,
+      reasoning: reasoning || null,
+      riskLevel: riskLevel || null,
+      confidenceScore: confidenceScore,
+      options: options.map((option, index) => ({
+        ...option,
+        order: index,
+      })),
+    }),
+    [title, contextSummary, reasoning, riskLevel, confidenceScore, options]
+  );
+
   const handleSaveDraft = async () => {
     if (!decisionId) return;
     setSaving(true);
     setErrors({});
     try {
-      const payload = {
-        title: title || null,
-        contextSummary: contextSummary || null,
-        reasoning: reasoning || null,
-        riskLevel: riskLevel || null,
-        confidenceScore: confidenceScore,
-        options: options.map((option, index) => ({
-          ...option,
-          order: index,
-        })),
-      };
-      const draft = await DecisionAPI.patchDraft(decisionId, payload, projectIdValue);
+      const draft = await DecisionAPI.patchDraft(decisionId, buildDraftPayload(), projectIdValue);
       syncDraftState(draft);
       toast.success('Draft saved.');
     } catch (error: any) {
@@ -265,15 +269,34 @@ const DecisionPage = () => {
   };
 
   const handleCommit = async () => {
-    if (!decisionId) return;
+    if (!decisionId) return false;
     setCommitting(true);
     setErrors({});
     try {
+      if (dirty) {
+        setSaving(true);
+        try {
+          const syncedDraft = await DecisionAPI.patchDraft(
+            decisionId,
+            buildDraftPayload(),
+            projectIdValue
+          );
+          syncDraftState(syncedDraft);
+        } catch (syncError) {
+          console.error('Failed to sync latest draft before commit:', syncError);
+          toast.error('Failed to sync latest changes before commit.');
+          return false;
+        } finally {
+          setSaving(false);
+        }
+      }
+
       const response = await DecisionAPI.commit(decisionId, projectIdValue);
       setStatus(response.status);
       setCommittedSnapshot(response.decision);
       setDirty(false);
       toast.success(response.detail || 'Decision committed.');
+      return true;
     } catch (error: any) {
       const response = error?.response;
       if (response?.status === 400 && response?.data?.error) {
@@ -286,6 +309,7 @@ const DecisionPage = () => {
         console.error('Commit failed:', error);
         toast.error('Commit failed.');
       }
+      return false;
     } finally {
       setCommitting(false);
     }
@@ -308,8 +332,10 @@ const DecisionPage = () => {
   };
 
   const handleConfirmCommit = async () => {
-    await handleCommit();
-    setCommitModalOpen(false);
+    const committed = await handleCommit();
+    if (committed) {
+      setCommitModalOpen(false);
+    }
   };
 
   const handleApprove = async () => {
