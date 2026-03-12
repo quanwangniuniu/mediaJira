@@ -1,31 +1,16 @@
 import { test, expect } from '@playwright/test';
 import {
   createDraftDecisionViaApi,
-  deleteDecisionViaApi,
+  deleteDecisionAfterCreate,
   goToDecisions,
   resolveFirstProjectSection,
-  type DecisionCleanupRef,
 } from './decisions-helpers';
 
 test.describe('Decisions flows', () => {
   test.describe.configure({ mode: 'serial' });
 
-  let cleanupRefs: DecisionCleanupRef[] = [];
-
   test.beforeEach(async ({ page }) => {
-    cleanupRefs = [];
     await goToDecisions(page);
-  });
-
-  test.afterEach(async ({ page }) => {
-    for (const ref of cleanupRefs) {
-      try {
-        await deleteDecisionViaApi(page, ref);
-      } catch {
-        /* best-effort cleanup */
-      }
-    }
-    cleanupRefs = [];
   });
 
   test('decisions list shows project sections and list or empty state', async ({
@@ -64,7 +49,6 @@ test.describe('Decisions flows', () => {
     test.skip(!project, 'No project available for decisions tests.');
 
     const decisionId = await createDraftDecisionViaApi(page, project!.projectId);
-    cleanupRefs.push({ decisionId, projectId: project!.projectId });
 
     await goToDecisions(page);
     const detailsLink = page
@@ -78,25 +62,27 @@ test.describe('Decisions flows', () => {
       new RegExp(`/decisions/${decisionId}(\\?.*project_id=${project!.projectId}.*)?$`),
     );
     await expect(page.getByRole('heading', { name: 'Context Summary' })).toBeVisible();
+
+    await deleteDecisionAfterCreate(page, decisionId, project!.projectId);
   });
 
   test('create decision redirects to draft editor', async ({ page }) => {
     const project = await resolveFirstProjectSection(page);
     test.skip(!project, 'No project available for decisions tests.');
 
-    await project!.section.getByRole('button', { name: 'Create Decision' }).click();
+    await project!.section.getByRole('button', { name: 'Create Decision', exact: true }).click();
 
     await expect(page).toHaveURL(/\/decisions\/\d+(\?.*)?$/, { timeout: 20_000 });
     const match = page.url().match(/\/decisions\/(\d+)/);
     expect(match?.[1], 'Expected a decision id in URL after create.').toBeTruthy();
 
     const createdId = Number(match![1]);
-    if (Number.isFinite(createdId) && createdId > 0) {
-      cleanupRefs.push({ decisionId: createdId, projectId: project!.projectId });
-    }
-
     await expect(page.getByRole('heading', { name: 'Context Summary' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Options' })).toBeVisible();
+
+    if (Number.isFinite(createdId) && createdId > 0) {
+      await deleteDecisionAfterCreate(page, createdId, project!.projectId);
+    }
   });
 
   test('decision tree/link editor is visible when expanded', async ({ page }) => {

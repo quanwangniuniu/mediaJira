@@ -81,7 +81,7 @@ export default defineConfig({
       },
       dependencies: ['auth-setup'],
       testMatch: /e2e[\\/]auth[\\/]/,
-      testIgnore: /\.setup\.ts$/,
+      testIgnore: [/\.setup\.ts$/, /[\\/]fixtures[\\/]/],
     },
     {
       name: 'auth-firefox',
@@ -91,7 +91,7 @@ export default defineConfig({
       },
       dependencies: ['auth-setup'],
       testMatch: /e2e[\\/]auth[\\/]/,
-      testIgnore: /\.setup\.ts$/,
+      testIgnore: [/\.setup\.ts$/, /[\\/]fixtures[\\/]/],
     },
     {
       name: 'auth-webkit',
@@ -101,7 +101,7 @@ export default defineConfig({
       },
       dependencies: ['auth-setup'],
       testMatch: /e2e[\\/]auth[\\/]/,
-      testIgnore: /\.setup\.ts$/,
+      testIgnore: [/\.setup\.ts$/, /[\\/]fixtures[\\/]/],
     },
   ],
 });

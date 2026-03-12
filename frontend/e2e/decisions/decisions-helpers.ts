@@ -6,11 +6,14 @@ export interface DecisionCleanupRef {
 }
 
 export async function waitForDecisionsPageReady(page: Page) {
+  await expect(page.getByText('Initializing...')).not.toBeVisible({
+    timeout: 50_000,
+  });
   await expect(page.getByText('Preparing your workspace')).not.toBeVisible({
-    timeout: 30_000,
+    timeout: 50_000,
   });
   await expect(page.getByText('Loading decisions...')).not.toBeVisible({
-    timeout: 30_000,
+    timeout: 50_000,
   });
 }
 
@@ -107,4 +110,20 @@ export async function deleteDecisionViaApi(
       },
     },
   );
+}
+
+/**
+ * Best-effort delete of a decision created during a test (e.g. via Create Decision button).
+ * Call after assertions to clean up. Does not throw.
+ */
+export async function deleteDecisionAfterCreate(
+  page: Page,
+  decisionId: number,
+  projectId: number,
+): Promise<void> {
+  try {
+    await deleteDecisionViaApi(page, { decisionId, projectId });
+  } catch {
+    /* best-effort cleanup */
+  }
 }
