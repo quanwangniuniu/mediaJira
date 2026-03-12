@@ -397,7 +397,7 @@ jobs:
         run: |
           if [ "${{ github.ref }}" == "refs/heads/main" ]; then
             echo "target=main" >> $GITHUB_OUTPUT
-            echo "url=https://cwvrzmoq03.execute-api.ap-southeast-2.amazonaws.com/default/Auto-Deploy-mediajira02" >> $GITHUB_OUTPUT
+            echo "url=https://cloudbuild.googleapis.com/v1/projects/mediajira-489602/locations/australia-southeast1/triggers/mediajira-deploy:webhook?key=AIzaSyATO2Lge-nAFX-fKTrTYuMqL7gH4i3pM1I&secret=2WwbrPYgi-ALkalZ4808iII40m67xV32&trigger=mediajira-deploy&projectId=mediajira-489602" >> $GITHUB_OUTPUT
           elif [ "${{ github.ref }}" == "refs/heads/prod-preview" ]; then
             echo "target=prod-preview" >> $GITHUB_OUTPUT
             echo "url=https://24mf5mvg7g.execute-api.ap-southeast-2.amazonaws.com/default/Auto-Deploy-mediajira-preview" >> $GITHUB_OUTPUT

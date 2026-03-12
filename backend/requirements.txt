@@ -53,6 +53,9 @@ opentelemetry-api
 opentelemetry-sdk
 opentelemetry-distro   
 
+# OTLP exporters (traces/metrics/logs over gRPC)
+opentelemetry-exporter-otlp-proto-grpc
+
 # Django auto‑instrumentation
 opentelemetry-instrumentation-django
 
