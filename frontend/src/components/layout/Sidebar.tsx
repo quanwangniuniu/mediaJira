@@ -32,6 +32,7 @@ import {
   Mail,
   LayoutDashboard,
   Square,
+  Bot,
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { usePathname } from "next/navigation";
@@ -489,6 +490,37 @@ const Sidebar: FC<SidebarProps> = ({
           );
         })}
       </nav>
+
+      {/* Agent AI Link */}
+      <div className="px-2 pb-2 border-t border-gray-200 pt-2">
+        <a
+          href="/agent"
+          onClick={(e) => handleLinkClick(e, "/agent")}
+          className={`
+            flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200
+            ${
+              isActive("/agent")
+                ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md"
+                : "bg-gradient-to-r from-blue-50 to-purple-50 text-blue-700 hover:from-blue-100 hover:to-purple-100 hover:shadow-sm"
+            }
+            ${collapsed ? "justify-center" : ""}
+          `}
+        >
+          <Bot className="h-5 w-5 flex-shrink-0" />
+          {!collapsed && (
+            <>
+              <span>Agent</span>
+              <span className={`ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                isActive("/agent")
+                  ? "bg-white/20 text-white"
+                  : "bg-blue-100 text-blue-600"
+              }`}>
+                AI
+              </span>
+            </>
+          )}
+        </a>
+      </div>
 
       {/* Footer information */}
       {!collapsed && (
