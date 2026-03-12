@@ -5,6 +5,7 @@ import Link from 'next/link';
 import DecisionTaskCreateModal from '@/components/decisions/DecisionTaskCreateModal';
 import { TaskAPI } from '@/lib/api/taskApi';
 import type { TaskData } from '@/types/task';
+import type { DecisionRiskLevel } from '@/types/decision';
 
 interface TaskPanelProps {
   decisionId: number;
@@ -16,6 +17,8 @@ interface TaskPanelProps {
   canCreate?: boolean;
   projectId?: number | null;
   projectName?: string | null;
+  decisionRiskLevel?: DecisionRiskLevel | null;
+  decisionApprovedBy?: number | null;
 }
 
 const formatDate = (value?: string | null) => {
@@ -68,6 +71,8 @@ const TaskPanel = ({
   canCreate = false,
   projectId,
   projectName,
+  decisionRiskLevel,
+  decisionApprovedBy,
 }: TaskPanelProps) => {
   const [tasks, setTasks] = useState<TaskData[]>([]);
   const [loading, setLoading] = useState(false);
@@ -164,6 +169,8 @@ const TaskPanel = ({
           decisionLink={decisionLink}
           projectId={projectId}
           projectName={projectName}
+          decisionRiskLevel={decisionRiskLevel}
+          decisionApprovedBy={decisionApprovedBy}
           onCreated={fetchTasks}
         />
       ) : null}

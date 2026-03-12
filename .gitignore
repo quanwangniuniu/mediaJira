@@ -19,3 +19,5 @@ devops/infra/terraform/.terraform.lock.hcl
 package*.json
 frontend/storybook-static/
 backend/venv/
+docker-compose.dev.override.yml
+.claude/

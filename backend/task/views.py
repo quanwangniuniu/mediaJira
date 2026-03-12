@@ -4,22 +4,62 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, ValidationError as DRFValidationError
 from django.core.exceptions import ValidationError
+from django.db.models import Q
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.shortcuts import get_object_or_404
 from task.models import Task, ApprovalRecord, TaskComment, TaskAttachment, TaskHierarchy, TaskRelation, ApprovalChain
-from task.serializers import TaskSerializer, TaskLinkSerializer, ApprovalRecordSerializer, TaskApprovalSerializer, TaskForwardSerializer, TaskCommentSerializer, TaskAttachmentSerializer, SubtaskAddSerializer, TaskRelationAddSerializer
+from task.serializers import TaskSerializer, TaskListSerializer, TaskLinkSerializer, ApprovalRecordSerializer, TaskApprovalSerializer, TaskForwardSerializer, TaskCommentSerializer, TaskAttachmentSerializer, SubtaskAddSerializer, TaskRelationAddSerializer
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from core.models import ProjectMember, Project
 from core.utils.project import get_user_active_project
+import json
+import traceback
+
+# region agent log
+def _debug_log(session_id, location, message, data=None, hypothesis_id=None):
+    import os
+    payload = {"sessionId": session_id, "location": location, "message": message, "timestamp": __import__("time").time() * 1000}
+    if data is not None:
+        payload["data"] = data
+    if hypothesis_id is not None:
+        payload["hypothesisId"] = hypothesis_id
+    line = json.dumps(payload) + "\n"
+    for path in [
+        "/Users/huangtaowen/Desktop/Proj/mediaJira/.cursor/debug-70a616.log",
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "debug-70a616.log"),
+    ]:
+        try:
+            with open(path, "a") as f:
+                f.write(line)
+            break
+        except Exception:
+            continue
+# endregion
+
 
 class TaskViewSet(viewsets.ModelViewSet):
     """ViewSet for Task model"""
     queryset = Task.objects.select_related('project', 'owner', 'current_approver')
     serializer_class = TaskSerializer
     permission_classes = [IsAuthenticated]
-    
+
+    def get_serializer_class(self):
+        if getattr(self, "action", None) == "list":
+            return TaskListSerializer
+        return TaskSerializer
+
+    def create(self, request, *args, **kwargs):
+        try:
+            return super().create(request, *args, **kwargs)
+        except Exception as e:
+            import logging
+            logging.getLogger("task.views").error(
+                "TaskViewSet.create exception: %s\n%s", e, traceback.format_exc()
+            )
+            raise
+
     def force_create(self, request):
         """
         Fallback task creation endpoint.
@@ -60,6 +100,9 @@ class TaskViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         """Filter queryset based on user permissions and query parameters"""
+        # region agent log
+        _debug_log("70a616", "task/views.py:get_queryset", "get_queryset_start", {"user_id": getattr(self.request.user, "id", None)}, "H2")
+        # endregion
         user = self.request.user
         if not user.is_authenticated:
             return Task.objects.none()
@@ -97,25 +140,22 @@ class TaskViewSet(viewsets.ModelViewSet):
             if requested_project_id not in accessible_project_ids:
                 raise PermissionDenied('You do not have access to this project.')
 
-            queryset = queryset.filter(project_id=requested_project_id)
+            # User is a member — also include cross-project tasks where they are the current approver.
+            project_filter = Q(project_id=requested_project_id)
         else:
-            # Previous logic (before all_projects support):
-            # if active_project:
-            #     queryset = queryset.filter(project_id=active_project.id)
-            # elif accessible_project_ids:
-            #     queryset = queryset.filter(project_id__in=accessible_project_ids)
-            # else:
-            #     return Task.objects.none()
-            
             # New logic: support all_projects parameter
             if all_projects and accessible_project_ids:
-                queryset = queryset.filter(project_id__in=accessible_project_ids)
+                project_filter = Q(project_id__in=accessible_project_ids)
             elif active_project:
-                queryset = queryset.filter(project_id=active_project.id)
+                project_filter = Q(project_id=active_project.id)
             elif accessible_project_ids:
-                queryset = queryset.filter(project_id__in=accessible_project_ids)
+                project_filter = Q(project_id__in=accessible_project_ids)
             else:
-                return Task.objects.none()
+                project_filter = Q(pk__in=[])
+
+        # Always also include tasks where user is the designated current approver,
+        # even across project boundaries (cross-project approval chain support).
+        queryset = queryset.filter(project_filter | Q(current_approver=user))
 
         # Apply filters
         task_type = self.request.query_params.get('type')
@@ -157,8 +197,33 @@ class TaskViewSet(viewsets.ModelViewSet):
         
         # Order by order_in_project, then by creation date (newest first)
         queryset = queryset.order_by('order_in_project', '-id')
-        
+        # List response does not include draft_payload; defer it so list works if migration adding the column is not yet applied.
+        if getattr(self, 'action', None) == 'list':
+            queryset = queryset.defer('draft_payload')
+        # region agent log
+        _debug_log("70a616", "task/views.py:get_queryset", "get_queryset_end", None, "H2")
+        # endregion
         return queryset
+
+    def list(self, request, *args, **kwargs):
+        # region agent log
+        _debug_log("70a616", "task/views.py:list", "list_start", {"query": dict(request.query_params)}, "H5")
+        # endregion
+        try:
+            response = super().list(request, *args, **kwargs)
+            # region agent log
+            _debug_log("70a616", "task/views.py:list", "list_end", None, "H5")
+            # endregion
+            return response
+        except Exception as e:
+            # region agent log
+            _debug_log("70a616", "task/views.py:list", "list_failed", {
+                "exc_type": type(e).__name__,
+                "exc_message": str(e),
+                "traceback": traceback.format_exc(),
+            }, "H2_H3_H5")
+            # endregion
+            raise
 
     def get_object(self):
         """
@@ -179,14 +244,19 @@ class TaskViewSet(viewsets.ModelViewSet):
         if not user.is_authenticated:
             raise PermissionDenied('Authentication credentials were not provided.')
 
-        # Ensure the user is an active member of the task's project
+        # Ensure the user is an active member of the task's project,
+        # OR is the current designated approver (cross-project approval chain).
         has_membership = ProjectMember.objects.filter(
             user=user,
             project=task.project,
             is_active=True,
         ).exists()
+        is_current_approver = (
+            task.current_approver_id is not None and
+            task.current_approver_id == user.id
+        )
 
-        if not has_membership:
+        if not has_membership and not is_current_approver:
             raise PermissionDenied('You do not have access to this task.')
 
         self.check_object_permissions(self.request, task)
@@ -277,7 +347,14 @@ class TaskViewSet(viewsets.ModelViewSet):
                 {'error': 'Task must be in UNDER_REVIEW status to be approved or rejected'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
+        # Verify the requesting user is the designated approver for this step
+        if task.current_approver_id and request.user.id != task.current_approver_id:
+            return Response(
+                {'error': 'Only the designated approver for this step can approve or reject.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         # Validate request data
         serializer = TaskApprovalSerializer(data=request.data)
         if not serializer.is_valid():
@@ -556,7 +633,7 @@ class TaskViewSet(viewsets.ModelViewSet):
     def lock(self, request, pk=None):
         """Lock a task (change status to LOCKED)"""
         task = self.get_object()
-        
+
         # Validate task can be locked
         lockable_statuses = [Task.Status.APPROVED]
         if task.status not in lockable_statuses:
@@ -564,7 +641,22 @@ class TaskViewSet(viewsets.ModelViewSet):
                 {'error': 'Task must be in APPROVED status to be locked'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
+        # Enforce minimum approval count when an approval chain is assigned
+        if task.approval_chain:
+            approved_count = task.approval_records.filter(is_approved=True).count()
+            required = task.approval_chain.effective_required_approvals
+            if approved_count < required:
+                return Response(
+                    {
+                        'error': (
+                            f'Task requires {required} approval(s) before it can be locked. '
+                            f'{approved_count} of {required} approvals completed.'
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
         try:
             # Lock the task
             task.lock()
@@ -780,6 +872,16 @@ class TaskViewSet(viewsets.ModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+def _user_can_access_task(user, task):
+    """Return True if user is an active project member or the current designated approver.
+
+    Mirrors the same permission check used in TaskViewSet.get_object().
+    """
+    if ProjectMember.objects.filter(user=user, project=task.project, is_active=True).exists():
+        return True
+    return task.current_approver_id is not None and task.current_approver_id == user.id
+
+
 class TaskCommentListView(generics.ListCreateAPIView):
     """
     List comments for a task or create a new task-level comment.
@@ -792,15 +894,7 @@ class TaskCommentListView(generics.ListCreateAPIView):
         task_id = self.kwargs.get('task_id')
         task = get_object_or_404(Task, pk=task_id)
 
-        # Enforce same project-based access control as TaskViewSet
-        user = self.request.user
-        has_membership = ProjectMember.objects.filter(
-            user=user,
-            project=task.project,
-            is_active=True,
-        ).exists()
-
-        if not has_membership:
+        if not _user_can_access_task(self.request.user, task):
             raise PermissionDenied('You do not have access to this task.')
 
         return TaskComment.objects.filter(task_id=task_id)
@@ -809,13 +903,7 @@ class TaskCommentListView(generics.ListCreateAPIView):
         task_id = self.kwargs.get('task_id')
         task = get_object_or_404(Task, pk=task_id)
 
-        has_membership = ProjectMember.objects.filter(
-            user=self.request.user,
-            project=task.project,
-            is_active=True,
-        ).exists()
-
-        if not has_membership:
+        if not _user_can_access_task(self.request.user, task):
             raise PermissionDenied('You do not have access to comment on this task.')
 
         serializer.save(task=task, user=self.request.user)
@@ -834,15 +922,7 @@ class TaskAttachmentListView(generics.ListCreateAPIView):
         task_id = self.kwargs.get('task_id')
         task = get_object_or_404(Task, pk=task_id)
 
-        # Enforce same project-based access control as TaskViewSet
-        user = self.request.user
-        has_membership = ProjectMember.objects.filter(
-            user=user,
-            project=task.project,
-            is_active=True,
-        ).exists()
-
-        if not has_membership:
+        if not _user_can_access_task(self.request.user, task):
             raise PermissionDenied('You do not have access to this task.')
 
         return TaskAttachment.objects.filter(task_id=task_id)
@@ -851,13 +931,7 @@ class TaskAttachmentListView(generics.ListCreateAPIView):
         task_id = self.kwargs.get('task_id')
         task = get_object_or_404(Task, pk=task_id)
 
-        has_membership = ProjectMember.objects.filter(
-            user=self.request.user,
-            project=task.project,
-            is_active=True,
-        ).exists()
-
-        if not has_membership:
+        if not _user_can_access_task(self.request.user, task):
             raise PermissionDenied('You do not have access to upload attachments to this task.')
 
         serializer.save(task=task, uploaded_by=self.request.user)
@@ -874,15 +948,7 @@ class TaskAttachmentDetailView(generics.RetrieveDestroyAPIView):
         task_id = self.kwargs.get('task_id')
         task = get_object_or_404(Task, pk=task_id)
 
-        # Enforce same project-based access control
-        user = self.request.user
-        has_membership = ProjectMember.objects.filter(
-            user=user,
-            project=task.project,
-            is_active=True,
-        ).exists()
-
-        if not has_membership:
+        if not _user_can_access_task(self.request.user, task):
             raise PermissionDenied('You do not have access to this task.')
 
         return TaskAttachment.objects.filter(task_id=task_id)
@@ -906,15 +972,7 @@ class TaskAttachmentDownloadView(APIView):
         # Get the specific attachment
         attachment = get_object_or_404(TaskAttachment, pk=attachment_id, task_id=task_id)
         
-        # Check project membership
-        user = request.user
-        has_membership = ProjectMember.objects.filter(
-            user=user,
-            project=attachment.task.project,
-            is_active=True,
-        ).exists()
-        
-        if not has_membership:
+        if not _user_can_access_task(request.user, attachment.task):
             raise PermissionDenied('You do not have access to this task.')
         
         # Check if the attachment has a file
