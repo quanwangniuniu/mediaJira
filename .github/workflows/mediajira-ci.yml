@@ -392,26 +392,31 @@ jobs:
     if: always() && needs.block.result != 'failure' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/prod-preview') && (github.event_name == 'push' || github.event_name == 'pull_request')
     runs-on: ubuntu-latest
     steps:
-      - name: Determine deployment target
-        id: deploy_target
+      - name: Trigger deploy (main)
+        if: github.ref == 'refs/heads/main'
+        env:
+          DEPLOY_WEBHOOK_URL: ${{ secrets.MEDIAJIRA_DEPLOY_WEBHOOK_URL_MAIN }}
         run: |
-          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
-            echo "target=main" >> $GITHUB_OUTPUT
-            echo "url=https://cloudbuild.googleapis.com/v1/projects/mediajira-489602/locations/australia-southeast1/triggers/mediajira-deploy:webhook?key=AIzaSyATO2Lge-nAFX-fKTrTYuMqL7gH4i3pM1I&secret=2WwbrPYgi-ALkalZ4808iII40m67xV32&trigger=mediajira-deploy&projectId=mediajira-489602" >> $GITHUB_OUTPUT
-          elif [ "${{ github.ref }}" == "refs/heads/prod-preview" ]; then
-            echo "target=prod-preview" >> $GITHUB_OUTPUT
-            echo "url=https://24mf5mvg7g.execute-api.ap-southeast-2.amazonaws.com/default/Auto-Deploy-mediajira-preview" >> $GITHUB_OUTPUT
-          fi
+          curl -fsSL -X POST "$DEPLOY_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d '{"action": "deploy", "source": "github"}'
 
-      - name: Trigger Lambda via API Gateway
+      - name: Trigger deploy (prod-preview)
+        if: github.ref == 'refs/heads/prod-preview'
+        env:
+          DEPLOY_WEBHOOK_URL: ${{ secrets.MEDIAJIRA_DEPLOY_WEBHOOK_URL_PREVIEW }}
         run: |
-          curl -X POST ${{ steps.deploy_target.outputs.url }} -H "Content-Type: application/json" -d '{"action": "deploy", "source": "github"}'
+          curl -fsSL -X POST "$DEPLOY_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d '{"action": "deploy", "source": "github"}'
   notify:
     needs: [block, code_scan, image_scan, application_test, deploy]
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Send Discord notification
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.MEDIAJIRA_DISCORD_WEBHOOK_URL }}
         run: |
           BLOCK="${{ needs.block.result }}"
           CODE_SCAN="${{ needs.code_scan.result }}"
@@ -432,7 +437,7 @@ jobs:
           MESSAGE+="Application test: **$APPLICATION_TEST**\n"
           MESSAGE+="Deploy: **$DEPLOY**\n"
           MESSAGE+="Overall status: **$OVERALL_STATUS**"
-          curl -H "Content-Type: application/json" -X POST -d "{\"content\": \"$MESSAGE\"}" "https://discord.com/api/webhooks/1461234317031379015/ft6LzZ_P4WqfXpe24Akvdu8nLPmtR0f1QPqk4UzOlyHAyf_sM8Cg8WgCOGPxSgvckfq7"
+          curl -fsSL -H "Content-Type: application/json" -X POST -d "{\"content\": \"$MESSAGE\"}" "$DISCORD_WEBHOOK_URL"
           
           # Exit with failure if overall status is failure
           if [ "$OVERALL_STATUS" == "failure" ]; then
