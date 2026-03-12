@@ -731,6 +731,7 @@ export default function TaskDetail({
       }
       const updatedTask: TaskData = (response?.data?.task ??
         response?.data) as TaskData;
+      Object.assign(task, updatedTask);
       updateTask(task.id!, updatedTask);
       toast.success("Status updated.");
       onTaskUpdate?.(updatedTask);

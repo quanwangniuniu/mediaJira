@@ -438,7 +438,7 @@ class TaskViewSet(viewsets.ModelViewSet):
         try:
             # Cancel the task
             task.cancel()
-            task.refresh_from_db()
+            task.save()
 
             # Delete all approval records
             task.approval_records.all().delete()
