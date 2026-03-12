@@ -58,6 +58,8 @@ export interface TaskData {
     required_count: number;
     display: string;
   } | null;
+  /** Draft-only: persisted create-panel state (backend stores JSON) */
+  draft_payload?: unknown | null;
 }
 
 // Type for creating a new task (current_approver_id is user ID)
@@ -71,6 +73,10 @@ export interface CreateTaskData {
   current_approver_id?: number; // User ID for creation
   start_date?: string | null; // Date field
   due_date?: string;
+  /** If true, task stays in DRAFT and draft_payload is persisted. */
+  create_as_draft?: boolean;
+  /** Draft-only: persisted create-panel state (backend stores JSON) */
+  draft_payload?: unknown | null;
 }
 
 export interface UserSummary {

@@ -33,7 +33,7 @@ class Migration(migrations.Migration):
                 ('order_in_project', models.IntegerField(default=0, help_text='Order of task within its project')),
                 ('created_at', models.DateTimeField(auto_now_add=True, help_text='Task creation timestamp')),
                 ('updated_at', models.DateTimeField(auto_now=True, help_text='Task last update timestamp')),
-                ('object_id', models.CharField(blank=True, help_text='Id of the linked model', null=True)),
+                ('object_id', models.CharField(blank=True, help_text='Id of the linked model', max_length=255, null=True)),
                 ('content_type', models.ForeignKey(blank=True, help_text='Content type of the linked model', null=True, on_delete=django.db.models.deletion.CASCADE, to='contenttypes.contenttype')),
                 ('current_approver', models.ForeignKey(help_text='The user who is currently reviewing the task', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='tasks_to_approve', to=settings.AUTH_USER_MODEL)),
                 ('owner', models.ForeignKey(help_text='The user who owns the task', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='owned_tasks', to=settings.AUTH_USER_MODEL)),

@@ -25,6 +25,7 @@ export type JiraTaskItem = {
   summary: string;
   type: string;
   status: string;
+  backendStatus?: string;
   owner?: string;
   ownerId?: number;
   approver?: string;
@@ -180,10 +181,12 @@ const JiraTasksList = ({
   tasks,
   selectedTaskId,
   onSelectTask,
+  onActivateTask,
 }: {
   tasks: JiraTaskItem[];
   selectedTaskId: JiraTaskItem["id"] | null;
   onSelectTask: (taskId: JiraTaskItem["id"]) => void;
+  onActivateTask?: (task: JiraTaskItem) => void;
 }) => (
   <div className="rounded-md border border-slate-200 bg-white">
     <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2 text-xs text-slate-500">
@@ -210,13 +213,17 @@ const JiraTasksList = ({
           const typeClass = typeBadgeStyles[typeKey] || typeBadgeStyles.task;
           const isSelected = task.id === selectedTaskId;
           const initials = getInitials(task.owner);
+          const isDraft = task.backendStatus === "DRAFT";
           return (
             <button
               key={task.id}
               type="button"
               role="option"
               aria-selected={isSelected}
-              onClick={() => onSelectTask(task.id)}
+              onClick={() => {
+                onSelectTask(task.id);
+                onActivateTask?.(task);
+              }}
               className={cn(
                 "group w-full rounded-md border px-3 py-2 text-left transition",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1",
@@ -244,6 +251,11 @@ const JiraTasksList = ({
                     >
                       {formatTypeLabel(task.type)}
                     </span>
+                    {isDraft ? (
+                      <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+                        Draft
+                      </span>
+                    ) : null}
                     {task.content_type === "decision" && task.object_id ? (
                       <span className="text-slate-400" title="From decision">
                         From{" "}
@@ -413,6 +425,15 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
     if (!selectedTaskId) return null;
     return tasks.find((task) => task.id === selectedTaskId) || null;
   }, [selectedTaskId, tasks]);
+
+  const handleActivateTask = useCallback(
+    (task: JiraTaskItem) => {
+      if (task.backendStatus === "DRAFT" && onTaskClick) {
+        onTaskClick(task);
+      }
+    },
+    [onTaskClick]
+  );
 
   useEffect(() => {
     if (!selectedTask) {
@@ -719,6 +740,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
               tasks={tasks}
               selectedTaskId={selectedTaskId}
               onSelectTask={setSelectedTaskId}
+              onActivateTask={handleActivateTask}
             />
             {selectedTask ? (
               <div className="rounded-md border border-slate-200 bg-white">
@@ -738,6 +760,11 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                       >
                         {formatTypeLabel(selectedTask.type)}
                       </span>
+                      {selectedTask.backendStatus === "DRAFT" ? (
+                        <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                          Draft
+                        </span>
+                      ) : null}
                       {selectedTask.content_type === "decision" && selectedTask.object_id ? (
                         <span className="text-slate-400 text-[11px]">
                           From{" "}
