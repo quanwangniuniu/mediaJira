@@ -67,6 +67,7 @@ interface TaskDetailProps {
     id?: string | number;
     username: string;
     email: string;
+    is_staff?: boolean;
   };
   onTaskUpdate?: (updatedTask: TaskData) => void;
   onTaskDeleted?: () => void;
@@ -728,9 +729,8 @@ export default function TaskDetail({
         toast.error("Invalid status transition");
         return;
       }
-      const updatedTask: TaskData = (response.data?.task ??
-        response.data) as TaskData;
-      Object.assign(task, updatedTask);
+      const updatedTask: TaskData = (response?.data?.task ??
+        response?.data) as TaskData;
       updateTask(task.id!, updatedTask);
       toast.success("Status updated.");
       onTaskUpdate?.(updatedTask);
@@ -2339,7 +2339,10 @@ export default function TaskDetail({
                       <select
                         value={task?.status ?? ""}
                         onChange={(e) => handleStatusChange(e.target.value)}
-                        disabled={savingStatus}
+                        disabled={
+                          savingStatus ||
+                          (currentUser != null && !currentUser.is_staff)
+                        }
                         className="block h-9 w-full min-w-0 rounded-[3px] border-0 bg-transparent px-2.5 py-1.5 text-sm text-[#172b4d] focus:outline-none focus:ring-0 disabled:cursor-not-allowed"
                       >
                         <option value="DRAFT">Draft</option>
