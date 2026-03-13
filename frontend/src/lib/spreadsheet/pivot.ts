@@ -38,18 +38,32 @@ function getFieldIndex(columns: SourceColumn[], fieldName: string): number | und
   return columns.find((c) => c.header === fieldName)?.index;
 }
 
+/**
+ * Round a number to a safe precision to avoid floating-point artifacts.
+ * Uses 10 decimal places internally, which is more than enough for currency/metrics.
+ */
+function roundToPrecision(value: number, decimals: number = 10): number {
+  if (!Number.isFinite(value)) return 0;
+  const factor = Math.pow(10, decimals);
+  return Math.round(value * factor) / factor;
+}
+
 function aggregate(values: number[], aggregation: AggregationFunction): number {
   if (values.length === 0) return 0;
+  let result: number;
   switch (aggregation) {
     case 'SUM':
-      return values.reduce((sum, v) => sum + v, 0);
+      result = values.reduce((sum, v) => sum + v, 0);
+      break;
     case 'COUNT':
       return values.length;
     case 'AVG':
-      return values.reduce((sum, v) => sum + v, 0) / values.length;
+      result = values.reduce((sum, v) => sum + v, 0) / values.length;
+      break;
     default:
       return 0;
   }
+  return roundToPrecision(result);
 }
 
 function buildCompositeKey(row: SourceRow, fieldIndices: number[]): string {
@@ -231,6 +245,7 @@ export function formatPivotValue(value: number): string {
 
 /**
  * Convert pivot result to cell operations for batch update.
+ * Numbers are formatted to avoid floating-point display artifacts.
  */
 export function pivotResultToCellOperations(
   result: PivotTableResult
@@ -253,12 +268,16 @@ export function pivotResultToCellOperations(
   for (let row = 0; row < result.body.length; row++) {
     for (let col = 0; col < result.body[row].length; col++) {
       const cellValue = result.body[row][col];
-      const rawInput =
-        typeof cellValue === 'number'
-          ? cellValue === 0
-            ? ''
-            : String(cellValue)
-          : String(cellValue);
+      let rawInput: string;
+      if (typeof cellValue === 'number') {
+        if (cellValue === 0) {
+          rawInput = '';
+        } else {
+          rawInput = formatNumberForCell(cellValue);
+        }
+      } else {
+        rawInput = String(cellValue);
+      }
       operations.push({
         operation: 'set',
         row: row + headerOffset,
@@ -269,6 +288,44 @@ export function pivotResultToCellOperations(
   }
 
   return operations;
+}
+
+/**
+ * Format a number for cell storage, avoiding floating-point display artifacts.
+ * Preserves up to 10 significant decimal places, removes trailing zeros.
+ */
+function formatNumberForCell(value: number): string {
+  const rounded = roundToPrecision(value, 10);
+  const str = rounded.toPrecision(15);
+  const parsed = parseFloat(str);
+  return String(parsed);
+}
+
+/**
+ * Generate clear operations for cells outside the new pivot bounds.
+ * This ensures stale data from a previous larger pivot is removed.
+ */
+export function generateClearOperationsForStaleCells(
+  previousRowCount: number,
+  previousColCount: number,
+  newRowCount: number,
+  newColCount: number
+): Array<{ operation: 'clear'; row: number; column: number }> {
+  const clearOps: Array<{ operation: 'clear'; row: number; column: number }> = [];
+
+  for (let row = 0; row < previousRowCount; row++) {
+    for (let col = newColCount; col < previousColCount; col++) {
+      clearOps.push({ operation: 'clear', row, column: col });
+    }
+  }
+
+  for (let row = newRowCount; row < previousRowCount; row++) {
+    for (let col = 0; col < newColCount; col++) {
+      clearOps.push({ operation: 'clear', row, column: col });
+    }
+  }
+
+  return clearOps;
 }
 
 /**
