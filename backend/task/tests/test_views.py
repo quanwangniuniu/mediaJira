@@ -142,6 +142,83 @@ class TaskAPITest(TestCase):
         self.assertEqual(task.project, self.project)
         self.assertFalse(task.is_linked)  # Newly created task should not be linked to any object
 
+    def test_create_task_as_draft_persists_payload_and_stays_draft(self):
+        """Creating with create_as_draft keeps status=DRAFT and persists draft_payload."""
+        url = reverse('task-list')
+        draft_payload = {
+            'version': 1,
+            'taskData': {
+                'project_id': self.project.id,
+                'type': 'asset',
+                'summary': 'Draft Task',
+                'description': 'Draft description',
+                'current_approver_id': None,
+            },
+        }
+        data = {
+            'summary': 'Draft Task',
+            'description': 'Draft description',
+            'type': 'asset',
+            'project_id': self.project.id,
+            'create_as_draft': True,
+            'draft_payload': draft_payload,
+        }
+
+        response = self.client.post(url, data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data.get('status'), 'DRAFT')
+        self.assertEqual(response.data.get('draft_payload', {}).get('version'), 1)
+
+        task = Task.objects.get(pk=response.data['id'])
+        self.assertEqual(task.status, Task.Status.DRAFT)
+        self.assertEqual(task.draft_payload.get('version'), 1)
+
+    def test_create_task_non_draft_ignores_draft_payload(self):
+        """Non-draft creates should not persist draft_payload even if provided."""
+        url = reverse('task-list')
+        data = {
+            'summary': 'Non-draft Task',
+            'description': 'desc',
+            'type': 'asset',
+            'project_id': self.project.id,
+            'draft_payload': {'version': 1, 'taskData': {'summary': 'x'}},
+        }
+
+        response = self.client.post(url, data, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        task = Task.objects.get(pk=response.data['id'])
+        self.assertIsNone(task.draft_payload)
+
+    def test_update_draft_payload_rejected_when_not_draft(self):
+        """draft_payload updates are rejected for non-draft tasks (except clearing)."""
+        url = reverse('task-list')
+        response = self.client.post(
+            url,
+            {
+                'summary': 'Submitted Task',
+                'type': 'asset',
+                'project_id': self.project.id,
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        task_id = response.data['id']
+
+        # New tasks default to SUBMITTED (auto-submit behavior)
+        task = Task.objects.get(pk=task_id)
+        self.assertEqual(task.status, Task.Status.SUBMITTED)
+
+        patch_url = reverse('task-detail', kwargs={'pk': task_id})
+        patch_response = self.client.patch(
+            patch_url,
+            {'draft_payload': {'version': 1}},
+            format='json',
+        )
+        self.assertEqual(patch_response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('draft_payload', patch_response.data)
+
     def test_create_task_with_project_member_approver_success(self):
         """Task can be created with approver who is a member of the project"""
         # Make approver a member of the same project
