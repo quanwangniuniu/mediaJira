@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
-import { Undo2, Redo2, Bold, Italic, Strikethrough, Palette, ChevronLeft, ChevronRight, ChevronDown, Snowflake, Check } from 'lucide-react';
+import { Undo2, Redo2, Bold, Italic, Strikethrough, Palette, ChevronLeft, ChevronRight, ChevronDown, Snowflake, Check, Table2 } from 'lucide-react';
 import { SpreadsheetAPI } from '@/lib/api/spreadsheetApi';
 import toast from 'react-hot-toast';
 import Modal from '@/components/ui/Modal';
@@ -18,6 +18,7 @@ import {
 } from '@/components/spreadsheets/spreadsheetImportExport';
 import { adjustFormulaReferences, colLabelToIndex } from '@/lib/spreadsheet/formulaFill';
 import { ApplyHighlightParams } from '@/types/patterns';
+import { PivotPanel } from '@/components/spreadsheets/PivotPanel';
 
 interface SpreadsheetGridProps {
   spreadsheetId: number;
@@ -531,6 +532,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   const [navigationLocked, setNavigationLocked] = useState(false);
   const [pendingOps, setPendingOps] = useState<Map<CellKey, PendingOperation>>(new Map());
   const [hydrationStatus, setHydrationStatus] = useState<'idle' | 'importing' | 'hydrating' | 'ready'>('ready');
+  const [showPivotPanel, setShowPivotPanel] = useState(false);
 
   useEffect(() => {
     setCellHighlightsBySheet((prev) => (prev[sheetId] ? prev : { ...prev, [sheetId]: new Map() }));
@@ -5120,6 +5122,20 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               document.body
             )}
         </div>
+        <button
+          type="button"
+          onClick={() => setShowPivotPanel((prev) => !prev)}
+          title="Pivot Table"
+          className={`flex h-7 items-center gap-1 rounded border px-2 text-[11px] font-semibold transition-colors ${
+            showPivotPanel
+              ? 'border-blue-300 bg-blue-50 text-blue-700'
+              : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+          }`}
+          data-testid="pivot-table-button"
+        >
+          <Table2 className="h-3.5 w-3.5" strokeWidth={2.3} />
+          Pivot
+        </button>
         </div>
 
         {/* Highlight & Text formatting controls */}
@@ -5601,6 +5617,17 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           disabled={!activeCell}
         />
       </div>
+
+      {showPivotPanel && (
+        <div className="absolute top-32 right-4 z-20">
+          <PivotPanel
+            cells={cells}
+            rowCount={rowCount}
+            colCount={colCount}
+            onClose={() => setShowPivotPanel(false)}
+          />
+        </div>
+      )}
 
       {xlsxImport && (
         <Modal isOpen={true} onClose={handleCancelXlsxImport}>
