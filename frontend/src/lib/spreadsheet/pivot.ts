@@ -1,69 +1,135 @@
 /**
- * Pivot table utility functions for spreadsheet data aggregation.
- * MVP: Groups rows by one column and aggregates another column.
+ * Pivot table transformation utilities.
+ * Supports Google Sheets-style 2D pivot with Rows, Columns, Values, and Aggregation.
  */
 
 export type AggregationFunction = 'SUM' | 'COUNT' | 'AVG';
 
-export interface PivotResult {
-  group: string;
-  value: number;
+export interface PivotConfig {
+  sourceSheetId: number;
+  rowField: string | null;
+  columnField: string | null;
+  valueField: string | null;
+  aggregation: AggregationFunction;
+}
+
+export interface PivotTableResult {
+  headers: string[];
+  body: (string | number)[][];
+  rowCount: number;
+  colCount: number;
+}
+
+export interface SourceColumn {
+  index: number;
+  header: string;
+}
+
+export interface SourceRow {
+  [columnIndex: number]: string;
 }
 
 /**
- * Performs pivot aggregation on spreadsheet row data.
+ * Build a 2D pivot table from source data.
  *
- * @param data - Array of row objects, each row is a Record<colIndex, cellValue>
- * @param groupByCol - Column index to group by
- * @param valueCol - Column index to aggregate
- * @param aggFunction - Aggregation function to apply
- * @returns Array of pivot results sorted by group name
+ * @param sourceRows - Array of row data (excluding header row)
+ * @param columns - Array of column definitions from header row
+ * @param config - Pivot configuration
+ * @returns PivotTableResult with headers and body ready to write to a sheet
  */
-export function pivot(
-  data: Array<Record<number, string>>,
-  groupByCol: number,
-  valueCol: number,
-  aggFunction: AggregationFunction
-): PivotResult[] {
-  const groups = new Map<string, number[]>();
+export function buildPivotTable(
+  sourceRows: SourceRow[],
+  columns: SourceColumn[],
+  config: Pick<PivotConfig, 'rowField' | 'columnField' | 'valueField' | 'aggregation'>
+): PivotTableResult {
+  const { rowField, columnField, valueField, aggregation } = config;
 
-  for (const row of data) {
-    const groupKey = (row[groupByCol] ?? '').trim();
-    if (!groupKey) continue;
+  const rowColIndex = columns.find((c) => c.header === rowField)?.index;
+  const colColIndex = columns.find((c) => c.header === columnField)?.index;
+  const valueColIndex = columns.find((c) => c.header === valueField)?.index;
 
-    const rawValue = (row[valueCol] ?? '').trim();
-    const numericValue = parseFloat(rawValue);
-    const valueToUse = isNaN(numericValue) ? 0 : numericValue;
-
-    if (!groups.has(groupKey)) {
-      groups.set(groupKey, []);
-    }
-    groups.get(groupKey)!.push(valueToUse);
+  if (rowColIndex === undefined || valueColIndex === undefined) {
+    return { headers: [], body: [], rowCount: 0, colCount: 0 };
   }
 
-  const results: PivotResult[] = [];
+  const uniqueRowValues = new Set<string>();
+  const uniqueColValues = new Set<string>();
+  const dataMap = new Map<string, number[]>();
 
-  for (const [group, values] of groups) {
-    let aggregatedValue: number;
+  for (const row of sourceRows) {
+    const rowKey = (row[rowColIndex] ?? '').trim();
+    if (!rowKey) continue;
 
-    switch (aggFunction) {
-      case 'SUM':
-        aggregatedValue = values.reduce((sum, v) => sum + v, 0);
-        break;
-      case 'COUNT':
-        aggregatedValue = values.length;
-        break;
-      case 'AVG':
-        aggregatedValue = values.length > 0 ? values.reduce((sum, v) => sum + v, 0) / values.length : 0;
-        break;
-      default:
-        aggregatedValue = 0;
+    uniqueRowValues.add(rowKey);
+
+    const colKey = colColIndex !== undefined ? (row[colColIndex] ?? '').trim() : '__TOTAL__';
+    if (colColIndex !== undefined && colKey) {
+      uniqueColValues.add(colKey);
     }
 
-    results.push({ group, value: aggregatedValue });
+    const rawValue = (row[valueColIndex] ?? '').trim();
+    const numValue = parseFloat(rawValue);
+    const valueToUse = isNaN(numValue) ? 0 : numValue;
+
+    const mapKey = `${rowKey}|||${colKey}`;
+    if (!dataMap.has(mapKey)) {
+      dataMap.set(mapKey, []);
+    }
+    dataMap.get(mapKey)!.push(valueToUse);
   }
 
-  return results.sort((a, b) => a.group.localeCompare(b.group));
+  const sortedRowKeys = Array.from(uniqueRowValues).sort((a, b) => a.localeCompare(b));
+  const sortedColKeys =
+    colColIndex !== undefined
+      ? Array.from(uniqueColValues).sort((a, b) => a.localeCompare(b))
+      : ['__TOTAL__'];
+
+  const hasColumnField = colColIndex !== undefined && sortedColKeys.length > 0 && sortedColKeys[0] !== '__TOTAL__';
+
+  const headers: string[] = [rowField || 'Row'];
+  if (hasColumnField) {
+    headers.push(...sortedColKeys);
+  } else {
+    const aggLabel = `${aggregation}(${valueField || 'Value'})`;
+    headers.push(aggLabel);
+  }
+
+  const body: (string | number)[][] = [];
+
+  for (const rowKey of sortedRowKeys) {
+    const rowData: (string | number)[] = [rowKey];
+
+    for (const colKey of sortedColKeys) {
+      const mapKey = `${rowKey}|||${colKey}`;
+      const values = dataMap.get(mapKey) ?? [];
+
+      let aggregatedValue: number;
+      switch (aggregation) {
+        case 'SUM':
+          aggregatedValue = values.reduce((sum, v) => sum + v, 0);
+          break;
+        case 'COUNT':
+          aggregatedValue = values.length;
+          break;
+        case 'AVG':
+          aggregatedValue = values.length > 0 ? values.reduce((sum, v) => sum + v, 0) / values.length : 0;
+          break;
+        default:
+          aggregatedValue = 0;
+      }
+
+      rowData.push(aggregatedValue);
+    }
+
+    body.push(rowData);
+  }
+
+  return {
+    headers,
+    body,
+    rowCount: body.length + 1,
+    colCount: headers.length,
+  };
 }
 
 /**
@@ -78,4 +144,59 @@ export function formatPivotValue(value: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   });
+}
+
+/**
+ * Convert pivot result to cell operations for batch update.
+ */
+export function pivotResultToCellOperations(
+  result: PivotTableResult
+): Array<{ operation: 'set'; row: number; column: number; raw_input: string }> {
+  const operations: Array<{ operation: 'set'; row: number; column: number; raw_input: string }> = [];
+
+  for (let col = 0; col < result.headers.length; col++) {
+    operations.push({
+      operation: 'set',
+      row: 0,
+      column: col,
+      raw_input: result.headers[col],
+    });
+  }
+
+  for (let row = 0; row < result.body.length; row++) {
+    for (let col = 0; col < result.body[row].length; col++) {
+      const cellValue = result.body[row][col];
+      const rawInput = typeof cellValue === 'number' 
+        ? (cellValue === 0 ? '' : String(cellValue))
+        : String(cellValue);
+      operations.push({
+        operation: 'set',
+        row: row + 1,
+        column: col,
+        raw_input: rawInput,
+      });
+    }
+  }
+
+  return operations;
+}
+
+/**
+ * Generate a unique pivot table sheet name.
+ */
+export function generatePivotSheetName(existingNames: string[]): string {
+  const pivotRegex = /^Pivot Table (\d+)$/i;
+  let maxNumber = 0;
+
+  for (const name of existingNames) {
+    const match = name.match(pivotRegex);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (!isNaN(num) && num > maxNumber) {
+        maxNumber = num;
+      }
+    }
+  }
+
+  return `Pivot Table ${maxNumber + 1}`;
 }

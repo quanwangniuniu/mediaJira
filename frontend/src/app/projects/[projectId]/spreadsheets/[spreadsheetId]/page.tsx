@@ -12,6 +12,7 @@ import { AlertCircle, ArrowLeft, FileSpreadsheet, Loader2, Plus, X } from 'lucid
 import CreateSheetModal from '@/components/spreadsheets/CreateSheetModal';
 import SpreadsheetGrid, { SpreadsheetGridHandle } from '@/components/spreadsheets/SpreadsheetGrid';
 import PatternAgentPanel from '@/components/spreadsheets/PatternAgentPanel';
+import { PivotBuilderPanel } from '@/components/spreadsheets/PivotBuilderPanel';
 import toast from 'react-hot-toast';
 import Modal from '@/components/ui/Modal';
 import { PatternAPI } from '@/lib/api/patternApi';
@@ -81,6 +82,12 @@ export default function SpreadsheetDetailPage() {
   const [patternJobStep, setPatternJobStep] = useState<number | null>(null);
   const [patternJobError, setPatternJobError] = useState<string | null>(null);
   const [sheetHydrationReady, setSheetHydrationReady] = useState(true);
+  const [pivotBuilderOpen, setPivotBuilderOpen] = useState(false);
+  const [pivotBuilderData, setPivotBuilderData] = useState<{
+    cells: Map<string, { rawInput: string; computedString?: string | null }>;
+    rowCount: number;
+    colCount: number;
+  } | null>(null);
   const gridRef = useRef<SpreadsheetGridHandle | null>(null);
   const patternJobStartRef = useRef<number | null>(null);
   const renameDedupRef = useRef<Record<number, RenameDedupState>>({});
@@ -688,6 +695,45 @@ export default function SpreadsheetDetailPage() {
     }
   };
 
+  const handleOpenPivotBuilder = useCallback((data: {
+    cells: Map<string, { rawInput: string; computedString?: string | null }>;
+    rowCount: number;
+    colCount: number;
+  }) => {
+    setPivotBuilderData(data);
+    setPivotBuilderOpen(true);
+  }, []);
+
+  const handleCreatePivotSheet = useCallback(async (
+    sheetName: string,
+    operations: Array<{ operation: 'set'; row: number; column: number; raw_input: string }>,
+    dimensions: { rowCount: number; colCount: number }
+  ) => {
+    if (!spreadsheetId) {
+      throw new Error('Spreadsheet ID is required');
+    }
+
+    const newSheet = await SpreadsheetAPI.createSheet(Number(spreadsheetId), { name: sheetName });
+
+    await SpreadsheetAPI.resizeSheet(
+      Number(spreadsheetId),
+      newSheet.id,
+      Math.max(dimensions.rowCount, 100),
+      Math.max(dimensions.colCount, 26)
+    );
+
+    await SpreadsheetAPI.batchUpdateCells(Number(spreadsheetId), newSheet.id, operations, false);
+
+    const sheetsResponse = await SpreadsheetAPI.listSheets(Number(spreadsheetId));
+    const sheetsList = sheetsResponse.results || [];
+    setSheets(sheetsList);
+    setCreateSheetDefaultName(getNextSheetName(sheetsList));
+
+    setActiveSheetId(newSheet.id);
+
+    toast.success(`Pivot table created: ${sheetName}`);
+  }, [spreadsheetId]);
+
   const handleRenameSheet = async (sheetId: number, data: UpdateSheetRequest) => {
     if (!spreadsheetId) {
       toast.error('Spreadsheet ID is required');
@@ -1150,6 +1196,7 @@ export default function SpreadsheetDetailPage() {
                     }}
                     highlightCell={highlightCell}
                     onHydrationStatusChange={status => setSheetHydrationReady(status === 'ready')}
+                    onOpenPivotBuilder={handleOpenPivotBuilder}
                   />
                 </div>
                 {/* Right column: Pattern panel remains fixed-width and always visible while the grid scrolls inside its own container. */}
@@ -1256,6 +1303,21 @@ export default function SpreadsheetDetailPage() {
             </div>
           </div>
         </Modal>
+      )}
+      {activeSheet && pivotBuilderData && (
+        <PivotBuilderPanel
+          isOpen={pivotBuilderOpen}
+          cells={pivotBuilderData.cells}
+          rowCount={pivotBuilderData.rowCount}
+          colCount={pivotBuilderData.colCount}
+          sourceSheetId={activeSheet.id}
+          sourceSheetName={activeSheet.name}
+          existingSheetNames={sheets.map((s) => s.name)}
+          onClose={() => {
+            setPivotBuilderOpen(false);
+          }}
+          onCreatePivotSheet={handleCreatePivotSheet}
+        />
       )}
     </ProtectedRoute>
   );

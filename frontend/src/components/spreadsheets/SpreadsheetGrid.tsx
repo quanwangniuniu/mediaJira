@@ -18,7 +18,6 @@ import {
 } from '@/components/spreadsheets/spreadsheetImportExport';
 import { adjustFormulaReferences, colLabelToIndex } from '@/lib/spreadsheet/formulaFill';
 import { ApplyHighlightParams } from '@/types/patterns';
-import { PivotPanel } from '@/components/spreadsheets/PivotPanel';
 
 interface SpreadsheetGridProps {
   spreadsheetId: number;
@@ -47,6 +46,12 @@ interface SpreadsheetGridProps {
   highlightCell?: { row: number; col: number } | null;
   /** Called when hydration status changes (importing -> hydrating -> ready). Parent can disable Apply Pattern until ready. */
   onHydrationStatusChange?: (status: 'idle' | 'importing' | 'hydrating' | 'ready') => void;
+  /** Called when user clicks the Pivot Table button. Receives cell data for pivot builder. */
+  onOpenPivotBuilder?: (data: {
+    cells: Map<string, { rawInput: string; computedString?: string | null }>;
+    rowCount: number;
+    colCount: number;
+  }) => void;
 }
 
 export interface SpreadsheetGridHandle {
@@ -504,6 +509,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   onHydrationStatusChange,
   frozenRowCount = 0,
   onFreezeHeaderChange,
+  onOpenPivotBuilder,
 }: SpreadsheetGridProps, ref) => {
   const [rowCount, setRowCount] = useState(DEFAULT_ROWS);
   const [colCount, setColCount] = useState(DEFAULT_COLUMNS);
@@ -532,7 +538,6 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   const [navigationLocked, setNavigationLocked] = useState(false);
   const [pendingOps, setPendingOps] = useState<Map<CellKey, PendingOperation>>(new Map());
   const [hydrationStatus, setHydrationStatus] = useState<'idle' | 'importing' | 'hydrating' | 'ready'>('ready');
-  const [showPivotPanel, setShowPivotPanel] = useState(false);
 
   useEffect(() => {
     setCellHighlightsBySheet((prev) => (prev[sheetId] ? prev : { ...prev, [sheetId]: new Map() }));
@@ -5124,13 +5129,18 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         </div>
         <button
           type="button"
-          onClick={() => setShowPivotPanel((prev) => !prev)}
+          onClick={() => {
+            if (onOpenPivotBuilder) {
+              const cellData = new Map<string, { rawInput: string; computedString?: string | null }>();
+              cells.forEach((cell, key) => {
+                cellData.set(key, { rawInput: cell.rawInput, computedString: cell.computedString });
+              });
+              onOpenPivotBuilder({ cells: cellData, rowCount, colCount });
+            }
+          }}
           title="Pivot Table"
-          className={`flex h-7 items-center gap-1 rounded border px-2 text-[11px] font-semibold transition-colors ${
-            showPivotPanel
-              ? 'border-blue-300 bg-blue-50 text-blue-700'
-              : 'border-gray-200 text-gray-700 hover:bg-gray-50'
-          }`}
+          disabled={!onOpenPivotBuilder}
+          className="flex h-7 items-center gap-1 rounded border px-2 text-[11px] font-semibold transition-colors border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
           data-testid="pivot-table-button"
         >
           <Table2 className="h-3.5 w-3.5" strokeWidth={2.3} />
@@ -5617,17 +5627,6 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           disabled={!activeCell}
         />
       </div>
-
-      {showPivotPanel && (
-        <div className="absolute top-32 right-4 z-20">
-          <PivotPanel
-            cells={cells}
-            rowCount={rowCount}
-            colCount={colCount}
-            onClose={() => setShowPivotPanel(false)}
-          />
-        </div>
-      )}
 
       {xlsxImport && (
         <Modal isOpen={true} onClose={handleCancelXlsxImport}>
