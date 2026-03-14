@@ -141,11 +141,19 @@ class Task(models.Model):
       help_text="Content type of the linked model"
     )
     object_id = models.CharField(
-      null=True, 
-      blank=True, 
+      max_length=255,
+      null=True,
+      blank=True,
       help_text="Id of the linked model"
     )
     linked_object = GenericForeignKey('content_type', 'object_id') # Virtual field: the instance of the linked model (BudgetRequest, Asset, Retrospective, etc.)
+
+    # Draft-only: persisted create-panel state (frontend-owned schema)
+    draft_payload = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Draft form state captured from task create panel",
+    )
 
     def __str__(self):
         return f"Task #{self.id} - {self.summary} ({self.status})"
@@ -440,6 +448,14 @@ class ApprovalChain(models.Model):
         blank=True,
         help_text="Task type this chain applies to. Leave blank to apply to all task types."
     )
+    required_approvals = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Minimum number of approved ApprovalRecords required before the task can be locked. "
+            "Defaults to total_steps (all steps must be approved) when null."
+        )
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -460,6 +476,14 @@ class ApprovalChain(models.Model):
     def total_steps(self):
         """Total number of steps in this chain."""
         return self.steps.count()
+
+    @property
+    def effective_required_approvals(self):
+        """
+        The effective minimum approval count before locking is allowed.
+        Falls back to total_steps when required_approvals is not explicitly set.
+        """
+        return self.required_approvals if self.required_approvals is not None else self.total_steps
 
     def get_step(self, step_number):
         """Return the ApprovalChainStep for the given 1-based step number, or None."""

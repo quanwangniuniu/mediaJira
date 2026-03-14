@@ -10,6 +10,14 @@ import { BudgetAPI } from '@/lib/api/budgetApi';
 import { approverApi } from '@/lib/api/approverApi';
 import { ProjectAPI } from '@/lib/api/projectApi';
 
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: jest.fn(),
+    prefetch: jest.fn(),
+  }),
+  useSearchParams: jest.fn(),
+}));
+
 // Mock all API modules
 jest.mock('@/lib/api/taskApi');
 jest.mock('@/lib/api/budgetApi');
@@ -48,6 +56,7 @@ const mockUseAuth = jest.mocked(require('@/hooks/useAuth').default);
 
 // Mock useTaskData hook
 const mockUseTaskData = jest.mocked(require('@/hooks/useTaskData').useTaskData);
+const mockUseSearchParams = jest.mocked(require('next/navigation').useSearchParams);
 
 describe('TaskCreationFlow - Budget Task', () => {
   // Mock data
@@ -91,6 +100,10 @@ describe('TaskCreationFlow - Budget Task', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseSearchParams.mockReturnValue({
+      get: (key: string) => (key === 'project_id' ? null : null),
+    } as any);
+
     
     // Mock window.alert
     window.alert = jest.fn();
@@ -178,6 +191,8 @@ describe('TaskCreationFlow - Budget Task', () => {
       fetchTasks: jest.fn(),
       fetchTask: jest.fn(),
       createTask: createTaskMock,
+      updateTask: jest.fn(),
+      reloadTasks: jest.fn(),
     });
   });
 
@@ -394,6 +409,112 @@ describe('TaskCreationFlow - Budget Task', () => {
       expect(mockTaskAPI.createTask).not.toHaveBeenCalled();
       expect(mockBudgetAPI.createBudgetRequest).not.toHaveBeenCalled();
     });
+  });
+
+  test('should create a draft task without creating type object', async () => {
+    render(<TasksPage />);
+
+    const createButton = screen.getByText('Create Task');
+    fireEvent.click(createButton);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('task-create-panel')).toBeInTheDocument();
+    });
+
+    const projectSelect = screen.getByLabelText('Project *');
+    fireEvent.change(projectSelect, { target: { value: '1' } });
+
+    const taskTypeSelect = screen.getByLabelText('Work type *');
+    fireEvent.change(taskTypeSelect, { target: { value: 'budget' } });
+
+    const summaryInput = screen.getByLabelText('Summary *');
+    fireEvent.change(summaryInput, { target: { value: 'Draft Budget Task' } });
+
+    const createPanel = screen.getByTestId('task-create-panel');
+    const createDraftButton = within(createPanel).getByRole('button', { name: 'Create as draft' });
+    fireEvent.click(createDraftButton);
+
+    await waitFor(() => {
+      expect(mockTaskAPI.createTask).toHaveBeenCalled();
+      const payload = mockTaskAPI.createTask.mock.calls[0]?.[0] as any;
+      expect(payload.create_as_draft).toBe(true);
+      expect(payload.draft_payload).toBeTruthy();
+    });
+
+    expect(mockBudgetAPI.createBudgetRequest).not.toHaveBeenCalled();
+    expect(mockTaskAPI.linkTask).not.toHaveBeenCalled();
+  });
+
+  test('should open draft from list and restore fields', async () => {
+    mockUseSearchParams.mockReturnValue({
+      get: (key: string) => (key === 'project_id' ? '1' : null),
+    } as any);
+
+    const draftTask = {
+      id: 999,
+      summary: 'My Draft Task',
+      description: 'Draft desc',
+      status: 'DRAFT',
+      type: 'asset',
+      owner: { id: 1, username: 'testuser', email: 'test@example.com' },
+      project: { id: 1, name: 'test project' },
+      current_approver: null,
+      content_type: null,
+      object_id: null,
+      due_date: null,
+      start_date: null,
+      is_subtask: false,
+    };
+
+    mockUseTaskData.mockReturnValue({
+      tasks: [draftTask as any],
+      loading: false,
+      error: null,
+      fetchTasks: jest.fn(),
+      fetchTask: jest.fn(),
+      createTask: createTaskMock,
+      updateTask: jest.fn(),
+      reloadTasks: jest.fn(),
+    });
+
+    mockTaskAPI.getTask.mockResolvedValue({
+      data: {
+        ...draftTask,
+        draft_payload: {
+          version: 1,
+          taskData: {
+            project_id: 1,
+            type: 'asset',
+            summary: 'Restored Summary',
+            description: 'Restored Description',
+            current_approver_id: null,
+            start_date: null,
+            due_date: null,
+          },
+          forms: {
+            assetData: { tags: 'tag1,tag2', team: '', notes: '', file: null },
+          },
+        },
+      },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config: {} as any,
+    } as any);
+
+    render(<TasksPage />);
+
+    fireEvent.click(screen.getByText('My Draft Task'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('task-create-panel')).toBeInTheDocument();
+    });
+
+    const summaryInput = screen.getByLabelText('Summary *') as HTMLInputElement;
+    expect(summaryInput.value).toBe('Restored Summary');
+
+    const descriptionInput = screen.getByLabelText('Description') as HTMLTextAreaElement;
+    expect(descriptionInput.value).toBe('Restored Description');
   });
 
   describe('Form Validation', () => {
