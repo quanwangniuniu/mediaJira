@@ -93,6 +93,117 @@ export function AgentChatPage() {
     }
   }, [])
 
+  // On mount: if the user navigated here via "Ask Agent" from a Decision page,
+  // a decision context is stored in sessionStorage. Create a new session and
+  // send an opening message pre-loaded with that decision context.
+  useEffect(() => {
+    const rawContext = sessionStorage.getItem("agent-decision-context")
+    if (!rawContext) return
+
+    // "Open Agent Session" already set agent-session-id — let the restore effect handle it.
+    if (sessionStorage.getItem("agent-session-id")) return
+
+    sessionStorage.removeItem("agent-decision-context")
+
+    let context: { decisionId: number; decisionTitle: string; projectId: number | null }
+    try {
+      context = JSON.parse(rawContext)
+    } catch {
+      return
+    }
+
+    const openingMessage = `I'm looking at decision "${context.decisionTitle}" (Decision ID: ${context.decisionId}). Can you help me understand this decision and suggest next steps?`
+    const userMsgId = `user-ctx-${Date.now()}`
+    const aiMsgId = `ai-ctx-${Date.now()}`
+
+    setHasStarted(true)
+    setMessages([
+      { id: userMsgId, role: "user", content: openingMessage, type: "text" },
+      { id: aiMsgId, role: "assistant", content: AGENT_MESSAGES.CHAT_THINKING, type: "text" },
+    ])
+    setIsStreaming(true)
+
+    AgentAPI.createSession({})
+      .then((session) => {
+        const sid = String(session.id)
+        setSessionIdState(sid)
+        sessionStorage.setItem("agent-session-id", sid)
+        window.dispatchEvent(new CustomEvent("agent:sessions-changed"))
+
+        let contentParts: string[] = []
+
+        abortRef.current = AgentAPI.sendMessage(
+          sid,
+          { message: openingMessage },
+          (event: SSEEvent) => {
+            if (event.type === "done") return
+
+            if (event.content) {
+              contentParts.push(event.content)
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === aiMsgId ? { ...m, content: contentParts.join("\n") } : m
+                )
+              )
+            }
+
+            if (event.type === "decision_draft" && event.data) {
+              const decisionId = event.data?.decision_id
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === aiMsgId
+                    ? {
+                        ...m,
+                        type: "decision_created" as const,
+                        navigateTo: "decisions",
+                        navigateLabel: "Go to Decisions",
+                        decisionId: decisionId ? Number(decisionId) : undefined,
+                      }
+                    : m
+                )
+              )
+            }
+
+            if (event.type === "task_created" && event.data) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === aiMsgId
+                    ? {
+                        ...m,
+                        type: "tasks_created" as const,
+                        navigateTo: "tasks",
+                        navigateLabel: "Go to Tasks",
+                      }
+                    : m
+                )
+              )
+            }
+          },
+          (error) => {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === aiMsgId
+                  ? { ...m, content: `Error: ${error.message}`, type: "error" as const }
+                  : m
+              )
+            )
+            setIsStreaming(false)
+          },
+          () => { setIsStreaming(false) }
+        )
+      })
+      .catch(() => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === aiMsgId
+              ? { ...m, content: AGENT_MESSAGES.SESSION_CREATE_FAILED, type: "error" as const }
+              : m
+          )
+        )
+        setIsStreaming(false)
+      })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Listen for sidebar events
   useEffect(() => {
     const handleNewChat = () => {
