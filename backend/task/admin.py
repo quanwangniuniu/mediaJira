@@ -1,5 +1,14 @@
 from django.contrib import admin
-from task.models import ApprovalChain, ApprovalChainStep
+from task.models import ApprovalChain, ApprovalChainStep, AlertTask
+
+
+@admin.register(AlertTask)
+class AlertTaskAdmin(admin.ModelAdmin):
+    list_display = ["id", "task", "alert_type", "severity", "status", "created_at"]
+    list_filter = ["alert_type", "severity", "status"]
+    search_fields = ["task__summary", "investigation_notes"]
+    raw_id_fields = ["task", "acknowledged_by", "assigned_to"]
+    readonly_fields = ["created_at", "updated_at"]
 
 
 class ApprovalChainStepInline(admin.TabularInline):

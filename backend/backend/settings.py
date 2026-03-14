@@ -62,7 +62,6 @@ INSTALLED_APPS = [
     'budget_approval',
     'retrospective',
     'task',
-    'alerting.apps.AlertingConfig',
     'dashboard',
     'metric_upload.apps.MetricUploadConfig',
     'report',

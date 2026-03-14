@@ -1,23 +1,14 @@
-import os
+"""
+Tests for AlertTask API and model (consolidated from alerting app into task app).
+"""
 import pytest
-
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings")
-
-import django
-from django.conf import settings
-
-if not settings.configured:
-    django.setup()
-
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from alerting.models import AlertTask
 from core.models import Organization, Project, ProjectMember
-from task.models import Task
-
+from task.models import AlertTask, Task
 
 User = get_user_model()
 
