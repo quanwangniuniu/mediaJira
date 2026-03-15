@@ -451,6 +451,8 @@ class AgentOrchestrator:
             project=self.project,
             project_seq=max_seq + 1,
             author=self.user,
+            created_by_agent=True,
+            agent_session_id=self.session.id,
         )
 
         # Create signals from anomalies
