@@ -173,7 +173,9 @@ const DecisionDetailView = ({
             </section>
           </div>
         </div>
-        {["COMMITTED", "REVIEWED", "ARCHIVED"].includes(decision.status) ? (
+        {["AWAITING_APPROVAL", "COMMITTED", "REVIEWED", "ARCHIVED"].includes(
+          decision.status,
+        ) ? (
           <div className="h-full w-[24%] min-w-[220px] max-w-[320px]">
             <TaskPanel
               decisionId={decision.id}
