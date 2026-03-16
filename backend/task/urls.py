@@ -8,6 +8,7 @@ urlpatterns = [
     # Task CRUD endpoints
     path('tasks/', TaskViewSet.as_view({'get': 'list', 'post': 'create'}), name='task-list'),
     path('tasks/bulk_action/', TaskViewSet.as_view({'post': 'bulk_action'}), name='task-bulk-action'),
+    path('tasks/force-create/', TaskViewSet.as_view({'post': 'force_create'}), name='task-force-create'),
     path('tasks/<int:pk>/', TaskViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}), name='task-detail'),
     
     # Task action endpoints

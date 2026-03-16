@@ -9,18 +9,57 @@ from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.shortcuts import get_object_or_404
 from task.models import Task, ApprovalRecord, TaskComment, TaskAttachment, TaskHierarchy, TaskRelation, ApprovalChain
-from task.serializers import TaskSerializer, TaskLinkSerializer, ApprovalRecordSerializer, TaskApprovalSerializer, TaskForwardSerializer, TaskCommentSerializer, TaskAttachmentSerializer, SubtaskAddSerializer, TaskRelationAddSerializer
+from task.serializers import TaskSerializer, TaskListSerializer, TaskLinkSerializer, ApprovalRecordSerializer, TaskApprovalSerializer, TaskForwardSerializer, TaskCommentSerializer, TaskAttachmentSerializer, SubtaskAddSerializer, TaskRelationAddSerializer
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from core.models import ProjectMember, Project
 from core.utils.project import get_user_active_project
+import json
+import traceback
+
+# region agent log
+def _debug_log(session_id, location, message, data=None, hypothesis_id=None):
+    import os
+    payload = {"sessionId": session_id, "location": location, "message": message, "timestamp": __import__("time").time() * 1000}
+    if data is not None:
+        payload["data"] = data
+    if hypothesis_id is not None:
+        payload["hypothesisId"] = hypothesis_id
+    line = json.dumps(payload) + "\n"
+    for path in [
+        "/Users/huangtaowen/Desktop/Proj/mediaJira/.cursor/debug-70a616.log",
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "debug-70a616.log"),
+    ]:
+        try:
+            with open(path, "a") as f:
+                f.write(line)
+            break
+        except Exception:
+            continue
+# endregion
+
 
 class TaskViewSet(viewsets.ModelViewSet):
     """ViewSet for Task model"""
     queryset = Task.objects.select_related('project', 'owner', 'current_approver')
     serializer_class = TaskSerializer
     permission_classes = [IsAuthenticated]
-    
+
+    def get_serializer_class(self):
+        if getattr(self, "action", None) == "list":
+            return TaskListSerializer
+        return TaskSerializer
+
+    def create(self, request, *args, **kwargs):
+        try:
+            return super().create(request, *args, **kwargs)
+        except Exception as e:
+            import logging
+            logging.getLogger("task.views").error(
+                "TaskViewSet.create exception: %s\n%s", e, traceback.format_exc()
+            )
+            raise
+
     def force_create(self, request):
         """
         Fallback task creation endpoint.
@@ -61,6 +100,9 @@ class TaskViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         """Filter queryset based on user permissions and query parameters"""
+        # region agent log
+        _debug_log("70a616", "task/views.py:get_queryset", "get_queryset_start", {"user_id": getattr(self.request.user, "id", None)}, "H2")
+        # endregion
         user = self.request.user
         if not user.is_authenticated:
             return Task.objects.none()
@@ -155,8 +197,33 @@ class TaskViewSet(viewsets.ModelViewSet):
         
         # Order by order_in_project, then by creation date (newest first)
         queryset = queryset.order_by('order_in_project', '-id')
-        
+        # List response does not include draft_payload; defer it so list works if migration adding the column is not yet applied.
+        if getattr(self, 'action', None) == 'list':
+            queryset = queryset.defer('draft_payload')
+        # region agent log
+        _debug_log("70a616", "task/views.py:get_queryset", "get_queryset_end", None, "H2")
+        # endregion
         return queryset
+
+    def list(self, request, *args, **kwargs):
+        # region agent log
+        _debug_log("70a616", "task/views.py:list", "list_start", {"query": dict(request.query_params)}, "H5")
+        # endregion
+        try:
+            response = super().list(request, *args, **kwargs)
+            # region agent log
+            _debug_log("70a616", "task/views.py:list", "list_end", None, "H5")
+            # endregion
+            return response
+        except Exception as e:
+            # region agent log
+            _debug_log("70a616", "task/views.py:list", "list_failed", {
+                "exc_type": type(e).__name__,
+                "exc_message": str(e),
+                "traceback": traceback.format_exc(),
+            }, "H2_H3_H5")
+            # endregion
+            raise
 
     def get_object(self):
         """

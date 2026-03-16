@@ -86,6 +86,7 @@ INSTALLED_APPS = [
     'policy.apps.PolicyConfig',
     'campaign.apps.CampaignConfig',
     'slack_integration.apps.SlackIntegrationConfig',
+    'agent.apps.AgentConfig',
 ]
 
 MIDDLEWARE = [
@@ -237,6 +238,17 @@ FILE_STORAGE_DIR = config(
     'FILE_STORAGE_DIR',
     default=os.path.join(BASE_DIR, 'media')
 )
+
+# Agent CSV data directory
+AGENT_CSV_DIR = config(
+    'AGENT_CSV_DIR',
+    default=os.path.join(BASE_DIR, 'agent_data')
+)
+
+# Dify LLM Platform integration (optional)
+# Set these to route agent analysis through Dify instead of direct Claude API
+DIFY_API_URL = config('DIFY_API_URL', default='')
+DIFY_API_KEY = config('DIFY_API_KEY', default='')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field

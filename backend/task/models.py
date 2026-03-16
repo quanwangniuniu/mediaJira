@@ -141,11 +141,19 @@ class Task(models.Model):
       help_text="Content type of the linked model"
     )
     object_id = models.CharField(
-      null=True, 
-      blank=True, 
+      max_length=255,
+      null=True,
+      blank=True,
       help_text="Id of the linked model"
     )
     linked_object = GenericForeignKey('content_type', 'object_id') # Virtual field: the instance of the linked model (BudgetRequest, Asset, Retrospective, etc.)
+
+    # Draft-only: persisted create-panel state (frontend-owned schema)
+    draft_payload = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Draft form state captured from task create panel",
+    )
 
     def __str__(self):
         return f"Task #{self.id} - {self.summary} ({self.status})"

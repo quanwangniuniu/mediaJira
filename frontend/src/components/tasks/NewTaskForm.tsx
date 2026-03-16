@@ -6,6 +6,8 @@ import { useFormValidation } from "@/hooks/useFormValidation";
 import { useProjects } from "@/hooks/useProjects";
 import { useAutoResizeTextarea } from "@/hooks/useAutoResizeTextarea";
 import { ProjectAPI } from "@/lib/api/projectApi";
+import { TaskAPI } from "@/lib/api/taskApi";
+import { getTaskTypeLabel } from "@/lib/taskTypeLabels";
 
 interface NewTaskFormProps {
   onTaskDataChange: (taskData: Partial<CreateTaskData>) => void;
@@ -13,6 +15,7 @@ interface NewTaskFormProps {
   validation: ReturnType<typeof useFormValidation<CreateTaskData>>;
   lockProject?: boolean;
   projectName?: string | null;
+  isApproverRequired?: boolean;
 }
 
 export default function NewTaskForm({
@@ -21,6 +24,7 @@ export default function NewTaskForm({
   validation,
   lockProject = false,
   projectName = null,
+  isApproverRequired = false,
 }: NewTaskFormProps) {
   const { errors, validateField, clearFieldError, setErrors } = validation;
   const [loadingApprovers, setLoadingApprovers] = useState(false);
@@ -37,18 +41,24 @@ export default function NewTaskForm({
     fetchProjects,
   } = useProjects();
 
-  const taskTypeLabels: Record<CreateTaskData["type"], string> = {
-    budget: "Budget Request",
-    asset: "Asset",
-    retrospective: "Retrospective",
-    report: "Report",
-    scaling: "Scaling",
-    alert: "Alert",
-    experiment: "Experiment",
-    optimization: "Optimization",
-    communication: "Client Communication",
-    platform_policy_update: "Platform Policy Update",
-  };
+  const [taskTypes, setTaskTypes] = useState<{ value: string; label: string }[]>([]);
+  const [loadingTaskTypes, setLoadingTaskTypes] = useState(true);
+
+  useEffect(() => {
+    const fetchTaskTypes = async () => {
+      try {
+        setLoadingTaskTypes(true);
+        const types = await TaskAPI.getTaskTypes();
+        setTaskTypes(types);
+      } catch (error) {
+        console.error("Failed to fetch task types:", error);
+        setTaskTypes([]);
+      } finally {
+        setLoadingTaskTypes(false);
+      }
+    };
+    fetchTaskTypes();
+  }, []);
 
   useEffect(() => {
     if (lockProject) return;
@@ -124,7 +134,7 @@ export default function NewTaskForm({
 
     const nextTaskData = { ...taskData, [field]: value };
     if (field === "type") {
-      const label = taskTypeLabels[value as CreateTaskData["type"]] || "Task";
+      const label = getTaskTypeLabel(value, taskTypes);
       const nextSummary = `${label} task`;
       if (!taskData.summary || taskData.summary === autoSummary) {
         nextTaskData.summary = nextSummary;
@@ -225,39 +235,26 @@ export default function NewTaskForm({
           id="task-type"
           name="type"
           value={taskData.type || ""}
-          onChange={(e) =>
-            handleInputChange(
-              "type",
-              e.target.value as
-                | "budget"
-                | "asset"
-                | "retrospective"
-                | "report"
-                | "scaling"
-                | "alert"
-                | "experiment"
-                | "optimization"
-                | "communication"
-            )
-          }
+          onChange={(e) => handleInputChange("type", e.target.value)}
           className={`w-full rounded-md border px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
             errors.type ? "border-red-500" : "border-gray-300"
           }`}
           required
+          disabled={loadingTaskTypes}
         >
           <option value="" disabled>
-            Select a work type
+            {loadingTaskTypes ? "Loading work types..." : "Select a work type"}
           </option>
-          <option value="budget">Budget Request</option>
-          <option value="asset">Asset</option>
-          <option value="retrospective">Retrospective</option>
-          <option value="report">Report</option>
-          <option value="scaling">Scaling</option>
-          <option value="alert">Alert</option>
-          <option value="experiment">Experiment</option>
-          <option value="optimization">Optimization</option>
-          <option value="communication">Client Communication</option>
-          <option value="platform_policy_update">Platform Policy Update</option>
+          {taskTypes.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.label}
+            </option>
+          ))}
+          {!loadingTaskTypes && taskTypes.length === 0 && (
+            <option value="" disabled>
+              No work types available
+            </option>
+          )}
         </select>
         {errors.type && (
           <p className="text-red-500 text-sm mt-1">{errors.type}</p>
@@ -318,9 +315,7 @@ export default function NewTaskForm({
           htmlFor="task-approver"
           className="mb-1 block text-sm font-medium text-gray-700"
         >
-          {taskData.type === "budget"
-            ? "Assign an approver *"
-            : "Assign an approver"}
+          {isApproverRequired ? "Assign an approver *" : "Assign an approver"}
         </label>
         <select
           id="task-approver"
@@ -332,8 +327,7 @@ export default function NewTaskForm({
           className={`w-full rounded-md border px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
             errors.current_approver_id ? "border-red-500" : "border-gray-300"
           }`}
-          // Only required when task type is 'budget'
-          required={taskData.type === "budget"}
+          required={isApproverRequired}
         >
           <option value="" disabled>
             {loadingApprovers ? "Loading approvers..." : "Select an approver"}
