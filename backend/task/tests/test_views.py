@@ -1,9 +1,10 @@
 from django.test import TestCase
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
-from task.models import Task, ApprovalRecord, AlertTask, AlertTask
+from task.models import Task, ApprovalRecord, AlertTask
 from core.models import Project, Organization, Team, AdChannel, ProjectMember
 from budget_approval.models import BudgetPool, BudgetRequest
 from asset.models import Asset
@@ -482,6 +483,33 @@ class TaskAPITest(TestCase):
         url = reverse("task-link", kwargs={"pk": task.id})
         data = {"content_type": "alerttask", "object_id": str(alert_task.id)}
         response = self.client.post(url, data, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        task.refresh_from_db()
+        self.assertTrue(task.is_linked)
+        self.assertEqual(task.task_type, "alerttask")
+        self.assertEqual(task.linked_object, alert_task)
+
+    def test_link_task_to_alert_task_with_duplicate_content_types(self):
+        """Linking alerttask should succeed when stale alerting content type exists."""
+        task = Task.objects.create(
+            summary="Alert Task With Stale ContentType",
+            type="alert",
+            owner=self.user,
+            project=self.project,
+        )
+        alert_task = AlertTask.objects.create(
+            task=task,
+            alert_type="spend_spike",
+            severity="high",
+        )
+
+        # Simulate stale content type left behind after app consolidation.
+        ContentType.objects.get_or_create(app_label="alerting", model="alerttask")
+
+        url = reverse("task-link", kwargs={"pk": task.id})
+        data = {"content_type": "alerttask", "object_id": str(alert_task.id)}
+        response = self.client.post(url, data, format="json")
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         task.refresh_from_db()
         self.assertTrue(task.is_linked)
