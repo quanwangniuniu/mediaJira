@@ -148,3 +148,20 @@ export interface TaskAttachment {
   uploaded_by: UserSummary;
   created_at: string;
 }
+
+// Shared filter shape for task list/board/timeline views
+export interface TaskListFilters {
+  project_id?: number;
+  type?: string;
+  status?: string;
+  priority?: string;
+  owner_id?: number;
+  current_approver_id?: number;
+  has_parent?: boolean; // true = subtasks only, false = top-level only
+  due_date_after?: string; // YYYY-MM-DD
+  due_date_before?: string;
+  created_after?: string;
+  created_before?: string;
+  include_subtasks?: boolean;
+  all_projects?: boolean;
+}

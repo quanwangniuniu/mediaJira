@@ -3,6 +3,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, ValidationError as DRFValidationError
+from datetime import datetime
 from django.core.exceptions import ValidationError
 from django.db.models import Q
 from rest_framework.views import APIView
@@ -169,7 +170,64 @@ class TaskViewSet(viewsets.ModelViewSet):
         status = self.request.query_params.get('status')
         if status:
             queryset = queryset.filter(status=status)
-        
+
+        # Priority filter
+        priority = self.request.query_params.get('priority')
+        if priority:
+            valid_priorities = [c[0] for c in Task.Priority.choices]
+            if priority not in valid_priorities:
+                raise DRFValidationError({'priority': 'Invalid priority value'})
+            queryset = queryset.filter(priority=priority)
+
+        # Current approver (assignee) filter
+        current_approver_id = self.request.query_params.get('current_approver_id')
+        if current_approver_id is not None:
+            try:
+                aid = int(current_approver_id)
+                if aid < 1:
+                    raise DRFValidationError({'current_approver_id': 'current_approver_id must be a positive integer'})
+                queryset = queryset.filter(current_approver_id=aid)
+            except (TypeError, ValueError):
+                raise DRFValidationError({'current_approver_id': 'current_approver_id must be an integer'})
+
+        # Due date range filters
+        due_date_after = self.request.query_params.get('due_date_after')
+        if due_date_after:
+            try:
+                d = datetime.strptime(due_date_after, '%Y-%m-%d').date()
+                queryset = queryset.filter(due_date__gte=d)
+            except (ValueError, TypeError):
+                raise DRFValidationError({'due_date_after': 'due_date_after must be YYYY-MM-DD'})
+        due_date_before = self.request.query_params.get('due_date_before')
+        if due_date_before:
+            try:
+                d = datetime.strptime(due_date_before, '%Y-%m-%d').date()
+                queryset = queryset.filter(due_date__lte=d)
+            except (ValueError, TypeError):
+                raise DRFValidationError({'due_date_before': 'due_date_before must be YYYY-MM-DD'})
+
+        # Created date range filters (compare date part of created_at)
+        created_after = self.request.query_params.get('created_after')
+        if created_after:
+            try:
+                if 'T' in created_after or ' ' in created_after:
+                    d = datetime.fromisoformat(created_after.replace('Z', '+00:00')).date()
+                else:
+                    d = datetime.strptime(created_after, '%Y-%m-%d').date()
+                queryset = queryset.filter(created_at__date__gte=d)
+            except (ValueError, TypeError):
+                raise DRFValidationError({'created_after': 'created_after must be YYYY-MM-DD or ISO datetime'})
+        created_before = self.request.query_params.get('created_before')
+        if created_before:
+            try:
+                if 'T' in created_before or ' ' in created_before:
+                    d = datetime.fromisoformat(created_before.replace('Z', '+00:00')).date()
+                else:
+                    d = datetime.strptime(created_before, '%Y-%m-%d').date()
+                queryset = queryset.filter(created_at__date__lte=d)
+            except (ValueError, TypeError):
+                raise DRFValidationError({'created_before': 'created_before must be YYYY-MM-DD or ISO datetime'})
+
         # Filter by content_type
         content_type = self.request.query_params.get('content_type')
         if content_type:
@@ -194,7 +252,17 @@ class TaskViewSet(viewsets.ModelViewSet):
         if not include_subtasks:
             # Exclude all tasks that have is_subtask=True
             queryset = queryset.filter(is_subtask=False)
-        
+
+        # Parent filter: show only subtasks or only top-level tasks
+        has_parent_param = self.request.query_params.get('has_parent')
+        if has_parent_param is not None:
+            if has_parent_param.lower() == 'true':
+                queryset = queryset.filter(is_subtask=True)
+            elif has_parent_param.lower() == 'false':
+                queryset = queryset.filter(is_subtask=False)
+            else:
+                raise DRFValidationError({'has_parent': 'has_parent must be true or false'})
+
         # Order by order_in_project, then by creation date (newest first)
         queryset = queryset.order_by('order_in_project', '-id')
         # List response does not include draft_payload; defer it so list works if migration adding the column is not yet applied.
