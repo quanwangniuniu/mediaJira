@@ -25,6 +25,8 @@ import useAuth from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
 import { ProjectAPI } from '@/lib/api/projectApi';
 import { useProjectStore } from '@/lib/projectStore';
+import { useTaskFilterParams } from '@/hooks/useTaskFilterParams';
+import { TaskFilterPanel } from '@/components/tasks/TaskFilterPanel';
 
 function TimelinePageContent() {
   const searchParams = useSearchParams();
@@ -34,6 +36,8 @@ function TimelinePageContent() {
   const projectId = projectIdParam
     ? Number(projectIdParam)
     : activeProject?.id ?? null;
+
+  const [filters, setFilters, clearFilters] = useTaskFilterParams();
 
   useEffect(() => {
     if (projectIdParam || !activeProject?.id) return;
@@ -151,10 +155,10 @@ function TimelinePageContent() {
   useEffect(() => {
     if (!projectId) return;
     const load = async () => {
-      await fetchTasks({ project_id: projectId, include_subtasks: true });
+      await fetchTasks({ ...filters, project_id: projectId, include_subtasks: true });
     };
     load();
-  }, [projectId, fetchTasks]);
+  }, [projectId, fetchTasks, filters]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -790,11 +794,18 @@ function TimelinePageContent() {
         )}
 
         {projectId && !loading && (hasTasks || !error) && (
-          <TimelineView
-            tasks={visibleTasks}
-            reloadTasks={reloadTasks}
-            onCreateTask={handleCreateTask}
-          />
+          <div className="space-y-4">
+            <TaskFilterPanel
+              filters={filters}
+              onChange={setFilters}
+              onClearAll={clearFilters}
+            />
+            <TimelineView
+              tasks={visibleTasks}
+              reloadTasks={reloadTasks}
+              onCreateTask={handleCreateTask}
+            />
+          </div>
         )}
       </div>
 

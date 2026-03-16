@@ -10,6 +10,8 @@ import ConfirmDialog from "@/components/common/ConfirmDialog"
 import { TaskDetailModal } from "./TaskDetailModal"
 import { NewTaskModal } from "./NewTaskModal"
 import toast from "react-hot-toast"
+import { useTaskFilterParams } from "@/hooks/useTaskFilterParams"
+import { TaskFilterPanel } from "@/components/tasks/TaskFilterPanel"
 
 const columns: ColumnStatus[] = ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "APPROVED"]
 
@@ -41,9 +43,11 @@ export function TaskBoard() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [showNewTask, setShowNewTask] = useState(false)
 
+  const [filters, setFilters, clearFilters] = useTaskFilterParams()
+
   const reload = useCallback(async () => {
     try {
-      const response = await TaskAPI.getTasks()
+      const response = await TaskAPI.getTasks(filters)
       const results = response.data.results || response.data || []
       const mapped: Task[] = results.map((t: Record<string, unknown>) => {
         const ownerObj = t.owner as Record<string, string> | null
@@ -69,7 +73,7 @@ export function TaskBoard() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [filters])
 
   useEffect(() => {
     reload()
@@ -119,6 +123,13 @@ export function TaskBoard() {
 
   return (
     <div className="flex flex-col h-full gap-4">
+      <div className="flex items-center justify-between gap-3">
+        <TaskFilterPanel
+          filters={filters}
+          onChange={setFilters}
+          onClearAll={clearFilters}
+        />
+      </div>
       <FilterBar
         typeFilter={typeFilter}
         priorityFilter={priorityFilter}

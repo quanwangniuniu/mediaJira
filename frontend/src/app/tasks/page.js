@@ -47,6 +47,8 @@ import {
   TASK_TYPE_CONFIG_STATIC,
   defaultReportContext,
 } from "@/lib/taskTypeConfigRegistry";
+import { useTaskFilterParams } from "@/hooks/useTaskFilterParams";
+import { TaskFilterPanel } from "@/components/tasks/TaskFilterPanel";
 
 const BOARD_TYPE_ORDER = [
   "task",
@@ -155,6 +157,9 @@ function TasksPageContent() {
   const searchParams = useSearchParams();
   const projectIdParam = searchParams.get("project_id");
   const projectId = projectIdParam ? Number(projectIdParam) : null;
+
+  // URL-backed filters (including project_id, status, priority, dates, etc.)
+  const [filters, setFilters, clearFilters] = useTaskFilterParams();
 
   // Task data management
   const {
@@ -462,14 +467,14 @@ function TasksPageContent() {
     const loadTasks = async () => {
       try {
         console.log("[TasksPage] Fetching tasks for project:", projectId);
-        await fetchTasks({ project_id: projectId });
+        await fetchTasks({ ...filters, project_id: projectId });
       } catch (error) {
         console.error("[TasksPage] Failed to fetch tasks:", error);
       }
     };
 
     loadTasks();
-  }, [projectId, fetchTasks]);
+  }, [projectId, fetchTasks, filters]);
 
   const selectedProject = useMemo(() => {
     if (!projectId) return null;
@@ -2420,9 +2425,9 @@ function TasksPageContent() {
               <button
                 onClick={() => {
                   if (projectId) {
-                    fetchTasks({ project_id: projectId });
+                    fetchTasks({ ...filters, project_id: projectId });
                   } else {
-                    fetchTasks();
+                    fetchTasks(filters);
                   }
                 }}
                 className="mt-2 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
@@ -2438,7 +2443,14 @@ function TasksPageContent() {
             projectId &&
             activeTab === "tasks" && (
               <div className="min-h-screen bg-[#f8f9fb] px-6 py-6">
-                <div className="mx-auto max-w-6xl">
+                <div className="mx-auto max-w-6xl space-y-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <TaskFilterPanel
+                      filters={filters}
+                      onChange={setFilters}
+                      onClearAll={clearFilters}
+                    />
+                  </div>
                   <JiraTasksView
                     tasks={filteredJiraTasks}
                     viewMode={viewMode}
