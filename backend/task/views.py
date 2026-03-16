@@ -371,7 +371,8 @@ class TaskViewSet(viewsets.ModelViewSet):
         try:
             # Cancel the task
             task.cancel()
-            
+            task.save()
+
             # Delete all approval records
             task.approval_records.all().delete()
             
@@ -606,6 +607,19 @@ class TaskViewSet(viewsets.ModelViewSet):
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+    @action(detail=True, methods=['post'], url_path='unlock')
+    def unlock(self, request, pk=None):
+        task = self.get_object()
+        try:
+            task.unlock()
+            task.save()
+            return Response(
+                {'task': TaskSerializer(task).data},
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=True, methods=['get', 'post'])
     def subtasks(self, request, pk=None):
@@ -803,6 +817,62 @@ class TaskViewSet(viewsets.ModelViewSet):
         # Delete the relation
         relation.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=['post'], url_path='bulk_action')
+    def bulk_action(self, request):
+        """
+        Dispatch bulk action to Celery.
+        Waits for result synchronously (timeout 30s) for immediate feedback.
+
+        Request body:
+        {
+          "task_ids": [1, 2, 3],
+          "action": "submit" | "assign_approver" | "change_status",
+          "payload": {
+            "approver_id": 5,
+            "status": "CANCELLED"
+          }
+        }
+
+        Response (always HTTP 200):
+        {
+          "succeeded": [1, 2],
+          "failed": [{ "task_id": 3, "reason": "..." }]
+        }
+        """
+        from task.tasks import process_bulk_action
+
+        task_ids = request.data.get('task_ids', [])
+        action = request.data.get('action')
+        payload = request.data.get('payload', {})
+
+        if not task_ids or not action:
+            return Response(
+                {'error': 'task_ids and action are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            result = process_bulk_action.apply_async(
+                args=[task_ids, action, payload, request.user.id]
+            )
+            try:
+                data = result.get(timeout=10)
+            except Exception:
+                # Celery worker unavailable, run synchronously
+                data = process_bulk_action.run(
+                    task_ids, action, payload, request.user.id
+                )
+            return Response(data, status=status.HTTP_200_OK)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(
+                f"bulk_action failed: {str(e)}", exc_info=True
+            )
+            return Response(
+                {'error': f'Bulk action failed: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 def _user_can_access_task(user, task):

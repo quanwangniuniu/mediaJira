@@ -1088,6 +1088,7 @@ function TasksPageContent() {
       summary: task.summary,
       type: task.type || "task",
       status: statusMap[task.status] || "TODO",
+      statusRaw: task.status,
       owner: task.owner?.username,
       ownerId: task.owner?.id,
       approver: task.current_approver?.username || task.current_approver_id,

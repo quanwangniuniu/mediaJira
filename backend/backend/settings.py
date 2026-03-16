@@ -336,6 +336,7 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = config('TIME_ZONE', default='UTC')
+broker_connection_retry_on_startup = True
 
 # Celery Beat Configuration for Periodic Tasks
 CELERY_BEAT_SCHEDULE = {

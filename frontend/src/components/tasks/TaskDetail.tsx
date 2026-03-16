@@ -162,6 +162,7 @@ export default function TaskDetail({
     task.owner?.id?.toString() || "",
   );
   const [savingStatus, setSavingStatus] = useState(false);
+  const [currentStatus, setCurrentStatus] = useState(task?.status ?? "");
   const [savingOwner, setSavingOwner] = useState(false);
   const [savingSummary, setSavingSummary] = useState(false);
   const [savingDescription, setSavingDescription] = useState(false);
@@ -662,6 +663,9 @@ export default function TaskDetail({
     setOwnerId(task.owner?.id?.toString() || "");
   }, [task.owner?.id]);
   useEffect(() => {
+    setCurrentStatus(task?.status ?? "");
+  }, [task?.status]);
+  useEffect(() => {
     setCurrentApproverId(task.current_approver?.id?.toString() || "");
   }, [task.current_approver?.id]);
 
@@ -707,6 +711,20 @@ export default function TaskDetail({
   const handleStatusChange = async (targetStatus: string) => {
     if (!task.id) return;
     if (targetStatus === task.status) return;
+    const validTransitions: Record<string, string[]> = {
+      DRAFT: ["SUBMITTED", "CANCELLED"],
+      SUBMITTED: ["UNDER_REVIEW", "CANCELLED"],
+      UNDER_REVIEW: ["APPROVED", "REJECTED", "CANCELLED"],
+      APPROVED: ["LOCKED", "CANCELLED"],
+      REJECTED: ["DRAFT", "CANCELLED"],
+      LOCKED: ["UNLOCK"],
+      CANCELLED: ["DRAFT"],
+    };
+    const allowed = validTransitions[task.status ?? ""] ?? [];
+    if (!allowed.includes(targetStatus)) {
+      toast.error(`Cannot change status from ${task.status} to ${targetStatus}`);
+      return;
+    }
     setSavingStatus(true);
     try {
       let response: any;
@@ -724,6 +742,8 @@ export default function TaskDetail({
         response = await TaskAPI.cancelTask(task.id);
       } else if (targetStatus === "DRAFT") {
         response = await TaskAPI.revise(task.id);
+      } else if (targetStatus === "UNLOCK") {
+        response = await TaskAPI.unlock(task.id);
       } else {
         toast.error("Invalid status transition");
         return;
@@ -733,6 +753,7 @@ export default function TaskDetail({
       Object.assign(task, updatedTask);
       updateTask(task.id!, updatedTask);
       toast.success("Status updated.");
+      setCurrentStatus(updatedTask.status ?? "");
       onTaskUpdate?.(updatedTask);
     } catch (error: any) {
       const message =
@@ -1418,19 +1439,8 @@ export default function TaskDetail({
             : "Task approved — forwarded to next approver",
         );
       } else {
-        // Task is APPROVED — lock or forward based on nextApprover picker (legacy mode).
-        if (!nextApprover) {
-          const lockResponse = await TaskAPI.lock(task.id!);
-          if (lockResponse.data.task) {
-            Object.assign(task, lockResponse.data.task);
-            updateTask(task.id!, lockResponse.data.task);
-          }
-          toast.success(
-            isChainMode
-              ? "Task approved and locked (approval chain complete)"
-              : "Task approved and locked (no next approver selected)",
-          );
-        } else {
+        // Task is APPROVED
+        if (nextApprover) {
           // Legacy mode: forward to selected next approver
           const forwardResponse = await TaskAPI.forward(task.id!, {
             next_approver_id: parseInt(nextApprover),
@@ -1441,6 +1451,8 @@ export default function TaskDetail({
             updateTask(task.id!, forwardResponse.data.task);
           }
           toast.success("Task approved and forwarded to next approver");
+        } else {
+          toast.success("Task approved successfully");
         }
       }
 
@@ -2342,20 +2354,24 @@ export default function TaskDetail({
                       } ${getStatusColor(task?.status)}`}
                     >
                       <select
-                        value={task?.status ?? ""}
+                        value={currentStatus}
                         onChange={(e) => handleStatusChange(e.target.value)}
                         disabled={savingStatus}
                         className="block h-9 w-full min-w-0 rounded-[3px] border-0 bg-transparent px-2.5 py-1.5 text-sm text-[#172b4d] focus:outline-none focus:ring-0 disabled:cursor-not-allowed"
                       >
-                        <option value="DRAFT">Draft</option>
-                        <option value="SUBMITTED">Submitted</option>
-                        <option value="UNDER_REVIEW">Under Review</option>
-                        <option value="APPROVED">Approved</option>
-                        <option value="REJECTED">Rejected</option>
-                        <option value="LOCKED" disabled={task?.can_lock === false}>
-                          Locked{task?.approvals_summary && task.approvals_summary.approved_count < task.approvals_summary.required_count ? ` (${task.approvals_summary.display})` : ""}
+                        <option value="DRAFT" disabled={!["SUBMITTED", "CANCELLED", "REJECTED"].includes(task?.status ?? "")}>Draft</option>
+                        <option value="SUBMITTED" disabled={task?.status !== "DRAFT"}>Submitted</option>
+                        <option value="UNDER_REVIEW" disabled={task?.status !== "SUBMITTED"}>Under Review</option>
+                        <option value="APPROVED" disabled={task?.status !== "UNDER_REVIEW"}>Approved</option>
+                        <option value="REJECTED" disabled={task?.status !== "UNDER_REVIEW"}>Rejected</option>
+                        <option value="LOCKED" disabled={task?.status !== "APPROVED" || task?.can_lock === false}>
+                          Locked{task?.approvals_summary && task.approvals_summary.approved_count < task.approvals_summary.required_count
+                            ? ` (${task.approvals_summary.display})` : ""}
                         </option>
-                        <option value="CANCELLED">Cancelled</option>
+                        {currentStatus === "LOCKED" && (
+                          <option value="UNLOCK">Unlock (Back to Approved)</option>
+                        )}
+                        <option value="CANCELLED" disabled={["LOCKED", "DRAFT"].includes(task?.status ?? "")}>Cancelled</option>
                       </select>
                     </div>
                   </div>
