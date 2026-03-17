@@ -13,12 +13,14 @@ from .models import (
     SheetColumn,
     Cell,
     CellValueType,
+    PivotConfig,
     WorkflowPattern,
     WorkflowPatternStep,
     PatternJob,
     SpreadsheetHighlight,
     SpreadsheetHighlightScope,
     SpreadsheetCellFormat,
+    SheetKind,
 )
 from .services import SheetService
 
@@ -67,17 +69,58 @@ class SpreadsheetUpdateSerializer(serializers.ModelSerializer):
         return value.strip()
 
 
+class PivotConfigSerializer(serializers.ModelSerializer):
+    """Read-only serializer for pivot config nested in sheet response."""
+    source_sheet_id = serializers.IntegerField(source='source_sheet.id', read_only=True)
+
+    class Meta:
+        model = PivotConfig
+        fields = [
+            'id',
+            'source_sheet_id',
+            'rows_config',
+            'columns_config',
+            'values_config',
+            'filters_config',
+            'show_grand_total_row',
+            'show_grand_total_column',
+        ]
+        read_only_fields = fields
+
+
 class SheetSerializer(serializers.ModelSerializer):
     """Serializer for Sheet model (read operations)"""
     spreadsheet = serializers.IntegerField(source='spreadsheet.id', read_only=True)
-    
+    pivot_config = serializers.SerializerMethodField()
+
     class Meta:
         model = Sheet
         fields = [
-            'id', 'spreadsheet', 'name', 'position', 'frozen_row_count', 'frozen_column_count',
+            'id', 'spreadsheet', 'name', 'position', 'kind',
+            'frozen_row_count', 'frozen_column_count',
+            'pivot_config',
             'created_at', 'updated_at', 'is_deleted'
         ]
-        read_only_fields = ['id', 'spreadsheet', 'position', 'created_at', 'updated_at', 'is_deleted']
+        read_only_fields = ['id', 'spreadsheet', 'position', 'kind', 'created_at', 'updated_at', 'is_deleted']
+
+    def get_pivot_config(self, obj):
+        try:
+            return PivotConfigSerializer(obj.pivot_config).data
+        except PivotConfig.DoesNotExist:
+            return None
+
+
+class PivotConfigCreateUpdateSerializer(serializers.Serializer):
+    """Serializer for creating/updating pivot config via API."""
+    source_sheet_id = serializers.IntegerField()
+    # Keep shapes flexible; frontend uses arrays of strings/objects.
+    rows_config = serializers.JSONField(default=list)
+    columns_config = serializers.JSONField(default=list)
+    values_config = serializers.JSONField(default=list)
+    filters_config = serializers.JSONField(required=False, default=dict)
+    show_grand_total_row = serializers.BooleanField(default=True)
+    show_grand_total_column = serializers.BooleanField(default=True)
+
 
 class SheetCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating Sheet instances - position is auto-assigned by server"""
@@ -348,6 +391,57 @@ class CellBatchUpdateResponseSerializer(serializers.Serializer):
     rows_expanded = serializers.IntegerField(default=0)
     columns_expanded = serializers.IntegerField(default=0)
     cells = CellSerializer(many=True, required=False)
+
+
+class SheetSortSerializer(serializers.Serializer):
+    """Serializer for sheet sort request"""
+    column_position = serializers.IntegerField(min_value=0)
+    direction = serializers.ChoiceField(choices=['asc', 'desc'])
+    has_header = serializers.BooleanField(default=True)
+    previous_sort_columns = serializers.ListField(
+        required=False,
+        default=list
+    )
+
+    def validate_previous_sort_columns(self, value):
+        """
+        Accept backward-compatible `number[]` and new history entries:
+        [{column_position: number, direction: 'asc' | 'desc'}].
+        """
+        normalized = []
+        for item in value:
+            if isinstance(item, int):
+                if item < 0:
+                    raise serializers.ValidationError("Column positions must be >= 0")
+                normalized.append(item)
+                continue
+
+            if not isinstance(item, dict):
+                raise serializers.ValidationError(
+                    "Each previous sort entry must be an integer column position or an object"
+                )
+
+            col = item.get('column_position')
+            direction = item.get('direction')
+            if not isinstance(col, int) or col < 0:
+                raise serializers.ValidationError("column_position must be an integer >= 0")
+            if direction not in ('asc', 'desc'):
+                raise serializers.ValidationError("direction must be 'asc' or 'desc'")
+
+            normalized.append({'column_position': col, 'direction': direction})
+
+        return normalized
+
+
+class SheetReorderSerializer(serializers.Serializer):
+    """Serializer for row reorder (undo/redo)"""
+    order = serializers.ListField(min_length=1)
+
+    def validate_order(self, value):
+        for item in value:
+            if not isinstance(item, dict) or 'row_id' not in item or 'position' not in item:
+                raise serializers.ValidationError("Each item must have row_id and position")
+        return value
 
 
 class WorkflowPatternStepSerializer(serializers.ModelSerializer):
