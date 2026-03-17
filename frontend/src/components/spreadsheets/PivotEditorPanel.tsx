@@ -24,6 +24,7 @@ import {
 import {
   PivotConfig,
   PivotValueConfig,
+  PivotDisplayMode,
   ColumnSortOrder,
   AggregationFunction,
   SourceColumn,
@@ -44,6 +45,16 @@ const AGGREGATION_OPTIONS: { value: AggregationFunction; label: string }[] = [
   { value: 'SUM', label: 'SUM' },
   { value: 'COUNT', label: 'COUNT' },
   { value: 'AVG', label: 'AVG' },
+  { value: 'MIN', label: 'MIN' },
+  { value: 'MAX', label: 'MAX' },
+  { value: 'MEDIAN', label: 'MEDIAN' },
+];
+
+const DISPLAY_OPTIONS: { value: PivotDisplayMode; label: string }[] = [
+  { value: 'VALUE', label: 'Value' },
+  { value: 'ROW_PERCENT', label: '% of row total' },
+  { value: 'COLUMN_PERCENT', label: '% of column total' },
+  { value: 'TOTAL_PERCENT', label: '% of grand total' },
 ];
 
 export function PivotEditorPanel({
@@ -94,6 +105,13 @@ export function PivotEditorPanel({
     [config, onConfigChange]
   );
 
+  const handleToggleGrandTotalRow = useCallback(() => {
+    onConfigChange({
+      ...config,
+      showGrandTotalRow: !(config.showGrandTotalRow ?? true),
+    });
+  }, [config, onConfigChange]);
+
   const handleAddColumn = useCallback(
     (field: string) => {
       if (!field || field === '__add__') return;
@@ -134,7 +152,7 @@ export function PivotEditorPanel({
       if (!field || field === '__add__') return;
       onConfigChange({
         ...config,
-        values: [...config.values, { field, aggregation: 'SUM' }],
+        values: [...config.values, { field, aggregation: 'SUM', display: 'VALUE' }],
       });
     },
     [config, onConfigChange]
@@ -154,6 +172,18 @@ export function PivotEditorPanel({
     (index: number, aggregation: AggregationFunction) => {
       const newValues = [...config.values];
       newValues[index] = { ...newValues[index], aggregation };
+      onConfigChange({
+        ...config,
+        values: newValues,
+      });
+    },
+    [config, onConfigChange]
+  );
+
+  const handleValueDisplayChange = useCallback(
+    (index: number, display: PivotDisplayMode) => {
+      const newValues = [...config.values];
+      newValues[index] = { ...newValues[index], display };
       onConfigChange({
         ...config,
         values: newValues,
@@ -236,6 +266,15 @@ export function PivotEditorPanel({
                   )}
                 </SelectContent>
               </Select>
+              <label className="mt-1.5 flex items-center gap-2 text-xs text-gray-600">
+                <input
+                  type="checkbox"
+                  className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  checked={config.showGrandTotalRow ?? true}
+                  onChange={handleToggleGrandTotalRow}
+                />
+                <span>Show grand total row</span>
+              </label>
             </div>
           </div>
 
@@ -334,6 +373,21 @@ export function PivotEditorPanel({
                     </SelectTrigger>
                     <SelectContent>
                       {AGGREGATION_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={valueConfig.display ?? 'VALUE'}
+                    onValueChange={(v) => handleValueDisplayChange(index, v as PivotDisplayMode)}
+                  >
+                    <SelectTrigger className="w-32 h-7 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DISPLAY_OPTIONS.map((opt) => (
                         <SelectItem key={opt.value} value={opt.value}>
                           {opt.label}
                         </SelectItem>

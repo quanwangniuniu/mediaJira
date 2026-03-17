@@ -4,7 +4,9 @@
  * Each value field has its own aggregation setting.
  */
 
-export type AggregationFunction = 'SUM' | 'COUNT' | 'AVG';
+export type AggregationFunction = 'SUM' | 'COUNT' | 'AVG' | 'MIN' | 'MAX' | 'MEDIAN';
+
+export type PivotDisplayMode = 'VALUE' | 'ROW_PERCENT' | 'COLUMN_PERCENT' | 'TOTAL_PERCENT';
 
 export type ColumnSortOrder = 'asc' | 'desc';
 
@@ -16,6 +18,8 @@ export interface PivotColumnConfig {
 export interface PivotValueConfig {
   field: string;
   aggregation: AggregationFunction;
+   /** How to display the aggregated value: raw or percentage. Defaults to 'VALUE'. */
+   display?: PivotDisplayMode;
 }
 
 export interface PivotConfig {
@@ -24,6 +28,8 @@ export interface PivotConfig {
   /** Column fields with optional sort order (asc/desc). Strings are supported for backward compat. */
   columns: (string | PivotColumnConfig)[];
   values: PivotValueConfig[];
+  /** Whether to append a grand total row at the bottom (default: true). */
+  showGrandTotalRow?: boolean;
 }
 
 /** Normalize column config to objects with optional sort. Default sort is 'asc'. */
@@ -67,20 +73,40 @@ function roundToPrecision(value: number, decimals: number = 10): number {
 
 function aggregate(values: number[], aggregation: AggregationFunction): number {
   if (values.length === 0) return 0;
-  let result: number;
+
   switch (aggregation) {
-    case 'SUM':
-      result = values.reduce((sum, v) => sum + v, 0);
-      break;
+    case 'SUM': {
+      const result = values.reduce((sum, v) => sum + v, 0);
+      return roundToPrecision(result);
+    }
     case 'COUNT':
       return values.length;
-    case 'AVG':
-      result = values.reduce((sum, v) => sum + v, 0) / values.length;
-      break;
+    case 'AVG': {
+      const result = values.reduce((sum, v) => sum + v, 0) / values.length;
+      return roundToPrecision(result);
+    }
+    case 'MIN': {
+      const result = Math.min(...values);
+      return roundToPrecision(result);
+    }
+    case 'MAX': {
+      const result = Math.max(...values);
+      return roundToPrecision(result);
+    }
+    case 'MEDIAN': {
+      const sorted = [...values].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      let result: number;
+      if (sorted.length % 2 === 0) {
+        result = (sorted[mid - 1] + sorted[mid]) / 2;
+      } else {
+        result = sorted[mid];
+      }
+      return roundToPrecision(result);
+    }
     default:
       return 0;
   }
-  return roundToPrecision(result);
 }
 
 function buildCompositeKey(row: SourceRow, fieldIndices: number[]): string {
@@ -93,9 +119,14 @@ function buildCompositeKey(row: SourceRow, fieldIndices: number[]): string {
 export function buildPivotTable(
   sourceRows: SourceRow[],
   columns: SourceColumn[],
-  config: Pick<PivotConfig, 'rows' | 'columns' | 'values'>
+  config: Pick<PivotConfig, 'rows' | 'columns' | 'values' | 'showGrandTotalRow'>
 ): PivotTableResult {
-  const { rows: rowFields, columns: columnConfigs, values: valueConfigs } = config;
+  const {
+    rows: rowFields,
+    columns: columnConfigs,
+    values: valueConfigs,
+    showGrandTotalRow = true,
+  } = config;
 
   if (rowFields.length === 0 || valueConfigs.length === 0) {
     return { headers: [], body: [], rowCount: 0, colCount: 0 };
@@ -222,25 +253,105 @@ export function buildPivotTable(
     headers.push(headerRow);
   }
 
+  // Precompute base aggregated values matrix: rows x cols x valueIndex
   const body: (string | number)[][] = [];
+  const baseValues: number[][][] = [];
 
-  for (const rowKey of sortedRowKeys) {
+  const rowTotals: number[][] = []; // [rowIndex][valueIndex]
+  const colTotals: number[][] = []; // [colIndex][valueIndex]
+  const grandTotals: number[] = new Array(valueFieldIndices.length).fill(0);
+
+  const displayModes: PivotDisplayMode[] = valueConfigs.map(
+    (vc) => vc.display ?? 'VALUE'
+  );
+
+  for (let ri = 0; ri < sortedRowKeys.length; ri++) {
+    const rowKey = sortedRowKeys[ri];
     const rowParts = rowKey.split('|||');
     const rowData: (string | number)[] = [...rowParts];
 
-    for (const colKey of sortedColKeys) {
+    baseValues[ri] = [];
+    rowTotals[ri] = new Array(valueFieldIndices.length).fill(0);
+
+    for (let ci = 0; ci < sortedColKeys.length; ci++) {
+      const colKey = sortedColKeys[ci];
       const mapKey = `${rowKey}:::${colKey}`;
       const valueMap = dataMap.get(mapKey);
+
+      baseValues[ri][ci] = new Array(valueFieldIndices.length).fill(0);
+      if (!colTotals[ci]) {
+        colTotals[ci] = new Array(valueFieldIndices.length).fill(0);
+      }
 
       for (let vi = 0; vi < valueFieldIndices.length; vi++) {
         const { aggregation } = valueFieldIndices[vi];
         const values = valueMap?.get(vi) ?? [];
         const aggregatedValue = aggregate(values, aggregation);
-        rowData.push(aggregatedValue);
+
+        baseValues[ri][ci][vi] = aggregatedValue;
+        rowTotals[ri][vi] += aggregatedValue;
+        colTotals[ci][vi] += aggregatedValue;
+        grandTotals[vi] += aggregatedValue;
+      }
+    }
+  }
+
+  // Build body applying display modes for each row
+  for (let ri = 0; ri < sortedRowKeys.length; ri++) {
+    const rowKey = sortedRowKeys[ri];
+    const rowParts = rowKey.split('|||');
+    const rowData: (string | number)[] = [...rowParts];
+
+    for (let ci = 0; ci < sortedColKeys.length; ci++) {
+      for (let vi = 0; vi < valueFieldIndices.length; vi++) {
+        const base = baseValues[ri][ci][vi] ?? 0;
+        const mode = displayModes[vi];
+
+        let value = base;
+        if (mode === 'ROW_PERCENT') {
+          const denom = rowTotals[ri][vi];
+          value = denom ? (base / denom) * 100 : 0;
+        } else if (mode === 'COLUMN_PERCENT') {
+          const denom = colTotals[ci][vi];
+          value = denom ? (base / denom) * 100 : 0;
+        } else if (mode === 'TOTAL_PERCENT') {
+          const denom = grandTotals[vi];
+          value = denom ? (base / denom) * 100 : 0;
+        }
+
+        if (mode === 'VALUE') {
+          rowData.push(roundToPrecision(value));
+        } else {
+          const roundedPercent = roundToPrecision(value, 2);
+          rowData.push(`${roundedPercent.toFixed(2)}%`);
+        }
       }
     }
 
     body.push(rowData);
+  }
+
+  // Optional grand total row (always raw sums, regardless of display mode)
+  if (showGrandTotalRow && sortedRowKeys.length > 0) {
+    const totalRow: (string | number)[] = [];
+    for (let i = 0; i < rowHeaderCount; i++) {
+      totalRow.push(i === 0 ? 'Total' : '');
+    }
+
+    for (let ci = 0; ci < sortedColKeys.length; ci++) {
+      for (let vi = 0; vi < valueFieldIndices.length; vi++) {
+        const mode = displayModes[vi];
+        if (mode === 'VALUE') {
+          const totalValue = colTotals[ci]?.[vi] ?? 0;
+          totalRow.push(roundToPrecision(totalValue));
+        } else {
+          // For any percentage display mode, show 100% in the grand total row.
+          totalRow.push('100.00%');
+        }
+      }
+    }
+
+    body.push(totalRow);
   }
 
   const totalHeaderRows = headers.length;
@@ -381,6 +492,7 @@ export function createEmptyPivotConfig(sourceSheetId: number): PivotConfig {
     rows: [],
     columns: [],
     values: [],
+    showGrandTotalRow: true,
   };
 }
 
