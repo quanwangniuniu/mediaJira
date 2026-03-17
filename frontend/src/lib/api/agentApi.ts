@@ -159,10 +159,9 @@ export const AgentAPI = {
 
   // ==================== Spreadsheet List ====================
 
-  listSpreadsheets: async (): Promise<AgentSpreadsheet[]> => {
-    const response = await api.get<AgentSpreadsheet[]>(
-      '/api/agent/spreadsheets/'
-    );
+  listSpreadsheets: async (projectId?: number): Promise<AgentSpreadsheet[]> => {
+    const headers = projectId ? { 'X-Project-Id': String(projectId) } : {};
+    const response = await api.get<AgentSpreadsheet[]>('/api/agent/spreadsheets/', { headers });
     return response.data;
   },
 
@@ -296,6 +295,18 @@ export const AgentAPI = {
 
   fetchLatestAnomalies: async () => {
     const response = await api.get('/api/agent/anomalies/latest/');
+    return response.data;
+  },
+
+  generateDecisionFromSpreadsheet: async (
+    spreadsheetId: number,
+    projectId: number
+  ): Promise<{ decision_id: number; title: string; project_seq: number; status: string }> => {
+    const response = await api.post(
+      '/api/agent/generate-decision/',
+      { spreadsheet_id: spreadsheetId },
+      { headers: { 'X-Project-Id': String(projectId) }, timeout: 120000 }
+    );
     return response.data;
   },
 };

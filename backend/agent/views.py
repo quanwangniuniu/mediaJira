@@ -24,8 +24,9 @@ class EventStreamRenderer(BaseRenderer):
             return b''
         return json.dumps(data).encode('utf-8')
 
+from django.db.models import Max
 from core.models import Project, ProjectMember
-from decision.models import Decision
+from decision.models import Decision, Signal, Option
 from spreadsheet.models import Spreadsheet
 from .models import AgentSession, AgentMessage
 from .serializers import (
@@ -33,7 +34,7 @@ from .serializers import (
     AgentSessionDetailSerializer,
     ChatInputSerializer,
 )
-from .services import AgentOrchestrator
+from .services import AgentOrchestrator, _extract_spreadsheet_data, _run_analysis
 from . import data_service
 
 logger = logging.getLogger(__name__)
@@ -197,7 +198,11 @@ class SpreadsheetListView(APIView):
             project=project,
             is_deleted=False,
         ).values('id', 'name', 'created_at').order_by('-created_at')
-        return Response(list(spreadsheets))
+        result = [
+            {**s, 'project_id': project.id, 'updated_at': s['created_at']}
+            for s in spreadsheets
+        ]
+        return Response(result)
 
 
 
@@ -509,3 +514,92 @@ class AnomalyLatestView(APIView):
         if not msg or not msg.metadata.get('anomalies'):
             return Response([])
         return Response(msg.metadata['anomalies'])
+
+
+class GenerateDecisionView(APIView):
+    """POST /api/agent/generate-decision/ — generate a decision directly from a spreadsheet."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        project = _get_user_project(request)
+        if not project:
+            return Response(
+                {"detail": "No active project."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        spreadsheet_id = request.data.get('spreadsheet_id')
+        if not spreadsheet_id:
+            return Response(
+                {"detail": "spreadsheet_id is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            spreadsheet = Spreadsheet.objects.get(
+                id=spreadsheet_id, project=project, is_deleted=False
+            )
+        except Spreadsheet.DoesNotExist:
+            return Response(
+                {"detail": "Spreadsheet not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        spreadsheet_data = _extract_spreadsheet_data(spreadsheet)
+
+        try:
+            analysis = _run_analysis(spreadsheet_data, user_id=request.user.id)
+        except RuntimeError as e:
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        suggested = analysis.get("suggested_decision", {})
+        max_seq = (
+            Decision.objects.filter(project=project)
+            .aggregate(Max('project_seq'))['project_seq__max'] or 0
+        )
+
+        decision = Decision.objects.create(
+            title=suggested.get("title", "AI Generated Decision"),
+            context_summary=suggested.get("context_summary", ""),
+            reasoning=suggested.get("reasoning", ""),
+            risk_level=suggested.get("risk_level", "MEDIUM"),
+            confidence=suggested.get("confidence", 3),
+            project=project,
+            project_seq=max_seq + 1,
+            author=request.user,
+            created_by_agent=True,
+        )
+
+        for anomaly in analysis.get("anomalies", []):
+            Signal.objects.create(
+                decision=decision,
+                author=request.user,
+                metric=anomaly.get("metric", ""),
+                movement=anomaly.get("movement", ""),
+                period=anomaly.get("period", ""),
+                scope_type=anomaly.get("scope_type", ""),
+                scope_value=anomaly.get("scope_value", ""),
+                delta_value=anomaly.get("delta_value"),
+                delta_unit=anomaly.get("delta_unit", ""),
+                display_text=anomaly.get("description", ""),
+            )
+
+        for opt in suggested.get("options", []):
+            Option.objects.create(
+                decision=decision,
+                text=opt.get("text", ""),
+                order=opt.get("order", 0),
+            )
+
+        return Response(
+            {
+                "decision_id": decision.id,
+                "title": decision.title,
+                "project_seq": decision.project_seq,
+                "status": decision.status,
+            },
+            status=status.HTTP_201_CREATED,
+        )

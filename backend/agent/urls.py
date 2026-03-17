@@ -12,6 +12,7 @@ from .views import (
     DecisionStatsView,
     DecisionRecentView,
     AnomalyLatestView,
+    GenerateDecisionView,
 )
 
 router = DefaultRouter()
@@ -29,4 +30,5 @@ urlpatterns = [
     path('decisions/stats/', DecisionStatsView.as_view(), name='agent-decision-stats'),
     path('decisions/recent/', DecisionRecentView.as_view(), name='agent-decision-recent'),
     path('anomalies/latest/', AnomalyLatestView.as_view(), name='agent-anomaly-latest'),
+    path('generate-decision/', GenerateDecisionView.as_view(), name='agent-generate-decision'),
 ]

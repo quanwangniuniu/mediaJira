@@ -19,8 +19,6 @@ interface DecisionWorkbenchHeaderProps {
   mode?: 'edit' | 'readOnly';
   onBack?: () => void;
   onTitleSave?: (nextTitle: string) => void;
-  /** Called when the user clicks "Ask Agent". */
-  onAskAgent?: () => void;
 }
 
 const formatTime = (value?: string | null) => {
@@ -63,7 +61,6 @@ const DecisionWorkbenchHeader = ({
   mode = 'edit',
   onBack,
   onTitleSave,
-  onAskAgent,
 }: DecisionWorkbenchHeaderProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title);
@@ -162,17 +159,6 @@ const DecisionWorkbenchHeader = ({
             ) : null}
             <span>{indicator}</span>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {onAskAgent ? (
-            <button
-              type="button"
-              onClick={onAskAgent}
-              className="rounded-md bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700"
-            >
-              Ask Agent
-            </button>
-          ) : null}
         </div>
         {mode === 'edit' || onDelete ? (
           <div className="flex items-center gap-2">

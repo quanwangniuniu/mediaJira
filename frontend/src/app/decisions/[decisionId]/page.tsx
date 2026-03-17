@@ -376,19 +376,6 @@ const DecisionPage = () => {
     setDeleteConfirmOpen(true);
   };
 
-  const handleAskAgent = () => {
-    const snapshot = committedSnapshot;
-    sessionStorage.setItem(
-      'agent-decision-context',
-      JSON.stringify({
-        decisionId,
-        decisionTitle: snapshot?.title || title || 'Untitled decision',
-        projectId: projectIdValue ?? null,
-      })
-    );
-    router.push('/agent');
-  };
-
   const confirmDelete = async () => {
     if (!decisionId || projectIdValue == null) return;
     setDeleting(true);
@@ -445,7 +432,6 @@ const DecisionPage = () => {
             onDelete={handleDelete}
             mode="readOnly"
             onBack={() => router.push('/decisions')}
-            onAskAgent={handleAskAgent}
           />
             {committedSnapshot ? (
               <>
@@ -509,7 +495,6 @@ const DecisionPage = () => {
             onCommit={handleOpenCommitModal}
             onDelete={handleDelete}
             onBack={() => router.push('/decisions')}
-            onAskAgent={handleAskAgent}
           />
           <div className="flex flex-1 min-h-0">
             <div className="h-full w-[24%] min-w-[240px] max-w-[340px]">
