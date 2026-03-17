@@ -559,5 +559,16 @@ export const SpreadsheetAPI = {
     );
     return response.data;
   },
+  // Trigger backend pivot recompute based on persisted config (fire-and-forget from UI).
+  recomputePivot: async (
+    spreadsheetId: number,
+    sheetId: number
+  ): Promise<{ status: string; detail?: string }> => {
+    const response = await api.post<{ status: string; detail?: string }>(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/pivot-recompute/`,
+      {}
+    );
+    return response.data;
+  },
 };
 

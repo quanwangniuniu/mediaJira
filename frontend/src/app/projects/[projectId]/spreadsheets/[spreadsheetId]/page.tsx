@@ -851,6 +851,7 @@ export default function SpreadsheetDetailPage() {
     async (newConfig: PivotConfig) => {
       if (!activeSheetId || !spreadsheetId) return;
 
+      // 1) Update local config immediately so UI reflects changes.
       setPivotConfigsBySheet((prev) => ({
         ...prev,
         [activeSheetId]: newConfig,
@@ -860,22 +861,143 @@ export default function SpreadsheetDetailPage() {
       const sourceSheetId = pivotMeta?.sourceSheetId ?? newConfig.sourceSheetId;
       if (!sourceSheetId || !isPivotConfigValid(newConfig)) return;
 
+      // 2) Instant preview: recompute pivot in the browser using already-loaded source data.
       try {
-        await SpreadsheetAPI.upsertPivotConfig(Number(spreadsheetId), activeSheetId, {
-          sourceSheetId,
-          rows: newConfig.rows,
-          columns: newConfig.columns,
-          values: newConfig.values,
-          showGrandTotalRow: newConfig.showGrandTotalRow,
-        });
-        // Backend recomputes pivot and writes cells; just refresh the grid.
+        // If we don't yet have source cells cached, fetch them once.
+        let sourceData = pivotSourceDataBySheet[activeSheetId];
+        if (!sourceData) {
+          const sourceSheetResponse = await SpreadsheetAPI.readCellRange(
+            Number(spreadsheetId),
+            sourceSheetId,
+            0,
+            999,
+            0,
+            50
+          );
+
+          const sourceRowCount =
+            sourceSheetResponse.sheet_row_count ?? sourceSheetResponse.row_count;
+          const sourceColCount =
+            sourceSheetResponse.sheet_column_count ?? sourceSheetResponse.column_count;
+
+          const getCellKey = (row: number, col: number) => `${row}:${col}`;
+          const cells = new Map<string, { rawInput: string; computedString?: string | null }>();
+          for (const cell of sourceSheetResponse.cells) {
+            const key = getCellKey(cell.row_position, cell.column_position);
+            cells.set(key, {
+              rawInput: cell.raw_input ?? '',
+              computedString: cell.computed_string ?? null,
+            });
+          }
+
+          const sourceSheet = sheets.find((s) => s.id === sourceSheetId);
+          sourceData = {
+            cells,
+            rowCount: sourceRowCount,
+            colCount: sourceColCount,
+            sourceSheetId,
+            sourceSheetName: sourceSheet?.name ?? 'Unknown',
+          };
+          setPivotSourceDataBySheet((prev) => ({
+            ...prev,
+            [activeSheetId]: sourceData!,
+          }));
+        }
+
+        const getCellKey = (row: number, col: number) => `${row}:${col}`;
+
+        const columns: SourceColumn[] = [];
+        for (let col = 0; col < sourceData.colCount; col++) {
+          const cellData = sourceData.cells.get(getCellKey(0, col));
+          const header = (cellData?.rawInput ?? '').trim();
+          if (header) {
+            columns.push({ index: col, header });
+          }
+        }
+
+        const sourceRows: SourceRow[] = [];
+        for (let row = 1; row < sourceData.rowCount; row++) {
+          const rowRecord: SourceRow = {};
+          let hasData = false;
+          for (let col = 0; col < sourceData.colCount; col++) {
+            const cellData = sourceData.cells.get(getCellKey(row, col));
+            const value = cellData?.computedString ?? cellData?.rawInput ?? '';
+            rowRecord[col] = value;
+            if (value.trim()) hasData = true;
+          }
+          if (hasData) {
+            sourceRows.push(rowRecord);
+          }
+        }
+
+        const pivotResult = buildPivotTable(sourceRows, columns, newConfig);
+        const previousDimensions = pivotDimensionsBySheet[activeSheetId] ?? {
+          rowCount: 0,
+          colCount: 0,
+        };
+
+        const setOperations = pivotResultToCellOperations(pivotResult);
+        const clearOperations = generateClearOperationsForStaleCells(
+          previousDimensions.rowCount,
+          previousDimensions.colCount,
+          pivotResult.rowCount,
+          pivotResult.colCount
+        );
+
+        const allOperations: Array<{
+          operation: 'set' | 'clear';
+          row: number;
+          column: number;
+          raw_input?: string;
+        }> = [...setOperations, ...clearOperations];
+
+        await SpreadsheetAPI.resizeSheet(
+          Number(spreadsheetId),
+          activeSheetId,
+          Math.max(pivotResult.rowCount + 10, previousDimensions.rowCount + 10, 100),
+          Math.max(pivotResult.colCount + 5, previousDimensions.colCount + 5, 26)
+        );
+
+        await SpreadsheetAPI.batchUpdateCells(
+          Number(spreadsheetId),
+          activeSheetId,
+          allOperations,
+          false
+        );
+
+        setPivotDimensionsBySheet((prev) => ({
+          ...prev,
+          [activeSheetId]: {
+            rowCount: pivotResult.rowCount,
+            colCount: pivotResult.colCount,
+          },
+        }));
+
+        // 3) Update the grid view immediately.
         gridRef.current?.refresh();
       } catch (err: any) {
-        console.error('Failed to update pivot table:', err);
-        toast.error('Failed to update pivot table');
+        console.error('Failed to update pivot preview:', err);
+        toast.error('Failed to update pivot preview');
       }
+
+      // 4) Fire-and-forget: persist config and trigger backend recompute for durability.
+      (async () => {
+        try {
+          await SpreadsheetAPI.upsertPivotConfig(Number(spreadsheetId), activeSheetId, {
+            sourceSheetId,
+            rows: newConfig.rows,
+            columns: newConfig.columns,
+            values: newConfig.values,
+            showGrandTotalRow: newConfig.showGrandTotalRow,
+          });
+          await SpreadsheetAPI.recomputePivot(Number(spreadsheetId), activeSheetId);
+        } catch (err) {
+          // Best-effort; log but don't surface noisy errors to the user.
+          console.error('Background pivot persistence/recompute failed:', err);
+        }
+      })();
     },
-    [activeSheetId, spreadsheetId, pivotSourceDataBySheet]
+    [activeSheetId, spreadsheetId, pivotSourceDataBySheet, pivotDimensionsBySheet, sheets]
   );
 
   const handleRefreshPivot = useCallback(() => {

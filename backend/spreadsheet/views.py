@@ -933,7 +933,7 @@ class ImportFinalizeView(APIView):
 class PivotConfigView(APIView):
     """
     Create/update and read pivot configuration for a pivot sheet.
-    POST: upsert config + recompute pivot sheet.
+    POST: upsert config only (metadata).
     GET:  return current config (or 404 if none).
     """
     permission_classes = [IsAuthenticated]
@@ -980,16 +980,40 @@ class PivotConfigView(APIView):
             sheet.kind = SheetKind.PIVOT
             sheet.save(update_fields=['kind', 'updated_at'])
 
-        # Lazy import to avoid circular dependency at import time.
+        response_serializer = PivotConfigSerializer(config)
+        return Response(response_serializer.data)
+
+
+class PivotRecomputeView(APIView):
+    """
+    Trigger pivot recomputation for a pivot sheet based on persisted config.
+    Used as a fire-and-forget endpoint from the frontend; may be slow.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+        try:
+            config = sheet.pivot_config
+        except PivotConfig.DoesNotExist:
+            raise NotFound({'error': 'Pivot config not found'})
+
         from .pivot_service import recompute_pivot
 
         try:
             recompute_pivot(config)
-        except Exception:
-            logger.exception("Failed to recompute pivot for sheet_id=%s config_id=%s", sheet.id, config.id)
+        except Exception as e:
+            logger.exception(
+                "Pivot recompute failed via API for sheet_id=%s config_id=%s: %s",
+                sheet.id,
+                config.id,
+                e,
+            )
+            # Return 202 even on failure; frontend treats this as best-effort background recompute.
+            return Response({'status': 'error', 'detail': 'pivot recompute failed'}, status=status.HTTP_202_ACCEPTED)
 
-        response_serializer = PivotConfigSerializer(config)
-        return Response(response_serializer.data)
+        return Response({'status': 'ok'}, status=status.HTTP_202_ACCEPTED)
 
 
 class SpreadsheetHighlightListView(APIView):
