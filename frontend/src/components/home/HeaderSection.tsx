@@ -47,7 +47,7 @@ export default function HeaderSection({
               <a href="#" className="text-gray-700 hover:text-gray-900">Resource</a>
             </nav>
           </div>
-          <div className="flex items-center gap-3 mt-auto">
+          <div className="flex items-center gap-3 ">
             {isAuthenticated ? (
               <button
                 onClick={onLoginClick}

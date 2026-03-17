@@ -1675,7 +1675,7 @@ export default function TaskDetail({
             <Accordion type="multiple" defaultValue={["item-1"]}>
               <AccordionItem value="item-1" className="border-none">
                 <AccordionTrigger>
-                  <h2 className="text-base font-semibold text-gray-900">
+                  <h2 data-testid="task-description-heading" className="text-base font-semibold text-gray-900">
                     Task Description
                   </h2>
                 </AccordionTrigger>
@@ -2120,8 +2120,8 @@ export default function TaskDetail({
           {task?.id && <LinkedWorkItems taskId={task.id} />}
 
           {/* Task-level Comments (all task types) */}
-          <section className="flex flex-col gap-3">
-            <h2 className="text-lg font-semibold text-gray-900">Comments</h2>
+          <section data-testid="task-comments-section" className="flex flex-col gap-3">
+            <h2 data-testid="task-comments-heading" className="text-lg font-semibold text-gray-900">Comments</h2>
 
             {/* Input box */}
             <div>
