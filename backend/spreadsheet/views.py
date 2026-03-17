@@ -24,20 +24,40 @@ from .models import (
     SpreadsheetHighlight,
     SpreadsheetCellFormat,
     SpreadsheetHighlightScope,
+    PivotConfig,
+    SheetKind,
 )
 from .serializers import (
-    SpreadsheetSerializer, SpreadsheetCreateSerializer, SpreadsheetUpdateSerializer,
-    SheetSerializer, SheetCreateSerializer, SheetUpdateSerializer,
-    SheetRowSerializer, SheetColumnSerializer,
-    SheetResizeSerializer, SheetResizeResponseSerializer,
-    CellRangeReadSerializer, CellRangeResponseSerializer, CellSerializer,
-    SheetInsertSerializer, SheetDeleteSerializer,
-    CellBatchUpdateSerializer, CellBatchUpdateResponseSerializer,
-    SheetSortSerializer, SheetReorderSerializer,
-    WorkflowPatternCreateSerializer, WorkflowPatternListSerializer, WorkflowPatternDetailSerializer,
-    PatternApplySerializer, PatternJobStatusSerializer,
-    SpreadsheetHighlightSerializer, SpreadsheetHighlightBatchSerializer,
-    SpreadsheetCellFormatSerializer, SpreadsheetCellFormatBatchSerializer
+    SpreadsheetSerializer,
+    SpreadsheetCreateSerializer,
+    SpreadsheetUpdateSerializer,
+    SheetSerializer,
+    SheetCreateSerializer,
+    SheetUpdateSerializer,
+    SheetRowSerializer,
+    SheetColumnSerializer,
+    SheetResizeSerializer,
+    SheetResizeResponseSerializer,
+    CellRangeReadSerializer,
+    CellRangeResponseSerializer,
+    CellSerializer,
+    SheetInsertSerializer,
+    SheetDeleteSerializer,
+    CellBatchUpdateSerializer,
+    CellBatchUpdateResponseSerializer,
+    SheetSortSerializer,
+    SheetReorderSerializer,
+    WorkflowPatternCreateSerializer,
+    WorkflowPatternListSerializer,
+    WorkflowPatternDetailSerializer,
+    PatternApplySerializer,
+    PatternJobStatusSerializer,
+    SpreadsheetHighlightSerializer,
+    SpreadsheetHighlightBatchSerializer,
+    SpreadsheetCellFormatSerializer,
+    SpreadsheetCellFormatBatchSerializer,
+    PivotConfigSerializer,
+    PivotConfigCreateUpdateSerializer,
 )
 from .services import SpreadsheetService, SheetService, CellService
 from .models import SheetStructureOperation
@@ -908,6 +928,68 @@ class ImportFinalizeView(APIView):
             logger.exception("Import finalize recalc failed: %s", e)
             raise ValidationError({'detail': 'Formula recalculation failed'})
         return Response({'status': 'ok'})
+
+
+class PivotConfigView(APIView):
+    """
+    Create/update and read pivot configuration for a pivot sheet.
+    POST: upsert config + recompute pivot sheet.
+    GET:  return current config (or 404 if none).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+        try:
+            config = sheet.pivot_config
+        except PivotConfig.DoesNotExist:
+            raise NotFound({'error': 'Pivot config not found'})
+        serializer = PivotConfigSerializer(config)
+        return Response(serializer.data)
+
+    def post(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+
+        serializer = PivotConfigCreateUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        source_sheet = get_object_or_404(
+            Sheet,
+            id=data['source_sheet_id'],
+            spreadsheet=spreadsheet,
+            is_deleted=False,
+        )
+
+        config, _created = PivotConfig.objects.update_or_create(
+            pivot_sheet=sheet,
+            defaults={
+                'source_sheet': source_sheet,
+                'rows_config': data.get('rows_config') or [],
+                'columns_config': data.get('columns_config') or [],
+                'values_config': data.get('values_config') or [],
+                'filters_config': data.get('filters_config') or {},
+                'show_grand_total_row': data.get('show_grand_total_row', True),
+                'show_grand_total_column': data.get('show_grand_total_column', True),
+            },
+        )
+
+        if sheet.kind != SheetKind.PIVOT:
+            sheet.kind = SheetKind.PIVOT
+            sheet.save(update_fields=['kind', 'updated_at'])
+
+        # Lazy import to avoid circular dependency at import time.
+        from .pivot_service import recompute_pivot
+
+        try:
+            recompute_pivot(config)
+        except Exception:
+            logger.exception("Failed to recompute pivot for sheet_id=%s config_id=%s", sheet.id, config.id)
+
+        response_serializer = PivotConfigSerializer(config)
+        return Response(response_serializer.data)
 
 
 class SpreadsheetHighlightListView(APIView):

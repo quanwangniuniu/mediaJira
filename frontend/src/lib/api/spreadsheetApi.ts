@@ -8,6 +8,7 @@ import {
   SheetListResponse,
   CreateSheetRequest,
   UpdateSheetRequest,
+  PivotConfigDTO,
 } from '@/types/spreadsheet';
 
 /** Timeout for long-running spreadsheet requests (import batch, large range read). Default axios 10s is too short. */
@@ -522,6 +523,39 @@ export const SpreadsheetAPI = {
     const response = await api.post(
       `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/operations/${operationId}/revert/`,
       {}
+    );
+    return response.data;
+  },
+
+  // Upsert pivot configuration for a sheet and trigger recompute
+  upsertPivotConfig: async (
+    spreadsheetId: number,
+    sheetId: number,
+    payload: {
+      sourceSheetId: number;
+      rows: any[];
+      columns: any[];
+      values: any[];
+      filters?: any;
+      showGrandTotalRow?: boolean;
+      showGrandTotalColumn?: boolean;
+    }
+  ): Promise<PivotConfigDTO> => {
+    const body: Record<string, unknown> = {
+      source_sheet_id: payload.sourceSheetId,
+      rows_config: payload.rows,
+      columns_config: payload.columns,
+      values_config: payload.values,
+    };
+    if (payload.filters !== undefined) body.filters_config = payload.filters;
+    if (payload.showGrandTotalRow !== undefined) body.show_grand_total_row = payload.showGrandTotalRow;
+    if (payload.showGrandTotalColumn !== undefined) {
+      body.show_grand_total_column = payload.showGrandTotalColumn;
+    }
+
+    const response = await api.post<PivotConfigDTO>(
+      `/api/spreadsheet/spreadsheets/${spreadsheetId}/sheets/${sheetId}/pivot-config/`,
+      body
     );
     return response.data;
   },

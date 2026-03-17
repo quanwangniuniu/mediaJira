@@ -434,11 +434,19 @@ class SheetService:
             CellService._update_dependencies(cell)
         CellService._recalculate_formula_cells(rewritten_cells)
 
-        return {
+        result = {
             'rows_created': count,
             'total_rows': current_count + count,
             'operation_id': operation.id
         }
+        # Recompute any pivot sheets that depend on this sheet as a source.
+        try:
+            from .pivot_service import recompute_pivots_for_source_sheet
+            recompute_pivots_for_source_sheet(sheet)
+        except Exception:
+            logger.exception("Pivot recompute after insert_rows failed for sheet_id=%s", sheet.id)
+
+        return result
 
     @staticmethod
     @transaction.atomic
@@ -502,11 +510,18 @@ class SheetService:
             CellService._update_dependencies(cell)
         CellService._recalculate_formula_cells(rewritten_cells)
 
-        return {
+        result = {
             'columns_created': count,
             'total_columns': current_count + count,
             'operation_id': operation.id
         }
+        try:
+            from .pivot_service import recompute_pivots_for_source_sheet
+            recompute_pivots_for_source_sheet(sheet)
+        except Exception:
+            logger.exception("Pivot recompute after insert_columns failed for sheet_id=%s", sheet.id)
+
+        return result
 
     @staticmethod
     @transaction.atomic
@@ -572,11 +587,18 @@ class SheetService:
             CellService._update_dependencies(cell)
         CellService._recalculate_formula_cells(rewritten_cells)
 
-        return {
+        result = {
             'rows_deleted': count,
             'total_rows': current_count - count,
             'operation_id': operation.id
         }
+        try:
+            from .pivot_service import recompute_pivots_for_source_sheet
+            recompute_pivots_for_source_sheet(sheet)
+        except Exception:
+            logger.exception("Pivot recompute after delete_rows failed for sheet_id=%s", sheet.id)
+
+        return result
 
     @staticmethod
     @transaction.atomic
@@ -642,11 +664,18 @@ class SheetService:
             CellService._update_dependencies(cell)
         CellService._recalculate_formula_cells(rewritten_cells)
 
-        return {
+        result = {
             'columns_deleted': count,
             'total_columns': current_count - count,
             'operation_id': operation.id
         }
+        try:
+            from .pivot_service import recompute_pivots_for_source_sheet
+            recompute_pivots_for_source_sheet(sheet)
+        except Exception:
+            logger.exception("Pivot recompute after delete_columns failed for sheet_id=%s", sheet.id)
+
+        return result
 
     @staticmethod
     def _cell_sort_tuple(cell) -> Tuple[int, Optional[float], str]:
@@ -1888,12 +1917,12 @@ class CellService:
 
         updated = len(to_update) + len(to_create)
         cleared = len(to_clear)
-
+        
         if not import_mode:
             recalculated_cells = CellService._recalculate_formula_cells(list(updated_cells.values()))
             for cell in recalculated_cells:
                 updated_cells[cell.id] = cell
-
+        
         result = {
             'updated': updated,
             'cleared': cleared,
@@ -1904,6 +1933,14 @@ class CellService:
             result['cells'] = list(updated_cells.values())
         else:
             result['cells'] = []
+
+        # After successful batch update, recompute any pivot sheets depending on this sheet.
+        try:
+            from .pivot_service import recompute_pivots_for_source_sheet
+            recompute_pivots_for_source_sheet(sheet)
+        except Exception:
+            logger.exception("Pivot recompute after batch_update_cells failed for sheet_id=%s", sheet.id)
+
         return result
 
 

@@ -13,12 +13,14 @@ from .models import (
     SheetColumn,
     Cell,
     CellValueType,
+    PivotConfig,
     WorkflowPattern,
     WorkflowPatternStep,
     PatternJob,
     SpreadsheetHighlight,
     SpreadsheetHighlightScope,
     SpreadsheetCellFormat,
+    SheetKind,
 )
 from .services import SheetService
 
@@ -67,17 +69,58 @@ class SpreadsheetUpdateSerializer(serializers.ModelSerializer):
         return value.strip()
 
 
+class PivotConfigSerializer(serializers.ModelSerializer):
+    """Read-only serializer for pivot config nested in sheet response."""
+    source_sheet_id = serializers.IntegerField(source='source_sheet.id', read_only=True)
+
+    class Meta:
+        model = PivotConfig
+        fields = [
+            'id',
+            'source_sheet_id',
+            'rows_config',
+            'columns_config',
+            'values_config',
+            'filters_config',
+            'show_grand_total_row',
+            'show_grand_total_column',
+        ]
+        read_only_fields = fields
+
+
 class SheetSerializer(serializers.ModelSerializer):
     """Serializer for Sheet model (read operations)"""
     spreadsheet = serializers.IntegerField(source='spreadsheet.id', read_only=True)
-    
+    pivot_config = serializers.SerializerMethodField()
+
     class Meta:
         model = Sheet
         fields = [
-            'id', 'spreadsheet', 'name', 'position', 'frozen_row_count', 'frozen_column_count',
+            'id', 'spreadsheet', 'name', 'position', 'kind',
+            'frozen_row_count', 'frozen_column_count',
+            'pivot_config',
             'created_at', 'updated_at', 'is_deleted'
         ]
-        read_only_fields = ['id', 'spreadsheet', 'position', 'created_at', 'updated_at', 'is_deleted']
+        read_only_fields = ['id', 'spreadsheet', 'position', 'kind', 'created_at', 'updated_at', 'is_deleted']
+
+    def get_pivot_config(self, obj):
+        try:
+            return PivotConfigSerializer(obj.pivot_config).data
+        except PivotConfig.DoesNotExist:
+            return None
+
+
+class PivotConfigCreateUpdateSerializer(serializers.Serializer):
+    """Serializer for creating/updating pivot config via API."""
+    source_sheet_id = serializers.IntegerField()
+    # Keep shapes flexible; frontend uses arrays of strings/objects.
+    rows_config = serializers.JSONField(default=list)
+    columns_config = serializers.JSONField(default=list)
+    values_config = serializers.JSONField(default=list)
+    filters_config = serializers.JSONField(required=False, default=dict)
+    show_grand_total_row = serializers.BooleanField(default=True)
+    show_grand_total_column = serializers.BooleanField(default=True)
+
 
 class SheetCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating Sheet instances - position is auto-assigned by server"""

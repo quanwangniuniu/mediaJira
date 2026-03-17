@@ -117,9 +117,76 @@ export default function SpreadsheetDetailPage() {
   useEffect(() => {
     if (activeSheetId == null) return;
     setHighlightCell(null);
-    const isPivot = !!pivotConfigsBySheet[activeSheetId];
+    const activeSheet = sheets.find((s) => s.id === activeSheetId);
+    const isPivot = !!activeSheet && activeSheet.kind === 'pivot';
     setShowPivotEditor(isPivot);
-  }, [activeSheetId, pivotConfigsBySheet]);
+  }, [activeSheetId, sheets]);
+
+  // When a pivot sheet becomes active and we don't yet have its source metadata in memory,
+  // hydrate pivotSourceDataBySheet by reading the source sheet from the backend.
+  useEffect(() => {
+    const hydratePivotSource = async () => {
+      if (!spreadsheetId || !activeSheetId) return;
+      const activeSheet = sheets.find((s) => s.id === activeSheetId);
+      if (!activeSheet || activeSheet.kind !== 'pivot') return;
+      if (pivotSourceDataBySheet[activeSheetId]) return;
+
+      // Prefer in-memory config; fall back to sheet.pivot_config from API payload.
+      const config = pivotConfigsBySheet[activeSheetId];
+      const sourceSheetId =
+        config?.sourceSheetId ?? activeSheet.pivot_config?.source_sheet_id ?? null;
+      if (!sourceSheetId) return;
+
+      const sourceSheet = sheets.find((s) => s.id === sourceSheetId);
+      const sourceSheetName = sourceSheet?.name ?? 'Unknown';
+
+      try {
+        const sourceSheetData = await SpreadsheetAPI.readCellRange(
+          Number(spreadsheetId),
+          sourceSheetId,
+          0,
+          999,
+          0,
+          50
+        );
+
+        const sourceRowCount =
+          sourceSheetData.sheet_row_count ?? sourceSheetData.row_count;
+        const sourceColCount =
+          sourceSheetData.sheet_column_count ?? sourceSheetData.column_count;
+
+        const getCellKey = (row: number, col: number) => `${row}:${col}`;
+
+        const cells = new Map<string, { rawInput: string; computedString?: string | null }>();
+        for (const cell of sourceSheetData.cells) {
+          const key = getCellKey(cell.row_position, cell.column_position);
+          cells.set(key, {
+            rawInput: cell.raw_input ?? '',
+            computedString: cell.computed_string ?? null,
+          });
+        }
+
+        setPivotSourceDataBySheet((prev) => {
+          // If another concurrent hydrate already populated it, keep existing.
+          if (prev[activeSheetId]) return prev;
+          return {
+            ...prev,
+            [activeSheetId]: {
+              cells,
+              rowCount: sourceRowCount,
+              colCount: sourceColCount,
+              sourceSheetId,
+              sourceSheetName,
+            },
+          };
+        });
+      } catch (err) {
+        console.error('Failed to hydrate pivot source data:', err);
+      }
+    };
+
+    hydratePivotSource();
+  }, [activeSheetId, spreadsheetId, sheets, pivotConfigsBySheet, pivotSourceDataBySheet]);
 
   const agentSteps = activeSheetId != null ? agentStepsBySheet[activeSheetId] ?? [] : [];
 
@@ -212,7 +279,22 @@ export default function SpreadsheetDetailPage() {
         } else {
           setSheets(sheetsList);
           setCreateSheetDefaultName(getNextSheetName(sheetsList));
-          
+
+          // Hydrate pivot configs from backend metadata
+          const hydratedPivotConfigs: Record<number, PivotConfig> = {};
+          sheetsList.forEach((sheet) => {
+            if (sheet.kind === 'pivot' && sheet.pivot_config) {
+              const cfg = sheet.pivot_config;
+              hydratedPivotConfigs[sheet.id] = {
+                sourceSheetId: cfg.source_sheet_id,
+                rows: cfg.rows_config || [],
+                columns: cfg.columns_config || [],
+                values: cfg.values_config || [],
+                showGrandTotalRow: cfg.show_grand_total_row,
+              };
+            }
+          });
+          setPivotConfigsBySheet(hydratedPivotConfigs);
           // Set first sheet as active if available
           if (sheetsList.length > 0 && !activeSheetId) {
             setActiveSheetId(sheetsList[0].id);
@@ -731,16 +813,20 @@ export default function SpreadsheetDetailPage() {
 
       await SpreadsheetAPI.resizeSheet(Number(spreadsheetId), newSheet.id, 100, 26);
 
+      // Persist initial pivot config on backend (empty definition with source sheet linkage).
+      const initialConfig = createEmptyPivotConfig(activeSheetId);
+      await SpreadsheetAPI.upsertPivotConfig(Number(spreadsheetId), newSheet.id, {
+        sourceSheetId: activeSheetId,
+        rows: initialConfig.rows,
+        columns: initialConfig.columns,
+        values: initialConfig.values,
+        showGrandTotalRow: initialConfig.showGrandTotalRow,
+      });
+
       const sheetsResponse = await SpreadsheetAPI.listSheets(Number(spreadsheetId));
       const sheetsList = sheetsResponse.results || [];
       setSheets(sheetsList);
       setCreateSheetDefaultName(getNextSheetName(sheetsList));
-
-      const initialConfig = createEmptyPivotConfig(activeSheetId);
-      setPivotConfigsBySheet((prev) => ({
-        ...prev,
-        [newSheet.id]: initialConfig,
-      }));
 
       setPivotSourceDataBySheet((prev) => ({
         ...prev,
@@ -761,110 +847,36 @@ export default function SpreadsheetDetailPage() {
     }
   }, [spreadsheetId, activeSheetId, sheets]);
 
-  const handlePivotConfigChange = useCallback(async (newConfig: PivotConfig) => {
-    if (!activeSheetId || !spreadsheetId) return;
+  const handlePivotConfigChange = useCallback(
+    async (newConfig: PivotConfig) => {
+      if (!activeSheetId || !spreadsheetId) return;
 
-    setPivotConfigsBySheet((prev) => ({
-      ...prev,
-      [activeSheetId]: newConfig,
-    }));
-
-    const pivotMeta = pivotSourceDataBySheet[activeSheetId];
-    if (!pivotMeta || !isPivotConfigValid(newConfig)) return;
-
-    const { sourceSheetId } = pivotMeta;
-
-    try {
-      const sourceSheetData = await SpreadsheetAPI.readCellRange(
-        Number(spreadsheetId),
-        sourceSheetId,
-        0,
-        999,
-        0,
-        50
-      );
-
-      const sourceRowCount = sourceSheetData.sheet_row_count ?? sourceSheetData.row_count;
-      const sourceColCount = sourceSheetData.sheet_column_count ?? sourceSheetData.column_count;
-
-      const getCellKey = (row: number, col: number) => `${row}:${col}`;
-
-      const freshCells = new Map<string, { rawInput: string; computedString?: string | null }>();
-      for (const cell of sourceSheetData.cells) {
-        const key = getCellKey(cell.row_position, cell.column_position);
-        freshCells.set(key, {
-          rawInput: cell.raw_input ?? '',
-          computedString: cell.computed_string ?? null,
-        });
-      }
-
-      const columns: SourceColumn[] = [];
-      for (let col = 0; col < sourceColCount; col++) {
-        const cellData = freshCells.get(getCellKey(0, col));
-        const header = (cellData?.rawInput ?? '').trim();
-        if (header) {
-          columns.push({ index: col, header });
-        }
-      }
-
-      const sourceRows: SourceRow[] = [];
-      for (let row = 1; row < sourceRowCount; row++) {
-        const rowRecord: SourceRow = {};
-        let hasData = false;
-        for (let col = 0; col < sourceColCount; col++) {
-          const cellData = freshCells.get(getCellKey(row, col));
-          const value = cellData?.computedString ?? cellData?.rawInput ?? '';
-          rowRecord[col] = value;
-          if (value.trim()) hasData = true;
-        }
-        if (hasData) {
-          sourceRows.push(rowRecord);
-        }
-      }
-
-      const pivotResult = buildPivotTable(sourceRows, columns, newConfig);
-
-      const previousDimensions = pivotDimensionsBySheet[activeSheetId] ?? { rowCount: 0, colCount: 0 };
-
-      const setOperations = pivotResultToCellOperations(pivotResult);
-
-      const clearOperations = generateClearOperationsForStaleCells(
-        previousDimensions.rowCount,
-        previousDimensions.colCount,
-        pivotResult.rowCount,
-        pivotResult.colCount
-      );
-
-      const allOperations: Array<{
-        operation: 'set' | 'clear';
-        row: number;
-        column: number;
-        raw_input?: string;
-      }> = [
-        ...setOperations,
-        ...clearOperations,
-      ];
-
-      await SpreadsheetAPI.resizeSheet(
-        Number(spreadsheetId),
-        activeSheetId,
-        Math.max(pivotResult.rowCount + 10, previousDimensions.rowCount + 10, 100),
-        Math.max(pivotResult.colCount + 5, previousDimensions.colCount + 5, 26)
-      );
-
-      await SpreadsheetAPI.batchUpdateCells(Number(spreadsheetId), activeSheetId, allOperations, false);
-
-      setPivotDimensionsBySheet((prev) => ({
+      setPivotConfigsBySheet((prev) => ({
         ...prev,
-        [activeSheetId]: { rowCount: pivotResult.rowCount, colCount: pivotResult.colCount },
+        [activeSheetId]: newConfig,
       }));
 
-      gridRef.current?.refresh();
-    } catch (err: any) {
-      console.error('Failed to update pivot table:', err);
-      toast.error('Failed to update pivot table');
-    }
-  }, [activeSheetId, spreadsheetId, pivotSourceDataBySheet, pivotDimensionsBySheet]);
+      const pivotMeta = pivotSourceDataBySheet[activeSheetId];
+      const sourceSheetId = pivotMeta?.sourceSheetId ?? newConfig.sourceSheetId;
+      if (!sourceSheetId || !isPivotConfigValid(newConfig)) return;
+
+      try {
+        await SpreadsheetAPI.upsertPivotConfig(Number(spreadsheetId), activeSheetId, {
+          sourceSheetId,
+          rows: newConfig.rows,
+          columns: newConfig.columns,
+          values: newConfig.values,
+          showGrandTotalRow: newConfig.showGrandTotalRow,
+        });
+        // Backend recomputes pivot and writes cells; just refresh the grid.
+        gridRef.current?.refresh();
+      } catch (err: any) {
+        console.error('Failed to update pivot table:', err);
+        toast.error('Failed to update pivot table');
+      }
+    },
+    [activeSheetId, spreadsheetId, pivotSourceDataBySheet]
+  );
 
   const handleRefreshPivot = useCallback(() => {
     if (!activeSheetId) return;
@@ -874,7 +886,11 @@ export default function SpreadsheetDetailPage() {
     }
   }, [activeSheetId, pivotConfigsBySheet, handlePivotConfigChange]);
 
-  const isPivotSheet = activeSheetId ? !!pivotConfigsBySheet[activeSheetId] : false;
+  const isPivotSheet = (() => {
+    if (!activeSheetId) return false;
+    const sheet = sheets.find((s) => s.id === activeSheetId);
+    return !!sheet && sheet.kind === 'pivot';
+  })();
 
   const handleRenameSheet = async (sheetId: number, data: UpdateSheetRequest) => {
     if (!spreadsheetId) {
