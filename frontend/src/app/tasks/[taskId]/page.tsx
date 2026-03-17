@@ -82,12 +82,13 @@ export default function TaskPage() {
                 <div className="flex items-center gap-3">
                   <Link
                     href="/tasks"
+                    data-testid="back-to-tasks"
                     className="text-sm font-medium text-indigo-600 hover:text-indigo-700"
                   >
                     Back to Tasks
                   </Link>
                   {currentTask ? (
-                    <span className="text-sm text-slate-500">
+                    <span data-testid="task-id-label" className="text-sm text-slate-500">
                       Task #{currentTask.id}
                     </span>
                   ) : null}
@@ -96,12 +97,12 @@ export default function TaskPage() {
             </div>
 
             {loading ? (
-              <div className="rounded-lg border border-slate-200 bg-white p-10 text-center">
+              <div data-testid="task-detail-loading" className="rounded-lg border border-slate-200 bg-white p-10 text-center">
                 <div className="mx-auto h-10 w-10 animate-spin rounded-full border-b-2 border-indigo-600" />
                 <p className="mt-4 text-sm text-slate-500">Loading task...</p>
               </div>
             ) : error ? (
-              <div className="rounded-lg border border-slate-200 bg-white p-10 text-center">
+              <div data-testid="task-detail-error" className="rounded-lg border border-slate-200 bg-white p-10 text-center">
                 <p className="text-sm text-red-600">
                   {error?.response?.data?.detail ||
                     error?.response?.data?.message ||

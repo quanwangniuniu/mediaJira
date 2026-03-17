@@ -109,7 +109,7 @@ const JiraSummaryView: React.FC<JiraSummaryViewProps> = ({
   const conic = buildConic(statusOverview.breakdown);
 
   return (
-    <div className="space-y-5">
+    <div data-testid="summary-view" className="space-y-5">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {metrics.map((metric) => (
           <div
@@ -131,7 +131,7 @@ const JiraSummaryView: React.FC<JiraSummaryViewProps> = ({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-md border border-slate-200 bg-white p-4">
+        <div data-testid="summary-work-type-overview" className="rounded-md border border-slate-200 bg-white p-4">
           <div className="flex items-center justify-between">
             <div>
               <div className="text-[13px] font-semibold text-slate-800">
@@ -157,7 +157,7 @@ const JiraSummaryView: React.FC<JiraSummaryViewProps> = ({
               />
               <div className="absolute inset-4 rounded-full bg-white" />
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <div className="text-xl font-semibold text-slate-800">
+                <div data-testid="summary-total-work-items" className="text-xl font-semibold text-slate-800">
                   {totalWorkItems}
                 </div>
                 <div className="text-xs text-slate-500">Total work items</div>

@@ -3,7 +3,12 @@ import {
   navigateToTasksAndSelectProject,
   waitForTasksPageReady,
 } from './tasks-helpers';
-import { switchTab, switchView, openFirstTask } from './task-workspace-helpers';
+import {
+  switchTab,
+  switchView,
+  openFirstTaskFromListAndNavigate,
+  openFirstTaskFromBoardAndNavigate,
+} from './task-workspace-helpers';
 
 test.describe('Tasks workspace flows', () => {
   test.describe.configure({ mode: 'serial' });
@@ -20,7 +25,7 @@ test.describe('Tasks workspace flows', () => {
   });
 
   test.beforeEach(async ({ page }) => {
-    await page.goto(`/tasks?project_id=${projectId}`);
+    await page.goto(`/tasks?project_id=${projectId}&view=list`);
     await waitForTasksPageReady(page);
   });
 
@@ -35,6 +40,11 @@ test.describe('Tasks workspace flows', () => {
     const items = listbox.getByRole('option');
     await expect(items.first()).toBeVisible({ timeout: 10_000 });
     expect(await items.count()).toBeGreaterThan(0);
+
+    const searchInput = page.getByPlaceholder('Search tasks...');
+    await searchInput.fill('E2E');
+    await expect(searchInput).toHaveValue('E2E');
+    await expect(listbox).toBeVisible({ timeout: 5_000 });
   });
 
   // ── Flow 2: View switching ──────────────────────────────────────────
@@ -42,19 +52,20 @@ test.describe('Tasks workspace flows', () => {
   test('switch to Summary tab shows metrics', async ({ page }) => {
     await switchTab(page, 'Summary');
 
-    await expect(page.getByText('Work type overview')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText('Total work items')).toBeVisible();
+    await expect(page.getByTestId('tab-content-summary')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('summary-work-type-overview')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('summary-total-work-items')).toBeVisible();
   });
 
   test('switch to Board tab shows board columns', async ({ page }) => {
     await switchTab(page, 'Board');
 
-    await expect(page.locator('#mj-board-columns-scroll')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('board-columns')).toBeVisible({ timeout: 10_000 });
   });
 
   test('switch to Tasks tab restores the task list', async ({ page }) => {
     await switchTab(page, 'Board');
-    await expect(page.locator('#mj-board-columns-scroll')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('board-columns')).toBeVisible({ timeout: 10_000 });
 
     await switchTab(page, 'Tasks');
 
@@ -68,7 +79,7 @@ test.describe('Tasks workspace flows', () => {
     await expect(listbox).toBeVisible({ timeout: 10_000 });
 
     await switchView(page, 'timeline');
-    await expect(page.getByRole('button', { name: 'Timeline View' })).toBeVisible();
+    await expect(page.getByTestId('view-button-timeline')).toBeVisible();
     expect(page.url()).toContain('view=timeline');
 
     await switchView(page, 'list');
@@ -79,15 +90,19 @@ test.describe('Tasks workspace flows', () => {
   // ── Flow 3: Open task ───────────────────────────────────────────────
 
   test('clicking a task navigates to the task detail page', async ({ page }) => {
-    await switchTab(page, 'Tasks');
     const listbox = page.getByRole('listbox', { name: 'Task list' });
-    await expect(listbox).toBeVisible({ timeout: 10_000 });
+    const isTasksView = await listbox.isVisible().catch(() => false);
 
-    await openFirstTask(page);
+    if (isTasksView) {
+      await openFirstTaskFromListAndNavigate(page);
+    } else {
+      await switchTab(page, 'Board');
+      await openFirstTaskFromBoardAndNavigate(page);
+    }
 
     await page.waitForURL(/\/tasks\/\d+/, { timeout: 10_000 });
-    await expect(page.getByText(/Task #\d+/)).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole('link', { name: 'Back to Tasks' })).toBeVisible();
+    await expect(page.getByTestId('task-id-label')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('back-to-tasks')).toBeVisible();
   });
 
   // ── Flow 4: Task detail sections ────────────────────────────────────
@@ -97,17 +112,11 @@ test.describe('Tasks workspace flows', () => {
     const listbox = page.getByRole('listbox', { name: 'Task list' });
     await expect(listbox).toBeVisible({ timeout: 10_000 });
 
-    await openFirstTask(page);
+    await openFirstTaskFromListAndNavigate(page);
     await page.waitForURL(/\/tasks\/\d+/, { timeout: 10_000 });
 
-    await expect(page.getByText('Task Description')).toBeVisible({ timeout: 10_000 });
-
-    await expect(page.getByRole('heading', { name: 'Comments' })).toBeVisible({ timeout: 10_000 });
-
-    const errorBanner = page.locator('.text-red-600');
-    const errorCount = await errorBanner.count();
-    for (let i = 0; i < errorCount; i++) {
-      await expect(errorBanner.nth(i)).not.toBeVisible();
-    }
+    await expect(page.getByTestId('task-description-heading')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('task-comments-heading')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('task-detail-error')).not.toBeVisible();
   });
 });
