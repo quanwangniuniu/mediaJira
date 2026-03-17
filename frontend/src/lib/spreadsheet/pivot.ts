@@ -6,6 +6,13 @@
 
 export type AggregationFunction = 'SUM' | 'COUNT' | 'AVG';
 
+export type ColumnSortOrder = 'asc' | 'desc';
+
+export interface PivotColumnConfig {
+  field: string;
+  sort?: ColumnSortOrder;
+}
+
 export interface PivotValueConfig {
   field: string;
   aggregation: AggregationFunction;
@@ -14,8 +21,18 @@ export interface PivotValueConfig {
 export interface PivotConfig {
   sourceSheetId: number;
   rows: string[];
-  columns: string[];
+  /** Column fields with optional sort order (asc/desc). Strings are supported for backward compat. */
+  columns: (string | PivotColumnConfig)[];
   values: PivotValueConfig[];
+}
+
+/** Normalize column config to objects with optional sort. Default sort is 'asc'. */
+export function normalizeColumnConfig(
+  columns: (string | PivotColumnConfig)[]
+): PivotColumnConfig[] {
+  return columns.map((c) =>
+    typeof c === 'string' ? { field: c, sort: 'asc' as const } : { ...c, sort: c.sort ?? 'asc' }
+  );
 }
 
 export interface PivotTableResult {
@@ -78,7 +95,7 @@ export function buildPivotTable(
   columns: SourceColumn[],
   config: Pick<PivotConfig, 'rows' | 'columns' | 'values'>
 ): PivotTableResult {
-  const { rows: rowFields, columns: columnFields, values: valueConfigs } = config;
+  const { rows: rowFields, columns: columnConfigs, values: valueConfigs } = config;
 
   if (rowFields.length === 0 || valueConfigs.length === 0) {
     return { headers: [], body: [], rowCount: 0, colCount: 0 };
@@ -87,6 +104,10 @@ export function buildPivotTable(
   const rowFieldIndices = rowFields
     .map((f) => getFieldIndex(columns, f))
     .filter((idx): idx is number => idx !== undefined);
+
+  const normalizedColumns = normalizeColumnConfig(columnConfigs);
+  const columnFields = normalizedColumns.map((c) => c.field);
+  const columnSort = normalizedColumns[0]?.sort ?? 'asc';
 
   const colFieldIndices = columnFields
     .map((f) => getFieldIndex(columns, f))
@@ -146,9 +167,12 @@ export function buildPivotTable(
   }
 
   const sortedRowKeys = Array.from(uniqueRowKeys).sort((a, b) => a.localeCompare(b));
+  const colCompare = (a: string, b: string) => a.localeCompare(b);
   const sortedColKeys =
     colFieldIndices.length > 0 && uniqueColKeys.size > 0
-      ? Array.from(uniqueColKeys).sort((a, b) => a.localeCompare(b))
+      ? Array.from(uniqueColKeys).sort((a, b) =>
+          columnSort === 'desc' ? colCompare(b, a) : colCompare(a, b)
+        )
       : ['__TOTAL__'];
 
   const hasColumnFields = colFieldIndices.length > 0 && sortedColKeys[0] !== '__TOTAL__';

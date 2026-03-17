@@ -1,7 +1,18 @@
 'use client';
 
 import { useCallback } from 'react';
-import { X, Table2, Plus, Trash2, Rows3, Columns3, Calculator, RefreshCw } from 'lucide-react';
+import {
+  X,
+  Table2,
+  Plus,
+  Trash2,
+  Rows3,
+  Columns3,
+  Calculator,
+  RefreshCw,
+  ArrowUp,
+  ArrowDown,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -13,8 +24,10 @@ import {
 import {
   PivotConfig,
   PivotValueConfig,
+  ColumnSortOrder,
   AggregationFunction,
   SourceColumn,
+  normalizeColumnConfig,
 } from '@/lib/spreadsheet/pivot';
 
 interface PivotEditorPanelProps {
@@ -42,18 +55,22 @@ export function PivotEditorPanel({
   onClose,
   onRefresh,
 }: PivotEditorPanelProps) {
-  const usedFields = new Set([...config.rows, ...config.columns, ...config.values.map((v) => v.field)]);
+  const normalizedColumns = normalizeColumnConfig(config.columns);
+  const columnFields = normalizedColumns.map((c) => c.field);
+  const usedFields = new Set([...config.rows, ...columnFields, ...config.values.map((v) => v.field)]);
 
   const availableFieldsForRows = sourceColumns.filter(
-    (col) => !config.columns.includes(col.header) && !config.values.some((v) => v.field === col.header)
+    (col) =>
+      !columnFields.includes(col.header) && !config.values.some((v) => v.field === col.header)
   );
 
   const availableFieldsForColumns = sourceColumns.filter(
-    (col) => !config.rows.includes(col.header) && !config.values.some((v) => v.field === col.header)
+    (col) =>
+      !config.rows.includes(col.header) && !config.values.some((v) => v.field === col.header)
   );
 
   const availableFieldsForValues = sourceColumns.filter(
-    (col) => !config.rows.includes(col.header) && !config.columns.includes(col.header)
+    (col) => !config.rows.includes(col.header) && !columnFields.includes(col.header)
   );
 
   const handleAddRow = useCallback(
@@ -82,20 +99,34 @@ export function PivotEditorPanel({
       if (!field || field === '__add__') return;
       onConfigChange({
         ...config,
-        columns: [...config.columns, field],
+        columns: [...normalizedColumns, { field, sort: 'asc' as ColumnSortOrder }],
       });
     },
-    [config, onConfigChange]
+    [config, normalizedColumns, onConfigChange]
   );
 
   const handleRemoveColumn = useCallback(
     (index: number) => {
+      const next = normalizedColumns.filter((_, i) => i !== index);
       onConfigChange({
         ...config,
-        columns: config.columns.filter((_, i) => i !== index),
+        columns: next,
       });
     },
-    [config, onConfigChange]
+    [config, normalizedColumns, onConfigChange]
+  );
+
+  const handleColumnSortChange = useCallback(
+    (index: number, sort: ColumnSortOrder) => {
+      const next = normalizedColumns.map((col, i) =>
+        i === index ? { ...col, sort } : col
+      );
+      onConfigChange({
+        ...config,
+        columns: next,
+      });
+    },
+    [config, normalizedColumns, onConfigChange]
   );
 
   const handleAddValue = useCallback(
@@ -216,15 +247,43 @@ export function PivotEditorPanel({
               <span className="text-xs text-gray-400">(optional)</span>
             </div>
             <div className="space-y-1.5">
-              {config.columns.map((field, index) => (
+              {normalizedColumns.map((col, index) => (
                 <div
                   key={`col-${index}`}
                   className="flex items-center gap-2 p-2 bg-purple-50 rounded border border-purple-100"
                 >
-                  <span className="flex-1 text-sm text-gray-800 truncate">{field}</span>
+                  <span className="flex-1 text-sm text-gray-800 truncate min-w-0">{col.field}</span>
+                  <div className="flex items-center gap-0.5 shrink-0" role="group" aria-label={`Sort ${col.field}`}>
+                    <button
+                      type="button"
+                      onClick={() => handleColumnSortChange(index, 'asc')}
+                      className={`p-1 rounded transition-colors ${
+                        col.sort === 'asc'
+                          ? 'text-purple-600 bg-purple-100'
+                          : 'text-gray-400 hover:text-purple-600 hover:bg-purple-50'
+                      }`}
+                      title="Sort ascending"
+                    >
+                      <ArrowUp className="h-3.5 w-3.5" strokeWidth={2.5} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleColumnSortChange(index, 'desc')}
+                      className={`p-1 rounded transition-colors ${
+                        col.sort === 'desc'
+                          ? 'text-purple-600 bg-purple-100'
+                          : 'text-gray-400 hover:text-purple-600 hover:bg-purple-50'
+                      }`}
+                      title="Sort descending"
+                    >
+                      <ArrowDown className="h-3.5 w-3.5" strokeWidth={2.5} />
+                    </button>
+                  </div>
                   <button
+                    type="button"
                     onClick={() => handleRemoveColumn(index)}
-                    className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                    className="p-1 text-gray-400 hover:text-red-500 transition-colors shrink-0"
+                    aria-label={`Remove ${col.field}`}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -239,13 +298,14 @@ export function PivotEditorPanel({
                 </SelectTrigger>
                 <SelectContent>
                   {availableFieldsForColumns
-                    .filter((col) => !config.columns.includes(col.header))
+                    .filter((col) => !columnFields.includes(col.header))
                     .map((col) => (
                       <SelectItem key={col.index} value={col.header}>
                         {col.header}
                       </SelectItem>
                     ))}
-                  {availableFieldsForColumns.filter((col) => !config.columns.includes(col.header)).length === 0 && (
+                  {availableFieldsForColumns.filter((col) => !columnFields.includes(col.header))
+                    .length === 0 && (
                     <div className="px-2 py-1.5 text-sm text-gray-500">No fields available</div>
                   )}
                 </SelectContent>
