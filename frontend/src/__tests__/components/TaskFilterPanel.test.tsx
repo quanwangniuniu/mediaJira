@@ -50,5 +50,28 @@ describe("TaskFilterPanel", () => {
     // Status category should show count=2
     expect(screen.getAllByText("2").length).toBeGreaterThan(0);
   });
+
+  it("stays open after a controlled filter selection updates props", () => {
+    const ControlledPanel = () => {
+      const [filters, setFilters] = React.useState<TaskListFilters>({});
+
+      return (
+        <TaskFilterPanel
+          filters={filters}
+          onChange={setFilters}
+          onClearAll={() => setFilters({})}
+        />
+      );
+    };
+
+    render(<ControlledPanel />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Filter/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Status/i }));
+    fireEvent.click(screen.getByLabelText("Draft"));
+
+    expect(screen.getByRole("button", { name: /Close/i })).toBeInTheDocument();
+    expect(screen.getByLabelText("Draft")).toBeChecked();
+  });
 });
 

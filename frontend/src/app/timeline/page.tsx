@@ -795,32 +795,31 @@ function TimelinePageContent() {
           </div>
         </div>
 
-        {projectId && loading && (
-          <div className="text-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
-            <p className="mt-2 text-gray-600">Loading tasks...</p>
-          </div>
-        )}
-
-        {projectId && error && !hasTasks && (
-          <div className="text-center py-8">
-            <p className="text-red-600">Error loading tasks.</p>
-          </div>
-        )}
-
-        {projectId && !loading && (hasTasks || !error) && (
+        {projectId && (
           <div className="space-y-4">
             <TaskFilterPanel
               filters={filters}
               onChange={setFilters}
               onClearAll={clearFilters}
+              projectOptions={projectOptions}
               typeOptions={taskTypeOptions}
             />
-            <TimelineView
-              tasks={visibleTasks}
-              reloadTasks={reloadTasks}
-              onCreateTask={handleCreateTask}
-            />
+            {loading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
+                <p className="mt-2 text-gray-600">Loading tasks...</p>
+              </div>
+            ) : error && !hasTasks ? (
+              <div className="text-center py-8">
+                <p className="text-red-600">Error loading tasks.</p>
+              </div>
+            ) : (
+              <TimelineView
+                tasks={visibleTasks}
+                reloadTasks={reloadTasks}
+                onCreateTask={handleCreateTask}
+              />
+            )}
           </div>
         )}
       </div>

@@ -2400,42 +2400,33 @@ function TasksPageContent() {
 
           {projectId && activeTab === "board" && (
             <div className="mt-6 space-y-6">
-              <div className="flex items-center justify-between gap-3">
-                <TaskFilterPanel
-                  filters={filters}
-                  onChange={setFilters}
-                  onClearAll={clearFilters}
-                  typeOptions={taskTypeOptions}
-                />
-              </div>
-              {tasksLoading ? (
-                <TasksWorkspaceSkeleton mode="board" />
-              ) : (
-                <JiraBoardView
-                  boardColumns={boardColumns}
-                  tasksByType={tasksByType}
-                  onCreateTask={handleOpenCreateTaskModal}
-                  onTaskClick={handleTaskClick}
-                  getTicketKey={getTicketKey}
-                  getBoardTypeIcon={getBoardTypeIcon}
-                  formatBoardDate={formatBoardDate}
-                  getDueTone={getDueTone}
-                  editingTaskId={editingTaskId}
-                  editingSummary={editingSummary}
-                  setEditingSummary={setEditingSummary}
-                  startBoardEdit={startBoardEdit}
-                  cancelBoardEdit={cancelBoardEdit}
-                  saveBoardEdit={saveBoardEdit}
-                  currentUser={user || undefined}
-                  hideInternalFilters={true}
-                />
-              )}
+              <JiraBoardView
+                boardColumns={boardColumns}
+                tasksByType={tasksByType}
+                onCreateTask={handleOpenCreateTaskModal}
+                onTaskClick={handleTaskClick}
+                getTicketKey={getTicketKey}
+                getBoardTypeIcon={getBoardTypeIcon}
+                formatBoardDate={formatBoardDate}
+                getDueTone={getDueTone}
+                editingTaskId={editingTaskId}
+                editingSummary={editingSummary}
+                setEditingSummary={setEditingSummary}
+                startBoardEdit={startBoardEdit}
+                cancelBoardEdit={cancelBoardEdit}
+                saveBoardEdit={saveBoardEdit}
+                currentUser={user || undefined}
+                externalFilters={
+                  <TaskFilterPanel
+                    filters={filters}
+                    onChange={setFilters}
+                    onClearAll={clearFilters}
+                    projectOptions={projectOptions}
+                    typeOptions={taskTypeOptions}
+                  />
+                }
+              />
             </div>
-          )}
-
-          {/* Loading State */}
-          {projectId && activeTab === "tasks" && tasksLoading && (
-            <TasksWorkspaceSkeleton mode="tasks" />
           )}
 
           {/* Error State */}
@@ -2460,44 +2451,42 @@ function TasksPageContent() {
           )}
 
           {/* Tasks Display */}
-          {!tasksLoading &&
-            !tasksError &&
-            projectId &&
-            activeTab === "tasks" && (
-              <div className="min-h-screen bg-[#f8f9fb] px-6 py-6">
-                <div className="mx-auto max-w-6xl space-y-4">
-                  <div className="flex items-center justify-between gap-3">
+          {!tasksError && projectId && activeTab === "tasks" && (
+            <div className="min-h-screen bg-[#f8f9fb] px-6 py-6">
+              <div className="mx-auto max-w-6xl space-y-4">
+                <JiraTasksView
+                  tasks={filteredJiraTasks}
+                  viewMode={viewMode}
+                  onViewModeChange={setViewMode}
+                  searchValue={searchQuery}
+                  onSearchChange={setSearchQuery}
+                  searchPlaceholder="Search tasks..."
+                  rightOfSearch={
                     <TaskFilterPanel
                       filters={filters}
                       onChange={setFilters}
                       onClearAll={clearFilters}
+                      projectOptions={projectOptions}
                       typeOptions={taskTypeOptions}
                     />
-                  </div>
-                  <JiraTasksView
-                    tasks={filteredJiraTasks}
-                    viewMode={viewMode}
-                    onViewModeChange={setViewMode}
-                    searchValue={searchQuery}
-                    onSearchChange={setSearchQuery}
-                    searchPlaceholder="Search tasks..."
-                    onTaskClick={handleJiraTaskClick}
-                    onTaskUpdate={reloadTasks}
-                    renderTimeline={() => (
-                      <TimelineViewComponent
-                        tasks={tasksForTimeline}
-                        onTaskClick={handleTaskClick}
-                        reloadTasks={reloadTasks}
-                        onCreateTask={(projectIdOverride) =>
-                          handleOpenCreateTaskModal(projectIdOverride)
-                        }
-                        currentUser={user || undefined}
-                      />
-                    )}
-                  />
-                </div>
+                  }
+                  onTaskClick={handleJiraTaskClick}
+                  onTaskUpdate={reloadTasks}
+                  renderTimeline={() => (
+                    <TimelineViewComponent
+                      tasks={tasksForTimeline}
+                      onTaskClick={handleTaskClick}
+                      reloadTasks={reloadTasks}
+                      onCreateTask={(projectIdOverride) =>
+                        handleOpenCreateTaskModal(projectIdOverride)
+                      }
+                      currentUser={user || undefined}
+                    />
+                  )}
+                />
               </div>
-            )}
+            </div>
+          )}
         </div>
       </div>
 

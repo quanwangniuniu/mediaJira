@@ -54,6 +54,7 @@ interface JiraBoardViewProps {
   saveBoardEdit: (task: TaskLike) => void;
   currentUser?: BoardHeaderUser;
   hideInternalFilters?: boolean;
+  externalFilters?: React.ReactNode;
 }
 
 type BoardFilters = {
@@ -236,6 +237,7 @@ const JiraBoardView: React.FC<JiraBoardViewProps> = ({
   saveBoardEdit,
   currentUser,
   hideInternalFilters = false,
+  externalFilters,
 }) => {
   const [boardSearchQuery, setBoardSearchQuery] = useState("");
   const [filters, setFilters] = useState<BoardFilters>(DEFAULT_BOARD_FILTERS);
@@ -354,34 +356,38 @@ const JiraBoardView: React.FC<JiraBoardViewProps> = ({
               getUserInitials(currentUser)
             )}
           </div>
-          {!hideInternalFilters && (
-            <FilterPopover
-              trigger={
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  <Filter className="h-4 w-4 text-slate-500" />
-                  Filter
-                  {activeFilterCount > 0 ? (
-                    <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-blue-600 px-1.5 text-[10px] font-semibold text-white">
-                      {activeFilterCount}
-                    </span>
-                  ) : null}
-                </button>
-              }
-            >
-              <BoardFilterPanel
-                filters={filters}
-                assigneeOptions={assigneeOptions}
-                workTypeOptions={workTypeOptions}
-                activeFilterCount={activeFilterCount}
-                onFilterChange={(patch) =>
-                  setFilters((prev) => ({ ...prev, ...patch }))
+          {externalFilters ? (
+            externalFilters
+          ) : (
+            !hideInternalFilters && (
+              <FilterPopover
+                trigger={
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    <Filter className="h-4 w-4 text-slate-500" />
+                    Filter
+                    {activeFilterCount > 0 ? (
+                      <span className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-blue-600 px-1.5 text-[10px] font-semibold text-white">
+                        {activeFilterCount}
+                      </span>
+                    ) : null}
+                  </button>
                 }
-                onReset={() => setFilters(DEFAULT_BOARD_FILTERS)}
-              />
-            </FilterPopover>
+              >
+                <BoardFilterPanel
+                  filters={filters}
+                  assigneeOptions={assigneeOptions}
+                  workTypeOptions={workTypeOptions}
+                  activeFilterCount={activeFilterCount}
+                  onFilterChange={(patch) =>
+                    setFilters((prev) => ({ ...prev, ...patch }))
+                  }
+                  onReset={() => setFilters(DEFAULT_BOARD_FILTERS)}
+                />
+              </FilterPopover>
+            )
           )}
         </div>
         </div>

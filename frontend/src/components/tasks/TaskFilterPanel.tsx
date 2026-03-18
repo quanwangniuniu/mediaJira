@@ -365,24 +365,32 @@ export function TaskFilterPanel({
             <label className="text-xs font-medium text-muted-foreground">
               Project
             </label>
-            <select
-              className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
-              value={filters.project_id ?? ""}
-              onChange={(e) =>
-                handlePartialChange({
-                  project_id: e.target.value
-                    ? Number(e.target.value)
-                    : undefined,
-                })
-              }
-            >
-              <option value="">Any project</option>
-              {projectOptions?.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+            <div className="max-h-56 overflow-auto rounded-md border border-input bg-background">
+              <button
+                type="button"
+                className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                onClick={() => handlePartialChange({ project_id: undefined })}
+              >
+                Any project
+              </button>
+              {(projectOptions || []).map((p) => {
+                const selected = filters.project_id === p.id;
+                return (
+                  <label
+                    key={p.id}
+                    className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-muted"
+                  >
+                    <input
+                      type="radio"
+                      name="task-filter-project"
+                      checked={selected}
+                      onChange={() => handlePartialChange({ project_id: p.id })}
+                    />
+                    <span>{p.name}</span>
+                  </label>
+                );
+              })}
+            </div>
           </div>
         );
       case "parent":
@@ -391,28 +399,33 @@ export function TaskFilterPanel({
             <label className="text-xs font-medium text-muted-foreground">
               Parent relationship
             </label>
-            <select
-              className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
-              value={
-                filters.has_parent === undefined
-                  ? ""
-                  : filters.has_parent
-                  ? "true"
-                  : "false"
-              }
-              onChange={(e) => {
-                const v = e.target.value;
-                if (!v) {
-                  handlePartialChange({ has_parent: undefined });
-                } else {
-                  handlePartialChange({ has_parent: v === "true" });
-                }
-              }}
-            >
-              <option value="">Any</option>
-              <option value="false">Top-level only</option>
-              <option value="true">Subtasks only</option>
-            </select>
+            <div className="overflow-hidden rounded-md border border-input bg-background">
+              <button
+                type="button"
+                className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                onClick={() => handlePartialChange({ has_parent: undefined })}
+              >
+                Any
+              </button>
+              <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-muted">
+                <input
+                  type="radio"
+                  name="task-filter-parent"
+                  checked={filters.has_parent === false}
+                  onChange={() => handlePartialChange({ has_parent: false })}
+                />
+                <span>Top-level only</span>
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-muted">
+                <input
+                  type="radio"
+                  name="task-filter-parent"
+                  checked={filters.has_parent === true}
+                  onChange={() => handlePartialChange({ has_parent: true })}
+                />
+                <span>Subtasks only</span>
+              </label>
+            </div>
           </div>
         );
       case "due_date":
