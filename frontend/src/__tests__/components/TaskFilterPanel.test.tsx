@@ -17,7 +17,8 @@ describe("TaskFilterPanel", () => {
 
     const button = screen.getByRole("button", { name: /Filter/i });
     fireEvent.click(button);
-    expect(screen.getByText(/Filter 2/)).toBeInTheDocument();
+    // Jira-style trigger now uses numeric badge, not "Filter N" text
+    expect(screen.getByText("2")).toBeInTheDocument();
   });
 
   it("calls onClearAll when Clear all is clicked", () => {
@@ -34,6 +35,20 @@ describe("TaskFilterPanel", () => {
     fireEvent.click(button);
     fireEvent.click(screen.getByText(/Clear all/));
     expect(onClearAll).toHaveBeenCalled();
+  });
+
+  it("shows per-category selected count badges in the left panel", () => {
+    render(
+      <TaskFilterPanel
+        filters={{ ...baseFilters, status: ["DRAFT", "SUBMITTED"] }}
+        onChange={() => {}}
+        onClearAll={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Filter/i }));
+    // Status category should show count=2
+    expect(screen.getAllByText("2").length).toBeGreaterThan(0);
   });
 });
 

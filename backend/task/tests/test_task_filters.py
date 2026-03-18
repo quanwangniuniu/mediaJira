@@ -52,6 +52,37 @@ class TestTaskListFilters:
         assert high_task.id in task_ids
         assert len(task_ids) == 1
 
+    def test_filter_by_priority_multi_select(self, authenticated_client, project, user):
+        """priority supports repeated params for multi-select."""
+        user.active_project = project
+        user.save()
+
+        high_task = Task.objects.create(
+            summary="High priority",
+            type="asset",
+            project=project,
+            owner=user,
+            priority=Task.Priority.HIGH,
+        )
+        low_task = Task.objects.create(
+            summary="Low priority",
+            type="asset",
+            project=project,
+            owner=user,
+            priority=Task.Priority.LOW,
+        )
+
+        url = reverse("task-list")
+        response = authenticated_client.get(
+            url, [("priority", "HIGH"), ("priority", "LOW")]
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        tasks = _tasks_from_response(response)
+        task_ids = [t["id"] for t in tasks]
+        assert high_task.id in task_ids
+        assert low_task.id in task_ids
+
     def test_filter_priority_invalid_returns_400(self, authenticated_client, project, user):
         """Invalid priority value returns 400."""
         user.active_project = project
@@ -107,6 +138,72 @@ class TestTaskListFilters:
         assert task_assigned.id in task_ids
         assert len(task_ids) == 1
 
+    def test_filter_by_current_approver_id_multi_select(self, authenticated_client, project, user):
+        """current_approver_id supports multi-select."""
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        approver1 = User.objects.create_user(
+            username="approver1",
+            email="approver1@test.com",
+            password="testpass123",
+            organization=user.organization,
+        )
+        approver2 = User.objects.create_user(
+            username="approver2",
+            email="approver2@test.com",
+            password="testpass123",
+            organization=user.organization,
+        )
+        ProjectMember.objects.create(
+            user=approver1,
+            project=project,
+            role="Member",
+            is_active=True,
+        )
+        ProjectMember.objects.create(
+            user=approver2,
+            project=project,
+            role="Member",
+            is_active=True,
+        )
+
+        user.active_project = project
+        user.save()
+
+        task1 = Task.objects.create(
+            summary="Assigned 1",
+            type="asset",
+            project=project,
+            owner=user,
+            current_approver=approver1,
+        )
+        task2 = Task.objects.create(
+            summary="Assigned 2",
+            type="asset",
+            project=project,
+            owner=user,
+            current_approver=approver2,
+        )
+        Task.objects.create(
+            summary="Unassigned",
+            type="asset",
+            project=project,
+            owner=user,
+            current_approver=None,
+        )
+
+        url = reverse("task-list")
+        response = authenticated_client.get(
+            url, [("current_approver_id", str(approver1.id)), ("current_approver_id", str(approver2.id))]
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        tasks = _tasks_from_response(response)
+        task_ids = [t["id"] for t in tasks]
+        assert task1.id in task_ids
+        assert task2.id in task_ids
+
     def test_filter_current_approver_id_invalid_returns_400(self, authenticated_client, project, user):
         """Non-integer or negative current_approver_id returns 400."""
         user.active_project = project
@@ -119,6 +216,87 @@ class TestTaskListFilters:
 
         response_neg = authenticated_client.get(url, {"current_approver_id": "-1"})
         assert response_neg.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_filter_by_status_multi_select(self, authenticated_client, project, user):
+        """status supports multi-select."""
+        user.active_project = project
+        user.save()
+
+        t1 = Task.objects.create(
+            summary="Draft",
+            type="asset",
+            project=project,
+            owner=user,
+        )
+        t2 = Task.objects.create(
+            summary="Submitted",
+            type="asset",
+            project=project,
+            owner=user,
+        )
+        t2.submit()
+        t2.save()
+
+        url = reverse("task-list")
+        response = authenticated_client.get(url, [("status", "DRAFT"), ("status", "SUBMITTED")])
+
+        assert response.status_code == status.HTTP_200_OK
+        tasks = _tasks_from_response(response)
+        task_ids = [t["id"] for t in tasks]
+        assert t1.id in task_ids
+        assert t2.id in task_ids
+
+    def test_filter_by_type_multi_select(self, authenticated_client, project, user):
+        """type supports multi-select."""
+        user.active_project = project
+        user.save()
+
+        a = Task.objects.create(summary="Asset", type="asset", project=project, owner=user)
+        b = Task.objects.create(summary="Budget", type="budget", project=project, owner=user)
+        Task.objects.create(summary="Report", type="report", project=project, owner=user)
+
+        url = reverse("task-list")
+        response = authenticated_client.get(url, [("type", "asset"), ("type", "budget")])
+
+        assert response.status_code == status.HTTP_200_OK
+        tasks = _tasks_from_response(response)
+        task_ids = [t["id"] for t in tasks]
+        assert a.id in task_ids
+        assert b.id in task_ids
+        assert len(task_ids) == 2
+
+    def test_filter_by_owner_id_multi_select(self, authenticated_client, project, user):
+        """owner_id supports multi-select."""
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        owner2 = User.objects.create_user(
+            username="owner2",
+            email="owner2@test.com",
+            password="testpass123",
+            organization=user.organization,
+        )
+        ProjectMember.objects.create(
+            user=owner2,
+            project=project,
+            role="Member",
+            is_active=True,
+        )
+
+        user.active_project = project
+        user.save()
+
+        t1 = Task.objects.create(summary="Owner1", type="asset", project=project, owner=user)
+        t2 = Task.objects.create(summary="Owner2", type="asset", project=project, owner=owner2)
+
+        url = reverse("task-list")
+        response = authenticated_client.get(url, [("owner_id", str(user.id)), ("owner_id", str(owner2.id))])
+
+        assert response.status_code == status.HTTP_200_OK
+        tasks = _tasks_from_response(response)
+        task_ids = [t["id"] for t in tasks]
+        assert t1.id in task_ids
+        assert t2.id in task_ids
 
     def test_filter_has_parent_true_returns_only_subtasks(self, authenticated_client, project, user):
         """has_parent=true returns only subtasks."""

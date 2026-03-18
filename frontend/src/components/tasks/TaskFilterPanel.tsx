@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Filter } from "lucide-react";
 import type { TaskListFilters } from "@/types/task";
 import { Button } from "@/components/ui/button";
 
@@ -71,6 +72,7 @@ export function TaskFilterPanel({
 }: TaskFilterPanelProps) {
   const [open, setOpen] = useState(false);
   const [activeKey, setActiveKey] = useState<FilterKey>("assignee");
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const activeCount = useMemo(() => {
     const keys: (keyof TaskListFilters)[] = [
@@ -92,6 +94,64 @@ export function TaskFilterPanel({
     }, 0);
   }, [filters]);
 
+  useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  const getFieldCount = (key: FilterKey) => {
+    const len = (v: unknown) =>
+      Array.isArray(v)
+        ? v.length
+        : v === undefined || v === null || v === ""
+          ? 0
+          : 1;
+
+    switch (key) {
+      case "assignee":
+        return len(filters.current_approver_id);
+      case "owner":
+        return len(filters.owner_id);
+      case "type":
+        return len(filters.type);
+      case "status":
+        return len(filters.status);
+      case "priority":
+        return len(filters.priority);
+      case "project":
+        return len(filters.project_id);
+      case "parent":
+        return len(filters.has_parent);
+      case "due_date":
+        return (filters.due_date_after ? 1 : 0) + (filters.due_date_before ? 1 : 0);
+      case "created_date":
+        return (filters.created_after ? 1 : 0) + (filters.created_before ? 1 : 0);
+      default:
+        return 0;
+    }
+  };
+
+  const toggleMulti = <T,>(value: T, current: T | T[] | undefined) => {
+    const arr = Array.isArray(current) ? current.slice() : current ? [current] : [];
+    const idx = arr.indexOf(value);
+    if (idx >= 0) arr.splice(idx, 1);
+    else arr.push(value);
+    return arr.length ? arr : undefined;
+  };
+
   const handlePartialChange = (patch: Partial<TaskListFilters>) => {
     onChange({ ...filters, ...patch });
   };
@@ -104,24 +164,40 @@ export function TaskFilterPanel({
             <label className="text-xs font-medium text-muted-foreground">
               Current approver
             </label>
-            <select
-              className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
-              value={filters.current_approver_id ?? ""}
-              onChange={(e) =>
-                handlePartialChange({
-                  current_approver_id: e.target.value
-                    ? Number(e.target.value)
-                    : undefined,
-                })
-              }
-            >
-              <option value="">Any assignee</option>
-              {approverOptions?.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
-              ))}
-            </select>
+            <div className="max-h-56 overflow-auto rounded-md border border-input bg-background">
+              <button
+                type="button"
+                className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                onClick={() => handlePartialChange({ current_approver_id: undefined })}
+              >
+                Any assignee
+              </button>
+              {(approverOptions || []).map((o) => {
+                const selected = Array.isArray(filters.current_approver_id)
+                  ? filters.current_approver_id.includes(o.id)
+                  : filters.current_approver_id === o.id;
+                return (
+                  <label
+                    key={o.id}
+                    className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-muted"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() =>
+                        handlePartialChange({
+                          current_approver_id: toggleMulti(
+                            o.id,
+                            filters.current_approver_id as any,
+                          ) as any,
+                        })
+                      }
+                    />
+                    <span>{o.name}</span>
+                  </label>
+                );
+              })}
+            </div>
           </div>
         );
       case "owner":
@@ -130,22 +206,37 @@ export function TaskFilterPanel({
             <label className="text-xs font-medium text-muted-foreground">
               Owner
             </label>
-            <select
-              className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
-              value={filters.owner_id ?? ""}
-              onChange={(e) =>
-                handlePartialChange({
-                  owner_id: e.target.value ? Number(e.target.value) : undefined,
-                })
-              }
-            >
-              <option value="">Any owner</option>
-              {ownerOptions?.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
-              ))}
-            </select>
+            <div className="max-h-56 overflow-auto rounded-md border border-input bg-background">
+              <button
+                type="button"
+                className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                onClick={() => handlePartialChange({ owner_id: undefined })}
+              >
+                Any owner
+              </button>
+              {(ownerOptions || []).map((o) => {
+                const selected = Array.isArray(filters.owner_id)
+                  ? filters.owner_id.includes(o.id)
+                  : filters.owner_id === o.id;
+                return (
+                  <label
+                    key={o.id}
+                    className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-muted"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() =>
+                        handlePartialChange({
+                          owner_id: toggleMulti(o.id, filters.owner_id as any) as any,
+                        })
+                      }
+                    />
+                    <span>{o.name}</span>
+                  </label>
+                );
+              })}
+            </div>
           </div>
         );
       case "type":
@@ -154,20 +245,38 @@ export function TaskFilterPanel({
             <label className="text-xs font-medium text-muted-foreground">
               Work type
             </label>
-            <select
-              className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
-              value={filters.type ?? ""}
-              onChange={(e) =>
-                handlePartialChange({ type: e.target.value || undefined })
-              }
-            >
-              <option value="">Any type</option>
-              {typeOptions?.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+            <div className="max-h-56 overflow-auto rounded-md border border-input bg-background">
+              <button
+                type="button"
+                className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                onClick={() => handlePartialChange({ type: undefined })}
+              >
+                Any type
+              </button>
+              {(typeOptions || []).map((o) => {
+                const value = String(o.value);
+                const selected = Array.isArray(filters.type)
+                  ? filters.type.includes(value)
+                  : filters.type === value;
+                return (
+                  <label
+                    key={value}
+                    className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-muted"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() =>
+                        handlePartialChange({
+                          type: toggleMulti(value, filters.type as any) as any,
+                        })
+                      }
+                    />
+                    <span>{o.label}</span>
+                  </label>
+                );
+              })}
+            </div>
           </div>
         );
       case "status":
@@ -176,20 +285,38 @@ export function TaskFilterPanel({
             <label className="text-xs font-medium text-muted-foreground">
               Status
             </label>
-            <select
-              className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
-              value={filters.status ?? ""}
-              onChange={(e) =>
-                handlePartialChange({ status: e.target.value || undefined })
-              }
-            >
-              <option value="">Any status</option>
-              {STATUS_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+            <div className="max-h-56 overflow-auto rounded-md border border-input bg-background">
+              <button
+                type="button"
+                className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                onClick={() => handlePartialChange({ status: undefined })}
+              >
+                Any status
+              </button>
+              {STATUS_OPTIONS.map((o) => {
+                const value = String(o.value);
+                const selected = Array.isArray(filters.status)
+                  ? filters.status.includes(value)
+                  : filters.status === value;
+                return (
+                  <label
+                    key={value}
+                    className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-muted"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() =>
+                        handlePartialChange({
+                          status: toggleMulti(value, filters.status as any) as any,
+                        })
+                      }
+                    />
+                    <span>{o.label}</span>
+                  </label>
+                );
+              })}
+            </div>
           </div>
         );
       case "priority":
@@ -198,20 +325,38 @@ export function TaskFilterPanel({
             <label className="text-xs font-medium text-muted-foreground">
               Priority
             </label>
-            <select
-              className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
-              value={filters.priority ?? ""}
-              onChange={(e) =>
-                handlePartialChange({ priority: e.target.value || undefined })
-              }
-            >
-              <option value="">Any priority</option>
-              {PRIORITY_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+            <div className="max-h-56 overflow-auto rounded-md border border-input bg-background">
+              <button
+                type="button"
+                className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                onClick={() => handlePartialChange({ priority: undefined })}
+              >
+                Any priority
+              </button>
+              {PRIORITY_OPTIONS.map((o) => {
+                const value = String(o.value);
+                const selected = Array.isArray(filters.priority)
+                  ? filters.priority.includes(value)
+                  : filters.priority === value;
+                return (
+                  <label
+                    key={value}
+                    className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-muted"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() =>
+                        handlePartialChange({
+                          priority: toggleMulti(value, filters.priority as any) as any,
+                        })
+                      }
+                    />
+                    <span>{o.label}</span>
+                  </label>
+                );
+              })}
+            </div>
           </div>
         );
       case "project":
@@ -346,20 +491,20 @@ export function TaskFilterPanel({
   };
 
   return (
-    <div className="relative inline-block text-left">
-      <Button
+    <div ref={rootRef} className="relative inline-flex text-left">
+      <button
         type="button"
-        variant={activeCount > 0 ? "default" : "outline"}
-        size="sm"
+        className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
         onClick={() => setOpen((prev) => !prev)}
       >
-        Filter
-        {activeCount > 0 && (
-          <span className="ml-2 inline-flex items-center rounded-full bg-primary-foreground px-2 py-0.5 text-xs font-medium text-primary">
-            {`Filter ${activeCount}`}
+        <Filter className="h-4 w-4 text-slate-500" />
+        <span>Filter</span>
+        {activeCount > 0 ? (
+          <span className="ml-1 rounded-full bg-blue-600 px-2 py-0.5 text-xs font-semibold text-white">
+            {activeCount}
           </span>
-        )}
-      </Button>
+        ) : null}
+      </button>
 
       {open && (
         <div className="absolute z-50 mt-2 w-[520px] rounded-md border bg-popover shadow-md">
@@ -369,14 +514,19 @@ export function TaskFilterPanel({
                 <button
                   key={item.key}
                   type="button"
-                  className={`block w-full px-3 py-1.5 text-left text-sm ${
+                  className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-sm ${
                     activeKey === item.key
                       ? "bg-background font-medium text-foreground"
                       : "text-muted-foreground hover:bg-muted"
                   }`}
                   onClick={() => setActiveKey(item.key)}
                 >
-                  {item.label}
+                  <span>{item.label}</span>
+                  {getFieldCount(item.key) > 0 ? (
+                    <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                      {getFieldCount(item.key)}
+                    </span>
+                  ) : null}
                 </button>
               ))}
             </div>
@@ -388,7 +538,6 @@ export function TaskFilterPanel({
                 <div className="flex gap-2">
                   <Button
                     type="button"
-                    size="xs"
                     variant="ghost"
                     className="text-xs text-muted-foreground"
                     onClick={() => {
@@ -400,7 +549,6 @@ export function TaskFilterPanel({
                   </Button>
                   <Button
                     type="button"
-                    size="xs"
                     variant="outline"
                     className="text-xs"
                     onClick={() => setOpen(false)}

@@ -160,6 +160,19 @@ function TasksPageContent() {
 
   // URL-backed filters (including project_id, status, priority, dates, etc.)
   const [filters, setFilters, clearFilters] = useTaskFilterParams();
+  const [taskTypeOptions, setTaskTypeOptions] = useState([]);
+
+  useEffect(() => {
+    const loadTypes = async () => {
+      try {
+        const types = await TaskAPI.getTaskTypes();
+        setTaskTypeOptions(Array.isArray(types) ? types : []);
+      } catch {
+        setTaskTypeOptions([]);
+      }
+    };
+    loadTypes();
+  }, []);
 
   // Task data management
   const {
@@ -2387,6 +2400,14 @@ function TasksPageContent() {
 
           {projectId && activeTab === "board" && (
             <div className="mt-6 space-y-6">
+              <div className="flex items-center justify-between gap-3">
+                <TaskFilterPanel
+                  filters={filters}
+                  onChange={setFilters}
+                  onClearAll={clearFilters}
+                  typeOptions={taskTypeOptions}
+                />
+              </div>
               {tasksLoading ? (
                 <TasksWorkspaceSkeleton mode="board" />
               ) : (
@@ -2406,6 +2427,7 @@ function TasksPageContent() {
                   cancelBoardEdit={cancelBoardEdit}
                   saveBoardEdit={saveBoardEdit}
                   currentUser={user || undefined}
+                  hideInternalFilters={true}
                 />
               )}
             </div>
@@ -2449,6 +2471,7 @@ function TasksPageContent() {
                       filters={filters}
                       onChange={setFilters}
                       onClearAll={clearFilters}
+                      typeOptions={taskTypeOptions}
                     />
                   </div>
                   <JiraTasksView

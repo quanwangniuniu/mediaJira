@@ -38,6 +38,21 @@ function TimelinePageContent() {
     : activeProject?.id ?? null;
 
   const [filters, setFilters, clearFilters] = useTaskFilterParams();
+  const [taskTypeOptions, setTaskTypeOptions] = useState<
+    { value: string; label: string }[]
+  >([]);
+
+  useEffect(() => {
+    const loadTypes = async () => {
+      try {
+        const types = await TaskAPI.getTaskTypes();
+        setTaskTypeOptions(Array.isArray(types) ? types : []);
+      } catch {
+        setTaskTypeOptions([]);
+      }
+    };
+    loadTypes();
+  }, []);
 
   useEffect(() => {
     if (projectIdParam || !activeProject?.id) return;
@@ -799,6 +814,7 @@ function TimelinePageContent() {
               filters={filters}
               onChange={setFilters}
               onClearAll={clearFilters}
+              typeOptions={taskTypeOptions}
             />
             <TimelineView
               tasks={visibleTasks}

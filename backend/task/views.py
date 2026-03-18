@@ -158,37 +158,75 @@ class TaskViewSet(viewsets.ModelViewSet):
         # even across project boundaries (cross-project approval chain support).
         queryset = queryset.filter(project_filter | Q(current_approver=user))
 
+        def _get_multi_values(param_name: str):
+            """
+            Accept multi-values in either:
+            - repeated query params: ?status=A&status=B
+            - comma-separated: ?status=A,B
+            Returns list[str] (possibly empty).
+            """
+            values = self.request.query_params.getlist(param_name)
+            if not values:
+                raw = self.request.query_params.get(param_name)
+                if raw:
+                    values = [raw]
+            expanded = []
+            for v in values:
+                if v is None:
+                    continue
+                parts = [p.strip() for p in str(v).split(",")]
+                expanded.extend([p for p in parts if p])
+            return expanded
+
+        def _parse_int_list(param_name: str):
+            raw_values = _get_multi_values(param_name)
+            if not raw_values:
+                return []
+            parsed = []
+            for v in raw_values:
+                try:
+                    iv = int(v)
+                except (TypeError, ValueError):
+                    raise DRFValidationError({param_name: f"{param_name} must be an integer"})
+                if iv < 1:
+                    raise DRFValidationError({param_name: f"{param_name} must be a positive integer"})
+                parsed.append(iv)
+            return parsed
+
         # Apply filters
-        task_type = self.request.query_params.get('type')
-        if task_type:
-            queryset = queryset.filter(type=task_type)
-        
-        owner_id = self.request.query_params.get('owner_id')
-        if owner_id:
-            queryset = queryset.filter(owner_id=owner_id)
-        
-        status = self.request.query_params.get('status')
-        if status:
-            queryset = queryset.filter(status=status)
+        task_types = _get_multi_values("type")
+        if task_types:
+            valid_types = {c[0] for c in Task._meta.get_field("type").choices}
+            invalid = [t for t in task_types if t not in valid_types]
+            if invalid:
+                raise DRFValidationError({"type": "Invalid type value"})
+            queryset = queryset.filter(type__in=task_types)
 
-        # Priority filter
-        priority = self.request.query_params.get('priority')
-        if priority:
-            valid_priorities = [c[0] for c in Task.Priority.choices]
-            if priority not in valid_priorities:
-                raise DRFValidationError({'priority': 'Invalid priority value'})
-            queryset = queryset.filter(priority=priority)
+        owner_ids = _parse_int_list("owner_id")
+        if owner_ids:
+            queryset = queryset.filter(owner_id__in=owner_ids)
 
-        # Current approver (assignee) filter
-        current_approver_id = self.request.query_params.get('current_approver_id')
-        if current_approver_id is not None:
-            try:
-                aid = int(current_approver_id)
-                if aid < 1:
-                    raise DRFValidationError({'current_approver_id': 'current_approver_id must be a positive integer'})
-                queryset = queryset.filter(current_approver_id=aid)
-            except (TypeError, ValueError):
-                raise DRFValidationError({'current_approver_id': 'current_approver_id must be an integer'})
+        statuses = _get_multi_values("status")
+        if statuses:
+            valid_statuses = {c[0] for c in Task.Status.choices}
+            invalid = [s for s in statuses if s not in valid_statuses]
+            if invalid:
+                raise DRFValidationError({"status": "Invalid status value"})
+            queryset = queryset.filter(status__in=statuses)
+
+        # Priority filter (multi-select)
+        priorities = _get_multi_values("priority")
+        if priorities:
+            valid_priorities = {c[0] for c in Task.Priority.choices}
+            invalid = [p for p in priorities if p not in valid_priorities]
+            if invalid:
+                raise DRFValidationError({"priority": "Invalid priority value"})
+            queryset = queryset.filter(priority__in=priorities)
+
+        # Current approver (assignee) filter (multi-select)
+        approver_ids = _parse_int_list("current_approver_id")
+        if approver_ids:
+            queryset = queryset.filter(current_approver_id__in=approver_ids)
 
         # Due date range filters
         due_date_after = self.request.query_params.get('due_date_after')

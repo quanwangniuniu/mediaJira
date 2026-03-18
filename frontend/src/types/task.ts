@@ -152,11 +152,11 @@ export interface TaskAttachment {
 // Shared filter shape for task list/board/timeline views
 export interface TaskListFilters {
   project_id?: number;
-  type?: string;
-  status?: string;
-  priority?: string;
-  owner_id?: number;
-  current_approver_id?: number;
+  type?: string | string[];
+  status?: string | string[];
+  priority?: string | string[];
+  owner_id?: number | number[];
+  current_approver_id?: number | number[];
   has_parent?: boolean; // true = subtasks only, false = top-level only
   due_date_after?: string; // YYYY-MM-DD
   due_date_before?: string;
