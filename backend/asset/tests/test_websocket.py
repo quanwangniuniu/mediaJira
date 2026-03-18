@@ -2,7 +2,7 @@ import json
 import asyncio
 from channels.testing import WebsocketCommunicator
 from rest_framework_simplejwt.tokens import AccessToken
-from django.test import TransactionTestCase
+from django.test import TransactionTestCase, override_settings
 
 from backend.asgi import application
 from asset.models import Asset, AssetVersion, AssetComment, ReviewAssignment
@@ -13,7 +13,14 @@ from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
+TEST_CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    }
+}
 
+
+@override_settings(CHANNEL_LAYERS=TEST_CHANNEL_LAYERS)
 class TestWebSocketConnection(TransactionTestCase):
     """Test WebSocket connection functionality"""
     
@@ -149,6 +156,7 @@ class TestWebSocketConnection(TransactionTestCase):
         asyncio.run(test_connection())
 
 
+@override_settings(CHANNEL_LAYERS=TEST_CHANNEL_LAYERS)
 class TestWebSocketMessageHandling(TransactionTestCase):
     """Test WebSocket message handling functionality"""
     
@@ -290,6 +298,7 @@ class TestWebSocketMessageHandling(TransactionTestCase):
         asyncio.run(test_connection())
 
 
+@override_settings(CHANNEL_LAYERS=TEST_CHANNEL_LAYERS)
 class TestWebSocketEventBroadcasting(TransactionTestCase):
     """Test WebSocket event broadcasting functionality"""
     
@@ -588,6 +597,7 @@ class TestWebSocketEventBroadcasting(TransactionTestCase):
         await communicator.disconnect()
 
 
+@override_settings(CHANNEL_LAYERS=TEST_CHANNEL_LAYERS)
 class TestWebSocketMultipleUsers(TransactionTestCase):
     """Test WebSocket functionality with multiple users"""
     

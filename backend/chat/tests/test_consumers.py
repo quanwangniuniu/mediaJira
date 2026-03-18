@@ -17,6 +17,15 @@ User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
+@pytest.fixture(autouse=True)
+def use_inmemory_channel_layer(settings):
+    settings.CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
+        }
+    }
+
+
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
 class TestChatConsumer:

@@ -484,7 +484,8 @@ class TaskAPITest(TestCase):
         data = {"content_type": "alerttask", "object_id": str(alert_task.id)}
         response = self.client.post(url, data, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        task.refresh_from_db()
+        # Re-fetch instead of refresh_from_db because Task.status is a protected FSMField.
+        task = Task.objects.get(pk=task.pk)
         self.assertTrue(task.is_linked)
         self.assertEqual(task.task_type, "alerttask")
         self.assertEqual(task.linked_object, alert_task)
@@ -511,7 +512,8 @@ class TaskAPITest(TestCase):
         response = self.client.post(url, data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        task.refresh_from_db()
+        # Re-fetch instead of refresh_from_db because Task.status is a protected FSMField.
+        task = Task.objects.get(pk=task.pk)
         self.assertTrue(task.is_linked)
         self.assertEqual(task.task_type, "alerttask")
         self.assertEqual(task.linked_object, alert_task)
