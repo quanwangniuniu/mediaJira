@@ -15,6 +15,7 @@ const JiraBoardColumns = React.forwardRef<HTMLDivElement, JiraBoardColumnsProps>
     <div
       ref={ref}
       id={id}
+      data-testid="board-columns"
       className={cn(styles.boardScroll, "mt-4 w-full max-w-none overflow-x-auto overflow-y-visible pb-2")}
       {...props}
     >

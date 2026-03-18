@@ -24,19 +24,40 @@ from .models import (
     SpreadsheetHighlight,
     SpreadsheetCellFormat,
     SpreadsheetHighlightScope,
+    PivotConfig,
+    SheetKind,
 )
 from .serializers import (
-    SpreadsheetSerializer, SpreadsheetCreateSerializer, SpreadsheetUpdateSerializer,
-    SheetSerializer, SheetCreateSerializer, SheetUpdateSerializer,
-    SheetRowSerializer, SheetColumnSerializer,
-    SheetResizeSerializer, SheetResizeResponseSerializer,
-    CellRangeReadSerializer, CellRangeResponseSerializer, CellSerializer,
-    SheetInsertSerializer, SheetDeleteSerializer,
-    CellBatchUpdateSerializer, CellBatchUpdateResponseSerializer,
-    WorkflowPatternCreateSerializer, WorkflowPatternListSerializer, WorkflowPatternDetailSerializer,
-    PatternApplySerializer, PatternJobStatusSerializer,
-    SpreadsheetHighlightSerializer, SpreadsheetHighlightBatchSerializer,
-    SpreadsheetCellFormatSerializer, SpreadsheetCellFormatBatchSerializer
+    SpreadsheetSerializer,
+    SpreadsheetCreateSerializer,
+    SpreadsheetUpdateSerializer,
+    SheetSerializer,
+    SheetCreateSerializer,
+    SheetUpdateSerializer,
+    SheetRowSerializer,
+    SheetColumnSerializer,
+    SheetResizeSerializer,
+    SheetResizeResponseSerializer,
+    CellRangeReadSerializer,
+    CellRangeResponseSerializer,
+    CellSerializer,
+    SheetInsertSerializer,
+    SheetDeleteSerializer,
+    CellBatchUpdateSerializer,
+    CellBatchUpdateResponseSerializer,
+    SheetSortSerializer,
+    SheetReorderSerializer,
+    WorkflowPatternCreateSerializer,
+    WorkflowPatternListSerializer,
+    WorkflowPatternDetailSerializer,
+    PatternApplySerializer,
+    PatternJobStatusSerializer,
+    SpreadsheetHighlightSerializer,
+    SpreadsheetHighlightBatchSerializer,
+    SpreadsheetCellFormatSerializer,
+    SpreadsheetCellFormatBatchSerializer,
+    PivotConfigSerializer,
+    PivotConfigCreateUpdateSerializer,
 )
 from .services import SpreadsheetService, SheetService, CellService
 from .models import SheetStructureOperation
@@ -435,6 +456,50 @@ class SheetResizeView(APIView):
         
         response_serializer = SheetResizeResponseSerializer(result)
         return Response(response_serializer.data)
+
+
+class SheetSortView(APIView):
+    """Sort rows by column (updates SheetRow.position only, no cell rewrite)"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+
+        serializer = SheetSortSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            result = SheetService.sort_rows(
+                sheet=sheet,
+                column_position=serializer.validated_data['column_position'],
+                direction=serializer.validated_data['direction'],
+                has_header=serializer.validated_data['has_header'],
+                previous_sort_columns=serializer.validated_data.get('previous_sort_columns') or [],
+            )
+        except DjangoValidationError as e:
+            raise ValidationError({'error': str(e)})
+
+        return Response(result)
+
+
+class SheetReorderView(APIView):
+    """Reorder rows by position mapping (for undo/redo)"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+
+        serializer = SheetReorderSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            SheetService.reorder_rows(sheet=sheet, order=serializer.validated_data['order'])
+        except DjangoValidationError as e:
+            raise ValidationError({'error': str(e)})
+
+        return Response({'status': 'ok'})
 
 
 class SheetRowListView(APIView):
@@ -863,6 +928,92 @@ class ImportFinalizeView(APIView):
             logger.exception("Import finalize recalc failed: %s", e)
             raise ValidationError({'detail': 'Formula recalculation failed'})
         return Response({'status': 'ok'})
+
+
+class PivotConfigView(APIView):
+    """
+    Create/update and read pivot configuration for a pivot sheet.
+    POST: upsert config only (metadata).
+    GET:  return current config (or 404 if none).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+        try:
+            config = sheet.pivot_config
+        except PivotConfig.DoesNotExist:
+            raise NotFound({'error': 'Pivot config not found'})
+        serializer = PivotConfigSerializer(config)
+        return Response(serializer.data)
+
+    def post(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+
+        serializer = PivotConfigCreateUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        source_sheet = get_object_or_404(
+            Sheet,
+            id=data['source_sheet_id'],
+            spreadsheet=spreadsheet,
+            is_deleted=False,
+        )
+
+        config, _created = PivotConfig.objects.update_or_create(
+            pivot_sheet=sheet,
+            defaults={
+                'source_sheet': source_sheet,
+                'rows_config': data.get('rows_config') or [],
+                'columns_config': data.get('columns_config') or [],
+                'values_config': data.get('values_config') or [],
+                'filters_config': data.get('filters_config') or {},
+                'show_grand_total_row': data.get('show_grand_total_row', True),
+                'show_grand_total_column': data.get('show_grand_total_column', True),
+            },
+        )
+
+        if sheet.kind != SheetKind.PIVOT:
+            sheet.kind = SheetKind.PIVOT
+            sheet.save(update_fields=['kind', 'updated_at'])
+
+        response_serializer = PivotConfigSerializer(config)
+        return Response(response_serializer.data)
+
+
+class PivotRecomputeView(APIView):
+    """
+    Trigger pivot recomputation for a pivot sheet based on persisted config.
+    Used as a fire-and-forget endpoint from the frontend; may be slow.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+        try:
+            config = sheet.pivot_config
+        except PivotConfig.DoesNotExist:
+            raise NotFound({'error': 'Pivot config not found'})
+
+        from .pivot_service import recompute_pivot
+
+        try:
+            recompute_pivot(config)
+        except Exception as e:
+            logger.exception(
+                "Pivot recompute failed via API for sheet_id=%s config_id=%s: %s",
+                sheet.id,
+                config.id,
+                e,
+            )
+            # Return 202 even on failure; frontend treats this as best-effort background recompute.
+            return Response({'status': 'error', 'detail': 'pivot recompute failed'}, status=status.HTTP_202_ACCEPTED)
+
+        return Response({'status': 'ok'}, status=status.HTTP_202_ACCEPTED)
 
 
 class SpreadsheetHighlightListView(APIView):

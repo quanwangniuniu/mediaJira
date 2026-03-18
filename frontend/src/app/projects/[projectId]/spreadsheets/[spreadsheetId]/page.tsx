@@ -12,6 +12,18 @@ import { AlertCircle, ArrowLeft, FileSpreadsheet, Loader2, Plus, X } from 'lucid
 import CreateSheetModal from '@/components/spreadsheets/CreateSheetModal';
 import SpreadsheetGrid, { SpreadsheetGridHandle } from '@/components/spreadsheets/SpreadsheetGrid';
 import PatternAgentPanel from '@/components/spreadsheets/PatternAgentPanel';
+import { PivotEditorPanel } from '@/components/spreadsheets/PivotEditorPanel';
+import {
+  PivotConfig,
+  SourceColumn,
+  SourceRow,
+  buildPivotTable,
+  pivotResultToCellOperations,
+  generateClearOperationsForStaleCells,
+  generatePivotSheetName,
+  createEmptyPivotConfig,
+  isPivotConfigValid,
+} from '@/lib/spreadsheet/pivot';
 import toast from 'react-hot-toast';
 import Modal from '@/components/ui/Modal';
 import { PatternAPI } from '@/lib/api/patternApi';
@@ -81,6 +93,16 @@ export default function SpreadsheetDetailPage() {
   const [patternJobStep, setPatternJobStep] = useState<number | null>(null);
   const [patternJobError, setPatternJobError] = useState<string | null>(null);
   const [sheetHydrationReady, setSheetHydrationReady] = useState(true);
+  const [pivotConfigsBySheet, setPivotConfigsBySheet] = useState<Record<number, PivotConfig>>({});
+  const [pivotSourceDataBySheet, setPivotSourceDataBySheet] = useState<Record<number, {
+    cells: Map<string, { rawInput: string; computedString?: string | null }>;
+    rowCount: number;
+    colCount: number;
+    sourceSheetId: number;
+    sourceSheetName: string;
+  }>>({});
+  const [pivotDimensionsBySheet, setPivotDimensionsBySheet] = useState<Record<number, { rowCount: number; colCount: number }>>({});
+  const [showPivotEditor, setShowPivotEditor] = useState(false);
   const gridRef = useRef<SpreadsheetGridHandle | null>(null);
   const patternJobStartRef = useRef<number | null>(null);
   const renameDedupRef = useRef<Record<number, RenameDedupState>>({});
@@ -95,7 +117,76 @@ export default function SpreadsheetDetailPage() {
   useEffect(() => {
     if (activeSheetId == null) return;
     setHighlightCell(null);
-  }, [activeSheetId]);
+    const activeSheet = sheets.find((s) => s.id === activeSheetId);
+    const isPivot = !!activeSheet && activeSheet.kind === 'pivot';
+    setShowPivotEditor(isPivot);
+  }, [activeSheetId, sheets]);
+
+  // When a pivot sheet becomes active and we don't yet have its source metadata in memory,
+  // hydrate pivotSourceDataBySheet by reading the source sheet from the backend.
+  useEffect(() => {
+    const hydratePivotSource = async () => {
+      if (!spreadsheetId || !activeSheetId) return;
+      const activeSheet = sheets.find((s) => s.id === activeSheetId);
+      if (!activeSheet || activeSheet.kind !== 'pivot') return;
+      if (pivotSourceDataBySheet[activeSheetId]) return;
+
+      // Prefer in-memory config; fall back to sheet.pivot_config from API payload.
+      const config = pivotConfigsBySheet[activeSheetId];
+      const sourceSheetId =
+        config?.sourceSheetId ?? activeSheet.pivot_config?.source_sheet_id ?? null;
+      if (!sourceSheetId) return;
+
+      const sourceSheet = sheets.find((s) => s.id === sourceSheetId);
+      const sourceSheetName = sourceSheet?.name ?? 'Unknown';
+
+      try {
+        const sourceSheetData = await SpreadsheetAPI.readCellRange(
+          Number(spreadsheetId),
+          sourceSheetId,
+          0,
+          999,
+          0,
+          50
+        );
+
+        const sourceRowCount =
+          sourceSheetData.sheet_row_count ?? sourceSheetData.row_count;
+        const sourceColCount =
+          sourceSheetData.sheet_column_count ?? sourceSheetData.column_count;
+
+        const getCellKey = (row: number, col: number) => `${row}:${col}`;
+
+        const cells = new Map<string, { rawInput: string; computedString?: string | null }>();
+        for (const cell of sourceSheetData.cells) {
+          const key = getCellKey(cell.row_position, cell.column_position);
+          cells.set(key, {
+            rawInput: cell.raw_input ?? '',
+            computedString: cell.computed_string ?? null,
+          });
+        }
+
+        setPivotSourceDataBySheet((prev) => {
+          // If another concurrent hydrate already populated it, keep existing.
+          if (prev[activeSheetId]) return prev;
+          return {
+            ...prev,
+            [activeSheetId]: {
+              cells,
+              rowCount: sourceRowCount,
+              colCount: sourceColCount,
+              sourceSheetId,
+              sourceSheetName,
+            },
+          };
+        });
+      } catch (err) {
+        console.error('Failed to hydrate pivot source data:', err);
+      }
+    };
+
+    hydratePivotSource();
+  }, [activeSheetId, spreadsheetId, sheets, pivotConfigsBySheet, pivotSourceDataBySheet]);
 
   const agentSteps = activeSheetId != null ? agentStepsBySheet[activeSheetId] ?? [] : [];
 
@@ -188,7 +279,22 @@ export default function SpreadsheetDetailPage() {
         } else {
           setSheets(sheetsList);
           setCreateSheetDefaultName(getNextSheetName(sheetsList));
-          
+
+          // Hydrate pivot configs from backend metadata
+          const hydratedPivotConfigs: Record<number, PivotConfig> = {};
+          sheetsList.forEach((sheet) => {
+            if (sheet.kind === 'pivot' && sheet.pivot_config) {
+              const cfg = sheet.pivot_config;
+              hydratedPivotConfigs[sheet.id] = {
+                sourceSheetId: cfg.source_sheet_id,
+                rows: cfg.rows_config || [],
+                columns: cfg.columns_config || [],
+                values: cfg.values_config || [],
+                showGrandTotalRow: cfg.show_grand_total_row,
+              };
+            }
+          });
+          setPivotConfigsBySheet(hydratedPivotConfigs);
           // Set first sheet as active if available
           if (sheetsList.length > 0 && !activeSheetId) {
             setActiveSheetId(sheetsList[0].id);
@@ -688,6 +794,226 @@ export default function SpreadsheetDetailPage() {
     }
   };
 
+  const handleCreatePivotSheet = useCallback(async (sourceData: {
+    cells: Map<string, { rawInput: string; computedString?: string | null }>;
+    rowCount: number;
+    colCount: number;
+  }) => {
+    if (!spreadsheetId || !activeSheetId) {
+      toast.error('Cannot create pivot table');
+      return;
+    }
+
+    const sourceSheet = sheets.find((s) => s.id === activeSheetId);
+    if (!sourceSheet) return;
+
+    try {
+      const sheetName = generatePivotSheetName(sheets.map((s) => s.name));
+      const newSheet = await SpreadsheetAPI.createSheet(Number(spreadsheetId), { name: sheetName });
+
+      await SpreadsheetAPI.resizeSheet(Number(spreadsheetId), newSheet.id, 100, 26);
+
+      // Persist initial pivot config on backend (empty definition with source sheet linkage).
+      const initialConfig = createEmptyPivotConfig(activeSheetId);
+      await SpreadsheetAPI.upsertPivotConfig(Number(spreadsheetId), newSheet.id, {
+        sourceSheetId: activeSheetId,
+        rows: initialConfig.rows,
+        columns: initialConfig.columns,
+        values: initialConfig.values,
+        showGrandTotalRow: initialConfig.showGrandTotalRow,
+      });
+
+      const sheetsResponse = await SpreadsheetAPI.listSheets(Number(spreadsheetId));
+      const sheetsList = sheetsResponse.results || [];
+      setSheets(sheetsList);
+      setCreateSheetDefaultName(getNextSheetName(sheetsList));
+
+      setPivotSourceDataBySheet((prev) => ({
+        ...prev,
+        [newSheet.id]: {
+          ...sourceData,
+          sourceSheetId: activeSheetId,
+          sourceSheetName: sourceSheet.name,
+        },
+      }));
+
+      setActiveSheetId(newSheet.id);
+      setShowPivotEditor(true);
+
+      toast.success(`Created pivot sheet: ${sheetName}`);
+    } catch (err: any) {
+      console.error('Failed to create pivot sheet:', err);
+      toast.error(err?.message || 'Failed to create pivot sheet');
+    }
+  }, [spreadsheetId, activeSheetId, sheets]);
+
+  const handlePivotConfigChange = useCallback(
+    async (newConfig: PivotConfig) => {
+      if (!activeSheetId || !spreadsheetId) return;
+
+      // 1) Update local config immediately so UI reflects changes.
+      setPivotConfigsBySheet((prev) => ({
+        ...prev,
+        [activeSheetId]: newConfig,
+      }));
+
+      const pivotMeta = pivotSourceDataBySheet[activeSheetId];
+      const sourceSheetId = pivotMeta?.sourceSheetId ?? newConfig.sourceSheetId;
+      if (!sourceSheetId || !isPivotConfigValid(newConfig)) return;
+
+      // 2) Instant preview: recompute pivot in the browser using already-loaded source data.
+      try {
+        // If we don't yet have source cells cached, fetch them once.
+        let sourceData = pivotSourceDataBySheet[activeSheetId];
+        if (!sourceData) {
+          const sourceSheetResponse = await SpreadsheetAPI.readCellRange(
+            Number(spreadsheetId),
+            sourceSheetId,
+            0,
+            999,
+            0,
+            50
+          );
+
+          const sourceRowCount =
+            sourceSheetResponse.sheet_row_count ?? sourceSheetResponse.row_count;
+          const sourceColCount =
+            sourceSheetResponse.sheet_column_count ?? sourceSheetResponse.column_count;
+
+          const getCellKey = (row: number, col: number) => `${row}:${col}`;
+          const cells = new Map<string, { rawInput: string; computedString?: string | null }>();
+          for (const cell of sourceSheetResponse.cells) {
+            const key = getCellKey(cell.row_position, cell.column_position);
+            cells.set(key, {
+              rawInput: cell.raw_input ?? '',
+              computedString: cell.computed_string ?? null,
+            });
+          }
+
+          const sourceSheet = sheets.find((s) => s.id === sourceSheetId);
+          sourceData = {
+            cells,
+            rowCount: sourceRowCount,
+            colCount: sourceColCount,
+            sourceSheetId,
+            sourceSheetName: sourceSheet?.name ?? 'Unknown',
+          };
+          setPivotSourceDataBySheet((prev) => ({
+            ...prev,
+            [activeSheetId]: sourceData!,
+          }));
+        }
+
+        const getCellKey = (row: number, col: number) => `${row}:${col}`;
+
+        const columns: SourceColumn[] = [];
+        for (let col = 0; col < sourceData.colCount; col++) {
+          const cellData = sourceData.cells.get(getCellKey(0, col));
+          const header = (cellData?.rawInput ?? '').trim();
+          if (header) {
+            columns.push({ index: col, header });
+          }
+        }
+
+        const sourceRows: SourceRow[] = [];
+        for (let row = 1; row < sourceData.rowCount; row++) {
+          const rowRecord: SourceRow = {};
+          let hasData = false;
+          for (let col = 0; col < sourceData.colCount; col++) {
+            const cellData = sourceData.cells.get(getCellKey(row, col));
+            const value = cellData?.computedString ?? cellData?.rawInput ?? '';
+            rowRecord[col] = value;
+            if (value.trim()) hasData = true;
+          }
+          if (hasData) {
+            sourceRows.push(rowRecord);
+          }
+        }
+
+        const pivotResult = buildPivotTable(sourceRows, columns, newConfig);
+        const previousDimensions = pivotDimensionsBySheet[activeSheetId] ?? {
+          rowCount: 0,
+          colCount: 0,
+        };
+
+        const setOperations = pivotResultToCellOperations(pivotResult);
+        const clearOperations = generateClearOperationsForStaleCells(
+          previousDimensions.rowCount,
+          previousDimensions.colCount,
+          pivotResult.rowCount,
+          pivotResult.colCount
+        );
+
+        const allOperations: Array<{
+          operation: 'set' | 'clear';
+          row: number;
+          column: number;
+          raw_input?: string;
+        }> = [...setOperations, ...clearOperations];
+
+        await SpreadsheetAPI.resizeSheet(
+          Number(spreadsheetId),
+          activeSheetId,
+          Math.max(pivotResult.rowCount + 10, previousDimensions.rowCount + 10, 100),
+          Math.max(pivotResult.colCount + 5, previousDimensions.colCount + 5, 26)
+        );
+
+        await SpreadsheetAPI.batchUpdateCells(
+          Number(spreadsheetId),
+          activeSheetId,
+          allOperations,
+          false
+        );
+
+        setPivotDimensionsBySheet((prev) => ({
+          ...prev,
+          [activeSheetId]: {
+            rowCount: pivotResult.rowCount,
+            colCount: pivotResult.colCount,
+          },
+        }));
+
+        // 3) Update the grid view immediately.
+        gridRef.current?.refresh();
+      } catch (err: any) {
+        console.error('Failed to update pivot preview:', err);
+        toast.error('Failed to update pivot preview');
+      }
+
+      // 4) Fire-and-forget: persist config and trigger backend recompute for durability.
+      (async () => {
+        try {
+          await SpreadsheetAPI.upsertPivotConfig(Number(spreadsheetId), activeSheetId, {
+            sourceSheetId,
+            rows: newConfig.rows,
+            columns: newConfig.columns,
+            values: newConfig.values,
+            showGrandTotalRow: newConfig.showGrandTotalRow,
+          });
+          await SpreadsheetAPI.recomputePivot(Number(spreadsheetId), activeSheetId);
+        } catch (err) {
+          // Best-effort; log but don't surface noisy errors to the user.
+          console.error('Background pivot persistence/recompute failed:', err);
+        }
+      })();
+    },
+    [activeSheetId, spreadsheetId, pivotSourceDataBySheet, pivotDimensionsBySheet, sheets]
+  );
+
+  const handleRefreshPivot = useCallback(() => {
+    if (!activeSheetId) return;
+    const config = pivotConfigsBySheet[activeSheetId];
+    if (config) {
+      handlePivotConfigChange(config);
+    }
+  }, [activeSheetId, pivotConfigsBySheet, handlePivotConfigChange]);
+
+  const isPivotSheet = (() => {
+    if (!activeSheetId) return false;
+    const sheet = sheets.find((s) => s.id === activeSheetId);
+    return !!sheet && sheet.kind === 'pivot';
+  })();
+
   const handleRenameSheet = async (sheetId: number, data: UpdateSheetRequest) => {
     if (!spreadsheetId) {
       toast.error('Spreadsheet ID is required');
@@ -1150,44 +1476,83 @@ export default function SpreadsheetDetailPage() {
                     }}
                     highlightCell={highlightCell}
                     onHydrationStatusChange={status => setSheetHydrationReady(status === 'ready')}
+                    onOpenPivotBuilder={handleCreatePivotSheet}
                   />
                 </div>
-                {/* Right column: Pattern panel remains fixed-width and always visible while the grid scrolls inside its own container. */}
-                <PatternAgentPanel
-                  items={agentSteps}
-                  patterns={patterns}
-                  selectedPatternId={selectedPattern?.id ?? null}
-                  applySteps={applySteps}
-                  applyError={applyError}
-                  applyFailedIndex={applyFailedIndex}
-                  isApplying={isApplying}
-                  exporting={exportingPattern}
-                  onReorder={updateAgentSteps}
-                  onUpdateStep={(id, updates) =>
-                    updateAgentSteps((prev) => updateTimelineItemById(prev, id, updates))
-                  }
-                  onDeleteStep={(id) =>
-                    updateAgentSteps((prev) => deleteTimelineItemById(prev, id))
-                  }
-                  onMoveStepOutOfGroup={(groupId, step) =>
-                    updateAgentSteps((prev) => moveStepOutOfGroup(prev, groupId, step))
-                  }
-                  onHoverStep={(step) => {
-                    if (step.type === 'APPLY_FORMULA') {
-                      setHighlightCell({ row: step.target.row - 1, col: step.target.col - 1 });
+                {/* Right column: Show Pivot Editor for pivot sheets, Pattern panel for regular sheets */}
+                {isPivotSheet && showPivotEditor ? (
+                  <PivotEditorPanel
+                    config={pivotConfigsBySheet[activeSheet.id] || createEmptyPivotConfig(pivotSourceDataBySheet[activeSheet.id]?.sourceSheetId || 0)}
+                    sourceSheetName={pivotSourceDataBySheet[activeSheet.id]?.sourceSheetName || 'Unknown'}
+                    sourceColumns={(() => {
+                      const sourceData = pivotSourceDataBySheet[activeSheet.id];
+                      if (!sourceData) return [];
+                      const cols: SourceColumn[] = [];
+                      for (let col = 0; col < sourceData.colCount; col++) {
+                        const cellData = sourceData.cells.get(`0:${col}`);
+                        const header = (cellData?.rawInput ?? '').trim();
+                        if (header) {
+                          cols.push({ index: col, header });
+                        }
+                      }
+                      return cols;
+                    })()}
+                    sourceRowCount={(() => {
+                      const sourceData = pivotSourceDataBySheet[activeSheet.id];
+                      if (!sourceData) return 0;
+                      let count = 0;
+                      for (let row = 1; row < sourceData.rowCount; row++) {
+                        for (let col = 0; col < sourceData.colCount; col++) {
+                          const cellData = sourceData.cells.get(`${row}:${col}`);
+                          if ((cellData?.rawInput ?? '').trim()) {
+                            count++;
+                            break;
+                          }
+                        }
+                      }
+                      return count;
+                    })()}
+                    onConfigChange={handlePivotConfigChange}
+                    onClose={() => setShowPivotEditor(false)}
+                    onRefresh={handleRefreshPivot}
+                  />
+                ) : (
+                  <PatternAgentPanel
+                    items={agentSteps}
+                    patterns={patterns}
+                    selectedPatternId={selectedPattern?.id ?? null}
+                    applySteps={applySteps}
+                    applyError={applyError}
+                    applyFailedIndex={applyFailedIndex}
+                    isApplying={isApplying}
+                    exporting={exportingPattern}
+                    onReorder={updateAgentSteps}
+                    onUpdateStep={(id, updates) =>
+                      updateAgentSteps((prev) => updateTimelineItemById(prev, id, updates))
                     }
-                  }}
-                  onClearHover={() => setHighlightCell(null)}
-                  onExportPattern={handleExportPattern}
-                  onSelectPattern={loadPatternDetail}
-                  onDeletePattern={handleDeletePattern}
-                  onApplyPattern={applyPatternSteps}
-                  onRetryApply={applyPatternSteps}
-                  disableApplyPattern={!sheetHydrationReady}
-                  applyJobStatus={patternJobStatus}
-                  applyJobProgress={patternJobProgress}
-                  applyJobError={patternJobError}
-                />
+                    onDeleteStep={(id) =>
+                      updateAgentSteps((prev) => deleteTimelineItemById(prev, id))
+                    }
+                    onMoveStepOutOfGroup={(groupId, step) =>
+                      updateAgentSteps((prev) => moveStepOutOfGroup(prev, groupId, step))
+                    }
+                    onHoverStep={(step) => {
+                      if (step.type === 'APPLY_FORMULA') {
+                        setHighlightCell({ row: step.target.row - 1, col: step.target.col - 1 });
+                      }
+                    }}
+                    onClearHover={() => setHighlightCell(null)}
+                    onExportPattern={handleExportPattern}
+                    onSelectPattern={loadPatternDetail}
+                    onDeletePattern={handleDeletePattern}
+                    onApplyPattern={applyPatternSteps}
+                    onRetryApply={applyPatternSteps}
+                    disableApplyPattern={!sheetHydrationReady}
+                    applyJobStatus={patternJobStatus}
+                    applyJobProgress={patternJobProgress}
+                    applyJobError={patternJobError}
+                  />
+                )}
               </div>
             ) : sheets.length === 0 ? (
               <div className="flex items-center justify-center flex-1">

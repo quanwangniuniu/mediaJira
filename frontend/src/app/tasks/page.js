@@ -1926,8 +1926,9 @@ function TasksPageContent() {
 
             {projectId && (
               <div className="mb-4 border-b border-gray-200">
-                <nav className="flex space-x-8">
+                <nav data-testid="workspace-tab-nav" className="flex space-x-8">
                   <button
+                    data-testid="tab-summary"
                     onClick={() => setActiveTab("summary")}
                     className={`py-2 px-1 border-b-2 font-medium text-sm ${
                       activeTab === "summary"
@@ -1938,6 +1939,7 @@ function TasksPageContent() {
                     Summary
                   </button>
                   <button
+                    data-testid="tab-tasks"
                     onClick={() => setActiveTab("tasks")}
                     className={`py-2 px-1 border-b-2 font-medium text-sm ${
                       activeTab === "tasks"
@@ -1948,6 +1950,7 @@ function TasksPageContent() {
                     Tasks
                   </button>
                   <button
+                    data-testid="tab-board"
                     onClick={() => setActiveTab("board")}
                     className={`py-2 px-1 border-b-2 font-medium text-sm ${
                       activeTab === "board"
@@ -2366,7 +2369,7 @@ function TasksPageContent() {
           </div>
 
           {projectId && activeTab === "summary" && (
-            <div className="mt-6 space-y-6">
+            <div data-testid="tab-content-summary" className="mt-6 space-y-6">
               {boardLoading && <TasksWorkspaceSkeleton mode="summary" />}
 
               {!boardLoading && boardError && (

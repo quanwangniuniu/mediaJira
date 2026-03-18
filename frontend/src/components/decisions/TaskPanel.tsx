@@ -61,6 +61,25 @@ const statusBadgeClass = (status?: string) => {
   }
 };
 
+const summarizeStatuses = (tasks: TaskData[]) => {
+  const counts = {
+    total: tasks.length,
+    APPROVED: 0,
+    UNDER_REVIEW: 0,
+    SUBMITTED: 0,
+    REJECTED: 0,
+  };
+
+  tasks.forEach((task) => {
+    const status = task.status as keyof typeof counts;
+    if (status in counts) {
+      counts[status] += 1;
+    }
+  });
+
+  return counts;
+};
+
 const TaskPanel = ({
   decisionId,
   decisionTitle,
@@ -78,6 +97,7 @@ const TaskPanel = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const summary = summarizeStatuses(tasks);
 
   const fetchTasks = useCallback(async () => {
     if (!decisionId) return;
@@ -124,6 +144,13 @@ const TaskPanel = ({
 
       {loading ? (
         <div className="mt-4 text-xs text-gray-500">Loading tasks...</div>
+      ) : null}
+
+      {!loading && !error ? (
+        <div className="mt-3 rounded-md border border-gray-200 bg-white px-3 py-2 text-[11px] text-gray-600">
+          Tasks: {summary.total} total, {summary.APPROVED} approved, {summary.UNDER_REVIEW}{' '}
+          under review, {summary.SUBMITTED} submitted, {summary.REJECTED} rejected.
+        </div>
       ) : null}
 
       {!loading && error ? (

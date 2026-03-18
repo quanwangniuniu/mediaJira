@@ -544,10 +544,11 @@ class TaskViewSet(viewsets.ModelViewSet):
         try:
             # Cancel the task
             task.cancel()
-            
+            task.save()
+
             # Delete all approval records
             task.approval_records.all().delete()
-            
+
             # Return task
             task_serializer = TaskSerializer(task, context={'request': request})
             return Response({
