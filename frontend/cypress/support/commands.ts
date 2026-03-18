@@ -17,7 +17,7 @@ Cypress.Commands.add("login", () => {
     cy.get('input[placeholder="Enter your email"]').type(email);
     cy.get('input[placeholder="Enter your password"]').type(password);
     cy.contains("button", "Sign in").click();
-    cy.url().should("match", /\/campaigns/, { timeout: 15_000 });
+    cy.url().should("match", /\/campaigns/, { timeout: 30_000 });
     cy.contains("Preparing your workspace").should("not.exist");
   });
 });

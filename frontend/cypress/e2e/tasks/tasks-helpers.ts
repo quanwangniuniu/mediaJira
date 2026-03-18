@@ -35,7 +35,7 @@ export function selectProject(): void {
   cy.contains("Preparing your workspace", { timeout: 30_000 }).should(
     "not.exist",
   );
-  cy.contains("h2", "Select a project", { timeout: 10_000 }).should(
+  cy.contains("h1", "Select a project", { timeout: 10_000 }).should(
     "be.visible",
   );
 
