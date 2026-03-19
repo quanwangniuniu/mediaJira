@@ -42,6 +42,7 @@ export default function FreehandItem({
           strokeWidth={strokeWidth}
           strokeLinecap="round"
           strokeLinejoin="round"
+          shapeRendering="geometricPrecision"
         />
       </svg>
     </div>
