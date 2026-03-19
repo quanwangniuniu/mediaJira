@@ -67,3 +67,4 @@ class ChatInputSerializer(serializers.Serializer):
         required=False,
         allow_null=True,
     )
+    calendar_context = serializers.JSONField(required=False, allow_null=True)

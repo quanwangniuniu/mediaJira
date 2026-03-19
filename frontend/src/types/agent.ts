@@ -76,11 +76,25 @@ export interface SSEEvent {
 
 export type AgentAction = 'analyze' | 'confirm_decision' | 'create_tasks';
 
+export interface CalendarContextPayload {
+  type: 'calendar' | 'event';
+  eventId?: string;
+  eventTitle?: string;
+  calendarId?: string;
+  startDatetime?: string;
+  endDatetime?: string;
+  description?: string;
+  calendarIds?: string[];
+  currentView?: string;
+  currentDate?: string;
+}
+
 export interface AgentChatRequest {
   message: string;
   spreadsheet_id?: number;
   csv_filename?: string;
   action?: AgentAction;
+  calendar_context?: CalendarContextPayload;
 }
 
 // ==================== Analysis Types ====================

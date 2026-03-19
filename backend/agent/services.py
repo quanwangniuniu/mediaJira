@@ -8,6 +8,8 @@ from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import Max
 
+from django.utils import timezone as django_timezone
+
 from spreadsheet.models import Spreadsheet, Sheet, Cell
 from decision.models import Decision, Signal, Option
 from task.models import Task
@@ -207,14 +209,16 @@ class AgentOrchestrator:
         self.project = project
         self.session = session
 
-    def handle_message(self, message, spreadsheet_id=None, csv_filename=None, action=None, file_id=None):
+    def handle_message(self, message, spreadsheet_id=None, csv_filename=None, action=None, file_id=None, calendar_context=None):
         """Main entry point. Yields SSE chunks as dicts."""
         # file_id takes priority over csv_filename
         if file_id:
             yield from self.analyze_file(file_id)
             yield {"type": "done"}
             return
-        if action == 'analyze' and csv_filename:
+        if calendar_context:
+            yield from self.answer_calendar_question(message, calendar_context)
+        elif action == 'analyze' and csv_filename:
             yield from self.analyze_csv(csv_filename)
         elif action == 'analyze' and spreadsheet_id:
             yield from self.analyze_spreadsheet(spreadsheet_id)
@@ -246,6 +250,184 @@ class AgentOrchestrator:
                 ),
             }
         yield {"type": "done"}
+
+    def _fetch_events_for_context(self, calendar_context):
+        """Fetch calendar events for the given context.
+
+        Returns up to 30 events: past 30 days + next 60 days, so the AI can
+        reference both recent history and upcoming schedule.
+        """
+        try:
+            from calendars.models import Event
+        except ImportError:
+            return []
+
+        org_id = getattr(self.user, 'organization_id', None)
+        if not org_id:
+            return []
+
+        event_id = calendar_context.get('eventId')
+
+        # Specific event — return it regardless of time
+        if event_id:
+            try:
+                return [Event.objects.select_related('calendar').get(
+                    id=event_id, organization_id=org_id
+                )]
+            except Event.DoesNotExist:
+                return []
+
+        now = django_timezone.now()
+        window_start = now - django_timezone.timedelta(days=30)
+        window_end = now + django_timezone.timedelta(days=60)
+
+        qs = Event.objects.filter(
+            organization_id=org_id,
+            start_datetime__gte=window_start,
+            start_datetime__lte=window_end,
+        ).select_related('calendar').order_by('start_datetime')
+
+        # Filter by visible calendar IDs if provided in context
+        calendar_ids = calendar_context.get('calendarIds') or []
+        calendar_id = calendar_context.get('calendarId')
+        if calendar_ids:
+            qs = qs.filter(calendar__id__in=calendar_ids)
+        elif calendar_id:
+            qs = qs.filter(calendar__id=calendar_id)
+
+        return list(qs[:30])
+
+    def _create_calendar_event(self, org_id, event_spec):
+        """Create a single calendar event from a dict spec. Returns event id or None."""
+        try:
+            from calendars.models import Calendar as CalendarModel, Event as EventModel
+            cal = CalendarModel.objects.filter(
+                organization_id=org_id,
+                created_by=self.user,
+                is_deleted=False,
+            ).first()
+            if not cal:
+                return None
+            new_event = EventModel.objects.create(
+                organization_id=org_id,
+                calendar=cal,
+                created_by=self.user,
+                title=event_spec.get("title", "New Event"),
+                description=event_spec.get("description", ""),
+                start_datetime=event_spec.get("start_datetime"),
+                end_datetime=event_spec.get("end_datetime"),
+                timezone="UTC",
+            )
+            return str(new_event.id)
+        except Exception as e:
+            logger.error(f"Failed to create calendar event: {e}")
+            return None
+
+    def answer_calendar_question(self, message, calendar_context):
+        """Answer calendar-related questions using real event data via Dify AI."""
+        yield {"type": "text", "content": "Looking up your calendar data..."}
+
+        events = self._fetch_events_for_context(calendar_context)
+
+        # Serialize events for Dify
+        now = django_timezone.now()
+        events_data = []
+        for evt in events:
+            is_past = evt.start_datetime < now
+            events_data.append({
+                "id": str(evt.id),
+                "title": evt.title or "(No title)",
+                "start_datetime": evt.start_datetime.strftime('%Y-%m-%dT%H:%M:%S UTC'),
+                "end_datetime": evt.end_datetime.strftime('%Y-%m-%dT%H:%M:%S UTC'),
+                "is_past": is_past,
+                "calendar": evt.calendar.name,
+                "location": evt.location or "",
+                "description": evt.description or "",
+            })
+
+        calendar_payload = {
+            "current_time_utc": now.strftime('%Y-%m-%dT%H:%M:%S UTC'),
+            "events": events_data,
+        }
+        calendar_data_str = json.dumps(calendar_payload, ensure_ascii=False)
+
+        # Call Dify Calendar Assistant workflow
+        dify_api_key = os.environ.get('DIFY_CALENDAR_API_KEY')
+        dify_api_url = os.environ.get('DIFY_API_URL', 'https://api.dify.ai')
+
+        if not dify_api_key:
+            yield {"type": "error", "content": "Calendar AI is not configured. Please set DIFY_CALENDAR_API_KEY."}
+            return
+
+        try:
+            resp = requests.post(
+                f"{dify_api_url}/v1/workflows/run",
+                headers={
+                    "Authorization": f"Bearer {dify_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "inputs": {
+                        "calendar_data": calendar_data_str,
+                        "user_question": message,
+                    },
+                    "response_mode": "blocking",
+                    "user": str(self.user.id),
+                },
+                timeout=60,
+            )
+            resp.raise_for_status()
+            result = resp.json()
+            raw_answer = result.get("data", {}).get("outputs", {}).get("answer", "")
+        except Exception as e:
+            logger.error(f"Dify calendar workflow error: {e}")
+            yield {"type": "error", "content": "Failed to get AI response. Please try again."}
+            return
+
+        # Parse AI response (expects JSON with answer + create_events array)
+        text = raw_answer.strip()
+        for fence in ('```json', '```'):
+            if text.startswith(fence):
+                text = text[len(fence):]
+        if text.endswith('```'):
+            text = text[:-3]
+        text = text.strip()
+
+        try:
+            parsed = json.loads(text)
+            answer_text = parsed.get("answer", raw_answer)
+            # Support both create_events (array) and legacy create_event (single)
+            events_to_create = parsed.get("create_events") or []
+            single = parsed.get("create_event")
+            if single and isinstance(single, dict):
+                events_to_create.append(single)
+        except (json.JSONDecodeError, AttributeError):
+            answer_text = raw_answer
+            events_to_create = []
+
+        # Create all suggested events
+        org_id = getattr(self.user, 'organization_id', None)
+        created_count = 0
+        failed_count = 0
+        if events_to_create and org_id:
+            for event_spec in events_to_create:
+                if not isinstance(event_spec, dict):
+                    continue
+                event_id_created = self._create_calendar_event(org_id, event_spec)
+                if event_id_created:
+                    created_count += 1
+                else:
+                    failed_count += 1
+
+            if created_count:
+                answer_text += f"\n\n✅ {created_count} calendar event{'s' if created_count != 1 else ''} created successfully."
+            if failed_count:
+                answer_text += f"\n⚠️ {failed_count} event{'s' if failed_count != 1 else ''} could not be created automatically."
+
+        yield {
+            "type": "text",
+            "content": answer_text,
+        }
 
     def analyze_file(self, file_id):
         """Analyse any uploaded file (CSV/Excel) by its DB id."""

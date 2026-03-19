@@ -54,6 +54,37 @@ function restoreMessage(m: AgentMessage): ChatMessage {
   }
 }
 
+type CalendarPreload = { message: string; context: Record<string, unknown> }
+
+// Module-level flag — persists across React StrictMode's unmount+remount cycles.
+// Reset to false each time new calendar context is loaded so the auto-send fires once per navigation.
+let _calendarAutoSendFired = false
+
+function buildCalendarPreload(): CalendarPreload | null {
+  if (typeof window === "undefined") return null
+  const raw = sessionStorage.getItem("agent-calendar-context")
+  if (!raw) return null
+  sessionStorage.removeItem("agent-calendar-context")
+  _calendarAutoSendFired = false  // new context arrived — allow one send
+  try {
+    const ctx = JSON.parse(raw)
+    let message: string
+    if (ctx.type === "event") {
+      const start = new Date(ctx.startDatetime)
+      const end = new Date(ctx.endDatetime)
+      const dateStr = start.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })
+      const startTime = start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      const endTime = end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      message = `I'm looking at a calendar event: "${ctx.eventTitle}" on ${dateStr} from ${startTime} to ${endTime}.${ctx.description ? ` Description: ${ctx.description}` : ""} Can you help me understand this event and suggest what I should prepare or do?`
+    } else {
+      message = `I'm viewing my calendar (${ctx.currentView ?? "week"} view). Can you help me understand my calendar events, check my availability, or assist with scheduling?`
+    }
+    return { message, context: ctx }
+  } catch {
+    return null
+  }
+}
+
 export function AgentChatPage() {
   const { setActiveView, floatingChat, toggleMaximize, setPendingDecisionId } = useAgentLayout()
   const [sessionId, setSessionIdState] = useState<string | null>(null)
@@ -61,6 +92,13 @@ export function AgentChatPage() {
   const [isStreaming, setIsStreaming] = useState(false)
   const [hasStarted, setHasStarted] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+  const [pendingCalendarPreload] = useState<CalendarPreload | null>(buildCalendarPreload)
+  // Persist calendar context for the lifetime of this session so follow-up messages
+  // also go through the calendar workflow, not the generic fallback.
+  const [sessionCalendarContext, setSessionCalendarContext] = useState<Record<string, unknown> | null>(
+    pendingCalendarPreload ? pendingCalendarPreload.context : null
+  )
+  const handleSendMessageRef = useRef<typeof handleSendMessage | null>(null)
 
   // Abort SSE on unmount
   useEffect(() => {
@@ -99,6 +137,7 @@ export function AgentChatPage() {
       setSessionIdState(null)
       sessionStorage.removeItem("agent-session-id")
       setMessages([])
+      setSessionCalendarContext(null)
       setHasStarted(false)
       setIsStreaming(false)
       abortRef.current?.abort()
@@ -221,8 +260,13 @@ export function AgentChatPage() {
   }, [sessionId, addMessage, updateMessage])
 
   /** Handle text message send */
-  const handleSendMessage = useCallback(async (text: string) => {
+  const handleSendMessage = useCallback(async (text: string, calendarContext?: Record<string, unknown>) => {
     setHasStarted(true)
+    // Use provided context or fall back to the session-level calendar context
+    const effectiveCalendarContext = calendarContext ?? sessionCalendarContext ?? undefined
+    if (calendarContext && !sessionCalendarContext) {
+      setSessionCalendarContext(calendarContext)
+    }
 
     const userMsgId = `user-${Date.now()}`
     addMessage({ id: userMsgId, role: "user", content: text, type: "text" })
@@ -254,7 +298,7 @@ export function AgentChatPage() {
 
     abortRef.current = AgentAPI.sendMessage(
       sid!,
-      { message: text },
+      { message: text, ...(effectiveCalendarContext ? { calendar_context: effectiveCalendarContext as any } : {}) },
       (event: SSEEvent) => {
         if (event.type === "done") return
 
@@ -305,7 +349,10 @@ export function AgentChatPage() {
         setIsStreaming(false)
       }
     )
-  }, [sessionId, addMessage, updateMessage])
+  }, [sessionId, sessionCalendarContext, addMessage, updateMessage])
+
+  // Keep ref always pointing to the latest handleSendMessage
+  handleSendMessageRef.current = handleSendMessage
 
   /** Handle action buttons (Create Decision, Create Tasks) */
   const handleAction = useCallback(async (action: string) => {
@@ -363,6 +410,17 @@ export function AgentChatPage() {
       }
     )
   }, [sessionId, addMessage, updateMessage])
+
+  // Auto-send calendar context message when arriving from calendar/event page (once only).
+  // Uses a module-level flag + ref to handleSendMessage so this effect only fires on mount
+  // and when hasStarted changes — NOT when sessionId changes and recreates handleSendMessage.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!pendingCalendarPreload || hasStarted) return
+    if (_calendarAutoSendFired) return
+    _calendarAutoSendFired = true
+    handleSendMessageRef.current?.(pendingCalendarPreload.message, pendingCalendarPreload.context)
+  }, [pendingCalendarPreload, hasStarted])
 
   if (!hasStarted) {
     return (
