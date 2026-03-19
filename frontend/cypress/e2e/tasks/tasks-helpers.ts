@@ -86,7 +86,7 @@ export function openFirstTaskFromList(): void {
 export function openFirstTaskFromBoard(): void {
   cy.get('[data-testid="board-columns"]', { timeout: 10_000 })
     .should("be.visible")
-    .find("button")
+    .find('[role="button"]')
     .first()
     .should("be.visible")
     .click();
