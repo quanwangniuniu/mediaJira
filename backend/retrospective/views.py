@@ -10,6 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.contrib.auth import get_user_model
+from retrospective.serializers import RetrospectiveTaskListSerializer
 
 from .models import RetrospectiveTask, Insight, RetrospectiveStatus, CampaignMetric
 from .serializers import (
