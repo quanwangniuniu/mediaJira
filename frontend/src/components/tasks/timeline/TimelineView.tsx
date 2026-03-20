@@ -301,16 +301,6 @@ const TimelineView = ({
 
   return (
     <div className="flex flex-col gap-3">
-      <TimelineHeader
-        searchValue={timelineSearchQuery}
-        onSearchChange={setTimelineSearchQuery}
-        workTypeOptions={workTypeOptions}
-        selectedWorkType={selectedWorkType}
-        onWorkTypeChange={(value) => setSelectedWorkType(value)}
-        currentUser={currentUser}
-        displayRange={displayRange}
-        onDisplayRangeChange={handleDisplayRangeChange}
-      />
 
       <div
         className="relative"
