@@ -1,18 +1,12 @@
 import { useCallback, useState } from "react";
 import { TaskAPI } from "@/lib/api/taskApi";
 import api from "@/lib/api";
-import { TaskData, CreateTaskData } from "@/types/task";
+import { TaskData, CreateTaskData, TaskListFilters } from "@/types/task";
 import { useTaskStore } from "@/lib/taskStore";
 
-type TaskFetchParams = {
-  type?: string;
-  project_id?: number;
-  owner_id?: number;
-  status?: string;
+type TaskFetchParams = TaskListFilters & {
   content_type?: string;
   object_id?: string;
-  include_subtasks?: boolean;
-  all_projects?: boolean;
   page?: number;
 };
 

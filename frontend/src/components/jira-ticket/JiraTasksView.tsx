@@ -49,6 +49,7 @@ interface JiraTasksViewProps {
   searchPlaceholder?: string;
   searchValue?: string;
   onSearchChange?: (value: string) => void;
+  rightOfSearch?: React.ReactNode;
   onTaskClick?: (task: JiraTaskItem) => void;
   onTaskUpdate?: () => void;
   renderList?: () => React.ReactNode;
@@ -84,12 +85,14 @@ const JiraTasksToolbar = ({
   searchPlaceholder,
   searchValue,
   onSearchChange,
+  rightOfSearch,
 }: {
   viewMode: JiraTasksViewMode;
   onViewModeChange: (mode: JiraTasksViewMode) => void;
   searchPlaceholder?: string;
   searchValue?: string;
   onSearchChange?: (value: string) => void;
+  rightOfSearch?: React.ReactNode;
 }) => (
   <div className="flex flex-wrap items-center gap-3">
     <div className="relative w-full max-w-md">
@@ -102,6 +105,7 @@ const JiraTasksToolbar = ({
         className="h-9 w-full rounded-md border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
       />
     </div>
+    {rightOfSearch}
     <div className="flex items-center gap-2">
       <ViewButton
         active={viewMode === "list"}
@@ -307,6 +311,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
   searchPlaceholder,
   searchValue,
   onSearchChange,
+  rightOfSearch,
   onTaskClick,
   onTaskUpdate,
   renderList,
@@ -730,6 +735,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
         searchPlaceholder={searchPlaceholder}
         searchValue={searchValue}
         onSearchChange={onSearchChange}
+        rightOfSearch={rightOfSearch}
       />
       {viewMode === "list" &&
         (renderList ? (

@@ -3,6 +3,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, ValidationError as DRFValidationError
+from datetime import datetime
 from django.core.exceptions import ValidationError
 from django.db.models import Q
 from rest_framework.views import APIView
@@ -157,19 +158,114 @@ class TaskViewSet(viewsets.ModelViewSet):
         # even across project boundaries (cross-project approval chain support).
         queryset = queryset.filter(project_filter | Q(current_approver=user))
 
+        def _get_multi_values(param_name: str):
+            """
+            Accept multi-values in either:
+            - repeated query params: ?status=A&status=B
+            - comma-separated: ?status=A,B
+            Returns list[str] (possibly empty).
+            """
+            values = self.request.query_params.getlist(param_name)
+            if not values:
+                raw = self.request.query_params.get(param_name)
+                if raw:
+                    values = [raw]
+            expanded = []
+            for v in values:
+                if v is None:
+                    continue
+                parts = [p.strip() for p in str(v).split(",")]
+                expanded.extend([p for p in parts if p])
+            return expanded
+
+        def _parse_int_list(param_name: str):
+            raw_values = _get_multi_values(param_name)
+            if not raw_values:
+                return []
+            parsed = []
+            for v in raw_values:
+                try:
+                    iv = int(v)
+                except (TypeError, ValueError):
+                    raise DRFValidationError({param_name: f"{param_name} must be an integer"})
+                if iv < 1:
+                    raise DRFValidationError({param_name: f"{param_name} must be a positive integer"})
+                parsed.append(iv)
+            return parsed
+
         # Apply filters
-        task_type = self.request.query_params.get('type')
-        if task_type:
-            queryset = queryset.filter(type=task_type)
-        
-        owner_id = self.request.query_params.get('owner_id')
-        if owner_id:
-            queryset = queryset.filter(owner_id=owner_id)
-        
-        status = self.request.query_params.get('status')
-        if status:
-            queryset = queryset.filter(status=status)
-        
+        task_types = _get_multi_values("type")
+        if task_types:
+            valid_types = {c[0] for c in Task._meta.get_field("type").choices}
+            invalid = [t for t in task_types if t not in valid_types]
+            if invalid:
+                raise DRFValidationError({"type": "Invalid type value"})
+            queryset = queryset.filter(type__in=task_types)
+
+        owner_ids = _parse_int_list("owner_id")
+        if owner_ids:
+            queryset = queryset.filter(owner_id__in=owner_ids)
+
+        statuses = _get_multi_values("status")
+        if statuses:
+            valid_statuses = {c[0] for c in Task.Status.choices}
+            invalid = [s for s in statuses if s not in valid_statuses]
+            if invalid:
+                raise DRFValidationError({"status": "Invalid status value"})
+            queryset = queryset.filter(status__in=statuses)
+
+        # Priority filter (multi-select)
+        priorities = _get_multi_values("priority")
+        if priorities:
+            valid_priorities = {c[0] for c in Task.Priority.choices}
+            invalid = [p for p in priorities if p not in valid_priorities]
+            if invalid:
+                raise DRFValidationError({"priority": "Invalid priority value"})
+            queryset = queryset.filter(priority__in=priorities)
+
+        # Current approver (assignee) filter (multi-select)
+        approver_ids = _parse_int_list("current_approver_id")
+        if approver_ids:
+            queryset = queryset.filter(current_approver_id__in=approver_ids)
+
+        # Due date range filters
+        due_date_after = self.request.query_params.get('due_date_after')
+        if due_date_after:
+            try:
+                d = datetime.strptime(due_date_after, '%Y-%m-%d').date()
+                queryset = queryset.filter(due_date__gte=d)
+            except (ValueError, TypeError):
+                raise DRFValidationError({'due_date_after': 'due_date_after must be YYYY-MM-DD'})
+        due_date_before = self.request.query_params.get('due_date_before')
+        if due_date_before:
+            try:
+                d = datetime.strptime(due_date_before, '%Y-%m-%d').date()
+                queryset = queryset.filter(due_date__lte=d)
+            except (ValueError, TypeError):
+                raise DRFValidationError({'due_date_before': 'due_date_before must be YYYY-MM-DD'})
+
+        # Created date range filters (compare date part of created_at)
+        created_after = self.request.query_params.get('created_after')
+        if created_after:
+            try:
+                if 'T' in created_after or ' ' in created_after:
+                    d = datetime.fromisoformat(created_after.replace('Z', '+00:00')).date()
+                else:
+                    d = datetime.strptime(created_after, '%Y-%m-%d').date()
+                queryset = queryset.filter(created_at__date__gte=d)
+            except (ValueError, TypeError):
+                raise DRFValidationError({'created_after': 'created_after must be YYYY-MM-DD or ISO datetime'})
+        created_before = self.request.query_params.get('created_before')
+        if created_before:
+            try:
+                if 'T' in created_before or ' ' in created_before:
+                    d = datetime.fromisoformat(created_before.replace('Z', '+00:00')).date()
+                else:
+                    d = datetime.strptime(created_before, '%Y-%m-%d').date()
+                queryset = queryset.filter(created_at__date__lte=d)
+            except (ValueError, TypeError):
+                raise DRFValidationError({'created_before': 'created_before must be YYYY-MM-DD or ISO datetime'})
+
         # Filter by content_type
         content_type = self.request.query_params.get('content_type')
         if content_type:
@@ -194,7 +290,17 @@ class TaskViewSet(viewsets.ModelViewSet):
         if not include_subtasks:
             # Exclude all tasks that have is_subtask=True
             queryset = queryset.filter(is_subtask=False)
-        
+
+        # Parent filter: show only subtasks or only top-level tasks
+        has_parent_param = self.request.query_params.get('has_parent')
+        if has_parent_param is not None:
+            if has_parent_param.lower() == 'true':
+                queryset = queryset.filter(is_subtask=True)
+            elif has_parent_param.lower() == 'false':
+                queryset = queryset.filter(is_subtask=False)
+            else:
+                raise DRFValidationError({'has_parent': 'has_parent must be true or false'})
+
         # Order by order_in_project, then by creation date (newest first)
         queryset = queryset.order_by('order_in_project', '-id')
         # List response does not include draft_payload; defer it so list works if migration adding the column is not yet applied.
@@ -438,10 +544,11 @@ class TaskViewSet(viewsets.ModelViewSet):
         try:
             # Cancel the task
             task.cancel()
-            
+            task.save()
+
             # Delete all approval records
             task.approval_records.all().delete()
-            
+
             # Return task
             task_serializer = TaskSerializer(task, context={'request': request})
             return Response({
