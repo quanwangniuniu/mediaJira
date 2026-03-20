@@ -49,6 +49,7 @@ interface JiraTasksViewProps {
   searchPlaceholder?: string;
   searchValue?: string;
   onSearchChange?: (value: string) => void;
+  rightOfSearch?: React.ReactNode;
   onTaskClick?: (task: JiraTaskItem) => void;
   onTaskUpdate?: () => void;
   renderList?: () => React.ReactNode;
@@ -84,12 +85,14 @@ const JiraTasksToolbar = ({
   searchPlaceholder,
   searchValue,
   onSearchChange,
+  rightOfSearch,
 }: {
   viewMode: JiraTasksViewMode;
   onViewModeChange: (mode: JiraTasksViewMode) => void;
   searchPlaceholder?: string;
   searchValue?: string;
   onSearchChange?: (value: string) => void;
+  rightOfSearch?: React.ReactNode;
 }) => (
   <div className="flex flex-wrap items-center gap-3">
     <div className="relative w-full max-w-md">
@@ -102,18 +105,19 @@ const JiraTasksToolbar = ({
         className="h-9 w-full rounded-md border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
       />
     </div>
+    {rightOfSearch}
     <div className="flex items-center gap-2">
       <ViewButton
         active={viewMode === "list"}
         onClick={() => onViewModeChange("list")}
       >
-        List View
+        <span data-testid="view-button-list">List View</span>
       </ViewButton>
       <ViewButton
         active={viewMode === "timeline"}
         onClick={() => onViewModeChange("timeline")}
       >
-        Timeline View
+        <span data-testid="view-button-timeline">Timeline View</span>
       </ViewButton>
     </div>
   </div>
@@ -307,6 +311,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
   searchPlaceholder,
   searchValue,
   onSearchChange,
+  rightOfSearch,
   onTaskClick,
   onTaskUpdate,
   renderList,
@@ -730,6 +735,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
         searchPlaceholder={searchPlaceholder}
         searchValue={searchValue}
         onSearchChange={onSearchChange}
+        rightOfSearch={rightOfSearch}
       />
       {viewMode === "list" &&
         (renderList ? (
@@ -743,7 +749,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
               onActivateTask={handleActivateTask}
             />
             {selectedTask ? (
-              <div className="rounded-md border border-slate-200 bg-white">
+              <div data-testid="task-detail-panel" className="rounded-md border border-slate-200 bg-white">
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-6 py-4">
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
@@ -785,6 +791,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                     {onTaskClick ? (
                       <button
                         type="button"
+                        data-testid="task-open-button"
                         onClick={() => onTaskClick(selectedTask)}
                         className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
                       >

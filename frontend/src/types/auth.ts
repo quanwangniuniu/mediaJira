@@ -13,6 +13,7 @@ export interface User {
   first_name?: string;
   last_name?: string;
   avatar?: string;  // Keep for UI display (placeholder)
+  is_staff?: boolean;
   organization: Organization | null;
   roles: string[];
   team_id?: number;

@@ -47,6 +47,8 @@ import {
   TASK_TYPE_CONFIG_STATIC,
   defaultReportContext,
 } from "@/lib/taskTypeConfigRegistry";
+import { useTaskFilterParams } from "@/hooks/useTaskFilterParams";
+import { TaskFilterPanel } from "@/components/tasks/TaskFilterPanel";
 
 const BOARD_TYPE_ORDER = [
   "task",
@@ -155,6 +157,22 @@ function TasksPageContent() {
   const searchParams = useSearchParams();
   const projectIdParam = searchParams.get("project_id");
   const projectId = projectIdParam ? Number(projectIdParam) : null;
+
+  // URL-backed filters (including project_id, status, priority, dates, etc.)
+  const [filters, setFilters, clearFilters] = useTaskFilterParams();
+  const [taskTypeOptions, setTaskTypeOptions] = useState([]);
+
+  useEffect(() => {
+    const loadTypes = async () => {
+      try {
+        const types = await TaskAPI.getTaskTypes();
+        setTaskTypeOptions(Array.isArray(types) ? types : []);
+      } catch {
+        setTaskTypeOptions([]);
+      }
+    };
+    loadTypes();
+  }, []);
 
   // Task data management
   const {
@@ -462,14 +480,14 @@ function TasksPageContent() {
     const loadTasks = async () => {
       try {
         console.log("[TasksPage] Fetching tasks for project:", projectId);
-        await fetchTasks({ project_id: projectId });
+        await fetchTasks({ ...filters, project_id: projectId });
       } catch (error) {
         console.error("[TasksPage] Failed to fetch tasks:", error);
       }
     };
 
     loadTasks();
-  }, [projectId, fetchTasks]);
+  }, [projectId, fetchTasks, filters]);
 
   const selectedProject = useMemo(() => {
     if (!projectId) return null;
@@ -1908,8 +1926,9 @@ function TasksPageContent() {
 
             {projectId && (
               <div className="mb-4 border-b border-gray-200">
-                <nav className="flex space-x-8">
+                <nav data-testid="workspace-tab-nav" className="flex space-x-8">
                   <button
+                    data-testid="tab-summary"
                     onClick={() => setActiveTab("summary")}
                     className={`py-2 px-1 border-b-2 font-medium text-sm ${
                       activeTab === "summary"
@@ -1920,6 +1939,7 @@ function TasksPageContent() {
                     Summary
                   </button>
                   <button
+                    data-testid="tab-tasks"
                     onClick={() => setActiveTab("tasks")}
                     className={`py-2 px-1 border-b-2 font-medium text-sm ${
                       activeTab === "tasks"
@@ -1930,6 +1950,7 @@ function TasksPageContent() {
                     Tasks
                   </button>
                   <button
+                    data-testid="tab-board"
                     onClick={() => setActiveTab("board")}
                     className={`py-2 px-1 border-b-2 font-medium text-sm ${
                       activeTab === "board"
@@ -2348,7 +2369,7 @@ function TasksPageContent() {
           </div>
 
           {projectId && activeTab === "summary" && (
-            <div className="mt-6 space-y-6">
+            <div data-testid="tab-content-summary" className="mt-6 space-y-6">
               {boardLoading && <TasksWorkspaceSkeleton mode="summary" />}
 
               {!boardLoading && boardError && (
@@ -2382,33 +2403,33 @@ function TasksPageContent() {
 
           {projectId && activeTab === "board" && (
             <div className="mt-6 space-y-6">
-              {tasksLoading ? (
-                <TasksWorkspaceSkeleton mode="board" />
-              ) : (
-                <JiraBoardView
-                  boardColumns={boardColumns}
-                  tasksByType={tasksByType}
-                  onCreateTask={handleOpenCreateTaskModal}
-                  onTaskClick={handleTaskClick}
-                  getTicketKey={getTicketKey}
-                  getBoardTypeIcon={getBoardTypeIcon}
-                  formatBoardDate={formatBoardDate}
-                  getDueTone={getDueTone}
-                  editingTaskId={editingTaskId}
-                  editingSummary={editingSummary}
-                  setEditingSummary={setEditingSummary}
-                  startBoardEdit={startBoardEdit}
-                  cancelBoardEdit={cancelBoardEdit}
-                  saveBoardEdit={saveBoardEdit}
-                  currentUser={user || undefined}
-                />
-              )}
+              <JiraBoardView
+                boardColumns={boardColumns}
+                tasksByType={tasksByType}
+                onCreateTask={handleOpenCreateTaskModal}
+                onTaskClick={handleTaskClick}
+                getTicketKey={getTicketKey}
+                getBoardTypeIcon={getBoardTypeIcon}
+                formatBoardDate={formatBoardDate}
+                getDueTone={getDueTone}
+                editingTaskId={editingTaskId}
+                editingSummary={editingSummary}
+                setEditingSummary={setEditingSummary}
+                startBoardEdit={startBoardEdit}
+                cancelBoardEdit={cancelBoardEdit}
+                saveBoardEdit={saveBoardEdit}
+                currentUser={user || undefined}
+                externalFilters={
+                  <TaskFilterPanel
+                    filters={filters}
+                    onChange={setFilters}
+                    onClearAll={clearFilters}
+                    projectOptions={projectOptions}
+                    typeOptions={taskTypeOptions}
+                  />
+                }
+              />
             </div>
-          )}
-
-          {/* Loading State */}
-          {projectId && activeTab === "tasks" && tasksLoading && (
-            <TasksWorkspaceSkeleton mode="tasks" />
           )}
 
           {/* Error State */}
@@ -2420,9 +2441,9 @@ function TasksPageContent() {
               <button
                 onClick={() => {
                   if (projectId) {
-                    fetchTasks({ project_id: projectId });
+                    fetchTasks({ ...filters, project_id: projectId });
                   } else {
-                    fetchTasks();
+                    fetchTasks(filters);
                   }
                 }}
                 className="mt-2 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
@@ -2433,36 +2454,42 @@ function TasksPageContent() {
           )}
 
           {/* Tasks Display */}
-          {!tasksLoading &&
-            !tasksError &&
-            projectId &&
-            activeTab === "tasks" && (
-              <div className="min-h-screen bg-[#f8f9fb] px-6 py-6">
-                <div className="mx-auto max-w-6xl">
-                  <JiraTasksView
-                    tasks={filteredJiraTasks}
-                    viewMode={viewMode}
-                    onViewModeChange={setViewMode}
-                    searchValue={searchQuery}
-                    onSearchChange={setSearchQuery}
-                    searchPlaceholder="Search tasks..."
-                    onTaskClick={handleJiraTaskClick}
-                    onTaskUpdate={reloadTasks}
-                    renderTimeline={() => (
-                      <TimelineViewComponent
-                        tasks={tasksForTimeline}
-                        onTaskClick={handleTaskClick}
-                        reloadTasks={reloadTasks}
-                        onCreateTask={(projectIdOverride) =>
-                          handleOpenCreateTaskModal(projectIdOverride)
-                        }
-                        currentUser={user || undefined}
-                      />
-                    )}
-                  />
-                </div>
+          {!tasksError && projectId && activeTab === "tasks" && (
+            <div className="min-h-screen bg-[#f8f9fb] px-6 py-6">
+              <div className="mx-auto max-w-6xl space-y-4">
+                <JiraTasksView
+                  tasks={filteredJiraTasks}
+                  viewMode={viewMode}
+                  onViewModeChange={setViewMode}
+                  searchValue={searchQuery}
+                  onSearchChange={setSearchQuery}
+                  searchPlaceholder="Search tasks..."
+                  rightOfSearch={
+                    <TaskFilterPanel
+                      filters={filters}
+                      onChange={setFilters}
+                      onClearAll={clearFilters}
+                      projectOptions={projectOptions}
+                      typeOptions={taskTypeOptions}
+                    />
+                  }
+                  onTaskClick={handleJiraTaskClick}
+                  onTaskUpdate={reloadTasks}
+                  renderTimeline={() => (
+                    <TimelineViewComponent
+                      tasks={tasksForTimeline}
+                      onTaskClick={handleTaskClick}
+                      reloadTasks={reloadTasks}
+                      onCreateTask={(projectIdOverride) =>
+                        handleOpenCreateTaskModal(projectIdOverride)
+                      }
+                      currentUser={user || undefined}
+                    />
+                  )}
+                />
               </div>
-            )}
+            </div>
+          )}
         </div>
       </div>
 

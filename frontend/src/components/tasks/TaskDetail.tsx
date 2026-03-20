@@ -67,6 +67,7 @@ interface TaskDetailProps {
     id?: string | number;
     username: string;
     email: string;
+    is_staff?: boolean;
   };
   onTaskUpdate?: (updatedTask: TaskData) => void;
   onTaskDeleted?: () => void;
@@ -728,8 +729,8 @@ export default function TaskDetail({
         toast.error("Invalid status transition");
         return;
       }
-      const updatedTask: TaskData = (response.data?.task ??
-        response.data) as TaskData;
+      const updatedTask: TaskData = (response?.data?.task ??
+        response?.data) as TaskData;
       Object.assign(task, updatedTask);
       updateTask(task.id!, updatedTask);
       toast.success("Status updated.");
@@ -1675,7 +1676,7 @@ export default function TaskDetail({
             <Accordion type="multiple" defaultValue={["item-1"]}>
               <AccordionItem value="item-1" className="border-none">
                 <AccordionTrigger>
-                  <h2 className="text-base font-semibold text-gray-900">
+                  <h2 data-testid="task-description-heading" className="text-base font-semibold text-gray-900">
                     Task Description
                   </h2>
                 </AccordionTrigger>
@@ -2120,8 +2121,8 @@ export default function TaskDetail({
           {task?.id && <LinkedWorkItems taskId={task.id} />}
 
           {/* Task-level Comments (all task types) */}
-          <section className="flex flex-col gap-3">
-            <h2 className="text-lg font-semibold text-gray-900">Comments</h2>
+          <section data-testid="task-comments-section" className="flex flex-col gap-3">
+            <h2 data-testid="task-comments-heading" className="text-lg font-semibold text-gray-900">Comments</h2>
 
             {/* Input box */}
             <div>
@@ -2350,7 +2351,10 @@ export default function TaskDetail({
                       <select
                         value={task?.status ?? ""}
                         onChange={(e) => handleStatusChange(e.target.value)}
-                        disabled={savingStatus}
+                        disabled={
+                          savingStatus ||
+                          (currentUser != null && !currentUser.is_staff)
+                        }
                         className="block h-9 w-full min-w-0 rounded-[3px] border-0 bg-transparent px-2.5 py-1.5 text-sm text-[#172b4d] focus:outline-none focus:ring-0 disabled:cursor-not-allowed"
                       >
                         <option value="DRAFT">Draft</option>

@@ -646,6 +646,11 @@ const DecisionsPage = () => {
                                   >
                                     {decision.status}
                                   </span>
+                                  {'riskLevel' in decision && (decision as any).riskLevel ? (
+                                    <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                                      {(decision as any).riskLevel}
+                                    </span>
+                                  ) : null}
                                   <h3 className="truncate text-sm font-semibold text-gray-900">
                                     {decision.title || 'Untitled'}
                                   </h3>
@@ -828,13 +833,13 @@ const DecisionsPage = () => {
                           </div>
                         ) : (
                           <div className="overflow-hidden rounded-xl border border-gray-200">
-                            <div className="grid grid-cols-[70px_minmax(220px,1fr)_105px_105px_130px_auto] gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                            <div className="grid grid-cols-[70px_minmax(220px,1fr)_105px_105px_130px_150px] gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                               <div>#Seq</div>
                               <div>Title</div>
-                              <div className="-ml-10">Status</div>
-                              <div className="-ml-7">Risk</div>
-                              <div className="-ml-10">Updated</div>
-                              <div className="-ml-10 text-right">Actions</div>
+                              <div className="flex justify-center">Status</div>
+                              <div className="flex justify-center">Risk</div>
+                              <div className="flex justify-center">Updated</div>
+                              <div className="flex justify-center">Actions</div>
                             </div>
                             <div className="divide-y divide-gray-200 bg-white">
                               {visible.map((decision) => {
@@ -842,7 +847,7 @@ const DecisionsPage = () => {
                                 return (
                                 <div
                                   key={decision.id}
-                                  className="grid grid-cols-[70px_minmax(220px,1fr)_105px_105px_130px_auto] items-center gap-2 px-4 py-2 text-xs text-gray-700"
+                                  className="grid grid-cols-[70px_minmax(220px,1fr)_105px_105px_130px_150px] items-center gap-2 px-4 py-2 text-xs text-gray-700"
                                 >
                                   <div className="text-[11px] font-semibold text-gray-500">
                                     {typeof seq === 'number' ? `#${seq}` : '—'}
@@ -871,14 +876,14 @@ const DecisionsPage = () => {
                                       ? (decision as any).riskLevel
                                       : '—'}
                                   </div>
-                                  <div className="text-[11px] text-gray-500">
+                                  <div className="text-[11px] text-gray-500 text-center">
                                     {formatDate(
                                       decision.updatedAt ||
                                         decision.committedAt ||
                                         decision.createdAt
                                     )}
                                   </div>
-                                  <div className="flex items-center justify-end gap-2">
+                                  <div className="flex items-center justify-center gap-2">
                                     {decision.status === 'COMMITTED' && canReview ? (
                                       <Link
                                         href={`/decisions/${decision.id}/review${
@@ -907,6 +912,15 @@ const DecisionsPage = () => {
                                         Edit
                                       </button>
                                     ) : null}
+                                    {decision.status !== 'COMMITTED' && decision.status !== 'DRAFT' ? (
+                                      <span className="inline-flex w-[80px] items-center justify-center rounded-md border border-transparent px-2.5 py-1 text-[11px] font-semibold text-gray-300">
+                                        —
+                                      </span>
+                                    ) : decision.status === 'COMMITTED' && !canReview ? (
+                                      <span className="inline-flex w-[80px] items-center justify-center rounded-md border border-transparent px-2.5 py-1 text-[11px] font-semibold text-gray-300">
+                                        —
+                                      </span>
+                                    ) : null}
                                     {canDelete ? (
                                       <button
                                         type="button"
@@ -921,15 +935,6 @@ const DecisionsPage = () => {
                                       >
                                         <Trash2 className="h-3 w-3" />
                                       </button>
-                                    ) : null}
-                                    {decision.status !== 'COMMITTED' && decision.status !== 'DRAFT' ? (
-                                      <span className="inline-flex w-[80px] items-center justify-center rounded-md border border-transparent px-2.5 py-1 text-[11px] font-semibold text-gray-300">
-                                        —
-                                      </span>
-                                    ) : decision.status === 'COMMITTED' && !canReview ? (
-                                      <span className="inline-flex w-[80px] items-center justify-center rounded-md border border-transparent px-2.5 py-1 text-[11px] font-semibold text-gray-300">
-                                        —
-                                      </span>
                                     ) : null}
                                   </div>
                                 </div>
