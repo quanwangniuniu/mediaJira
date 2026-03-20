@@ -16,6 +16,7 @@ PROJECT_ROLE_TO_PERMISSION = {
     "owner": "manage",
     "member": "edit",
     "viewer": "view_all",
+    "Organization Admin": "manage",
     "Team Leader": "manage",
     "Super Administrator": "manage",
 }
