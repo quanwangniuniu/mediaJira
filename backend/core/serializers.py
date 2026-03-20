@@ -16,6 +16,17 @@ PROJECT_BASE_ROLES = {
     "Super Administrator",
     "Organization Admin",
     "Team Leader",
+    # Additional role names (kept in sync with frontend `getRoleBadgeClasses()`).
+    "Campaign Manager",
+    "Approver",
+    "Reviewer",
+    "Budget Controller",
+    "Data Analyst",
+    "Senior Media Buyer",
+    "Specialist Media Buyer",
+    "Junior Media Buyer",
+    "Designer",
+    "Copywriter",
 }
 
 

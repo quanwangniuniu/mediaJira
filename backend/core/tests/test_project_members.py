@@ -46,6 +46,7 @@ class TestProjectMemberViewSet:
         assert "Super Administrator" in values
         assert "Organization Admin" in values
         assert "Team Leader" in values
+        assert "Campaign Manager" in values
         assert "owner" not in values  # owner is excluded from role dropdown
 
         assert org_role.name in values
@@ -315,8 +316,8 @@ class TestProjectMemberViewSet:
 
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
-    def test_admin_super_cannot_invite_non_owner(self, authenticated_client, project, user2, organization):
-        """Even admin/super project roles cannot invite unless they are the project owner."""
+    def test_admin_super_can_invite_non_owner(self, authenticated_client, project, user2, organization):
+        """Privileged project member roles can invite even if they are not the owner."""
         from rest_framework.test import APIClient
 
         ProjectMember.objects.create(
@@ -336,7 +337,30 @@ class TestProjectMemberViewSet:
         }
 
         response = client.post(url, payload, format="json")
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_201_CREATED
+
+    def test_campaign_manager_can_invite_non_owner(self, authenticated_client, project, user2, organization):
+        """Campaign Manager can invite members even if they are not the owner."""
+        from rest_framework.test import APIClient
+
+        ProjectMember.objects.create(
+            user=user2,
+            project=project,
+            role="Campaign Manager",
+            is_active=True,
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=user2)
+
+        url = reverse("project-member-list", kwargs={"project_id": project.id})
+        payload = {
+            "email": "newmember@test.com",
+            "role": "viewer",
+        }
+
+        response = client.post(url, payload, format="json")
+        assert response.status_code == status.HTTP_201_CREATED
 
     def test_invite_owner_role_rejected(self, authenticated_client, project, user2):
         """Inviting with owner role should be rejected"""

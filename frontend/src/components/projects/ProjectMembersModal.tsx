@@ -122,7 +122,12 @@ export default function ProjectMembersModal({
     return members.some(
       (member) =>
         member.user?.id === numericId &&
-        ["Super Administrator", "Organization Admin", "Team Leader"].includes(member.role || "")
+        [
+          "Super Administrator",
+          "Organization Admin",
+          "Team Leader",
+          "Campaign Manager",
+        ].includes(member.role || "")
     );
   }, [currentUserId, members, isOwner]);
 
@@ -584,7 +589,7 @@ export default function ProjectMembersModal({
 
         {activeView === "members" && (
           <div className="space-y-6">
-            {isOwner ? (
+            {canManageMembers ? (
               <form
                 onSubmit={handleInvite}
                 className="rounded-2xl border border-gray-200 bg-white/80 p-4 shadow-sm"
@@ -649,7 +654,7 @@ export default function ProjectMembersModal({
               </form>
             ) : (
               <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-5 text-sm text-gray-500">
-                Only project owner can invite members.
+                Only privileged project roles can invite members.
               </div>
             )}
 

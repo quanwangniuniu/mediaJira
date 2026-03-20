@@ -557,12 +557,24 @@ class ListProjectAvailableRolesView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        # Keep role names in sync with frontend `getRoleBadgeClasses()` switch cases.
+        # `owner` is excluded from dropdown responses.
         base_roles = {
             "member",
             "viewer",
+            "Approver",
+            "Reviewer",
             "Super Administrator",
             "Organization Admin",
             "Team Leader",
+            "Campaign Manager",
+            "Budget Controller",
+            "Data Analyst",
+            "Senior Media Buyer",
+            "Specialist Media Buyer",
+            "Junior Media Buyer",
+            "Designer",
+            "Copywriter",
         }
 
         user_org = getattr(request.user, "organization", None)

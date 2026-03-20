@@ -6,7 +6,12 @@ from core.models import Project, ProjectMember
 # - Project ownership is stored in `Project.owner`.
 # - ProjectMember.role is a *per-project* persisted role string.
 #   We use it only to decide which users can manage members/roles.
-PROJECT_MEMBER_ADMIN_SUPER_ROLES = {"Super Administrator", "Organization Admin", "Team Leader"}
+PROJECT_MEMBER_ADMIN_SUPER_ROLES = {
+    "Super Administrator",
+    "Organization Admin",
+    "Team Leader",
+    "Campaign Manager",
+}
 
 
 def is_project_owner(user, project: Project) -> bool:
@@ -22,9 +27,11 @@ def is_project_owner(user, project: Project) -> bool:
 
 def can_invite_project_members(user, project: Project) -> bool:
     """
-    Invite operation is owner-only.
+    Invite operation is allowed for:
+    - project owner (authoritative source: Project.owner)
+    - privileged project member roles (admin/super roles stored in ProjectMember.role)
     """
-    return is_project_owner(user, project)
+    return can_manage_project_members(user, project)
 
 
 def can_manage_project_members(user, project: Project) -> bool:
