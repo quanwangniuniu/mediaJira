@@ -181,7 +181,7 @@ class RetrospectiveTaskViewSet(viewsets.ModelViewSet):
             report_url__isnull=False,
             reviewed_by__isnull=True
         )
-        serializer = RetrospectiveSerializer(retrospectives, many=True)
+        serializer = RetrospectiveTaskListSerializer(retrospectives, many=True)
         return Response(serializer.data)
 
 
