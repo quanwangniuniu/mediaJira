@@ -1,9 +1,22 @@
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 from rest_framework import serializers
 
 from core.models import Organization, Project, ProjectInvitation, ProjectMember, Role
 
 User = get_user_model()
+
+
+PROJECT_BASE_ROLES = {
+    # Built-in project roles
+    "owner",
+    "member",
+    "viewer",
+    # Higher privilege (also used for admin/super gating)
+    "Super Administrator",
+    "Organization Admin",
+    "Team Leader",
+}
 
 
 class UserSummarySerializer(serializers.ModelSerializer):
@@ -106,13 +119,27 @@ class ProjectMemberSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
 
     def validate_role(self, value):
-        if value == 'owner':
-            return value
-        base_roles = {'member', 'viewer', 'owner'}
-        rbac_roles = set(
-            Role.objects.filter(is_deleted=False).values_list('name', flat=True)
-        )
-        allowed_roles = base_roles.union(rbac_roles)
+        request = self.context.get("request")
+        allowed_roles = set(PROJECT_BASE_ROLES)
+
+        # Add organization-scoped RBAC roles from Role model.
+        # - For org roles: Role.organization == request.user.organization
+        # - For system roles: Role.organization is NULL
+        if request and getattr(request, "user", None) and request.user.is_authenticated:
+            user_org = getattr(request.user, "organization", None)
+            if user_org:
+                rbac_roles = Role.objects.filter(
+                    is_deleted=False
+                ).filter(Q(organization=user_org) | Q(organization__isnull=True)).values_list("name", flat=True)
+            else:
+                rbac_roles = Role.objects.filter(
+                    is_deleted=False,
+                    organization__isnull=True,
+                ).values_list("name", flat=True)
+        else:
+            rbac_roles = Role.objects.filter(is_deleted=False, organization__isnull=True).values_list("name", flat=True)
+
+        allowed_roles.update(set(rbac_roles))
         if value not in allowed_roles:
             raise serializers.ValidationError(
                 f'Invalid role "{value}". Allowed roles: {sorted(allowed_roles)}'
@@ -127,11 +154,25 @@ class ProjectMemberInviteSerializer(serializers.Serializer):
     role = serializers.CharField(required=False, default='member')
 
     def validate_role(self, value):
-        base_roles = {'member', 'viewer'}
-        rbac_roles = set(
-            Role.objects.filter(is_deleted=False).values_list('name', flat=True)
-        )
-        allowed_roles = base_roles.union(rbac_roles)
+        request = self.context.get("request")
+        # Invites cannot set the project owner role directly.
+        allowed_roles = set(PROJECT_BASE_ROLES) - {"owner"}
+
+        if request and getattr(request, "user", None) and request.user.is_authenticated:
+            user_org = getattr(request.user, "organization", None)
+            if user_org:
+                rbac_roles = Role.objects.filter(is_deleted=False).filter(
+                    Q(organization=user_org) | Q(organization__isnull=True)
+                ).values_list("name", flat=True)
+            else:
+                rbac_roles = Role.objects.filter(
+                    is_deleted=False,
+                    organization__isnull=True,
+                ).values_list("name", flat=True)
+        else:
+            rbac_roles = Role.objects.filter(is_deleted=False, organization__isnull=True).values_list("name", flat=True)
+
+        allowed_roles.update(set(rbac_roles))
         if value not in allowed_roles:
             raise serializers.ValidationError(
                 f'Invalid role "{value}". Allowed roles: {sorted(allowed_roles)}'

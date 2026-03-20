@@ -7,12 +7,62 @@ Tests for:
 import pytest
 from django.urls import reverse
 from rest_framework import status
-from core.models import Project, ProjectMember, ProjectInvitation
+from core.models import Organization, Project, ProjectMember, ProjectInvitation, Role
 
 
 @pytest.mark.django_db
 class TestProjectMemberViewSet:
     """Tests for ProjectMemberViewSet"""
+
+    def test_roles_endpoint_filters_by_organization(self, authenticated_client, project, user2, organization):
+        """Roles endpoint should include base roles + org roles + system roles, and exclude other org roles."""
+        # Another org
+        other_org = Organization.objects.create(name="Other Org", email_domain="other.com")
+
+        org_role = Role.objects.create(
+            name="OrgRoleA",
+            level=1,
+            organization=organization,
+        )
+        other_org_role = Role.objects.create(
+            name="OrgRoleB",
+            level=1,
+            organization=other_org,
+        )
+        system_role = Role.objects.create(
+            name="SystemRole",
+            level=1,
+            organization=None,
+        )
+
+        url = reverse("list-project-roles", kwargs={"project_id": project.id})
+        response = authenticated_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+
+        values = {r["value"] for r in response.data["roles"]}
+        assert "member" in values
+        assert "viewer" in values
+        assert "Super Administrator" in values
+        assert "Organization Admin" in values
+        assert "Team Leader" in values
+        assert "owner" not in values  # owner is excluded from role dropdown
+
+        assert org_role.name in values
+        assert system_role.name in values
+        assert other_org_role.name not in values
+
+    def test_roles_endpoint_requires_active_project_membership(self, api_client, project, user2, organization):
+        """Non-members should not be able to read project role definitions."""
+        from rest_framework.test import APIClient
+
+        client = APIClient()
+        client.force_authenticate(user=user2)
+
+        url = reverse("list-project-roles", kwargs={"project_id": project.id})
+        response = client.get(url)
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
     def test_list_members_returns_correct_list(self, authenticated_client, project, user, user2, organization):
         """List members should return all active members"""
@@ -263,6 +313,29 @@ class TestProjectMemberViewSet:
 
         response = client.post(url, payload, format='json')
 
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_admin_super_cannot_invite_non_owner(self, authenticated_client, project, user2, organization):
+        """Even admin/super project roles cannot invite unless they are the project owner."""
+        from rest_framework.test import APIClient
+
+        ProjectMember.objects.create(
+            user=user2,
+            project=project,
+            role="Team Leader",
+            is_active=True,
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=user2)
+
+        url = reverse("project-member-list", kwargs={"project_id": project.id})
+        payload = {
+            "email": "newmember@test.com",
+            "role": "viewer",
+        }
+
+        response = client.post(url, payload, format="json")
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
     def test_invite_owner_role_rejected(self, authenticated_client, project, user2):
