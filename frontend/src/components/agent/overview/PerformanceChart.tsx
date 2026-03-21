@@ -68,17 +68,17 @@ export function PerformanceChart() {
           ) : (
             <ChartContainer config={chartConfig} className="h-full w-full">
               <LineChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis
                   dataKey="date"
-                  stroke="#71717a"
+                  stroke="hsl(var(--muted-foreground))"
                   fontSize={12}
                   tickLine={false}
                   axisLine={false}
                 />
                 <YAxis
                   yAxisId="left"
-                  stroke="#71717a"
+                  stroke="hsl(var(--muted-foreground))"
                   fontSize={12}
                   tickLine={false}
                   axisLine={false}
@@ -87,7 +87,7 @@ export function PerformanceChart() {
                 <YAxis
                   yAxisId="right"
                   orientation="right"
-                  stroke="#71717a"
+                  stroke="hsl(var(--muted-foreground))"
                   fontSize={12}
                   tickLine={false}
                   axisLine={false}
