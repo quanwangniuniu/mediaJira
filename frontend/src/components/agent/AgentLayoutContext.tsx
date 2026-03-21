@@ -36,15 +36,15 @@ interface AgentLayoutContextType {
 const AgentLayoutContext = createContext<AgentLayoutContextType | null>(null)
 
 function getSystemTheme(): "light" | "dark" {
-  if (typeof window === "undefined") return "dark"
+  if (typeof window === "undefined") return "light"
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
 }
 
 export function AgentLayoutProvider({ children }: { children: ReactNode }) {
   const [activeView, setActiveViewState] = useState<AgentView>("overview")
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true)
-  const [theme, setThemeState] = useState<AgentTheme>("dark")
-  const [systemTheme, setSystemTheme] = useState<"light" | "dark">("dark")
+  const [theme, setThemeState] = useState<AgentTheme>("light")
+  const [systemTheme, setSystemTheme] = useState<"light" | "dark">("light")
   const [isInSnapZone, setIsInSnapZone] = useState(false)
   const [pendingDecisionId, setPendingDecisionId] = useState<number | null>(null)
 
@@ -69,27 +69,31 @@ export function AgentLayoutProvider({ children }: { children: ReactNode }) {
     } else if (storedView && ["overview", "spreadsheets", "decisions", "tasks"].includes(storedView)) {
       setActiveViewState(storedView as AgentView)
     }
-    const stored = localStorage.getItem("agent-theme") as AgentTheme | null
-    if (stored && ["light", "dark", "system"].includes(stored)) {
-      setThemeState(stored)
-    }
-    setSystemTheme(getSystemTheme())
+    // Theme forced to light — MediaJira does not support dark mode yet
+    // const stored = localStorage.getItem("agent-theme") as AgentTheme | null
+    // if (stored && ["light", "dark", "system"].includes(stored)) {
+    //   setThemeState(stored)
+    // }
+    // setSystemTheme(getSystemTheme())
   }, [])
 
-  // Listen for OS theme changes
-  useEffect(() => {
-    const mql = window.matchMedia("(prefers-color-scheme: dark)")
-    const handler = (e: MediaQueryListEvent) => setSystemTheme(e.matches ? "dark" : "light")
-    mql.addEventListener("change", handler)
-    return () => mql.removeEventListener("change", handler)
-  }, [])
+  // Listen for OS theme changes — disabled while theme is forced to light
+  // useEffect(() => {
+  //   const mql = window.matchMedia("(prefers-color-scheme: dark)")
+  //   const handler = (e: MediaQueryListEvent) => setSystemTheme(e.matches ? "dark" : "light")
+  //   mql.addEventListener("change", handler)
+  //   return () => mql.removeEventListener("change", handler)
+  // }, [])
 
+  // Currently inactive — resolvedTheme is hardcoded to "light" and localStorage read is disabled.
+  // Retained for future dark mode re-enable; remove this comment when restoring theme support.
   const setTheme = (t: AgentTheme) => {
     setThemeState(t)
     localStorage.setItem("agent-theme", t)
   }
 
-  const resolvedTheme = theme === "system" ? systemTheme : theme
+  // Force light — when MediaJira supports dark mode, restore: theme === "system" ? systemTheme : theme
+  const resolvedTheme: "light" | "dark" = "light"
 
   // --- Floating chat controls ---
 

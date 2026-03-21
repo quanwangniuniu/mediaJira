@@ -23,6 +23,16 @@ export const TaskAPI = {
   forceCreateTask: (data: CreateTaskData) =>
     api.post("/api/tasks/force-create/", data),
 
+  // Bulk action on multiple tasks
+  bulkAction: (data: {
+    task_ids: number[];
+    action: 'submit' | 'assign_approver' | 'change_status';
+    payload?: {
+      approver_id?: number;
+      status?: string;
+    };
+  }) => api.post('/api/tasks/bulk_action/', data),
+
   // Get all tasks with optional filters
   getTasks: (params?: TaskListFilters & { content_type?: string; object_id?: string; page?: number }) => {
     const queryParams: any = { ...params };
@@ -72,6 +82,9 @@ export const TaskAPI = {
 
   // Lock a task
   lock: (taskId: number) => api.post(`/api/tasks/${taskId}/lock/`),
+
+  // Unlock a task (LOCKED -> APPROVED)
+  unlock: (taskId: number) => api.post(`/api/tasks/${taskId}/unlock/`),
 
   // Cancel a task
   cancelTask: (taskId: number) =>

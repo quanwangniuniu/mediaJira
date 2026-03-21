@@ -241,13 +241,16 @@ class Message(TimeStampedModel):
         blank=True,
         help_text="Snapshot of original message creation time at forward time"
     )
-    
+    is_deleted = models.BooleanField(default=False, help_text="Soft delete flag")
+    deleted_at = models.DateTimeField(null=True, blank=True, help_text="When the message was soft deleted")
+
     class Meta:
         ordering = ['created_at']
         indexes = [
             models.Index(fields=['chat', 'created_at']),
             models.Index(fields=['sender', 'created_at']),
             models.Index(fields=['chat', '-created_at']),  # For latest messages
+            models.Index(fields=['chat', 'is_deleted']),
         ]
     
     def __str__(self):

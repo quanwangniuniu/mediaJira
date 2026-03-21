@@ -43,6 +43,7 @@ class UsageTrackingMiddleware(MiddlewareMixin):
             '/api/tasks/': {
                 'action_type': 'task',
                 'platform': 'task',
+                'pattern': r'^/api/tasks/$',
                 'methods': ['POST']  # Only track task creation
             },
             '/api/tasks/detail/': {
