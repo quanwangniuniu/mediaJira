@@ -4,6 +4,7 @@ import {
   switchTab,
   openFirstTaskFromList,
   openFirstTaskFromBoard,
+  assertTaskDetailCoreContentVisible,
 } from "./tasks-helpers";
 
 describe("Open task", () => {
@@ -25,6 +26,8 @@ describe("Open task", () => {
       "be.visible",
     );
     cy.get('[data-testid="back-to-tasks"]').should("be.visible");
+
+    assertTaskDetailCoreContentVisible();
   });
 
   it("clicking a task in board navigates to the detail page", () => {
@@ -36,5 +39,8 @@ describe("Open task", () => {
     cy.get('[data-testid="task-id-label"]', { timeout: 10_000 }).should(
       "be.visible",
     );
+    cy.get('[data-testid="back-to-tasks"]').should("be.visible");
+
+    assertTaskDetailCoreContentVisible();
   });
 });

@@ -24,6 +24,7 @@ describe("Tasks list", () => {
     );
 
     cy.contains("No tasks", { timeout: 10_000 }).should("be.visible");
+    cy.contains("Select a task to preview its details.").should("be.visible");
   });
 
   it("applies a filter and the list updates accordingly", () => {
@@ -32,6 +33,7 @@ describe("Tasks list", () => {
     cy.get('[role="listbox"][aria-label="Task list"]', { timeout: 10_000 })
       .should("be.visible")
       .find('[role="option"]')
-      .should("have.length.greaterThan", 0);
+      .should("have.length.greaterThan", 0)
+      .should("contain", "E2E");
   });
 });

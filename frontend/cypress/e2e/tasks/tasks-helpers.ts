@@ -17,8 +17,10 @@ export function waitForTasksPageReady(): void {
       cy.contains("button", "Retry check").click();
     }
   });
+
+  cy.contains("Initializing...", { timeout: 15_000 }).should("not.exist");
   cy.contains("Guided Onboarding", { timeout: 15_000 }).should("not.exist");
-  cy.contains("Preparing your workspace", { timeout: 5_000 }).should(
+  cy.contains("Preparing your workspace", { timeout: 15_000 }).should(
     "not.exist",
   );
 }
@@ -32,6 +34,7 @@ export function selectProject(): void {
     Cypress.env("E2E_PROJECT_NAME") || "E2E Test Project";
 
   cy.visit("/tasks");
+  cy.contains("Initializing...", { timeout: 15_000 }).should("not.exist");
   cy.contains("Preparing your workspace", { timeout: 30_000 }).should(
     "not.exist",
   );
@@ -90,4 +93,46 @@ export function openFirstTaskFromBoard(): void {
     .first()
     .should("be.visible")
     .click();
+}
+
+/**
+ * No inline loading copy like "Loading attachments...", "Loading asset details...", etc.
+ * (Separate from page-level task-detail-loading.)
+ */
+export function assertNoLoadingEllipsisText(): void {
+  cy.get("body", { timeout: 30_000 }).should(($body) => {
+    const text = $body.text();
+    const re = /Loading\s+.+?\.\.\./g;
+    const matches = text.match(re);
+    if (matches?.length) {
+      throw new Error(
+        `Unexpected loading text still present: ${[...new Set(matches)].join(" | ")}`,
+      );
+    }
+  });
+}
+
+/** Task detail route shell: no loading or error panels. */
+export function assertTaskDetailShellNoLoadingOrError(): void {
+  cy.get('[data-testid="task-detail-loading"]').should("not.exist");
+  cy.get('[data-testid="task-detail-error"]').should("not.exist");
+}
+
+/**
+ * After navigation, task detail should be past loading/error and show title + description section.
+ * Used when opening from list or board.
+ */
+export function assertTaskDetailCoreContentVisible(): void {
+  assertNoLoadingEllipsisText();
+  assertTaskDetailShellNoLoadingOrError();
+
+  cy.get('[data-testid="task-summary-title"]', { timeout: 15_000 })
+    .should("be.visible")
+    .and(($el) => {
+      if (!$el.text().trim()) {
+        throw new Error("task summary title is empty");
+      }
+    });
+
+  cy.get('[data-testid="task-description-heading"]').should("be.visible");
 }
