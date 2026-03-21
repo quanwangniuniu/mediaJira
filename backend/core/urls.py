@@ -9,6 +9,7 @@ from core.views import (
     ListMyProjectInvitationsView,
     ListProjectInvitationsView,
     ListPendingInvitationApprovalsView,
+    ListProjectAvailableRolesView,
     ProjectMemberViewSet,
     ProjectOnboardingView,
     ProjectViewSet,
@@ -36,5 +37,6 @@ urlpatterns = [
     path('projects/<int:project_id>/invitations/pending-approval/', ListPendingInvitationApprovalsView.as_view(), name='list-pending-invitation-approvals'),
     path('projects/<int:project_id>/invitations/<int:invitation_id>/approve/', ApproveProjectInvitationView.as_view(), name='approve-project-invitation'),
     path('projects/<int:project_id>/invitations/<int:invitation_id>/reject/', RejectProjectInvitationView.as_view(), name='reject-project-invitation'),
+    path('projects/<int:project_id>/roles/', ListProjectAvailableRolesView.as_view(), name='list-project-roles'),
     path('', include(router.urls)),
 ]

@@ -44,6 +44,16 @@ export interface ProjectMemberInvitePayload {
   role?: string;
 }
 
+export interface ProjectRoleOption {
+  value: string;
+  label: string;
+}
+
+export interface ProjectAvailableRolesResponse {
+  roles: ProjectRoleOption[];
+  default_role: string;
+}
+
 export interface OnboardingProjectPayload {
   name: string;
   description?: string | null;
@@ -242,6 +252,13 @@ export const ProjectAPI = {
         const { members } = normalizeProjectMembersResponse(response.data);
         return members;
       });
+  },
+
+  // Get allowed project role options for the current user's organization
+  getProjectAvailableRoles: (projectId: number): Promise<ProjectAvailableRolesResponse> => {
+    return api
+      .get<ProjectAvailableRolesResponse>(`/api/core/projects/${projectId}/roles/`)
+      .then((response) => response.data);
   },
 
   // Get all members of a specific project (fetches all pagination pages)

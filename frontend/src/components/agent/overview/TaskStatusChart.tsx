@@ -12,7 +12,7 @@ import { PieChart, Pie, Cell, Label } from "recharts"
 import { AgentAPI } from "@/lib/api/agentApi"
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  draft: { label: "Draft", color: "#71717a" },
+  draft: { label: "Draft", color: "#52525b" },
   awaiting_approval: { label: "Awaiting Approval", color: "#f59e0b" },
   committed: { label: "Committed", color: "#3b82f6" },
   reviewed: { label: "Reviewed", color: "#22c55e" },
@@ -38,7 +38,7 @@ export function TaskStatusChart() {
           .map(([status, count]) => ({
             name: status,
             value: count as number,
-            color: STATUS_CONFIG[status]?.color || "#71717a",
+            color: STATUS_CONFIG[status]?.color || "#52525b",
           }))
         setData(chartData)
       } catch {

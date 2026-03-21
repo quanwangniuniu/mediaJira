@@ -95,6 +95,33 @@ class TestProjectInvitations:
         reject_response = client.delete(reject_url)
         assert reject_response.status_code == status.HTTP_403_FORBIDDEN
 
+    def test_campaign_manager_can_approve_invitation(self, authenticated_client, project, user, user2):
+        """Campaign Manager can approve pending invitations."""
+        ProjectMember.objects.create(
+            user=user2,
+            project=project,
+            role="Campaign Manager",
+            is_active=True,
+        )
+
+        response = self._invite_user(authenticated_client, project, "pending@test.com", "member")
+        assert response.status_code == status.HTTP_201_CREATED
+
+        invitation = ProjectInvitation.objects.get(email="pending@test.com", project=project, accepted=False)
+        approve_url = reverse(
+            "approve-project-invitation",
+            kwargs={"project_id": project.id, "invitation_id": invitation.id},
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=user2)
+        approve_response = client.post(approve_url)
+        assert approve_response.status_code == status.HTTP_200_OK
+
+        invitation.refresh_from_db()
+        assert invitation.approved is True
+        assert invitation.approved_by_id == user2.id
+
     def test_accept_with_existing_accepted_invitation(self, authenticated_client, project, user, user2):
         """Accepting a new invite should not fail if an accepted invite already exists."""
         ProjectInvitation.objects.create(

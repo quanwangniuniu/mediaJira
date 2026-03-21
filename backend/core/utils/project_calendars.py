@@ -7,6 +7,7 @@ PROJECT_ROLE_TO_CALENDAR_PERMISSION = {
     "owner": "manage",
     "member": "edit",
     "viewer": "view_all",
+    "Organization Admin": "manage",
     "Team Leader": "manage",
     "Super Administrator": "manage",
 }
