@@ -412,8 +412,8 @@ def _get_or_create_bot_private_chat(bot, target_user, project):
     third participant (e.g. via @Agent lazy-join).
     """
     from chat.models import Chat, ChatType, ChatParticipant
-    from django.db.models import Count
 
+    # First, find chats that contain both bot and target_user
     chat = (
         Chat.objects.filter(
             project=project,
@@ -421,11 +421,18 @@ def _get_or_create_bot_private_chat(bot, target_user, project):
             participants__user=bot,
         )
         .filter(participants__user=target_user)
-        .annotate(p_count=Count('participants', distinct=True))
-        .filter(p_count=2)
         .distinct()
         .first()
     )
+
+    # Second, verify it has exactly 2 participants (not a group chat)
+    if chat:
+        participant_count = chat.participants.count()
+        if participant_count != 2:
+            # Not exactly 2 participants, might be a group chat
+            chat = None
+
+    # If found, reactivate any inactive participants
     if chat:
         participants = ChatParticipant.objects.filter(chat=chat, user__in=[bot, target_user])
         for participant in participants:
@@ -434,6 +441,7 @@ def _get_or_create_bot_private_chat(bot, target_user, project):
                 participant.save(update_fields=['is_active', 'updated_at'])
         return chat, False
 
+    # Not found, create new chat
     chat = Chat.objects.create(project=project, type=ChatType.PRIVATE)
     ChatParticipant.objects.create(chat=chat, user=bot, is_active=True)
     ChatParticipant.objects.create(chat=chat, user=target_user, is_active=True)
