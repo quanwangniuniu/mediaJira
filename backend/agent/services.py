@@ -421,8 +421,9 @@ def _get_or_create_bot_private_chat(bot, target_user, project):
             participants__user=bot,
         )
         .filter(participants__user=target_user)
-        .annotate(p_count=Count('participants'))
+        .annotate(p_count=Count('participants', distinct=True))
         .filter(p_count=2)
+        .distinct()
         .first()
     )
     if chat:
