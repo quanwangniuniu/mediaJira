@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from core.models import Organization, Project, ProjectInvitation, ProjectMember, Role
+from core.permissions import PROJECT_MEMBER_MANAGEMENT_ROLES
 
 User = get_user_model()
 
@@ -127,7 +128,18 @@ class ProjectMemberInviteSerializer(serializers.Serializer):
     role = serializers.CharField(required=False, default='member')
 
     def validate_role(self, value):
-        base_roles = {'member', 'viewer'}
+        """
+        Allow the same project-facing roles as member updates (plus RBAC names),
+        except owner (use ownership transfer flow instead).
+
+        Frontend defaults to "Team Leader"; that string is valid on ProjectMember but
+        was previously rejected here when no Role row named "Team Leader" existed.
+        """
+        if value == 'owner':
+            raise serializers.ValidationError('Cannot invite users as project owner.')
+
+        invite_management_roles = {r for r in PROJECT_MEMBER_MANAGEMENT_ROLES if r != 'owner'}
+        base_roles = {'member', 'viewer'}.union(invite_management_roles)
         rbac_roles = set(
             Role.objects.filter(is_deleted=False).values_list('name', flat=True)
         )

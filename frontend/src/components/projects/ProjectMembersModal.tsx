@@ -28,9 +28,12 @@ type ProjectMembersModalProps = {
   variant?: "modal" | "panel";
 };
 
-const DEFAULT_INVITE_ROLE = "Team Leader";
+/** Default to least privilege; backend always accepts member/viewer. */
+const DEFAULT_INVITE_ROLE = "member";
 
 const inviteRoleOptions: { value: string; label: string }[] = [
+  { value: "member", label: "Member" },
+  { value: "viewer", label: "Viewer" },
   { value: "Super Administrator", label: "Super Administrator" },
   { value: "Organization Admin", label: "Organization Admin" },
   { value: "Team Leader", label: "Team Leader" },
