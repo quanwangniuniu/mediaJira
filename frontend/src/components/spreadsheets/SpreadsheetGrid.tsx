@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
-import { Undo2, Redo2, Bold, Italic, Strikethrough, Palette, ChevronLeft, ChevronRight, Snowflake } from 'lucide-react';
+import { Undo2, Redo2, Bold, Italic, Strikethrough, Palette, ChevronLeft, ChevronRight, ChevronDown, Snowflake, Check, Table2 } from 'lucide-react';
 import { SpreadsheetAPI } from '@/lib/api/spreadsheetApi';
 import toast from 'react-hot-toast';
 import Modal from '@/components/ui/Modal';
@@ -46,6 +46,12 @@ interface SpreadsheetGridProps {
   highlightCell?: { row: number; col: number } | null;
   /** Called when hydration status changes (importing -> hydrating -> ready). Parent can disable Apply Pattern until ready. */
   onHydrationStatusChange?: (status: 'idle' | 'importing' | 'hydrating' | 'ready') => void;
+  /** Called when user clicks the Pivot Table button. Receives cell data for pivot builder. */
+  onOpenPivotBuilder?: (data: {
+    cells: Map<string, { rawInput: string; computedString?: string | null }>;
+    rowCount: number;
+    colCount: number;
+  }) => void;
 }
 
 export interface SpreadsheetGridHandle {
@@ -170,17 +176,35 @@ interface FormatStyleEntry {
   ops: FormatStyleOp[];
 }
 
+interface SortHistoryEntry {
+  previous_order: Array<{ row_id: number; position: number }>;
+  new_order: Array<{ row_id: number; position: number }>;
+}
+
+interface SortColumnHistoryEntry {
+  column_position: number;
+  direction: 'asc' | 'desc';
+}
+
+interface ParsedColumnFilter {
+  operator: '>=' | '>' | '<=' | '<' | '=';
+  rawValue: string;
+  numericValue: number | null;
+}
+
 type UndoEntry =
   | { type: 'cell'; entry: HistoryEntry }
   | { type: 'color'; entry: ColorHistoryEntry }
   | { type: 'format'; entry: FormatStyleEntry }
-  | { type: 'structure'; op: StructureOp };
+  | { type: 'structure'; op: StructureOp }
+  | { type: 'sort'; entry: SortHistoryEntry };
 
 type RedoEntry =
   | { type: 'cell'; entry: HistoryEntry }
   | { type: 'color'; entry: ColorRedoEntry }
   | { type: 'format'; entry: FormatStyleEntry }
-  | { type: 'structure'; entry: StructureRedoEntry };
+  | { type: 'structure'; entry: StructureRedoEntry }
+  | { type: 'sort'; entry: SortHistoryEntry };
 
 interface ResizeState {
   type: 'col' | 'row';
@@ -235,6 +259,22 @@ const DEFAULT_CELL_FORMAT: CellFormat = {
   fontFamily: null,
   fontSize: null,
   numberFormat: null,
+};
+
+const parseColumnFilterExpression = (input: string): ParsedColumnFilter | null => {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  const match = trimmed.match(/^(>=|<=|>|<|=)?\s*(.*?)\s*$/);
+  if (!match) return null;
+  const operator = (match[1] ?? '=') as ParsedColumnFilter['operator'];
+  const rawValue = (match[2] ?? '').trim();
+  if (!rawValue) return null;
+  const numericCandidate = Number(rawValue);
+  return {
+    operator,
+    rawValue,
+    numericValue: Number.isFinite(numericCandidate) ? numericCandidate : null,
+  };
 };
 
 const HIGHLIGHT_COLORS = [
@@ -469,6 +509,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   onHydrationStatusChange,
   frozenRowCount = 0,
   onFreezeHeaderChange,
+  onOpenPivotBuilder,
 }: SpreadsheetGridProps, ref) => {
   const [rowCount, setRowCount] = useState(DEFAULT_ROWS);
   const [colCount, setColCount] = useState(DEFAULT_COLUMNS);
@@ -580,6 +621,10 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     x: number;
     y: number;
   } | null>(null);
+  const [sortMenu, setSortMenu] = useState<{ colIndex: number; x: number; y: number } | null>(null);
+  const sortHistoryRef = useRef<SortColumnHistoryEntry[]>([]); // Most recent sort first, with direction per column
+  const [columnFilters, setColumnFilters] = useState<Record<number, string>>({});
+  const [columnFilterOrder, setColumnFilterOrder] = useState<number[]>([]);
   const [isReverting, setIsReverting] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [formulaBarValue, setFormulaBarValue] = useState<string>('');
@@ -653,6 +698,9 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     setRedoStack([]);
     setMode('navigation');
     setNavigationLocked(false);
+    sortHistoryRef.current = [];
+    setColumnFilters({});
+    setColumnFilterOrder([]);
   }, [sheetId]);
 
   /**
@@ -1589,6 +1637,116 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     [selectColumn]
   );
 
+  const openSortMenu = useCallback((colIndex: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setSortMenu({ colIndex, x: e.clientX, y: e.clientY });
+  }, []);
+
+  const [isSorting, setIsSorting] = useState(false);
+  const getActiveSortDirection = useCallback((colIndex: number): 'asc' | 'desc' | null => {
+    const entry = sortHistoryRef.current.find((item) => item.column_position === colIndex);
+    return entry?.direction ?? null;
+  }, []);
+  const hasColumnFilter = useCallback(
+    (colIndex: number): boolean => Boolean((columnFilters[colIndex] ?? '').trim()),
+    [columnFilters]
+  );
+  const getActiveFilterExpression = useCallback(
+    (colIndex: number): string => columnFilters[colIndex] ?? '',
+    [columnFilters]
+  );
+  const handleColumnFilterChange = useCallback((colIndex: number, value: string) => {
+    setColumnFilters((prev) => {
+      const next = { ...prev };
+      if (!value.trim()) delete next[colIndex];
+      else next[colIndex] = value;
+      return next;
+    });
+    setColumnFilterOrder((prev) => {
+      const withoutCurrent = prev.filter((col) => col !== colIndex);
+      if (!value.trim()) return withoutCurrent;
+      return [...withoutCurrent, colIndex];
+    });
+  }, []);
+
+  const handleColumnSort = useCallback(
+    async (sortCol: number, direction: 'asc' | 'desc') => {
+      if (isSorting || rowCount <= 0 || colCount <= 0) return;
+      setSortMenu(null);
+      setIsSorting(true);
+      try {
+        const previousSortColumns = sortHistoryRef.current
+          .filter((entry) => entry.column_position !== sortCol)
+          .slice(0, 19);
+        const result = await SpreadsheetAPI.sortSheet(spreadsheetId, sheetId, {
+          column_position: sortCol,
+          direction,
+          has_header: true,
+          previous_sort_columns: previousSortColumns,
+        });
+        sortHistoryRef.current = [{ column_position: sortCol, direction }, ...previousSortColumns];
+
+        resetSheetCaches();
+        await loadCellRange(visibleRange.startRow, visibleRange.endRow, visibleRange.startCol, visibleRange.endCol, true);
+
+        setUndoStack((u) => [...u, { type: 'sort', entry: { previous_order: result.previous_order, new_order: result.new_order } }]);
+        setRedoStack([]);
+        toast.success(`Sorted by column ${columnIndexToLabel(sortCol)} ${direction === 'asc' ? 'A→Z' : 'Z→A'}`);
+      } catch (error: any) {
+        console.error('Sort failed:', error);
+        toast.error(error?.response?.data?.detail ?? error?.message ?? 'Sort failed');
+      } finally {
+        setIsSorting(false);
+      }
+    },
+    [
+      isSorting,
+      rowCount,
+      colCount,
+      spreadsheetId,
+      sheetId,
+      resetSheetCaches,
+      loadCellRange,
+      visibleRange,
+    ]
+  );
+
+  const doesCellMatchFilter = useCallback(
+    (row: number, col: number, filter: ParsedColumnFilter): boolean => {
+      const key = getCellKey(row, col);
+      const cellData = cells.get(key);
+      const rawInput = (cellData?.rawInput ?? '').trim();
+      const displayText =
+        (cellData?.computedString != null ? String(cellData.computedString) : null) ??
+        (cellData?.computedNumber != null ? String(cellData.computedNumber) : null) ??
+        rawInput;
+      const normalizedCellText = displayText.trim();
+
+      const rawNumeric = Number(rawInput);
+      const computedNumeric = Number(cellData?.computedNumber);
+      const numericValue = Number.isFinite(computedNumeric)
+        ? computedNumeric
+        : Number.isFinite(rawNumeric)
+        ? rawNumeric
+        : null;
+
+      if (filter.operator === '=') {
+        if (filter.numericValue != null && numericValue != null) {
+          return numericValue === filter.numericValue;
+        }
+        return normalizedCellText.toLowerCase() === filter.rawValue.toLowerCase();
+      }
+
+      if (numericValue == null || filter.numericValue == null) return false;
+      if (filter.operator === '>=') return numericValue >= filter.numericValue;
+      if (filter.operator === '>') return numericValue > filter.numericValue;
+      if (filter.operator === '<=') return numericValue <= filter.numericValue;
+      return numericValue < filter.numericValue;
+    },
+    [cells]
+  );
+
   const performUndoStructure = useCallback(
     async (op: StructureOp) => {
       if (isReverting) return;
@@ -1693,6 +1851,24 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       return cellData?.rawInput ?? '';
     },
     [cells]
+  );
+
+  const applyUndoSort = useCallback(
+    async (entry: SortHistoryEntry) => {
+      await SpreadsheetAPI.reorderRows(spreadsheetId, sheetId, { order: entry.previous_order });
+      resetSheetCaches();
+      await loadCellRange(visibleRange.startRow, visibleRange.endRow, visibleRange.startCol, visibleRange.endCol, true);
+    },
+    [spreadsheetId, sheetId, resetSheetCaches, loadCellRange, visibleRange]
+  );
+
+  const applyRedoSort = useCallback(
+    async (entry: SortHistoryEntry) => {
+      await SpreadsheetAPI.reorderRows(spreadsheetId, sheetId, { order: entry.new_order });
+      resetSheetCaches();
+      await loadCellRange(visibleRange.startRow, visibleRange.endRow, visibleRange.startCol, visibleRange.endCol, true);
+    },
+    [spreadsheetId, sheetId, resetSheetCaches, loadCellRange, visibleRange]
   );
 
   const recordFormulaCommit = useCallback(
@@ -2521,6 +2697,10 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       setRedoStack((prev) => [...prev, { type: 'structure', entry: { type: last.op.type, count: last.op.count, position: last.op.position } }]);
       await performUndoStructure(last.op);
       toast.success('Undo complete');
+    } else if (last.type === 'sort') {
+      setRedoStack((prev) => [...prev, last]);
+      await applyUndoSort(last.entry);
+      toast.success('Undo complete');
     }
   }, [
     undoStack,
@@ -2532,6 +2712,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     applyUndoColor,
     applyUndoFormat,
     performUndoStructure,
+    applyUndoSort,
   ]);
 
   const applyRedoCell = useCallback((entry: HistoryEntry) => {
@@ -2699,8 +2880,19 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         toast.error('Failed to redo');
         setRedoStack((prev) => [...prev, last]);
       }
+    } else if (last.type === 'sort') {
+      setUndoStack((prev) => [...prev, last]);
+      try {
+        await applyRedoSort(last.entry);
+        toast.success('Redo complete');
+      } catch (error: any) {
+        console.error('Failed to redo sort:', error);
+        toast.error('Failed to redo');
+        setUndoStack((prev) => prev.slice(0, -1));
+        setRedoStack((prev) => [...prev, last]);
+      }
     }
-  }, [redoStack, handleInsertRow, handleInsertColumn, handleDeleteRow, handleDeleteColumn, applyRedoCell, applyRedoColor, applyRedoFormat]);
+  }, [redoStack, handleInsertRow, handleInsertColumn, handleDeleteRow, handleDeleteColumn, applyRedoCell, applyRedoColor, applyRedoFormat, applyRedoSort]);
 
   const canRedo = redoStack.length > 0;
 
@@ -4270,6 +4462,24 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     };
   }, [headerMenu]);
 
+  useEffect(() => {
+    if (!sortMenu) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('[data-sort-menu]') || target.closest('[data-col-sort-trigger]')) return;
+      setSortMenu(null);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSortMenu(null);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [sortMenu]);
+
   const selectedCellKey = activeCell ? getCellKey(activeCell.row, activeCell.col) : null;
   const editingCellCoords = editingCell ? parseCellKey(editingCell) : null;
   const selectionRange = useMemo(() => computeSelectionRange(), [computeSelectionRange]);
@@ -4659,6 +4869,23 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       : Math.max(visibleStartCol, Math.min(colCount - 1, visibleRange.endCol));
   // Number of frozen rows (typically 0 or 1) – clamp to valid range
   const frozenRows = Math.max(0, Math.min(frozenRowCount, rowCount));
+  const activeColumnFilters = useMemo(
+    () => {
+      const orderedCols = [
+        ...columnFilterOrder,
+        ...Object.keys(columnFilters).map(Number).filter((col) => !columnFilterOrder.includes(col)),
+      ];
+      return orderedCols
+        .map((col) => {
+          const parsed = parseColumnFilterExpression(columnFilters[col] ?? '');
+          if (!parsed) return null;
+          return { col, filter: parsed };
+        })
+        .filter((entry): entry is { col: number; filter: ParsedColumnFilter } => entry !== null);
+    },
+    [columnFilters, columnFilterOrder]
+  );
+  const hasActiveFilters = activeColumnFilters.length > 0;
 
   // For virtualized rendering of *non-frozen* rows, never start before the first non-frozen row.
   const visibleStartRow = Math.max(frozenRows, visibleStartRowRaw);
@@ -4675,7 +4902,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   // Spacers only apply to the non-frozen region. Frozen rows are always rendered explicitly.
   let topSpacerHeight = 0;
   let bottomSpacerHeight = 0;
-  if (rowCount > 0) {
+  if (rowCount > 0 && !hasActiveFilters) {
     if (frozenRows > 0) {
       const frozenHeight = getRowOffset(frozenRows);
       const nonFrozenStartOffset = getRowOffset(visibleStartRow);
@@ -4687,6 +4914,22 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       bottomSpacerHeight = Math.max(0, totalRowHeight - getRowOffset(visibleEndRow + 1));
     }
   }
+  const renderedNonFrozenRows = useMemo(() => {
+    if (!hasActiveFilters) {
+      return Array.from({ length: visibleRowCount }, (_, rowOffset) => visibleStartRow + rowOffset);
+    }
+    let rows = Array.from({ length: Math.max(0, rowCount - frozenRows) }, (_, idx) => frozenRows + idx);
+    for (const { col, filter } of activeColumnFilters) {
+      rows = rows.filter((row) => doesCellMatchFilter(row, col, filter));
+      if (!rows.length) break;
+    }
+    return rows;
+  }, [hasActiveFilters, visibleRowCount, visibleStartRow, frozenRows, rowCount, activeColumnFilters, doesCellMatchFilter]);
+  const renderedNonFrozenHeight = useMemo(
+    () => renderedNonFrozenRows.reduce((acc, row) => acc + getRowHeight(row), 0),
+    [renderedNonFrozenRows, getRowHeight]
+  );
+  const bodyTableHeight = hasActiveFilters ? getRowOffset(frozenRows) + renderedNonFrozenHeight : totalRowHeight;
   const leftSpacerWidth = getColumnOffset(visibleStartCol);
   const rightSpacerWidth = Math.max(0, totalColumnWidth - getColumnOffset(visibleEndCol + 1));
 
@@ -4770,8 +5013,9 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         </div>
       ) : null}
 
-      {/* Import/Export actions */}
-      <div className="flex items-center justify-start gap-2 px-2 py-2 border-b border-gray-200 bg-white">
+      {/* Unified toolbar: undo/redo, freeze, import/export, highlight & formatting */}
+      <div className="flex items-center justify-between gap-3 px-2 py-1.5 border-b border-gray-200 bg-white">
+        <div className="flex items-center gap-1.5">
         <input
           ref={fileInputRef}
           type="file"
@@ -4784,24 +5028,24 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           onClick={handleUnifiedUndo}
           disabled={!canUndo || isReverting}
           title="Undo (Ctrl+Z)"
-          className="flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <Undo2 className="h-4 w-4" strokeWidth={2.5} />
+            <Undo2 className="h-3.5 w-3.5" strokeWidth={2.3} />
         </button>
         <button
           type="button"
           onClick={handleUnifiedRedo}
           disabled={!canRedo || isReverting}
           title="Redo (Ctrl+Shift+Z)"
-          className="flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <Redo2 className="h-4 w-4" strokeWidth={2.5} />
+            <Redo2 className="h-3.5 w-3.5" strokeWidth={2.3} />
         </button>
         <button
           type="button"
           onClick={handleFreezeHeader}
           title={frozenRowCount > 0 ? 'Unfreeze header (Ctrl+Shift+F)' : 'Freeze header (Ctrl+Shift+F)'}
-          className={`flex h-8 w-8 items-center justify-center rounded border transition-colors ${
+            className={`flex h-7 w-7 items-center justify-center rounded border transition-colors text-xs ${
             frozenRowCount > 0
               ? 'border-blue-300 bg-blue-50 text-blue-700'
               : 'border-gray-200 text-gray-600 hover:bg-gray-50'
@@ -4809,7 +5053,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           data-testid="freeze-header-button"
         >
           <span className="flex items-center gap-0.5 text-sm font-semibold">
-            <Snowflake className="h-3.5 w-3.5" strokeWidth={2.5} />
+              <Snowflake className="h-3 w-3" strokeWidth={2.3} />
             <span>H</span>
           </span>
         </button>
@@ -4817,7 +5061,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           type="button"
           onClick={handleImportClick}
           disabled={isImporting}
-          className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+            className="rounded border border-gray-200 px-2 py-0.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
         >
           Import
         </button>
@@ -4839,7 +5083,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               setExportMenuOpen((prev) => !prev);
             }}
             disabled={isImporting}
-            className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+              className="rounded border border-gray-200 px-2 py-0.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
             aria-haspopup="menu"
             aria-expanded={exportMenuOpen}
             data-export-menu-trigger
@@ -4883,11 +5127,29 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               document.body
             )}
         </div>
-      </div>
+        <button
+          type="button"
+          onClick={() => {
+            if (onOpenPivotBuilder) {
+              const cellData = new Map<string, { rawInput: string; computedString?: string | null }>();
+              cells.forEach((cell, key) => {
+                cellData.set(key, { rawInput: cell.rawInput, computedString: cell.computedString });
+              });
+              onOpenPivotBuilder({ cells: cellData, rowCount, colCount });
+            }
+          }}
+          title="Pivot Table"
+          disabled={!onOpenPivotBuilder}
+          className="flex h-7 items-center gap-1 rounded border px-2 text-[11px] font-semibold transition-colors border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          data-testid="pivot-table-button"
+        >
+          <Table2 className="h-3.5 w-3.5" strokeWidth={2.3} />
+          Pivot
+        </button>
+        </div>
 
-      {/* Highlight & Text formatting toolbar */}
-      <div className="flex items-center justify-between gap-4 px-2 py-2 border-b border-gray-200 bg-white">
-        <div className="flex items-center gap-2">
+        {/* Highlight & Text formatting controls */}
+        <div className="flex items-center gap-1.5">
           <div className="relative" ref={highlightMenuRef}>
             <button
               type="button"
@@ -4897,7 +5159,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                 setHighlightMenuOpen((prev) => !prev);
               }}
               disabled={!hasSelection}
-              className="flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+              className="flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-60"
               aria-haspopup="menu"
               aria-expanded={highlightMenuOpen}
               data-highlight-menu-trigger
@@ -4953,42 +5215,42 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               onClick={() => applyFormatToSelection({ bold: !formatStateForSelection?.bold })}
               disabled={!hasSelection}
               title="Bold"
-              className={`flex h-8 w-8 items-center justify-center rounded border transition-colors disabled:opacity-60 ${
+              className={`flex h-7 w-7 items-center justify-center rounded border transition-colors disabled:opacity-60 ${
                 formatStateForSelection?.bold
                   ? 'border-blue-300 bg-blue-50 text-blue-700'
                   : 'border-gray-200 text-gray-600 hover:bg-gray-50'
               }`}
               data-testid="format-bold"
             >
-              <Bold className="h-4 w-4" strokeWidth={2.5} />
+              <Bold className="h-3.5 w-3.5" strokeWidth={2.3} />
             </button>
             <button
               type="button"
               onClick={() => applyFormatToSelection({ italic: !formatStateForSelection?.italic })}
               disabled={!hasSelection}
               title="Italic"
-              className={`flex h-8 w-8 items-center justify-center rounded border transition-colors disabled:opacity-60 ${
+              className={`flex h-7 w-7 items-center justify-center rounded border transition-colors disabled:opacity-60 ${
                 formatStateForSelection?.italic
                   ? 'border-blue-300 bg-blue-50 text-blue-700'
                   : 'border-gray-200 text-gray-600 hover:bg-gray-50'
               }`}
               data-testid="format-italic"
             >
-              <Italic className="h-4 w-4" strokeWidth={2.5} />
+              <Italic className="h-3.5 w-3.5" strokeWidth={2.3} />
             </button>
             <button
               type="button"
               onClick={() => applyFormatToSelection({ strikethrough: !formatStateForSelection?.strikethrough })}
               disabled={!hasSelection}
               title="Strikethrough"
-              className={`flex h-8 w-8 items-center justify-center rounded border transition-colors disabled:opacity-60 ${
+              className={`flex h-7 w-7 items-center justify-center rounded border transition-colors disabled:opacity-60 ${
                 formatStateForSelection?.strikethrough
                   ? 'border-blue-300 bg-blue-50 text-blue-700'
                   : 'border-gray-200 text-gray-600 hover:bg-gray-50'
               }`}
               data-testid="format-strikethrough"
             >
-              <Strikethrough className="h-4 w-4" strokeWidth={2.5} />
+              <Strikethrough className="h-3.5 w-3.5" strokeWidth={2.3} />
             </button>
             <div className="relative" ref={textColorMenuRef}>
               <button
@@ -5000,7 +5262,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                 disabled={!hasSelection}
                 title="Text color"
                 data-text-color-trigger
-                className="flex h-8 w-8 items-center justify-center rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+                className="flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-60"
                 data-testid="format-text-color"
               >
                 <Palette className="h-4 w-4" strokeWidth={2.5} style={selectedTextColor ? { color: selectedTextColor } : undefined} />
@@ -5049,7 +5311,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                 applyFormatToSelection({ fontFamily: v });
               }}
               disabled={!hasSelection}
-              className="rounded border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60 max-w-[120px]"
+              className="rounded border border-gray-200 px-2 py-0.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60 max-w-[120px]"
               data-testid="format-font-family"
               title="Font family"
             >
@@ -5067,7 +5329,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                 applyFormatToSelection({ fontSize: v });
               }}
               disabled={!hasSelection}
-              className="rounded border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60 w-14"
+              className="rounded border border-gray-200 px-2 py-0.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60 w-14"
               data-testid="format-font-size"
               title="Font size"
             >
@@ -5078,7 +5340,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               ))}
             </select>
           </div>
-          <div className="flex items-center gap-1 border-l border-gray-200 pl-3">
+          <div className="flex items-center gap-1 border-l border-gray-200 pl-2">
             <div className="relative">
               <button
                 type="button"
@@ -5297,6 +5559,52 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           document.body
         )}
 
+      {sortMenu &&
+        createPortal(
+          <div
+            className="fixed z-[1000] min-w-[200px] rounded-md border border-gray-200 bg-white shadow-lg py-1"
+            style={{ top: sortMenu.y, left: sortMenu.x }}
+            data-sort-menu
+            role="menu"
+          >
+            <div className="px-3 py-2 border-b border-gray-100">
+              <div className="mb-1 flex items-center justify-between text-[11px] font-semibold text-gray-600">
+                <span>Filter</span>
+                {hasColumnFilter(sortMenu.colIndex) ? <Check className="h-3 w-3 text-blue-600" /> : null}
+              </div>
+              <input
+                type="text"
+                value={getActiveFilterExpression(sortMenu.colIndex)}
+                onChange={(e) => handleColumnFilterChange(sortMenu.colIndex, e.target.value)}
+                placeholder="e.g. >= 7, = abc"
+                className="w-full rounded border border-gray-200 px-2 py-1 text-xs text-gray-900 focus:border-blue-400 focus:outline-none"
+                aria-label={`Filter column ${columnIndexToLabel(sortMenu.colIndex)}`}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleColumnSort(sortMenu.colIndex, 'asc')}
+              disabled={isSorting}
+              className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+              role="menuitem"
+            >
+              <span>Sort A → Z</span>
+              {getActiveSortDirection(sortMenu.colIndex) === 'asc' ? <Check className="h-3.5 w-3.5 text-blue-600" /> : null}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleColumnSort(sortMenu.colIndex, 'desc')}
+              disabled={isSorting}
+              className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+              role="menuitem"
+            >
+              <span>Sort Z → A</span>
+              {getActiveSortDirection(sortMenu.colIndex) === 'desc' ? <Check className="h-3.5 w-3.5 text-blue-600" /> : null}
+            </button>
+          </div>,
+          document.body
+        )}
+
       <div className="flex items-center gap-2 px-2 py-2 border-b border-gray-200 bg-white">
         <span className="text-xs font-semibold text-gray-500">fx</span>
         <input
@@ -5381,34 +5689,32 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         onPaste={handlePaste}
         tabIndex={0}
       >
-        <table
-          className="border-collapse"
-          style={{
-            tableLayout: 'fixed',
-            width: `${ROW_NUMBER_WIDTH + totalColumnWidth}px`,
-            height: `${HEADER_HEIGHT + totalRowHeight}px`,
-            minHeight: `${HEADER_HEIGHT + totalRowHeight}px`,
-          }}
-        >
-          <colgroup>
-            <col style={{ width: `${ROW_NUMBER_WIDTH}px`, minWidth: `${ROW_NUMBER_WIDTH}px` }} />
-            <col style={{ width: `${leftSpacerWidth}px`, minWidth: `${leftSpacerWidth}px` }} />
-            {Array.from({ length: visibleColCount }).map((_, colIndex) => (
-              <col
-                key={colIndex}
-                data-col-index={visibleStartCol + colIndex}
-                data-testid={`col-width-${visibleStartCol + colIndex}`}
-                style={{
-                  width: `${getColumnWidth(visibleStartCol + colIndex)}px`,
-                  minWidth: `${getColumnWidth(visibleStartCol + colIndex)}px`,
-                }}
-              />
-            ))}
-            <col style={{ width: `${rightSpacerWidth}px`, minWidth: `${rightSpacerWidth}px` }} />
-          </colgroup>
-
-          {/* Column Headers */}
-          <thead className="bg-gray-100 sticky top-0 z-10">
+        {/* Column headers in separate table to avoid thead/tbody gap with sticky. */}
+        <div className="sticky top-0 z-10 shrink-0 bg-gray-200">
+          <table
+            className="border-collapse"
+            style={{
+              tableLayout: 'fixed',
+              width: `${ROW_NUMBER_WIDTH + totalColumnWidth}px`,
+            }}
+          >
+            <colgroup>
+              <col style={{ width: `${ROW_NUMBER_WIDTH}px`, minWidth: `${ROW_NUMBER_WIDTH}px` }} />
+              <col style={{ width: `${leftSpacerWidth}px`, minWidth: `${leftSpacerWidth}px` }} />
+              {Array.from({ length: visibleColCount }).map((_, colIndex) => (
+                <col
+                  key={colIndex}
+                  data-col-index={visibleStartCol + colIndex}
+                  data-testid={`col-width-${visibleStartCol + colIndex}`}
+                  style={{
+                    width: `${getColumnWidth(visibleStartCol + colIndex)}px`,
+                    minWidth: `${getColumnWidth(visibleStartCol + colIndex)}px`,
+                  }}
+                />
+              ))}
+              <col style={{ width: `${rightSpacerWidth}px`, minWidth: `${rightSpacerWidth}px` }} />
+            </colgroup>
+            <thead className="bg-gray-200">
             <tr>
               <th
                 className="border border-gray-300 bg-gray-200 text-xs font-semibold text-gray-600 text-center sticky left-0 z-20"
@@ -5442,7 +5748,22 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                     openHeaderMenu('col', colIndex, e.clientX, e.clientY);
                   }}
                 >
-                  {columnIndexToLabel(colIndex)}
+                  <div className="flex items-center justify-center gap-0.5">
+                    <span>{columnIndexToLabel(colIndex)}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => openSortMenu(colIndex, e)}
+                      className="relative p-0.5 rounded hover:bg-gray-300/80 text-gray-500 hover:text-gray-700"
+                      aria-label={`Sort column ${columnIndexToLabel(colIndex)}`}
+                      data-testid={`col-sort-${colIndex}`}
+                      data-col-sort-trigger
+                    >
+                      <ChevronDown className="h-3 w-3" />
+                      {hasColumnFilter(colIndex) ? (
+                        <Check className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-white text-blue-600" />
+                      ) : null}
+                    </button>
+                  </div>
                   <div
                     data-testid={`col-resize-handle-${colIndex}`}
                     className="absolute top-0"
@@ -5466,8 +5787,36 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               />
             </tr>
           </thead>
+          </table>
+        </div>
 
-          {/* Grid Body */}
+        {/* Body table: same colgroup for column alignment. */}
+        <table
+          className="border-collapse"
+          style={{
+            tableLayout: 'fixed',
+            width: `${ROW_NUMBER_WIDTH + totalColumnWidth}px`,
+            height: `${bodyTableHeight}px`,
+            minHeight: `${bodyTableHeight}px`,
+            //marginTop: '1px',
+          }}
+        >
+          <colgroup>
+            <col style={{ width: `${ROW_NUMBER_WIDTH}px`, minWidth: `${ROW_NUMBER_WIDTH}px` }} />
+            <col style={{ width: `${leftSpacerWidth}px`, minWidth: `${leftSpacerWidth}px` }} />
+            {Array.from({ length: visibleColCount }).map((_, colIndex) => (
+              <col
+                key={colIndex}
+                data-col-index={visibleStartCol + colIndex}
+                data-testid={`col-width-body-${visibleStartCol + colIndex}`}
+                style={{
+                  width: `${getColumnWidth(visibleStartCol + colIndex)}px`,
+                  minWidth: `${getColumnWidth(visibleStartCol + colIndex)}px`,
+                }}
+              />
+            ))}
+            <col style={{ width: `${rightSpacerWidth}px`, minWidth: `${rightSpacerWidth}px` }} />
+          </colgroup>
           <tbody>
             {/* Frozen rows: always rendered so they remain sticky even when scrolled far down. */}
             {Array.from({ length: frozenRows }).map((_, rowIndex) => {
@@ -5674,9 +6023,8 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               </tr>
             )}
 
-            {/* Virtualized non-frozen rows */}
-            {Array.from({ length: visibleRowCount }).map((_, rowOffset) => {
-              const row = visibleStartRow + rowOffset; // 0-based for API, starts at first non-frozen row
+            {/* Non-frozen rows: virtualized by viewport unless filters are active */}
+            {renderedNonFrozenRows.map((row) => {
               const rowHeight = getRowHeight(row);
               const rowBaseStyle = getCellBaseStyle(rowHeight);
               const frozen = isFrozenRow(row);

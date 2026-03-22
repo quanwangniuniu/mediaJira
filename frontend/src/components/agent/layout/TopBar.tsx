@@ -3,6 +3,7 @@
 import { PanelRightClose, PanelRightOpen, ChevronRight } from "lucide-react"
 import { useAgentLayout, type AgentView } from "../AgentLayoutContext"
 import { Button } from "@/components/ui/button"
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { ThemeToggle } from "./ThemeToggle"
 
 const viewLabels: Record<AgentView, string> = {
@@ -26,7 +27,7 @@ export function TopBar() {
 
       {/* Right Controls */}
       <div className="flex items-center gap-1">
-        <ThemeToggle />
+        {/* <ThemeToggle /> — disabled until MediaJira supports dark mode */}
         <Button
           variant="ghost"
           size="sm"

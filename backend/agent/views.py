@@ -39,6 +39,13 @@ from . import data_service
 logger = logging.getLogger(__name__)
 
 
+class EnglishResponseMixin:
+    """Force English for DRF validation messages in all agent views."""
+    def initial(self, request, *args, **kwargs):
+        activate_language('en')
+        super().initial(request, *args, **kwargs)
+
+
 def _get_user_project(request):
     """Get the active project for the current user, with membership check."""
     project_id = request.headers.get('X-Project-Id') or request.query_params.get('project_id')
@@ -53,7 +60,7 @@ def _get_user_project(request):
     return getattr(request.user, 'active_project', None)
 
 
-class AgentSessionViewSet(viewsets.ModelViewSet):
+class AgentSessionViewSet(EnglishResponseMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     pagination_class = None
     http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
@@ -89,12 +96,11 @@ class AgentSessionViewSet(viewsets.ModelViewSet):
         instance.save()
 
 
-class ChatView(APIView):
+class ChatView(EnglishResponseMixin, APIView):
     permission_classes = [IsAuthenticated]
     renderer_classes = [EventStreamRenderer, JSONRenderer]
 
     def post(self, request, session_id):
-        activate_language('en')
         serializer = ChatInputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -183,7 +189,7 @@ class ChatView(APIView):
         return response
 
 
-class SpreadsheetListView(APIView):
+class SpreadsheetListView(EnglishResponseMixin, APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -201,7 +207,7 @@ class SpreadsheetListView(APIView):
 
 
 
-class DataReportListView(APIView):
+class DataReportListView(EnglishResponseMixin, APIView):
     """GET /api/agent/data/reports/ — list imported CSV files."""
     permission_classes = [IsAuthenticated]
 
@@ -216,7 +222,7 @@ class DataReportListView(APIView):
         return Response(reports)
 
 
-class DataReportDetailView(APIView):
+class DataReportDetailView(EnglishResponseMixin, APIView):
     """GET/DELETE /api/agent/data/reports/<uuid:file_id>/"""
     permission_classes = [IsAuthenticated]
 
@@ -251,7 +257,7 @@ class DataReportDetailView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class DataUploadView(APIView):
+class DataUploadView(EnglishResponseMixin, APIView):
     """POST /api/agent/data/upload/ — upload a CSV file."""
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
@@ -294,14 +300,13 @@ class DataUploadView(APIView):
         return Response(result, status=status.HTTP_201_CREATED)
 
 
-class FileUploadAnalyzeView(APIView):
+class FileUploadAnalyzeView(EnglishResponseMixin, APIView):
     """POST /api/agent/upload-analyze/ — upload a file and stream analysis."""
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
     renderer_classes = [EventStreamRenderer, JSONRenderer]
 
     def post(self, request):
-        activate_language('en')
         project = _get_user_project(request)
         if not project:
             return Response(
@@ -418,7 +423,7 @@ class FileUploadAnalyzeView(APIView):
         return response
 
 
-class DataReportSummaryView(APIView):
+class DataReportSummaryView(EnglishResponseMixin, APIView):
     """GET /api/agent/data/reports/summary/ — aggregated KPI data."""
     permission_classes = [IsAuthenticated]
 
@@ -435,7 +440,7 @@ class DataReportSummaryView(APIView):
         return Response(summary)
 
 
-class DecisionStatsView(APIView):
+class DecisionStatsView(EnglishResponseMixin, APIView):
     """GET /api/agent/decisions/stats/ — Decision status counts."""
     permission_classes = [IsAuthenticated]
 
@@ -455,7 +460,7 @@ class DecisionStatsView(APIView):
         return Response(stats)
 
 
-class DecisionRecentView(APIView):
+class DecisionRecentView(EnglishResponseMixin, APIView):
     """GET /api/agent/decisions/recent/ — latest 5 decisions."""
     permission_classes = [IsAuthenticated]
 
@@ -483,7 +488,7 @@ class DecisionRecentView(APIView):
         return Response(result)
 
 
-class AnomalyLatestView(APIView):
+class AnomalyLatestView(EnglishResponseMixin, APIView):
     """GET /api/agent/anomalies/latest/ — latest anomalies from most recent analysis."""
     permission_classes = [IsAuthenticated]
 

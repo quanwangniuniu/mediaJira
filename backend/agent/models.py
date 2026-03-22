@@ -126,6 +126,7 @@ class AgentWorkflowRun(TimeStampedModel):
     analysis_result = models.JSONField(null=True, blank=True)
     created_tasks = models.JSONField(default=list, blank=True)
     error_message = models.TextField(null=True, blank=True)
+    chat_followed_up = models.BooleanField(default=False)
 
     class Meta:
         ordering = ['-created_at']

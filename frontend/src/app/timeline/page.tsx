@@ -25,6 +25,8 @@ import useAuth from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
 import { ProjectAPI } from '@/lib/api/projectApi';
 import { useProjectStore } from '@/lib/projectStore';
+import { useTaskFilterParams } from '@/hooks/useTaskFilterParams';
+import { TaskFilterPanel } from '@/components/tasks/TaskFilterPanel';
 
 function TimelinePageContent() {
   const searchParams = useSearchParams();
@@ -34,6 +36,23 @@ function TimelinePageContent() {
   const projectId = projectIdParam
     ? Number(projectIdParam)
     : activeProject?.id ?? null;
+
+  const [filters, setFilters, clearFilters] = useTaskFilterParams();
+  const [taskTypeOptions, setTaskTypeOptions] = useState<
+    { value: string; label: string }[]
+  >([]);
+
+  useEffect(() => {
+    const loadTypes = async () => {
+      try {
+        const types = await TaskAPI.getTaskTypes();
+        setTaskTypeOptions(Array.isArray(types) ? types : []);
+      } catch {
+        setTaskTypeOptions([]);
+      }
+    };
+    loadTypes();
+  }, []);
 
   useEffect(() => {
     if (projectIdParam || !activeProject?.id) return;
@@ -151,10 +170,10 @@ function TimelinePageContent() {
   useEffect(() => {
     if (!projectId) return;
     const load = async () => {
-      await fetchTasks({ project_id: projectId, include_subtasks: true });
+      await fetchTasks({ ...filters, project_id: projectId, include_subtasks: true });
     };
     load();
-  }, [projectId, fetchTasks]);
+  }, [projectId, fetchTasks, filters]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -776,25 +795,32 @@ function TimelinePageContent() {
           </div>
         </div>
 
-        {projectId && loading && (
-          <div className="text-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
-            <p className="mt-2 text-gray-600">Loading tasks...</p>
+        {projectId && (
+          <div className="space-y-4">
+            <TaskFilterPanel
+              filters={filters}
+              onChange={setFilters}
+              onClearAll={clearFilters}
+              projectOptions={projectOptions}
+              typeOptions={taskTypeOptions}
+            />
+            {loading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
+                <p className="mt-2 text-gray-600">Loading tasks...</p>
+              </div>
+            ) : error && !hasTasks ? (
+              <div className="text-center py-8">
+                <p className="text-red-600">Error loading tasks.</p>
+              </div>
+            ) : (
+              <TimelineView
+                tasks={visibleTasks}
+                reloadTasks={reloadTasks}
+                onCreateTask={handleCreateTask}
+              />
+            )}
           </div>
-        )}
-
-        {projectId && error && !hasTasks && (
-          <div className="text-center py-8">
-            <p className="text-red-600">Error loading tasks.</p>
-          </div>
-        )}
-
-        {projectId && !loading && (hasTasks || !error) && (
-          <TimelineView
-            tasks={visibleTasks}
-            reloadTasks={reloadTasks}
-            onCreateTask={handleCreateTask}
-          />
         )}
       </div>
 

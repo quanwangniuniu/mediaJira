@@ -1,6 +1,7 @@
 import React from 'react';
 import { Grid3x3, User } from 'lucide-react';
 import MobileMenu from '../MobileMenu';
+import Image from 'next/image';
 
 type HeaderSectionProps = {
   isAuthenticated: boolean;
@@ -25,10 +26,20 @@ export default function HeaderSection({
       <header className="hidden md:block border-b border-gray-200 bg-white">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-12">
-            <h1 className="text-3xl font-bold">
-              <span className="text-blue-800">Media</span>
-              <span className="text-gray-900">Jira</span>
-            </h1>
+             <div className="flex items-center">
+              <Image
+                    src="/homepage_logo_square.jpeg"
+                    alt="MediaJira Logo"
+                    width={278}
+                    height={69}
+                    className="h-16 w-auto"
+                    priority
+                  />
+              <h1 className="text-3xl font-bold">
+                <span className="text-blue-800">Media</span>
+                <span className="text-gray-900">Jira</span>
+              </h1>
+            </div>
             <nav className="hidden lg:flex gap-6">
               <a href="#" className="text-gray-700 hover:text-gray-900">Features</a>
               <a href="#" className="text-gray-700 hover:text-gray-900">Solutions</a>
@@ -36,7 +47,7 @@ export default function HeaderSection({
               <a href="#" className="text-gray-700 hover:text-gray-900">Resource</a>
             </nav>
           </div>
-          <div className="flex items-center gap-3 mt-auto">
+          <div className="flex items-center gap-3 ">
             {isAuthenticated ? (
               <button
                 onClick={onLoginClick}
@@ -75,10 +86,20 @@ export default function HeaderSection({
       {/* Header - Mobile */}
       <header className="block md:hidden border-b border-gray-200 bg-white sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <h1 className="text-2xl font-bold">
-            <span className="text-blue-800">Media</span>
-            <span className="text-gray-900">Jira</span>
-          </h1>
+        <div className="flex items-center">
+              <Image
+                    src="/homepage_logo_square.jpeg"
+                    alt="MediaJira Logo"
+                    width={278}
+                    height={69}
+                    className="h-16 w-auto"
+                    priority
+                  />
+              <h1 className="text-2xl font-bold">
+                <span className="text-blue-800">Media</span>
+                <span className="text-gray-900">Jira</span>
+              </h1>
+            </div>
           <MobileMenu />
         </div>
       </header>

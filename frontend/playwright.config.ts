@@ -1,14 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Read environment variables from file.
- * https://github.com/motdotla/dotenv
- */
-// import dotenv from 'dotenv';
-// import path from 'path';
-// dotenv.config({ path: path.resolve(__dirname, '.env') });
-
-/**
  * See https://playwright.dev/docs/test-configuration.
  */
 export default defineConfig({
@@ -16,7 +8,7 @@ export default defineConfig({
   /* Start Next.js so you don't have to run frontend/backend manually. */
   webServer: {
     command: 'npm run dev',
-    url: process.env.BASE_URL || 'http://localhost:3000',
+    url: process.env.BASE_URL || 'http://localhost',
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
   },
@@ -33,7 +25,7 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('')`. Next.js dev runs on 3000. */
-    baseURL: process.env.BASE_URL || 'http://localhost:3000',
+    baseURL: process.env.BASE_URL || 'http://localhost',
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
@@ -42,10 +34,10 @@ export default defineConfig({
 
   /* Configure projects */
   projects: [
-    /* Global auth setup (real login) – only for non-auth e2e; do not run when testing e2e/auth only */
-    { name: 'setup', testMatch: /^auth\.setup\.ts$/ },
+    /* Global auth setup (real login) – runs first; produces e2e/.auth/user.json for decisions, tasks, spreadsheets */
+    { name: 'setup', testMatch: /e2e[\\/]auth\.setup\.ts$/ },
     /* Auth-folder setup (mocked login) – runs when testing e2e/auth */
-    { name: 'auth-setup', testMatch: /^auth\/auth\.setup\.ts$/ },
+    { name: 'auth-setup', testMatch: /e2e[\\/]auth[\\/]auth\.setup\.ts$/ },
     {
       name: 'chromium',
       use: {
@@ -53,7 +45,7 @@ export default defineConfig({
         storageState: 'e2e/.auth/user.json',
       },
       dependencies: ['setup'],
-      testIgnore: /^auth\//,
+      testIgnore: /e2e[\\/]auth[\\/]/,
     },
     {
       name: 'firefox',
@@ -62,7 +54,7 @@ export default defineConfig({
         storageState: 'e2e/.auth/user.json',
       },
       dependencies: ['setup'],
-      testIgnore: /^auth\//,
+      testIgnore: /e2e[\\/]auth[\\/]/,
     },
     {
       name: 'webkit',
@@ -71,7 +63,7 @@ export default defineConfig({
         storageState: 'e2e/.auth/user.json',
       },
       dependencies: ['setup'],
-      testIgnore: /^auth\//,
+      testIgnore: /e2e[\\/]auth[\\/]/,
     },
     {
       name: 'auth-chromium',
@@ -80,8 +72,8 @@ export default defineConfig({
         storageState: 'e2e/auth/.auth/user.json',
       },
       dependencies: ['auth-setup'],
-      testMatch: /^auth\//,
-      testIgnore: /\.setup\.ts$/,
+      testMatch: /e2e[\\/]auth[\\/]/,
+      testIgnore: [/\.setup\.ts$/, /[\\/]fixtures[\\/]/],
     },
     {
       name: 'auth-firefox',
@@ -90,8 +82,8 @@ export default defineConfig({
         storageState: 'e2e/auth/.auth/user.json',
       },
       dependencies: ['auth-setup'],
-      testMatch: /^auth\//,
-      testIgnore: /\.setup\.ts$/,
+      testMatch: /e2e[\\/]auth[\\/]/,
+      testIgnore: [/\.setup\.ts$/, /[\\/]fixtures[\\/]/],
     },
     {
       name: 'auth-webkit',
@@ -100,8 +92,8 @@ export default defineConfig({
         storageState: 'e2e/auth/.auth/user.json',
       },
       dependencies: ['auth-setup'],
-      testMatch: /^auth\//,
-      testIgnore: /\.setup\.ts$/,
+      testMatch: /e2e[\\/]auth[\\/]/,
+      testIgnore: [/\.setup\.ts$/, /[\\/]fixtures[\\/]/],
     },
   ],
 });
