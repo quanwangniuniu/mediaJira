@@ -174,28 +174,36 @@ export function DecisionEditor() {
       let detail: { contextSummary?: string | null; reasoning?: string | null; options?: { text: string; isSelected: boolean }[]; signals?: { id: number; type: string; description: string; severity?: string | null }[] } | null = null
 
       // Try draft endpoint first, then committed
+      const projectId = activeProject?.id
       try {
-        detail = await DecisionAPI.getDraft(d.id)
+        detail = await DecisionAPI.getDraft(d.id, projectId)
       } catch {
         try {
-          detail = await DecisionAPI.getDecision(d.id)
+          detail = await DecisionAPI.getDecision(d.id, projectId)
         } catch {
           // neither worked
         }
       }
 
       if (detail) {
+        if (detail.title) setTitle(detail.title)
         if (detail.contextSummary) setContext(detail.contextSummary)
         if (detail.reasoning) setReasoning(detail.reasoning)
 
         // Map API signals to local Signal type
         if (detail.signals && detail.signals.length > 0) {
-          setSignals(detail.signals.map((s) => ({
-            id: String(s.id),
-            type: (s.type === "trend" ? "trend" : s.type === "alert" ? "alert" : "metric") as Signal["type"],
-            label: s.description || "Signal",
-            value: s.severity || "",
-          })))
+          setSignals(detail.signals.map((s) => {
+            const raw = s as unknown as Record<string, unknown>
+            const displayText = (raw.displayText as string) || (raw.description as string) || "Signal"
+            const metric = (raw.metric as string) || (raw.type as string) || ""
+            const movement = (raw.movement as string) || ""
+            return {
+              id: String(s.id),
+              type: "metric" as Signal["type"],
+              label: displayText,
+              value: movement || metric,
+            }
+          }))
         }
 
         // Map API options to local Option type
@@ -336,7 +344,7 @@ export function DecisionEditor() {
         setEditingDecisionId(id)
       }
 
-      await DecisionAPI.patchDraft(id!, payload)
+      await DecisionAPI.patchDraft(id!, payload, activeProject?.id)
       toast.success("Draft saved")
       await refreshList()
       return id
@@ -354,7 +362,7 @@ export function DecisionEditor() {
     try {
       const id = await saveDraft(true)
       if (!id) return
-      await DecisionAPI.commit(id)
+      await DecisionAPI.commit(id, activeProject?.id)
       toast.success("Decision submitted")
       await refreshList()
       setViewMode("list")

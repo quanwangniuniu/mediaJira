@@ -1,129 +1,126 @@
-# QA Checklist — MED-142: Decision ↔ Agent Integration
+# QA Checklist — MED-142: Decision Agent Integration
 
 **Ticket:** MED-142
-**Branch:** feature/MED-142-decision-agent-integration
-**Tester:**
-**Date:**
-**Build:**
+**Branch:** `feature/MED-142-decision-agent-integration`
+**Tester:** _______________
+**Date:** _______________
 
 ---
 
 ## Summary of Changes
 
-- Removed **"Ask Agent"** button from Decision detail pages (was redirecting to `/agent` with decision context)
-- Added **"Generate from Spreadsheet"** button on the Decisions list page — allows AI to analyze real spreadsheet data and auto-create a Decision with Signals and Options
+- Agent can analyze a CSV file uploaded in the chat (via Dify AI workflow)
+- Agent auto-creates a Decision draft (with Signals, Options, Reasoning, Context Summary) and returns a **"Go to Decisions →"** button
+- Decision Editor pre-fills all AI-generated data (7/7 validation ready)
+- User reviews the pre-filled draft and clicks **"Submit for Review"**
+- Agent-created decisions are tagged with `created_by_agent=True`
+- Backend: `is_selected=True` set on first Option so `validate_can_commit()` passes
+- 30 new field-compatibility tests added to `backend/agent/tests.py`
 
 ---
 
 ## Pre-conditions
 
 - [ ] Project is running locally (`docker compose -f docker-compose.dev.yml up`)
-- [ ] Logged in as a valid user
+- [ ] Logged in as a valid user with project membership
 - [ ] Active project selected
-- [ ] At least one Spreadsheet exists in the project (with data — not empty)
+- [ ] At least one Spreadsheet with data exists in the project
+- [ ] `.env` has valid `DIFY_API_KEY`
 
 ---
 
 ## Test Scenarios
 
-### 1. "Ask Agent" Button Removed — Decision Detail Page
+### 1. CSV Upload & AI Analysis
 
 | # | Step | Expected Result | Pass/Fail |
 |---|------|-----------------|-----------|
-| 1.1 | Navigate to any Decision in **DRAFT** state | Decision editing page loads | |
-| 1.2 | Inspect the top header area | **No "Ask Agent" button** is visible anywhere on the page | |
-| 1.3 | Navigate to a Decision in **COMMITTED** state | Decision detail page loads | |
-| 1.4 | Inspect the top header area | **No "Ask Agent" button** is visible | |
-| 1.5 | Navigate to a Decision in **REVIEWED** or **ARCHIVED** state | Decision detail page loads | |
-| 1.6 | Inspect the top header area | **No "Ask Agent" button** is visible | |
+| 1.1 | Navigate to **Agent** page | Agent chat loads normally | |
+| 1.2 | Click **New Dialogue** | New empty chat session starts | |
+| 1.3 | Go to Spreadsheet, export data as CSV | CSV file downloaded | |
+| 1.4 | Upload the CSV file in the Agent chat | File accepted, Agent begins analysis | |
+| 1.5 | Wait for analysis to complete | Agent returns anomaly detection content | |
+| 1.6 | Check chat response | Decision draft preview shown (title, options) | |
+| 1.7 | Check chat response | Recommended Tasks listed | |
+| 1.8 | Check chat buttons | **"Create Decision"** and **"Create All Tasks"** buttons visible | |
 
 ---
 
-### 2. "Generate from Spreadsheet" Button — Decisions List Page
+### 2. Create Decision
 
 | # | Step | Expected Result | Pass/Fail |
 |---|------|-----------------|-----------|
-| 2.1 | Navigate to the **Decisions** list page (`/decisions`) | Decisions list loads | |
-| 2.2 | Locate the top-right button area | A purple **"Generate from Spreadsheet"** button (with sparkle icon) is visible next to "Create Decision" | |
-| 2.3 | Click **"Generate from Spreadsheet"** | A modal dialog opens titled "Generate Decision from Spreadsheet" | |
-| 2.4 | Inspect modal contents | Modal shows a dropdown list of available spreadsheets for the current project | |
-| 2.5 | Select a spreadsheet from the dropdown | Spreadsheet is selected (highlighted) | |
-| 2.6 | Click **"Generate Decision"** button | Button enters loading state ("Generating…"), spinner shows | |
-| 2.7 | Wait for completion (~10–30 seconds) | Success toast: "Decision created!" — modal closes, browser navigates to the newly created Decision detail page | |
-| 2.8 | Inspect the generated Decision | Decision has: title, context summary, reasoning, risk level, confidence, at least one Signal (anomaly), at least one Option | |
+| 2.1 | Click **"Create Decision"** | Shows "Creating decision draft..." | |
+| 2.2 | Wait for completion | Shows "Created decision draft: `<title>`" | |
+| 2.3 | Check title in message | Title is non-empty (not blank) | |
+| 2.4 | Check button | **"Go to Decisions →"** button appears | |
+| 2.5 | No errors | No timeout, no 500 error, no permission error | |
 
 ---
 
-### 3. "Generate from Spreadsheet" — Error Handling
+### 3. Decision Editor Pre-fill Verification
 
 | # | Step | Expected Result | Pass/Fail |
 |---|------|-----------------|-----------|
-| 3.1 | Click "Generate from Spreadsheet" when project has **no spreadsheets** | Modal opens, dropdown shows empty state or "No spreadsheets available" | |
-| 3.2 | Open modal and click "Generate Decision" without selecting a spreadsheet | **Generate button is disabled** (cannot submit without selection) | |
-| 3.3 | Close modal by clicking "Cancel" or the X button | Modal closes, no Decision is created | |
+| 3.1 | Click **"Go to Decisions →"** | Navigates to Decision Editor | |
+| 3.2 | Check **Title** field | Pre-filled with AI-generated title (non-empty) | |
+| 3.3 | Check **Priority** field | Pre-filled (Medium or High) | |
+| 3.4 | Check **Context Summary** field | Pre-filled with AI-generated text | |
+| 3.5 | Check **Signals** section | ≥ 1 signal shown with meaningful display text | |
+| 3.6 | Check **Reasoning** field | Pre-filled with AI-generated reasoning | |
+| 3.7 | Check **Options** section | ≥ 2 options shown; first option selected (blue circle) | |
+| 3.8 | Check Validation bar | Shows **7/7 Ready** (green badge) | |
+| 3.9 | Check **"Submit for Review"** button | Button is active (blue, clickable) | |
 
 ---
 
-### 4. "Created by Agent" Badge
+### 4. Submit for Review
 
 | # | Step | Expected Result | Pass/Fail |
 |---|------|-----------------|-----------|
-| 4.1 | Navigate to a Decision generated via "Generate from Spreadsheet" | Decision detail page loads | |
-| 4.2 | Check the status/badge area in the detail view | A violet **"Created by Agent"** badge is displayed next to the status badge | |
-| 4.3 | Navigate to a Decision created manually by a user | "Created by Agent" badge is **not** visible | |
+| 4.1 | Click **"Submit for Review"** | No permission error (no 403) | |
+| 4.2 | Check toast notification | "Decision submitted" success toast appears | |
+| 4.3 | Check navigation | Returns to Decision list | |
+| 4.4 | Find the decision in the list | Status shows **committed** | |
 
 ---
 
-### 5. Generated Decision — Content Quality
+### 5. Backend Tests
 
 | # | Step | Expected Result | Pass/Fail |
 |---|------|-----------------|-----------|
-| 5.1 | Open a Decision generated via "Generate from Spreadsheet" | Decision detail loads | |
-| 5.2 | Check **Signals** section | At least one Signal (anomaly) is present, referencing a real metric (e.g. ROAS, CTR, CPA) | |
-| 5.3 | Check **Options** section | At least one Option is present with meaningful text | |
-| 5.4 | Check **Context Summary** and **Reasoning** fields | Fields are populated with AI-generated text relevant to the spreadsheet data (not placeholder/empty) | |
-| 5.5 | Check **Risk Level** | Valid value: LOW, MEDIUM, or HIGH | |
-| 5.6 | Check **Confidence** | Integer value between 1–5 | |
+| 5.1 | Run `docker compose exec backend python -m pytest agent/tests.py -v` | All 46 tests pass, 0 failures | |
+| 5.2 | Run `docker compose exec backend python -m pytest agent/tests.py::DecisionFieldCompatibilityTests -v` | All 30 field-compatibility tests pass | |
+| 5.3 | Run `docker compose exec backend python -m pytest decision/ -v` | All decision tests pass | |
 
 ---
 
-### 6. Regression — Existing Decision Functionality
+### 6. Regression Tests
 
 | # | Step | Expected Result | Pass/Fail |
 |---|------|-----------------|-----------|
-| 6.1 | Create a new Decision draft manually | Draft created successfully, no errors | |
-| 6.2 | Edit and save a Decision draft | Draft saves, "Last saved" time updates | |
-| 6.3 | Commit a Decision | Decision transitions to COMMITTED state | |
-| 6.4 | Approve a Decision (AWAITING_APPROVAL → COMMITTED) | Approval works correctly | |
-| 6.5 | Delete a Decision draft | Decision deleted, redirected to list | |
-| 6.6 | View Decision list | All decisions displayed correctly with correct status badges | |
-| 6.7 | Navigate to `/agent` page directly | Agent chat page still loads and works normally (no regression) | |
+| 6.1 | Manually create a new Decision ("+ New Decision") | Draft created, saves correctly | |
+| 6.2 | Edit and save an existing Decision draft | Saves without error | |
+| 6.3 | Open an existing committed Decision | Loads correctly, no errors | |
+| 6.4 | Navigate to Spreadsheet page | Page loads without 500 error | |
+| 6.5 | Send a calendar-related message to Agent | Calendar feature responds normally | |
+| 6.6 | Navigate to `/agent` directly | Agent chat page loads normally | |
 
 ---
 
-### 7. Regression — Backend Tests
-
-| # | Step | Expected Result | Pass/Fail |
-|---|------|-----------------|-----------|
-| 7.1 | Run `docker compose exec backend python -m pytest decision/ -v` | All decision tests pass, 0 failures | |
-| 7.2 | Run `docker compose exec backend python -m pytest agent/ -v` | All agent tests pass, 0 failures | |
-| 7.3 | Run `docker compose exec backend python manage.py test` | All tests pass | |
-
----
-
-## Notes / Issues Found
+## Issues Found
 
 | # | Description | Severity | Status |
 |---|-------------|----------|--------|
-|   |             |          |        |
+| | | | |
 
 ---
 
 ## Sign-off
 
 - [ ] All test scenarios passed
-- [ ] "Ask Agent" button confirmed absent from all Decision detail states
-- [ ] "Generate from Spreadsheet" generates a real AI-powered Decision with Signals and Options
+- [ ] Decision Editor pre-fills all 7 fields from AI analysis
+- [ ] Submit for Review transitions decision to `committed`
+- [ ] All 46 backend tests passing
 - [ ] No regression in existing functionality
-- [ ] Backend tests all passing
 - [ ] Ready for PR

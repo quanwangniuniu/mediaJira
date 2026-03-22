@@ -443,7 +443,7 @@ class AgentOrchestrator:
         ).aggregate(Max('project_seq'))['project_seq__max'] or 0
 
         decision = Decision.objects.create(
-            title=suggested.get("title", "AI Agent Analysis"),
+            title=suggested.get("title") or "AI Agent Analysis",
             context_summary=suggested.get("context_summary", ""),
             reasoning=suggested.get("reasoning", ""),
             risk_level=suggested.get("risk_level", "MEDIUM"),
@@ -471,13 +471,15 @@ class AgentOrchestrator:
                 display_text=anomaly.get("description", ""),
             )
 
-        # Create options
+        # Create options — first option is selected by default so the decision
+        # satisfies validate_can_commit() (exactly one option must be selected).
         options = suggested.get("options", [])
-        for opt in options:
+        for idx, opt in enumerate(options):
             Option.objects.create(
                 decision=decision,
                 text=opt.get("text", ""),
-                order=opt.get("order", 0),
+                order=opt.get("order", idx),
+                is_selected=(idx == 0),
             )
 
         if workflow_run:
