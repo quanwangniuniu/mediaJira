@@ -35,6 +35,11 @@ class Spreadsheet(TimeStampedModel):
         return f"{self.name} (Project: {self.project.name})"
 
 
+class SheetKind(models.TextChoices):
+    NORMAL = 'normal', 'Normal'
+    PIVOT = 'pivot', 'Pivot'
+
+
 class Sheet(TimeStampedModel):
     spreadsheet = models.ForeignKey(
         Spreadsheet,
@@ -48,6 +53,12 @@ class Sheet(TimeStampedModel):
     )
     position = models.IntegerField(
         help_text="Position/order of the sheet within the spreadsheet"
+    )
+    kind = models.CharField(
+        max_length=20,
+        choices=SheetKind.choices,
+        default=SheetKind.NORMAL,
+        help_text="normal = standard sheet, pivot = pivot table sheet"
     )
     frozen_row_count = models.PositiveSmallIntegerField(
         default=0,
@@ -83,6 +94,37 @@ class Sheet(TimeStampedModel):
 
     def __str__(self):
         return f"{self.name} (in {self.spreadsheet.name})"
+
+
+class PivotConfig(TimeStampedModel):
+    """Persisted pivot table definition linked 1:1 to a pivot sheet."""
+
+    pivot_sheet = models.OneToOneField(
+        Sheet,
+        on_delete=models.CASCADE,
+        related_name='pivot_config',
+        help_text="Pivot sheet that displays aggregated results"
+    )
+    source_sheet = models.ForeignKey(
+        Sheet,
+        on_delete=models.CASCADE,
+        related_name='pivot_sources',
+        help_text="Source sheet whose data is aggregated"
+    )
+    rows_config = models.JSONField(default=list, help_text="List of row field names")
+    columns_config = models.JSONField(default=list, help_text="List of column configs (field or {field, sort})")
+    values_config = models.JSONField(default=list, help_text="List of {field, aggregation, display}")
+    filters_config = models.JSONField(default=dict, blank=True, help_text="Optional filters")
+    show_grand_total_row = models.BooleanField(default=True)
+    show_grand_total_column = models.BooleanField(default=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['source_sheet'], name='pivotconfig_source_sheet_idx'),
+        ]
+
+    def __str__(self):
+        return f"PivotConfig pivot_sheet={self.pivot_sheet_id} source_sheet={self.source_sheet_id}"
 
 
 class SheetRow(TimeStampedModel):

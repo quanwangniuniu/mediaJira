@@ -2,10 +2,11 @@
 Business logic services for spreadsheet operations
 Handles spreadsheet, sheet, row, column, and cell management
 """
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, Union
 from decimal import Decimal, InvalidOperation
 import logging
 import re
+from functools import cmp_to_key
 from django.db import transaction
 from django.core.exceptions import ValidationError
 from django.db.models import Q, Max, F
@@ -433,11 +434,19 @@ class SheetService:
             CellService._update_dependencies(cell)
         CellService._recalculate_formula_cells(rewritten_cells)
 
-        return {
+        result = {
             'rows_created': count,
             'total_rows': current_count + count,
             'operation_id': operation.id
         }
+        # Recompute any pivot sheets that depend on this sheet as a source.
+        try:
+            from .pivot_service import recompute_pivots_for_source_sheet
+            recompute_pivots_for_source_sheet(sheet)
+        except Exception:
+            logger.exception("Pivot recompute after insert_rows failed for sheet_id=%s", sheet.id)
+
+        return result
 
     @staticmethod
     @transaction.atomic
@@ -501,11 +510,18 @@ class SheetService:
             CellService._update_dependencies(cell)
         CellService._recalculate_formula_cells(rewritten_cells)
 
-        return {
+        result = {
             'columns_created': count,
             'total_columns': current_count + count,
             'operation_id': operation.id
         }
+        try:
+            from .pivot_service import recompute_pivots_for_source_sheet
+            recompute_pivots_for_source_sheet(sheet)
+        except Exception:
+            logger.exception("Pivot recompute after insert_columns failed for sheet_id=%s", sheet.id)
+
+        return result
 
     @staticmethod
     @transaction.atomic
@@ -571,11 +587,18 @@ class SheetService:
             CellService._update_dependencies(cell)
         CellService._recalculate_formula_cells(rewritten_cells)
 
-        return {
+        result = {
             'rows_deleted': count,
             'total_rows': current_count - count,
             'operation_id': operation.id
         }
+        try:
+            from .pivot_service import recompute_pivots_for_source_sheet
+            recompute_pivots_for_source_sheet(sheet)
+        except Exception:
+            logger.exception("Pivot recompute after delete_rows failed for sheet_id=%s", sheet.id)
+
+        return result
 
     @staticmethod
     @transaction.atomic
@@ -641,11 +664,196 @@ class SheetService:
             CellService._update_dependencies(cell)
         CellService._recalculate_formula_cells(rewritten_cells)
 
-        return {
+        result = {
             'columns_deleted': count,
             'total_columns': current_count - count,
             'operation_id': operation.id
         }
+        try:
+            from .pivot_service import recompute_pivots_for_source_sheet
+            recompute_pivots_for_source_sheet(sheet)
+        except Exception:
+            logger.exception("Pivot recompute after delete_columns failed for sheet_id=%s", sheet.id)
+
+        return result
+
+    @staticmethod
+    def _cell_sort_tuple(cell) -> Tuple[int, Optional[float], str]:
+        """Return normalized sortable payload: (type_order, num_val, str_val)."""
+        empty = cell is None or (
+            getattr(cell, 'computed_number', None) is None
+            and not ((getattr(cell, 'computed_string', None) or '').strip())
+            and not ((getattr(cell, 'raw_input', None) or '').strip())
+        )
+        if empty:
+            return (2, None, '')
+        num = getattr(cell, 'computed_number', None)
+        try:
+            n = float(num) if num is not None else None
+        except (TypeError, InvalidOperation, ValueError):
+            n = None
+        s = (getattr(cell, 'computed_string', None) or '') or (str(num) if num is not None else '') or (getattr(cell, 'raw_input', None) or '')
+        if n is not None and not (isinstance(n, float) and (n != n)):
+            return (0, n, '')
+        return (1, 0.0, s or '')
+
+    @staticmethod
+    def _compare_cells_for_sort(cell_a, cell_b, direction: str) -> int:
+        """Compare two cells using spreadsheet ordering semantics and direction."""
+        direction = (direction or 'asc').lower()
+        if direction not in ('asc', 'desc'):
+            direction = 'asc'
+
+        type_a, num_a, str_a = SheetService._cell_sort_tuple(cell_a)
+        type_b, num_b, str_b = SheetService._cell_sort_tuple(cell_b)
+
+        if type_a != type_b:
+            return -1 if type_a < type_b else 1
+
+        if type_a == 0:
+            if num_a == num_b:
+                return 0
+            if direction == 'asc':
+                return -1 if (num_a or 0.0) < (num_b or 0.0) else 1
+            return -1 if (num_a or 0.0) > (num_b or 0.0) else 1
+
+        if type_a == 1:
+            if str_a == str_b:
+                return 0
+            if direction == 'asc':
+                return -1 if str_a < str_b else 1
+            return -1 if str_a > str_b else 1
+
+        return 0
+
+    @staticmethod
+    @transaction.atomic
+    def sort_rows(
+        sheet: Sheet,
+        column_position: int,
+        direction: str,
+        has_header: bool = True,
+        previous_sort_columns: Optional[List[Union[int, Dict[str, Any]]]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Sort rows by updating SheetRow.position. Does NOT rewrite cells.
+        Header row (position 0) is kept fixed when has_header=True.
+        """
+        direction = (direction or 'asc').lower()
+        if direction not in ('asc', 'desc'):
+            raise ValidationError("direction must be 'asc' or 'desc'")
+        rows = list(
+            SheetRow.objects.filter(sheet=sheet, is_deleted=False)
+            .order_by('position')
+            .select_related('sheet')
+        )
+        if not rows:
+            return {'previous_order': [], 'new_order': []}
+
+        if has_header:
+            header_row = rows[0] if rows[0].position == 0 else None
+            data_rows = [r for r in rows if r.position > 0]
+        else:
+            header_row = None
+            data_rows = rows
+
+        if not data_rows:
+            return {'previous_order': [{'row_id': r.id, 'position': r.position} for r in rows], 'new_order': [{'row_id': r.id, 'position': r.position} for r in rows]}
+
+        prev_cols = previous_sort_columns or []
+        sort_history: List[Tuple[int, str]] = [(column_position, direction)]
+        used_cols = {column_position}
+        for entry in prev_cols:
+            if isinstance(entry, dict):
+                col = entry.get('column_position')
+                tie_direction = (entry.get('direction') or 'asc').lower()
+            else:
+                col = entry
+                tie_direction = direction
+
+            if not isinstance(col, int) or col < 0 or col in used_cols:
+                continue
+            if tie_direction not in ('asc', 'desc'):
+                tie_direction = 'asc'
+
+            sort_history.append((col, tie_direction))
+            used_cols.add(col)
+
+        data_row_ids = [r.id for r in data_rows]
+        sort_col_positions = [col for col, _ in sort_history]
+
+        cells = list(
+            Cell.objects.filter(
+                sheet=sheet,
+                row_id__in=data_row_ids,
+                column__position__in=sort_col_positions,
+                is_deleted=False
+            ).select_related('row', 'column')
+        )
+
+        row_cells: Dict[int, Dict[int, Cell]] = {}
+        for r_id in data_row_ids:
+            row_cells[r_id] = {}
+        for c in cells:
+            if c.column and c.row_id in row_cells:
+                row_cells[c.row_id][c.column.position] = c
+
+        def compare_rows(row_a: SheetRow, row_b: SheetRow) -> int:
+            cells_a = row_cells.get(row_a.id, {})
+            cells_b = row_cells.get(row_b.id, {})
+            for col, tie_direction in sort_history:
+                cmp_result = SheetService._compare_cells_for_sort(
+                    cells_a.get(col),
+                    cells_b.get(col),
+                    tie_direction,
+                )
+                if cmp_result != 0:
+                    return cmp_result
+            return 0
+
+        # Python's sort is stable, so complete ties preserve existing row order.
+        sorted_rows = sorted(data_rows, key=cmp_to_key(compare_rows))
+
+        previous_order = [{'row_id': r.id, 'position': r.position} for r in rows]
+        new_positions = []
+        pos = 0
+        if header_row:
+            new_positions.append((header_row.id, 0))
+            pos = 1
+        for r in sorted_rows:
+            new_positions.append((r.id, pos))
+            pos += 1
+
+        offset = 1_000_000
+        for row_id, new_pos in new_positions:
+            SheetRow.objects.filter(sheet=sheet, id=row_id, is_deleted=False).update(position=F('position') + offset)
+        for row_id, new_pos in new_positions:
+            SheetRow.objects.filter(sheet=sheet, id=row_id, is_deleted=False).update(position=new_pos)
+
+        new_order = [{'row_id': rid, 'position': p} for rid, p in new_positions]
+
+        return {'previous_order': previous_order, 'new_order': new_order}
+
+    @staticmethod
+    @transaction.atomic
+    def reorder_rows(sheet: Sheet, order: List[Dict[str, int]]) -> None:
+        """
+        Update SheetRow.position according to the given mapping. Used for undo/redo.
+        order: [{"row_id": int, "position": int}, ...]
+        """
+        if not order:
+            return
+        offset = 1_000_000
+        for item in order:
+            rid = item.get('row_id')
+            pos = item.get('position')
+            if rid is not None and pos is not None:
+                SheetRow.objects.filter(sheet=sheet, id=rid, is_deleted=False).update(position=F('position') + offset)
+        for item in order:
+            rid = item.get('row_id')
+            pos = item.get('position')
+            if rid is not None and pos is not None:
+                SheetRow.objects.filter(sheet=sheet, id=rid, is_deleted=False).update(position=pos)
 
     @staticmethod
     @transaction.atomic
@@ -1709,12 +1917,12 @@ class CellService:
 
         updated = len(to_update) + len(to_create)
         cleared = len(to_clear)
-
+        
         if not import_mode:
             recalculated_cells = CellService._recalculate_formula_cells(list(updated_cells.values()))
             for cell in recalculated_cells:
                 updated_cells[cell.id] = cell
-
+        
         result = {
             'updated': updated,
             'cleared': cleared,
@@ -1725,6 +1933,14 @@ class CellService:
             result['cells'] = list(updated_cells.values())
         else:
             result['cells'] = []
+
+        # After successful batch update, recompute any pivot sheets depending on this sheet.
+        try:
+            from .pivot_service import recompute_pivots_for_source_sheet
+            recompute_pivots_for_source_sheet(sheet)
+        except Exception:
+            logger.exception("Pivot recompute after batch_update_cells failed for sheet_id=%s", sheet.id)
+
         return result
 
 

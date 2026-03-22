@@ -58,7 +58,10 @@ class ChatViewSet(viewsets.ModelViewSet):
         
         # For list and other actions, filter by user participation
         user = self.request.user
-        project_id = self.request.query_params.get('project_id')
+        project_id = (
+            self.request.query_params.get('project_id')
+            or self.request.query_params.get('pro_ct_id')
+        )
         
         return ChatService.get_user_chats(user, project_id)
     

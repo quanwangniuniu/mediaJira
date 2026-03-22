@@ -185,6 +185,11 @@ class Task(models.Model):
         """Approver locks the task"""
         pass
 
+    @transition(field=status, source=Status.LOCKED, target=Status.APPROVED)
+    def unlock(self):
+        """Unlock a locked task, returning it to Approved"""
+        pass
+
     @transition(field=status, source=[Status.SUBMITTED, Status.UNDER_REVIEW, Status.APPROVED, Status.REJECTED], target=Status.CANCELLED)
     def cancel(self):
         """User cancels the task"""

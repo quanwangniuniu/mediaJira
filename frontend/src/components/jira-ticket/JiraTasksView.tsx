@@ -13,6 +13,7 @@ import toast from "react-hot-toast";
 import type { TaskData } from "@/types/task";
 import SubtaskModal from "@/components/tasks/SubtaskModal";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
+import BulkActionBar from "@/components/tasks/BulkActionBar";
 
 interface MemberOption {
   id: number;
@@ -38,6 +39,7 @@ export type JiraTaskItem = {
   issueKey?: string;
   content_type?: string;
   object_id?: string;
+  statusRaw?: string;
 };
 
 export type JiraTasksViewMode = "list" | "timeline";
@@ -49,6 +51,7 @@ interface JiraTasksViewProps {
   searchPlaceholder?: string;
   searchValue?: string;
   onSearchChange?: (value: string) => void;
+  rightOfSearch?: React.ReactNode;
   onTaskClick?: (task: JiraTaskItem) => void;
   onTaskUpdate?: () => void;
   renderList?: () => React.ReactNode;
@@ -84,12 +87,14 @@ const JiraTasksToolbar = ({
   searchPlaceholder,
   searchValue,
   onSearchChange,
+  rightOfSearch,
 }: {
   viewMode: JiraTasksViewMode;
   onViewModeChange: (mode: JiraTasksViewMode) => void;
   searchPlaceholder?: string;
   searchValue?: string;
   onSearchChange?: (value: string) => void;
+  rightOfSearch?: React.ReactNode;
 }) => (
   <div className="flex flex-wrap items-center gap-3">
     <div className="relative w-full max-w-md">
@@ -102,18 +107,19 @@ const JiraTasksToolbar = ({
         className="h-9 w-full rounded-md border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
       />
     </div>
+    {rightOfSearch}
     <div className="flex items-center gap-2">
       <ViewButton
         active={viewMode === "list"}
         onClick={() => onViewModeChange("list")}
       >
-        List View
+        <span data-testid="view-button-list">List View</span>
       </ViewButton>
       <ViewButton
         active={viewMode === "timeline"}
         onClick={() => onViewModeChange("timeline")}
       >
-        Timeline View
+        <span data-testid="view-button-timeline">Timeline View</span>
       </ViewButton>
     </div>
   </div>
@@ -181,22 +187,39 @@ const JiraTasksList = ({
   tasks,
   selectedTaskId,
   onSelectTask,
+  selectedIds,
+  onToggleSelect,
+  onSelectAll,
   onActivateTask,
 }: {
   tasks: JiraTaskItem[];
   selectedTaskId: JiraTaskItem["id"] | null;
   onSelectTask: (taskId: JiraTaskItem["id"]) => void;
+  selectedIds?: Set<number>;
+  onToggleSelect?: (id: number) => void;
+  onSelectAll?: () => void;
   onActivateTask?: (task: JiraTaskItem) => void;
 }) => (
   <div className="rounded-md border border-slate-200 bg-white">
     <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2 text-xs text-slate-500">
-      <button
-        type="button"
-        className="flex items-center gap-1 text-xs font-semibold text-slate-600"
-      >
-        Created
-        <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
-      </button>
+      <div className="flex items-center gap-2">
+        {onSelectAll && selectedIds && (
+          <input
+            type="checkbox"
+            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+            checked={selectedIds.size === tasks.length && tasks.length > 0}
+            onChange={onSelectAll}
+            onClick={(e) => e.stopPropagation()}
+          />
+        )}
+        <button
+          type="button"
+          className="flex items-center gap-1 text-xs font-semibold text-slate-600"
+        >
+          Created
+          <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+        </button>
+      </div>
     </div>
     <div
       role="listbox"
@@ -233,6 +256,19 @@ const JiraTasksList = ({
               )}
             >
               <div className="flex items-start gap-2">
+                {onToggleSelect && selectedIds && (
+                  <div
+                    className="mt-0.5 flex-shrink-0"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      checked={selectedIds.has(Number(task.id))}
+                      onChange={() => onToggleSelect(Number(task.id))}
+                    />
+                  </div>
+                )}
                 <JiraTicketTypeIcon
                   type={task.type}
                   size={18}
@@ -307,6 +343,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
   searchPlaceholder,
   searchValue,
   onSearchChange,
+  rightOfSearch,
   onTaskClick,
   onTaskUpdate,
   renderList,
@@ -315,6 +352,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
   const [selectedTaskId, setSelectedTaskId] = useState<
     JiraTaskItem["id"] | null
   >(tasks[0]?.id ?? null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [editingDescription, setEditingDescription] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState("");
   const {
@@ -362,6 +400,22 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
   const router = useRouter();
   const { updateTask: updateTaskStore } = useTaskStore();
   const authUser = useAuthStore((state) => state.user);
+
+  const handleToggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedIds.size === tasks.length && tasks.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(tasks.map((t) => Number(t.id))));
+    }
+  };
 
   const loadSubtasks = useCallback(async (parentId: number | string) => {
     try {
@@ -730,6 +784,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
         searchPlaceholder={searchPlaceholder}
         searchValue={searchValue}
         onSearchChange={onSearchChange}
+        rightOfSearch={rightOfSearch}
       />
       {viewMode === "list" &&
         (renderList ? (
@@ -740,10 +795,13 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
               tasks={tasks}
               selectedTaskId={selectedTaskId}
               onSelectTask={setSelectedTaskId}
+              selectedIds={selectedIds}
+              onToggleSelect={handleToggleSelect}
+              onSelectAll={handleSelectAll}
               onActivateTask={handleActivateTask}
             />
             {selectedTask ? (
-              <div className="rounded-md border border-slate-200 bg-white">
+              <div data-testid="task-detail-panel" className="rounded-md border border-slate-200 bg-white">
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-6 py-4">
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
@@ -785,6 +843,7 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
                     {onTaskClick ? (
                       <button
                         type="button"
+                        data-testid="task-open-button"
                         onClick={() => onTaskClick(selectedTask)}
                         className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
                       >
@@ -1137,6 +1196,22 @@ const JiraTasksView: React.FC<JiraTasksViewProps> = ({
         ))}
       {viewMode === "timeline" &&
         (renderTimeline ? renderTimeline() : <JiraTasksTimeline />)}
+      {selectedIds.size > 0 && (
+        <BulkActionBar
+          selectedIds={Array.from(selectedIds)}
+          selectedTasks={tasks
+            .filter((t) => selectedIds.has(Number(t.id)))
+            .map((t) => ({
+              id: Number(t.id),
+              status: t.statusRaw ?? t.status,
+            }))}
+          projectId={tasks[0]?.projectId}
+          onSuccess={() => {
+            setSelectedIds(new Set());
+            onTaskUpdate?.();
+          }}
+        />
+      )}
     </div>
     <ConfirmDialog
       isOpen={!!taskToDelete}

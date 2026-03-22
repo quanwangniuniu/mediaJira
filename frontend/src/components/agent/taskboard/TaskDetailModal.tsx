@@ -90,7 +90,7 @@ export function TaskDetailModal({ task, onClose }: TaskDetailModalProps) {
                 size="sm"
                 variant="outline"
                 onClick={() => {
-                  window.location.href = `/tasks?taskId=${task.id}`
+                  window.location.href = `/tasks/${task.id}`
                 }}
               >
                 View Full Detail
