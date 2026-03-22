@@ -1624,6 +1624,7 @@ export default function TaskDetail({
             {!editingSummary ? (
               <div className="mb-6">
                 <h1
+                  data-testid="task-summary-title"
                   className="text-xl font-semibold text-gray-900 cursor-text rounded-md px-1 -mx-1 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-200"
                   tabIndex={0}
                   onClick={() => setEditingSummary(true)}

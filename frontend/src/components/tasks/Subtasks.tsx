@@ -54,7 +54,10 @@ export default function Subtasks({ taskId, taskProjectId, parentTaskIsSubtask }:
   };
 
   return (
-    <section className="border-t border-slate-200 pt-5">
+    <section
+      data-testid="task-subtasks-section"
+      className="border-t border-slate-200 pt-5"
+    >
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <ChevronDown className="h-4 w-4 text-slate-500" />
