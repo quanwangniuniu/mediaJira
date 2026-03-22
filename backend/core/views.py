@@ -368,6 +368,8 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """Filter members by project."""
+        from core.utils.bot_user import AGENT_BOT_EMAIL
+
         project_id = self.kwargs.get('project_id')
         project = get_object_or_404(Project, id=project_id)
 
@@ -379,9 +381,14 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
         ).exists():
             return ProjectMember.objects.none()
 
+        # Exclude bot users from member list
+        # Bot users are system-managed and automatically added to projects,
+        # they should not appear in the regular member list UI
         return ProjectMember.objects.filter(
             project=project,
             is_active=True
+        ).exclude(
+            user__email=AGENT_BOT_EMAIL  # Exclude agent bot user
         ).select_related('user', 'project')
 
     def get_permissions(self):
