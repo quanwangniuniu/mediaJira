@@ -171,7 +171,7 @@ export function DecisionEditor() {
 
     // Fetch full decision detail to populate context, reasoning, signals, options
     try {
-      let detail: { contextSummary?: string | null; reasoning?: string | null; options?: { text: string; isSelected: boolean }[]; signals?: { id: number; type: string; description: string; severity?: string | null }[] } | null = null
+      let detail: { title?: string | null; contextSummary?: string | null; reasoning?: string | null; options?: { text: string; isSelected: boolean }[]; signals?: { id: number; type: string; description: string; severity?: string | null }[] } | null = null
 
       // Try draft endpoint first, then committed
       const projectId = activeProject?.id
