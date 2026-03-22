@@ -3,7 +3,7 @@ info:
   title: Meeting Preparation Workspace API
   version: 0.1.0
   description: >
-    Backend API for SMP-485 Meeting Preparation Workspace.
+    Backend API for SMP-484 Meeting Preparation Workspace.
     All meeting resources are strictly scoped by project_id.
 
 servers:
@@ -408,7 +408,7 @@ components:
       type: string
       enum: [draft]
       description: >
-        Status of the meeting. For SMP-485 only "draft" is supported.
+        Status of the meeting. For SMP-484 only "draft" is supported.
     Meeting:
       type: object
       required:

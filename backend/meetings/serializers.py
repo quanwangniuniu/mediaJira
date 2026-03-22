@@ -6,14 +6,22 @@ from meetings.models import Meeting, AgendaItem, ParticipantLink, ArtifactLink
 
 
 class MeetingSerializer(serializers.ModelSerializer):
-    project_id = serializers.IntegerField(write_only=True)
+    """
+    Optional write-only participant_user_ids on create — see MeetingViewSet.perform_create.
+    """
+
+    participant_user_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        write_only=True,
+        required=False,
+        allow_empty=True,
+    )
 
     class Meta:
         model = Meeting
         fields = [
             "id",
             "project",
-            "project_id",
             "title",
             "meeting_type",
             "objective",
@@ -21,33 +29,14 @@ class MeetingSerializer(serializers.ModelSerializer):
             "scheduled_time",
             "external_reference",
             "status",
+            "participant_user_ids",
         ]
-        read_only_fields = ["id", "project", "status"]
+        read_only_fields = ["id", "project"]
 
-    def validate(self, attrs):
-        project_id = attrs.get("project_id")
-        request = self.context.get("request")
-        user = getattr(request, "user", None)
-
-        project = get_object_or_404(Project, id=project_id)
-
-        has_membership = ProjectMember.objects.filter(
-            user=user,
-            project=project,
-            is_active=True,
-        ).exists()
-        if not has_membership:
-            raise serializers.ValidationError(
-                {"project_id": "You do not have access to this project."}
-            )
-
-        attrs["project"] = project
-        return attrs
-
-    def create(self, validated_data):
-        validated_data.pop("project_id", None)
-        # status defaults to draft at the model level
-        return super().create(validated_data)
+    def update(self, instance, validated_data):
+        # Participants are managed via the participants sub-resource
+        validated_data.pop("participant_user_ids", None)
+        return super().update(instance, validated_data)
 
 
 class AgendaItemSerializer(serializers.ModelSerializer):

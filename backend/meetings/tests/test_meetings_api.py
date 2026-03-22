@@ -1,4 +1,4 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -190,5 +190,51 @@ class TestMeetingAPI(TestCase):
         response = self.client.delete(url)
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(AgendaItem.objects.filter(meeting=meeting).exists())
+
+    def test_create_meeting_with_participant_user_ids(self):
+        url = f"/api/v1/projects/{self.project_a.id}/meetings/"
+        payload = {
+            "title": "With participants",
+            "meeting_type": "planning",
+            "objective": "Discuss",
+            "participant_user_ids": [self.user_a.id, self.user_a.id],
+        }
+        response = self.client.post(url, data=payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        meeting_id = response.data["id"]
+        links = ParticipantLink.objects.filter(meeting_id=meeting_id, user=self.user_a)
+        self.assertEqual(links.count(), 1)
+
+    def test_create_meeting_participant_user_ids_rejects_non_member(self):
+        url = f"/api/v1/projects/{self.project_a.id}/meetings/"
+        payload = {
+            "title": "Bad participant",
+            "meeting_type": "planning",
+            "objective": "X",
+            "participant_user_ids": [self.user_b.id],
+        }
+        response = self.client.post(url, data=payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(
+            Meeting.objects.filter(title="Bad participant").exists(),
+        )
+
+    @override_settings(MEETINGS_REQUIRE_PARTICIPANTS_AT_CREATE=True)
+    def test_create_meeting_defaults_creator_as_participant_when_strict_and_none_sent(self):
+        url = f"/api/v1/projects/{self.project_a.id}/meetings/"
+        payload = {
+            "title": "No participants",
+            "meeting_type": "planning",
+            "objective": "Y",
+        }
+        response = self.client.post(url, data=payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        meeting_id = response.data["id"]
+        self.assertTrue(
+            ParticipantLink.objects.filter(
+                meeting_id=meeting_id,
+                user_id=self.user_a.id,
+            ).exists(),
+        )
 
 

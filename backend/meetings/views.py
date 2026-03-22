@@ -1,7 +1,10 @@
-from django.db import IntegrityError
+from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -31,18 +34,72 @@ class MeetingViewSet(viewsets.ModelViewSet):
     serializer_class = MeetingSerializer
     permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):
-        user = self.request.user
+    def get_project(self) -> Project:
         project_id = self.kwargs.get("project_id")
         project = get_object_or_404(Project, id=project_id)
-        _ensure_project_membership(user, project)
+        _ensure_project_membership(self.request.user, project)
+        return project
+
+    def get_queryset(self):
+        project = self.get_project()
         return Meeting.objects.filter(project=project).order_by("-id")
 
     def perform_create(self, serializer):
-        project_id = self.kwargs.get("project_id")
-        data = serializer.validated_data
-        data["project_id"] = project_id
-        serializer.save()
+        project = self.get_project()
+        raw_ids = serializer.validated_data.pop("participant_user_ids", None)
+        if raw_ids is None:
+            participant_user_ids: list[int] = []
+        else:
+            participant_user_ids = list(dict.fromkeys(int(x) for x in raw_ids))
+
+        # Strict mode used to require the client to send ids; create flow no longer asks
+        # for participants on the form — default to the creator so the meeting always has
+        # at least one participant when the setting is enabled.
+        if getattr(settings, "MEETINGS_REQUIRE_PARTICIPANTS_AT_CREATE", False):
+            if len(participant_user_ids) < 1:
+                participant_user_ids = [self.request.user.id]
+
+        User = get_user_model()
+
+        with transaction.atomic():
+            meeting = serializer.save(project=project)
+
+            if not participant_user_ids:
+                return
+
+            for uid in participant_user_ids:
+                if not User.objects.filter(pk=uid).exists():
+                    raise ValidationError(
+                        {"participant_user_ids": [f"Unknown user id: {uid}."]}
+                    )
+                if not ProjectMember.objects.filter(
+                    user_id=uid,
+                    project=project,
+                    is_active=True,
+                ).exists():
+                    raise ValidationError(
+                        {
+                            "participant_user_ids": [
+                                f"User {uid} is not an active member of this project."
+                            ]
+                        }
+                    )
+
+            for uid in participant_user_ids:
+                try:
+                    ParticipantLink.objects.get_or_create(
+                        meeting=meeting,
+                        user_id=uid,
+                        defaults={"role": None},
+                    )
+                except IntegrityError as exc:
+                    raise ValidationError(
+                        {
+                            "participant_user_ids": [
+                                "Could not attach participants; please retry."
+                            ]
+                        }
+                    ) from exc
 
 
 class AgendaItemViewSet(viewsets.ModelViewSet):
@@ -72,7 +129,7 @@ class AgendaItemViewSet(viewsets.ModelViewSet):
             from rest_framework.exceptions import ValidationError
 
             raise ValidationError(
-                {"non_field_errors": ["Participant with this user already exists."]}
+                {"order_index": ["This order_index is already used for this meeting."]}
             )
 
     @action(detail=False, methods=["patch"], url_path="reorder")
