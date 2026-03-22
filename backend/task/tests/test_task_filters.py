@@ -246,6 +246,48 @@ class TestTaskListFilters:
         assert t1.id in task_ids
         assert t2.id in task_ids
 
+    def test_filter_by_status_bracket_style_params(self, authenticated_client, project, user):
+        """Accept status[]=... keys produced by some HTTP clients (e.g. default axios arrays)."""
+        user.active_project = project
+        user.save()
+
+        t_draft = Task.objects.create(
+            summary="Draft bracket",
+            type="asset",
+            project=project,
+            owner=user,
+        )
+        t_sub = Task.objects.create(
+            summary="Submitted bracket",
+            type="asset",
+            project=project,
+            owner=user,
+        )
+        t_sub.submit()
+        t_sub.save()
+        t_appr = Task.objects.create(
+            summary="Approved bracket",
+            type="asset",
+            project=project,
+            owner=user,
+        )
+        t_appr.submit()
+        t_appr.start_review()
+        t_appr.approve()
+        t_appr.save()
+
+        url = reverse("task-list")
+        response = authenticated_client.get(
+            f"{url}?status%5B%5D=DRAFT&status%5B%5D=SUBMITTED"
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        tasks = _tasks_from_response(response)
+        task_ids = [t["id"] for t in tasks]
+        assert t_draft.id in task_ids
+        assert t_sub.id in task_ids
+        assert t_appr.id not in task_ids
+
     def test_filter_by_type_multi_select(self, authenticated_client, project, user):
         """type supports multi-select."""
         user.active_project = project
@@ -556,3 +598,75 @@ class TestTaskListFilters:
         task_ids = [t["id"] for t in tasks]
         assert task_own.id in task_ids
         assert len(task_ids) == 1  # only task in accessible project
+
+    def test_blank_project_id_query_uses_implicit_scope(self, authenticated_client, project, user):
+        """Empty or whitespace-only project_id is ignored (no 400); scope follows active/all_projects path."""
+        Task.objects.create(
+            summary="On active project",
+            type="asset",
+            project=project,
+            owner=user,
+        )
+        user.active_project = project
+        user.save()
+
+        url = reverse("task-list")
+        response = authenticated_client.get(f"{url}?project_id=")
+        assert response.status_code == status.HTTP_200_OK
+        tasks = _tasks_from_response(response)
+        summaries = [t["summary"] for t in tasks]
+        assert "On active project" in summaries
+
+        response_ws = authenticated_client.get(f"{url}?project_id=%20%20")
+        assert response_ws.status_code == status.HTTP_200_OK
+
+    def test_explicit_project_id_strict_hides_approver_tasks_in_other_projects(
+        self, authenticated_client, project, project2, user
+    ):
+        """With project_id, default list is only that project (not other-project approver inbox)."""
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        owner_b = User.objects.create_user(
+            username="owner_b",
+            email="owner_b@test.com",
+            password="testpass123",
+            organization=user.organization,
+        )
+        ProjectMember.objects.create(
+            user=owner_b,
+            project=project2,
+            role="Member",
+            is_active=True,
+        )
+
+        task_other = Task.objects.create(
+            summary="Other project awaiting me",
+            type="asset",
+            project=project2,
+            owner=owner_b,
+            current_approver=user,
+        )
+        Task.objects.create(
+            summary="Home project task",
+            type="asset",
+            project=project,
+            owner=user,
+        )
+
+        user.active_project = project
+        user.save()
+
+        url = reverse("task-list")
+        response = authenticated_client.get(url, {"project_id": project.id})
+        assert response.status_code == status.HTTP_200_OK
+        task_ids = [t["id"] for t in _tasks_from_response(response)]
+        assert task_other.id not in task_ids
+
+        response_union = authenticated_client.get(
+            url,
+            {"project_id": project.id, "include_cross_project_approvals": "true"},
+        )
+        assert response_union.status_code == status.HTTP_200_OK
+        union_ids = [t["id"] for t in _tasks_from_response(response_union)]
+        assert task_other.id in union_ids
