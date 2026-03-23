@@ -1,5 +1,5 @@
 /**
- * SMP-484 #6: align with PO decision doc `docs/meetings/SMP-484-participants-timing.md`.
+ * SMP-484 #6: participant timing vs create form — see Jira / Confluence requirement doc.
  * When true, the create-meeting form requires at least one participant user id (until #2 search ships).
  * Backend must set MEETINGS_REQUIRE_PARTICIPANTS_AT_CREATE=true as well.
  */

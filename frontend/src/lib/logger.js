@@ -11,7 +11,7 @@ const usePrettyLogging =
   typeof process !== 'undefined' && 
   process.versions?.node && 
   process.env.NODE_ENV === 'development' &&
-  process.env.ENABLE_PRETTY_LOGGING !== 'false';
+  process.env.ENABLE_PRETTY_LOGGING === 'true';
 
 if (usePrettyLogging) {
   // Only add transport if explicitly enabled

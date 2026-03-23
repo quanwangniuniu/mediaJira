@@ -79,6 +79,12 @@ const getNavigationItems = (
       description: t ? t("sidebar.manage_projects") : "Manage your projects",
     },
     {
+      name: "Meetings",
+      href: "/meetings",
+      icon: Calendar,
+      description: "Meeting preparation workspace",
+    },
+    {
       name: t ? t("sidebar.campaigns") : "Campaigns",
       href: "/campaigns",
       icon: BarChart3,
@@ -241,6 +247,7 @@ const Sidebar: FC<SidebarProps> = ({
 
   const navigationItems = useMemo(() => {
     const items = getNavigationItems(userRole, userRoleLevel, t);
+
     // Update Messages badge with global unread count (across ALL projects)
     return items.map(item => {
       if (item.name === (t ? t("sidebar.messages") : "Messages") || item.href === "/messages") {
@@ -248,7 +255,7 @@ const Sidebar: FC<SidebarProps> = ({
       }
       return item;
     });
-  }, [userRole, userRoleLevel, t, globalUnreadCount]);
+  }, [userRole, userRoleLevel, t, globalUnreadCount, pathname]);
 
   // Handle collapse state changes
   const handleCollapseToggle = () => {
@@ -286,6 +293,20 @@ const Sidebar: FC<SidebarProps> = ({
 
   // Check if path matches
   const isActive = (href: string, exactMatch?: boolean) => {
+    // When inside project meetings pages, only highlight Meetings (not Projects)
+    const isInProjectMeetings = /^\/projects\/\d+\/meetings(?:\/|$)/.test(pathname);
+    if (href === "/projects" && isInProjectMeetings) {
+      return false;
+    }
+
+    // Meetings is a top-level module, but its main working pages live under /projects/:id/meetings
+    if (href === "/meetings") {
+      return (
+        pathname === "/meetings" ||
+        pathname.startsWith("/meetings/") ||
+        /^\/projects\/\d+\/meetings(?:\/|$)/.test(pathname)
+      );
+    }
     if (href === "/") {
       return pathname === "/";
     }
