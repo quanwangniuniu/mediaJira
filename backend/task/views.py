@@ -131,17 +131,29 @@ class TaskViewSet(viewsets.ModelViewSet):
         all_projects_param = self.request.query_params.get('all_projects', 'false')
         all_projects = all_projects_param.lower() == 'true'
 
-        requested_project_id = self.request.query_params.get('project_id')
-        if requested_project_id is not None:
+        # Treat blank project_id as absent (?project_id= should not 400 or force strict empty scope)
+        requested_project_id_raw = self.request.query_params.get('project_id')
+        if requested_project_id_raw is not None:
+            requested_project_id_raw = str(requested_project_id_raw).strip()
+            if requested_project_id_raw == '':
+                requested_project_id_raw = None
+
+        has_explicit_project_id = requested_project_id_raw is not None
+
+        include_cross_project_param = self.request.query_params.get(
+            'include_cross_project_approvals', 'false'
+        )
+        include_cross_project_approvals = include_cross_project_param.lower() == 'true'
+
+        if has_explicit_project_id:
             try:
-                requested_project_id = int(requested_project_id)
+                requested_project_id = int(requested_project_id_raw)
             except (TypeError, ValueError):
                 raise DRFValidationError({'project_id': 'project_id must be an integer'})
 
             if requested_project_id not in accessible_project_ids:
                 raise PermissionDenied('You do not have access to this project.')
 
-            # User is a member — also include cross-project tasks where they are the current approver.
             project_filter = Q(project_id=requested_project_id)
         else:
             # New logic: support all_projects parameter
@@ -154,18 +166,27 @@ class TaskViewSet(viewsets.ModelViewSet):
             else:
                 project_filter = Q(pk__in=[])
 
-        # Always also include tasks where user is the designated current approver,
-        # even across project boundaries (cross-project approval chain support).
-        queryset = queryset.filter(project_filter | Q(current_approver=user))
+        # Explicit project_id => default strict scope (only that project). Optional
+        # include_cross_project_approvals=true restores union with tasks where this user is
+        # current_approver (other projects). Without explicit project_id, always use that union.
+        if has_explicit_project_id:
+            if include_cross_project_approvals:
+                queryset = queryset.filter(project_filter | Q(current_approver=user))
+            else:
+                queryset = queryset.filter(project_filter)
+        else:
+            queryset = queryset.filter(project_filter | Q(current_approver=user))
 
         def _get_multi_values(param_name: str):
             """
             Accept multi-values in either:
             - repeated query params: ?status=A&status=B
             - comma-separated: ?status=A,B
+            - bracket style from some clients: ?status[]=A&status[]=B
             Returns list[str] (possibly empty).
             """
-            values = self.request.query_params.getlist(param_name)
+            values = list(self.request.query_params.getlist(param_name))
+            values.extend(self.request.query_params.getlist(param_name + '[]'))
             if not values:
                 raw = self.request.query_params.get(param_name)
                 if raw:

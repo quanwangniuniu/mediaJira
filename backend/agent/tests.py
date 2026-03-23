@@ -8,7 +8,7 @@ from rest_framework import status
 
 from core.models import Organization, Project, ProjectMember, CustomUser
 from .models import AgentSession, AgentMessage, AgentWorkflowRun
-from .services import AgentOrchestrator
+from .services import AgentOrchestrator, _forward_to_users
 
 
 def _test_analysis_data():
@@ -282,6 +282,12 @@ class OrchestratorTests(TestCase):
             organization=self.org,
             owner=self.user,
         )
+        ProjectMember.objects.create(
+            user=self.user,
+            project=self.project,
+            role='owner',
+            is_active=True,
+        )
         self.session = AgentSession.objects.create(
             user=self.user,
             project=self.project,
@@ -334,6 +340,142 @@ class OrchestratorTests(TestCase):
         self.assertTrue(tasks.exists())
         workflow_run.refresh_from_db()
         self.assertEqual(workflow_run.status, 'completed')
+
+
+    @patch('agent.services._call_dify_chat')
+    def test_follow_up_completed_marks_run_and_passes_project_members(self, mock_call_dify_chat):
+        teammate = CustomUser.objects.create_user(
+            email='alice@test.com',
+            username='alice',
+            password='testpass123',
+            first_name='Alice',
+            last_name='Chen',
+        )
+        teammate.organization = self.org
+        teammate.save()
+        ProjectMember.objects.create(
+            user=teammate,
+            project=self.project,
+            role='member',
+            is_active=True,
+        )
+        workflow_run = AgentWorkflowRun.objects.create(
+            session=self.session,
+            status='awaiting_confirmation',
+            analysis_result=_test_analysis_data(),
+        )
+        AgentMessage.objects.create(
+            session=self.session,
+            role='assistant',
+            content='Analysis complete.',
+        )
+        mock_call_dify_chat.return_value = {
+            'status': 'completed',
+            'text': 'Prepared a summary.',
+            'forwards': [],
+        }
+
+        orchestrator = AgentOrchestrator(self.user, self.project, self.session)
+        chunks = list(orchestrator.handle_message("Explain this to me."))
+
+        self.assertIn(
+            {'type': 'text', 'content': 'Prepared a summary.'},
+            chunks,
+        )
+        workflow_run.refresh_from_db()
+        self.assertTrue(workflow_run.chat_followed_up)
+
+        self.assertTrue(mock_call_dify_chat.called)
+        project_members = mock_call_dify_chat.call_args.kwargs['project_members']
+        usernames = {member['username'] for member in project_members}
+        self.assertIn('orchuser', usernames)
+        self.assertIn('alice', usernames)
+        self.assertNotIn('agent-bot', usernames)
+
+    @patch('agent.services._call_dify_chat')
+    def test_follow_up_needs_clarification_keeps_run_open(self, mock_call_dify_chat):
+        workflow_run = AgentWorkflowRun.objects.create(
+            session=self.session,
+            status='awaiting_confirmation',
+            analysis_result=_test_analysis_data(),
+        )
+        mock_call_dify_chat.return_value = {
+            'status': 'needs_clarification',
+            'text': 'Please provide the exact username.',
+            'forwards': [],
+        }
+
+        orchestrator = AgentOrchestrator(self.user, self.project, self.session)
+        chunks = list(orchestrator.handle_message("Forward this to Alex."))
+
+        self.assertIn(
+            {'type': 'text', 'content': 'Please provide the exact username.'},
+            chunks,
+        )
+        workflow_run.refresh_from_db()
+        self.assertFalse(workflow_run.chat_followed_up)
+
+    @patch('chat.tasks.notify_new_message.delay')
+    def test_forward_to_users_does_not_match_first_name(self, mock_notify_delay):
+        teammate = CustomUser.objects.create_user(
+            email='alice-fn@test.com',
+            username='alice-ops',
+            password='testpass123',
+            first_name='Alice',
+            last_name='Operator',
+        )
+        teammate.organization = self.org
+        teammate.save()
+        ProjectMember.objects.create(
+            user=teammate,
+            project=self.project,
+            role='member',
+            is_active=True,
+        )
+
+        results = _forward_to_users(
+            [{'username': 'Alice', 'content': 'Please review the report.'}],
+            self.user,
+            self.project,
+        )
+
+        self.assertEqual(results[0]['status'], 'not_found')
+        mock_notify_delay.assert_not_called()
+
+    @patch('chat.tasks.notify_new_message.delay')
+    def test_forward_to_users_reactivates_existing_private_chat(self, mock_notify_delay):
+        from chat.models import Chat, ChatParticipant, ChatType
+        from core.utils.bot_user import get_agent_bot_user
+
+        teammate = CustomUser.objects.create_user(
+            email='alice-chat@test.com',
+            username='alice-chat',
+            password='testpass123',
+        )
+        teammate.organization = self.org
+        teammate.save()
+        ProjectMember.objects.create(
+            user=teammate,
+            project=self.project,
+            role='member',
+            is_active=True,
+        )
+
+        bot = get_agent_bot_user()
+        chat = Chat.objects.create(project=self.project, type=ChatType.PRIVATE)
+        ChatParticipant.objects.create(chat=chat, user=bot, is_active=True)
+        participant = ChatParticipant.objects.create(chat=chat, user=teammate, is_active=False)
+
+        results = _forward_to_users(
+            [{'username': 'alice-chat', 'content': 'Please review Campaign A.'}],
+            self.user,
+            self.project,
+        )
+
+        participant.refresh_from_db()
+        self.assertTrue(participant.is_active)
+        self.assertEqual(results[0]['status'], 'sent')
+        mock_notify_delay.assert_called_once()
 
 
 class DecisionFieldCompatibilityTests(TestCase):

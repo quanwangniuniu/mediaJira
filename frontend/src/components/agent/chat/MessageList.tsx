@@ -17,6 +17,7 @@ export interface ChatMessage {
   role: "user" | "assistant"
   content: string
   type?: ChatMessageType
+  isFollowUpPrompt?: boolean
   anomalies?: AnomalyItem[]
   suggestedDecision?: SuggestedDecision
   recommendedTasks?: RecommendedTask[]

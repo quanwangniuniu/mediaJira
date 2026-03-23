@@ -19,9 +19,10 @@ interface ChatInputProps {
   onFileUpload: (file: File) => void
   disabled?: boolean
   placeholder?: string
+  helperText?: string
 }
 
-export function ChatInput({ onSend, onFileUpload, disabled, placeholder }: ChatInputProps) {
+export function ChatInput({ onSend, onFileUpload, disabled, placeholder, helperText }: ChatInputProps) {
   const [input, setInput] = useState("")
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
@@ -83,6 +84,10 @@ export function ChatInput({ onSend, onFileUpload, disabled, placeholder }: ChatI
 
   return (
     <div className="border-t border-border bg-card/50 p-4">
+      {helperText && (
+        <p className="mb-3 text-xs text-muted-foreground">{helperText}</p>
+      )}
+
       {/* Selected file chip */}
       {selectedFile && (
         <div className="mb-3 flex items-center gap-2">
