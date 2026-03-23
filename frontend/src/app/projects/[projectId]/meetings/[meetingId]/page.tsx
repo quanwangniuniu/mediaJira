@@ -85,8 +85,6 @@ function SortableAgendaRow({
       <div
         className="mt-1 cursor-grab rounded-md p-2 text-gray-400 hover:bg-gray-50 hover:text-gray-600 active:cursor-grabbing"
         aria-label="Drag to reorder"
-        role="button"
-        tabIndex={0}
         {...attributes}
         {...listeners}
       >
