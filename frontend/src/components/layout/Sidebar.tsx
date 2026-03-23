@@ -33,6 +33,7 @@ import {
   LayoutDashboard,
   Square,
   Bot,
+  Presentation,
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { usePathname } from "next/navigation";
@@ -83,6 +84,14 @@ const getNavigationItems = (
       href: "/campaigns",
       icon: BarChart3,
       description: t ? t("sidebar.campaign_management") : "Campaign management",
+    },
+    {
+      name: t ? t("sidebar.meetings") : "Meetings",
+      href: "/meetings",
+      icon: Presentation,
+      description: t
+        ? t("sidebar.meetings_description")
+        : "Meeting preparation and project meetings",
     },
     {
       name: "Ad Variations",
@@ -291,6 +300,14 @@ const Sidebar: FC<SidebarProps> = ({
     }
     if (exactMatch) {
       return pathname === href;
+    }
+    // Meetings hub (/meetings) and project-scoped meetings (/projects/:id/meetings/...)
+    if (href === "/meetings") {
+      return (
+        pathname === "/meetings" ||
+        pathname.startsWith("/meetings/") ||
+        /^\/projects\/[^/]+\/meetings(\/.*)?$/.test(pathname)
+      );
     }
     // For exact match or sub-path match, but avoid partial matches
     // e.g., '/admin' should match '/admin' and '/admin/xxx', but not '/administrator'

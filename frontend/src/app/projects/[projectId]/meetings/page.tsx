@@ -335,8 +335,9 @@ export default function ProjectMeetingsPage() {
       <Layout mainScrollMode="page">
         <div className="flex min-h-[calc(100vh-7rem)] w-full flex-col">
         <MeetingsWorkspaceShell
-          detailOpen={Boolean(selectedMeetingId && rightPanelOpen)}
+          detailOpen={centerMode === 'list' && Boolean(selectedMeetingId && rightPanelOpen)}
           detail={
+            centerMode === 'list' &&
             selectedMeetingId != null &&
             Number.isFinite(projectId) &&
             !Number.isNaN(projectId) ? (
@@ -391,6 +392,7 @@ export default function ProjectMeetingsPage() {
                   onClick={() => {
                     setCenterMode('list');
                     setRightPanelOpen(false);
+                    setSelectedMeetingId(null);
                   }}
                   className={cn(
                     'flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition',
@@ -407,6 +409,7 @@ export default function ProjectMeetingsPage() {
                   onClick={() => {
                     setCenterMode('create');
                     setRightPanelOpen(false);
+                    setSelectedMeetingId(null);
                   }}
                   className={cn(
                     'flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition',
