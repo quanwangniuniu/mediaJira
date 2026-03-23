@@ -30,7 +30,7 @@ export default function ProjectMiroPage() {
       if (!projectId) return;
       try {
         const projects = await ProjectAPI.getProjects();
-        const foundProject = projects.find((p) => Number(p.id) === projectId);
+        const foundProject = projects.find((p) => p.id === projectId);
         setProject(foundProject || null);
       } catch (err) {
         console.error("Failed to load project:", err);

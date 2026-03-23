@@ -135,7 +135,7 @@ export default function MiroPage() {
 
   // Get project name by project_id
   const getProjectName = (projectId: number): string => {
-    const project = projects.find((p) => Number(p.id) === projectId);
+    const project = projects.find((p) => p.id === projectId);
     return project?.name || `Project #${projectId}`;
   };
 
