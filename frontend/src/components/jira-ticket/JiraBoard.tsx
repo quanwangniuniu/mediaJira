@@ -45,7 +45,7 @@ const JiraBoardColumn = React.forwardRef<HTMLDivElement, JiraBoardColumnProps>(
     <div
       ref={ref}
       className={cn(
-        "flex min-h-[420px] min-w-[240px] flex-1 basis-0 flex-col overflow-hidden bg-[#f7f8f9]",
+        "flex min-h-[420px] min-w-[240px] max-w-[300px] flex-1 basis-0 flex-col overflow-hidden bg-[#f7f8f9]",
         className
       )}
       {...props}
@@ -61,7 +61,7 @@ const JiraBoardColumn = React.forwardRef<HTMLDivElement, JiraBoardColumnProps>(
         </div>
         {showDoneIcon ? <Check className="h-4 w-4 text-emerald-500" /> : null}
       </div>
-      <div className="flex flex-1 flex-col gap-0.5 px-2 py-2">
+      <div className="flex flex-1 flex-col gap-0.5 px-2 py-2 ">
         {children}
       </div>
       {footer ? <div className="border-t border-slate-200 px-2 py-2">{footer}</div> : null}
@@ -139,7 +139,7 @@ const JiraBoardCard = React.forwardRef<HTMLDivElement, JiraBoardCardProps>(
       role="button"
       tabIndex={0}
       className={cn(
-        "min-h-[132px] shrink-0 rounded-md border bg-white px-3 py-2.5 text-[13px] shadow-sm transition grid grid-rows-[40px_24px_24px] gap-2 overflow-hidden",
+        "min-h-[132px] w-full shrink-0 rounded-md border bg-white px-3 py-2.5 text-[13px] shadow-sm transition grid grid-rows-[40px_24px_24px] gap-2 overflow-hidden",
         "border-slate-200 hover:border-slate-300 hover:shadow",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
         isDragging && "border-blue-400 bg-blue-50 shadow-lg",

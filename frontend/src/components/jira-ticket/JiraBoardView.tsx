@@ -454,7 +454,7 @@ const JiraBoardView: React.FC<JiraBoardViewProps> = ({
                               event.stopPropagation();
                               startBoardEdit(task);
                             }}
-                            className="block min-h-[40px] w-full max-w-full overflow-hidden text-left text-[13px] font-medium leading-5 text-slate-900 hover:text-slate-900 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
+                            className="min-h-[40px] w-full max-w-full overflow-hidden text-left text-[13px] font-medium leading-5 text-slate-900 hover:text-slate-900 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
                             title={task.summary || "Untitled task"}
                           >
                             {task.summary || "Untitled task"}
@@ -489,7 +489,7 @@ const JiraBoardView: React.FC<JiraBoardViewProps> = ({
               </JiraBoardColumn>
             );
           })}
-          <button
+          {/* <button
             type="button"
             onClick={onCreateTask}
             className="flex min-h-[420px] w-14 shrink-0 items-start justify-center bg-[#f7f8f9] pt-3 text-slate-600 hover:bg-slate-100"
@@ -498,10 +498,10 @@ const JiraBoardView: React.FC<JiraBoardViewProps> = ({
             <span className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white shadow-sm">
               <Plus className="h-4 w-4" />
             </span>
-          </button>
+          </button> */}
         </JiraBoardColumns>
       </div>
-      <BottomHScrollbar targetRef={boardScrollRef} />
+      {/* <BottomHScrollbar targetRef={boardScrollRef} /> */}
     </div>
   );
 };
