@@ -244,7 +244,16 @@ const Sidebar: FC<SidebarProps> = ({
 
   // Get current pathname using Next.js 13+ App Router hook
   const pathname = usePathname();
-  
+
+  /** Hub /meetings, or any /projects/:id/meetings/... — only Meetings nav should be active */
+  const pathnameIsMeetingsWorkspace = useMemo(
+    () =>
+      pathname === "/meetings" ||
+      pathname.startsWith("/meetings/") ||
+      /^\/projects\/[^/]+\/meetings(\/.*)?$/.test(pathname),
+    [pathname]
+  );
+
   // Get global unread count from chat store for Messages badge (across ALL projects)
   const globalUnreadCount = useChatStore(state => state.globalUnreadCount);
 
@@ -295,19 +304,18 @@ const Sidebar: FC<SidebarProps> = ({
 
   // Check if path matches
   const isActive = (href: string, exactMatch?: boolean) => {
+    if (href === "#") {
+      return false;
+    }
     if (href === "/") {
       return pathname === "/";
     }
     if (exactMatch) {
       return pathname === href;
     }
-    // Meetings hub (/meetings) and project-scoped meetings (/projects/:id/meetings/...)
-    if (href === "/meetings") {
-      return (
-        pathname === "/meetings" ||
-        pathname.startsWith("/meetings/") ||
-        /^\/projects\/[^/]+\/meetings(\/.*)?$/.test(pathname)
-      );
+    // On any Meetings URL, highlight only Meetings (not Projects, etc.)
+    if (pathnameIsMeetingsWorkspace) {
+      return href === "/meetings";
     }
     // For exact match or sub-path match, but avoid partial matches
     // e.g., '/admin' should match '/admin' and '/admin/xxx', but not '/administrator'
