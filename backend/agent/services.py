@@ -895,9 +895,11 @@ class AgentOrchestrator:
         import os as _os
 
         if file_id:
-            record = ImportedCSVFile.objects.get(id=file_id, is_deleted=False)
+            record = ImportedCSVFile.objects.get(
+                id=file_id, project=self.project, is_deleted=False,
+            )
             csv_dir = data_service._get_csv_dir()
-            filepath = _os.path.join(csv_dir, record.filename)
+            filepath = _os.path.join(csv_dir, _os.path.basename(record.filename))
             return {
                 'spreadsheet_data': file_parser.parse_file_to_json(filepath, record.filename),
             }
@@ -916,7 +918,7 @@ class AgentOrchestrator:
                 filename=csv_filename, project=self.project, is_deleted=False,
             )
             csv_dir = data_service._get_csv_dir()
-            filepath = _os.path.join(csv_dir, record.filename)
+            filepath = _os.path.join(csv_dir, _os.path.basename(record.filename))
             columns, rows = data_service._read_csv_file(filepath)
             return {
                 'spreadsheet_data': {
