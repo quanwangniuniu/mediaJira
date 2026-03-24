@@ -100,6 +100,13 @@ export function AgentChatPage() {
   const [sessionCalendarContext, setSessionCalendarContext] = useState<Record<string, unknown> | null>(
     pendingCalendarPreload ? pendingCalendarPreload.context : null
   )
+  // Persist calendar context so it survives page refreshes / session restores
+  useEffect(() => {
+    if (sessionCalendarContext) {
+      sessionStorage.setItem("agent-session-calendar-context", JSON.stringify(sessionCalendarContext))
+    }
+  }, [sessionCalendarContext])
+
   const handleSendMessageRef = useRef<typeof handleSendMessage | null>(null)
   const latestMessage = messages[messages.length - 1]
   const isAwaitingFollowUp = Boolean(
@@ -139,6 +146,11 @@ export function AgentChatPage() {
           setHasStarted(true)
           setMessages(session.messages.map(restoreMessage))
           broadcastRestoredAnomalies(session.messages)
+          // Restore calendar context for this session if available
+          const storedCtx = sessionStorage.getItem("agent-session-calendar-context")
+          if (storedCtx) {
+            try { setSessionCalendarContext(JSON.parse(storedCtx)) } catch {}
+          }
         })
         .catch(() => {
           sessionStorage.removeItem("agent-session-id")
@@ -151,6 +163,7 @@ export function AgentChatPage() {
     const handleNewChat = () => {
       setSessionIdState(null)
       sessionStorage.removeItem("agent-session-id")
+      sessionStorage.removeItem("agent-session-calendar-context")
       setMessages([])
       setSessionCalendarContext(null)
       setHasStarted(false)

@@ -846,11 +846,13 @@ class AgentOrchestrator:
         try:
             parsed = json.loads(text)
             answer_text = parsed.get("answer", raw_answer)
-            # Support both create_events (array) and legacy create_event (single)
+            # Prefer create_events (array); only fall back to create_event (single) when
+            # the array is absent/empty — avoids duplicates if Dify returns both keys.
             events_to_create = parsed.get("create_events") or []
-            single = parsed.get("create_event")
-            if single and isinstance(single, dict):
-                events_to_create.append(single)
+            if not events_to_create:
+                single = parsed.get("create_event")
+                if single and isinstance(single, dict):
+                    events_to_create = [single]
         except (json.JSONDecodeError, AttributeError):
             answer_text = raw_answer
             events_to_create = []
