@@ -51,6 +51,7 @@ function CalendarPageContent() {
       calendarIds: visibleCalendarIds ?? [],
       currentView,
       currentDate: format(currentDate, "yyyy-MM-dd"),
+      userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     };
     sessionStorage.setItem("agent-calendar-context", JSON.stringify(ctx));
     sessionStorage.removeItem("agent-session-id");
@@ -66,6 +67,7 @@ function CalendarPageContent() {
       startDatetime: event.start_datetime,
       endDatetime: event.end_datetime,
       description: event.description ?? "",
+      userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     };
     sessionStorage.setItem("agent-calendar-context", JSON.stringify(ctx));
     sessionStorage.removeItem("agent-session-id");

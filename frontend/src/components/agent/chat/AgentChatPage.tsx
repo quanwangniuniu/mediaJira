@@ -77,7 +77,7 @@ function buildCalendarPreload(): CalendarPreload | null {
       const dateStr = start.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })
       const startTime = start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       const endTime = end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      message = `I'm looking at a calendar event: "${ctx.eventTitle}" on ${dateStr} from ${startTime} to ${endTime}.${ctx.description ? ` Description: ${ctx.description}` : ""} Can you help me understand this event and suggest what I should prepare or do?`
+      message = `I'm looking at a calendar event: "${ctx.eventTitle}" on ${dateStr} from ${startTime} to ${endTime}.${ctx.description ? ` Description: ${ctx.description}.` : ""} Can you help me understand this event and suggest what I should prepare or do?`
     } else {
       message = `I'm viewing my calendar (${ctx.currentView ?? "week"} view). Can you help me understand my calendar events, check my availability, or assist with scheduling?`
     }

@@ -87,6 +87,7 @@ export interface CalendarContextPayload {
   calendarIds?: string[];
   currentView?: string;
   currentDate?: string;
+  userTimezone?: string;
 }
 
 export interface AgentChatRequest {

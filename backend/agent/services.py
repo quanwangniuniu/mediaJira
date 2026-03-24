@@ -635,8 +635,10 @@ class AgentOrchestrator:
     def _fetch_events_for_context(self, calendar_context):
         """Fetch calendar events for the given context.
 
-        Returns up to 30 events: past 30 days + next 60 days, so the AI can
-        reference both recent history and upcoming schedule.
+        For a specific event: returns just that event.
+        For a calendar view: returns events within the currently visible date
+        range (day / week / month), so the AI only discusses what the user sees.
+        Falls back to a ±7-day window when no view info is available.
         """
         try:
             from calendars.models import Event
@@ -658,9 +660,45 @@ class AgentOrchestrator:
             except Event.DoesNotExist:
                 return []
 
-        now = django_timezone.now()
-        window_start = now - django_timezone.timedelta(days=30)
-        window_end = now + django_timezone.timedelta(days=60)
+        # Determine window from the calendar view the user is currently on
+        import pytz as _pytz
+        from datetime import datetime as _dt, timedelta as _td, time as _time
+
+        current_date_str = calendar_context.get('currentDate')
+        current_view = (calendar_context.get('currentView') or 'week').lower()
+        user_tz_name = (calendar_context.get('userTimezone') or 'UTC').strip()
+        try:
+            user_tz = _pytz.timezone(user_tz_name)
+        except _pytz.UnknownTimeZoneError:
+            user_tz = _pytz.utc
+
+        if current_date_str:
+            try:
+                base = _dt.strptime(current_date_str, '%Y-%m-%d').date()
+                if current_view == 'day':
+                    view_start = base
+                    view_end = base
+                elif current_view == 'month':
+                    import calendar as _cal
+                    view_start = base.replace(day=1)
+                    view_end = base.replace(day=_cal.monthrange(base.year, base.month)[1])
+                else:  # week (default)
+                    # Monday of the week containing base; extend 2 extra weeks so
+                    # follow-up questions like "what about next week?" have data.
+                    monday = base - _td(days=base.weekday())
+                    view_start = monday
+                    view_end = monday + _td(days=20)
+
+                window_start = user_tz.localize(_dt.combine(view_start, _time.min)).astimezone(_pytz.utc)
+                window_end = user_tz.localize(_dt.combine(view_end, _time.max)).astimezone(_pytz.utc)
+            except (ValueError, Exception):
+                now = django_timezone.now()
+                window_start = now - django_timezone.timedelta(days=7)
+                window_end = now + django_timezone.timedelta(days=7)
+        else:
+            now = django_timezone.now()
+            window_start = now - django_timezone.timedelta(days=7)
+            window_end = now + django_timezone.timedelta(days=7)
 
         qs = Event.objects.filter(
             organization_id=org_id,
@@ -678,26 +716,44 @@ class AgentOrchestrator:
 
         return list(qs[:30])
 
-    def _create_calendar_event(self, org_id, event_spec):
+    def _create_calendar_event(self, org_id, event_spec, user_tz=None):
         """Create a single calendar event from a dict spec. Returns event id or None."""
         try:
             from calendars.models import Calendar as CalendarModel, Event as EventModel
-            cal = CalendarModel.objects.filter(
-                organization_id=org_id,
-                created_by=self.user,
-                is_deleted=False,
-            ).first()
+            from dateutil import parser as date_parser
+            import pytz
+
+            def _parse_dt(dt_str):
+                if not dt_str:
+                    return None
+                dt = date_parser.parse(str(dt_str))
+                # Dify returns naive datetimes — treat them as user's local time
+                if dt.tzinfo is None and user_tz:
+                    dt = user_tz.localize(dt)
+                elif dt.tzinfo is None:
+                    dt = pytz.utc.localize(dt)
+                return dt
+
+            # Prefer the user's primary calendar; fall back to any calendar they own
+            cal = (
+                CalendarModel.objects.filter(
+                    organization_id=org_id,
+                    owner=self.user,
+                    is_deleted=False,
+                ).order_by('-is_primary').first()
+            )
             if not cal:
                 return None
+            tz_name = str(user_tz) if user_tz else "UTC"
             new_event = EventModel.objects.create(
                 organization_id=org_id,
                 calendar=cal,
                 created_by=self.user,
                 title=event_spec.get("title", "New Event"),
                 description=event_spec.get("description", ""),
-                start_datetime=event_spec.get("start_datetime"),
-                end_datetime=event_spec.get("end_datetime"),
-                timezone="UTC",
+                start_datetime=_parse_dt(event_spec.get("start_datetime")),
+                end_datetime=_parse_dt(event_spec.get("end_datetime")),
+                timezone=tz_name,
             )
             return str(new_event.id)
         except Exception as e:
@@ -710,16 +766,28 @@ class AgentOrchestrator:
 
         events = self._fetch_events_for_context(calendar_context)
 
-        # Serialize events for Dify
+        # Resolve user timezone from context (fallback to UTC)
+        import pytz
+        user_tz_name = (calendar_context.get('userTimezone') or 'UTC').strip()
+        try:
+            user_tz = pytz.timezone(user_tz_name)
+        except pytz.UnknownTimeZoneError:
+            user_tz = pytz.utc
+            user_tz_name = 'UTC'
+
+        # Serialize events for Dify using user's local timezone
         now = django_timezone.now()
+        now_local = now.astimezone(user_tz)
         events_data = []
         for evt in events:
             is_past = evt.start_datetime < now
+            local_start = evt.start_datetime.astimezone(user_tz)
+            local_end = evt.end_datetime.astimezone(user_tz)
             events_data.append({
                 "id": str(evt.id),
                 "title": evt.title or "(No title)",
-                "start_datetime": evt.start_datetime.strftime('%Y-%m-%dT%H:%M:%S UTC'),
-                "end_datetime": evt.end_datetime.strftime('%Y-%m-%dT%H:%M:%S UTC'),
+                "start_datetime": local_start.strftime(f'%Y-%m-%dT%H:%M:%S {user_tz_name}'),
+                "end_datetime": local_end.strftime(f'%Y-%m-%dT%H:%M:%S {user_tz_name}'),
                 "is_past": is_past,
                 "calendar": evt.calendar.name,
                 "location": evt.location or "",
@@ -727,7 +795,8 @@ class AgentOrchestrator:
             })
 
         calendar_payload = {
-            "current_time_utc": now.strftime('%Y-%m-%dT%H:%M:%S UTC'),
+            "current_time_local": now_local.strftime(f'%Y-%m-%dT%H:%M:%S {user_tz_name}'),
+            "user_timezone": user_tz_name,
             "events": events_data,
         }
         calendar_data_str = json.dumps(calendar_payload, ensure_ascii=False)
@@ -755,7 +824,7 @@ class AgentOrchestrator:
                     "response_mode": "blocking",
                     "user": str(self.user.id),
                 },
-                timeout=60,
+                timeout=90,
             )
             resp.raise_for_status()
             result = resp.json()
@@ -794,7 +863,7 @@ class AgentOrchestrator:
             for event_spec in events_to_create:
                 if not isinstance(event_spec, dict):
                     continue
-                event_id_created = self._create_calendar_event(org_id, event_spec)
+                event_id_created = self._create_calendar_event(org_id, event_spec, user_tz=user_tz)
                 if event_id_created:
                     created_count += 1
                 else:
