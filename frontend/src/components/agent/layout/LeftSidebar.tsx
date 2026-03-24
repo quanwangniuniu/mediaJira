@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react"
 import {
-  LayoutDashboard, Table, GitBranch, CheckSquare,
+  LayoutDashboard, Table, GitBranch, CheckSquare, GitFork,
   Settings, Clock, Plus, Pencil, Check, X, Settings2, Trash2, Bot,
 } from "lucide-react"
 import { useAgentLayout, type AgentView } from "../AgentLayoutContext"
@@ -17,6 +17,7 @@ const navItems: { id: AgentView; label: string; icon: React.ElementType }[] = [
   { id: "spreadsheets", label: "Spreadsheets", icon: Table },
   { id: "decisions", label: "Decisions", icon: GitBranch },
   { id: "tasks", label: "Tasks", icon: CheckSquare },
+  { id: "workflows", label: "Workflows", icon: GitFork },
 ]
 
 interface SessionItem {

@@ -7,7 +7,10 @@ from rest_framework.test import APITestCase, APIClient
 from rest_framework import status
 
 from core.models import Organization, Project, ProjectMember, CustomUser
-from .models import AgentSession, AgentMessage, AgentWorkflowRun
+from .models import (
+    AgentSession, AgentMessage, AgentWorkflowRun,
+    AgentWorkflowDefinition, AgentWorkflowStep, AgentStepExecution,
+)
 from .services import AgentOrchestrator, _forward_to_users
 
 
@@ -483,8 +486,8 @@ class DecisionFieldCompatibilityTests(TestCase):
     Verify that every field written by create_decision_draft() is compatible
     with the existing Decision module (models, validation, FSM transitions).
 
-    Ray's requirement: John's workflow must fully pass through decision creation
-    and every field must be checked in detail, with tests to support.
+    The workflow must fully pass through decision creation and every field
+    must be checked in detail, with tests to support.
     """
 
     def setUp(self):
@@ -735,3 +738,232 @@ class DecisionFieldCompatibilityTests(TestCase):
         self.assertIsNotNone(draft_chunk)
         self.assertIn('decision_id', draft_chunk.get('data', {}))
         self.assertIsNotNone(draft_chunk['data']['decision_id'])
+
+
+def _create_default_workflow():
+    """Helper: create a system default 5-step workflow definition."""
+    wf = AgentWorkflowDefinition.objects.create(
+        name='Default Analysis Workflow',
+        description='Analyze, confirm, decide, confirm, tasks',
+        is_default=True,
+        is_system=True,
+        status='active',
+    )
+    steps = [
+        ('Analyze Data', 'analyze_data', 1, {}),
+        ('Confirm Analysis', 'await_confirmation', 2,
+         {'message': 'Analysis complete. Create a decision?'}),
+        ('Create Decision', 'create_decision', 3, {}),
+        ('Confirm Decision', 'await_confirmation', 4,
+         {'message': 'Decision created. Create tasks?'}),
+        ('Create Tasks', 'create_tasks', 5, {}),
+    ]
+    for name, step_type, order, config in steps:
+        AgentWorkflowStep.objects.create(
+            workflow=wf, name=name, step_type=step_type,
+            order=order, config=config,
+        )
+    return wf
+
+
+class WorkflowEngineTests(TestCase):
+    """AGENT-9: Workflow engine tests."""
+
+    def setUp(self):
+        self.org = Organization.objects.create(name='Test Org WF', slug='test-org-wf')
+        self.user = CustomUser.objects.create_user(
+            email='wf@test.com',
+            username='wfuser',
+            password='testpass123',
+        )
+        self.user.organization = self.org
+        self.user.save()
+        self.project = Project.objects.create(
+            name='Test Project WF',
+            organization=self.org,
+            owner=self.user,
+        )
+        ProjectMember.objects.create(
+            user=self.user,
+            project=self.project,
+            role='owner',
+            is_active=True,
+        )
+        self.session = AgentSession.objects.create(
+            user=self.user,
+            project=self.project,
+        )
+        self.workflow = _create_default_workflow()
+        self.orchestrator = AgentOrchestrator(self.user, self.project, self.session)
+
+    def test_workflow_definition_creation(self):
+        """Workflow + steps are created with correct ordering."""
+        self.assertEqual(self.workflow.steps.count(), 5)
+        orders = list(self.workflow.steps.values_list('order', flat=True))
+        self.assertEqual(orders, [1, 2, 3, 4, 5])
+
+    def test_default_workflow_lookup_system(self):
+        """System default is found when no project default exists."""
+        found = self.orchestrator._resolve_workflow()
+        self.assertEqual(found, self.workflow)
+
+    def test_default_workflow_lookup_project_priority(self):
+        """Project default takes priority over system default."""
+        project_wf = AgentWorkflowDefinition.objects.create(
+            name='Project Workflow',
+            project=self.project,
+            is_default=True,
+            status='active',
+        )
+        found = self.orchestrator._resolve_workflow()
+        self.assertEqual(found, project_wf)
+
+    def test_default_workflow_lookup_explicit_id(self):
+        """Explicit workflow_id overrides all defaults."""
+        other_wf = AgentWorkflowDefinition.objects.create(
+            name='Other Workflow',
+            status='active',
+        )
+        found = self.orchestrator._resolve_workflow(workflow_id=other_wf.id)
+        self.assertEqual(found, other_wf)
+
+    def test_executor_registry_complete(self):
+        """All 7 step types have a registered executor."""
+        from .executors import EXECUTOR_REGISTRY
+        expected = {
+            'analyze_data', 'call_dify', 'call_llm',
+            'create_decision', 'create_tasks',
+            'await_confirmation', 'custom_api',
+        }
+        self.assertEqual(set(EXECUTOR_REGISTRY.keys()), expected)
+
+    @patch('agent.services._run_analysis')
+    def test_analyze_data_executor(self, mock_analysis):
+        """AnalyzeDataExecutor calls _run_analysis and returns SSE events."""
+        from .executors import AnalyzeDataExecutor
+
+        mock_analysis.return_value = _test_analysis_data()
+
+        run = AgentWorkflowRun.objects.create(
+            session=self.session,
+            workflow_definition=self.workflow,
+            status='analyzing',
+        )
+        step = self.workflow.steps.get(order=1)
+        executor = AnalyzeDataExecutor(step, run, self.orchestrator)
+        result = executor.execute({'spreadsheet_data': {'name': 'test', 'sheets': []}})
+
+        self.assertTrue(result.success)
+        self.assertIn('analysis_result', result.output_data)
+        self.assertEqual(len(result.sse_events), 1)
+        self.assertEqual(result.sse_events[0]['type'], 'analysis')
+        mock_analysis.assert_called_once()
+
+    @patch('agent.services._run_analysis')
+    def test_await_confirmation_pauses_workflow(self, mock_analysis):
+        """Workflow pauses at await_confirmation step and updates run status."""
+        mock_analysis.return_value = _test_analysis_data()
+
+        run = AgentWorkflowRun.objects.create(
+            session=self.session,
+            workflow_definition=self.workflow,
+            status='analyzing',
+            current_step_order=1,
+        )
+
+        chunks = list(self.orchestrator._execute_steps(
+            run, {'spreadsheet_data': {'name': 'test', 'sheets': []}}
+        ))
+
+        run.refresh_from_db()
+        self.assertEqual(run.status, 'awaiting_confirmation')
+        self.assertEqual(run.current_step_order, 3)
+
+        # Should have: step_progress(1), analysis, step_progress(2), confirmation_request
+        types = [c.get('type') for c in chunks]
+        self.assertIn('analysis', types)
+        self.assertIn('confirmation_request', types)
+
+    @patch('agent.services._run_analysis')
+    def test_resume_workflow_continues_from_pause(self, mock_analysis):
+        """Resume picks up from where workflow paused."""
+        mock_analysis.return_value = _test_analysis_data()
+
+        run = AgentWorkflowRun.objects.create(
+            session=self.session,
+            workflow_definition=self.workflow,
+            status='analyzing',
+            current_step_order=1,
+        )
+
+        # Execute until first pause
+        list(self.orchestrator._execute_steps(
+            run, {'spreadsheet_data': {'name': 'test', 'sheets': []}}
+        ))
+        run.refresh_from_db()
+        self.assertEqual(run.status, 'awaiting_confirmation')
+
+        # Resume — should hit create_decision (step 3) then pause again at step 4
+        chunks = list(self.orchestrator._resume_workflow(run))
+        run.refresh_from_db()
+        types = [c.get('type') for c in chunks]
+        self.assertIn('decision_draft', types)
+        self.assertIn('confirmation_request', types)
+        self.assertEqual(run.status, 'awaiting_confirmation')
+        self.assertEqual(run.current_step_order, 5)
+
+    @patch('agent.services._run_analysis')
+    def test_step_execution_records_created(self, mock_analysis):
+        """Each executed step creates an AgentStepExecution record."""
+        mock_analysis.return_value = _test_analysis_data()
+
+        run = AgentWorkflowRun.objects.create(
+            session=self.session,
+            workflow_definition=self.workflow,
+            status='analyzing',
+            current_step_order=1,
+        )
+
+        list(self.orchestrator._execute_steps(
+            run, {'spreadsheet_data': {'name': 'test', 'sheets': []}}
+        ))
+
+        executions = AgentStepExecution.objects.filter(workflow_run=run)
+        # Should have 2 executions: step 1 (analyze) + step 2 (await)
+        self.assertEqual(executions.count(), 2)
+        self.assertEqual(executions.filter(status='completed').count(), 2)
+
+    @patch('agent.services._run_analysis')
+    def test_workflow_failure_handling(self, mock_analysis):
+        """Failed step marks execution and run as failed."""
+        mock_analysis.side_effect = RuntimeError("API unavailable")
+
+        run = AgentWorkflowRun.objects.create(
+            session=self.session,
+            workflow_definition=self.workflow,
+            status='analyzing',
+            current_step_order=1,
+        )
+
+        chunks = list(self.orchestrator._execute_steps(
+            run, {'spreadsheet_data': {'name': 'test', 'sheets': []}}
+        ))
+
+        run.refresh_from_db()
+        self.assertEqual(run.status, 'failed')
+
+        types = [c.get('type') for c in chunks]
+        self.assertIn('error', types)
+
+        failed_exec = AgentStepExecution.objects.filter(
+            workflow_run=run, status='failed'
+        )
+        self.assertEqual(failed_exec.count(), 1)
+
+    def test_legacy_backward_compat(self):
+        """Runs without workflow_definition use legacy logic."""
+        orchestrator = AgentOrchestrator(self.user, self.project, self.session)
+        chunks = list(orchestrator.handle_message("hello"))
+        types = [c['type'] for c in chunks]
+        self.assertIn('text', types)
+        self.assertIn('done', types)
