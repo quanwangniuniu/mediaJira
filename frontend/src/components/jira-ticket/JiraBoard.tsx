@@ -4,7 +4,6 @@ import { cn } from "@/lib/utils"
 import JiraTicketKey from "@/components/jira-ticket/JiraTicketKey"
 import JiraTicketTypeIcon, { JiraTicketType } from "@/components/jira-ticket/JiraTicketTypeIcon"
 import { Avatar } from "@/components/avatar/Avatar"
-import styles from "./JiraBoard.module.css"
 
 export interface JiraBoardColumnsProps extends React.HTMLAttributes<HTMLDivElement> {
   minWidth?: number
@@ -16,7 +15,9 @@ const JiraBoardColumns = React.forwardRef<HTMLDivElement, JiraBoardColumnsProps>
       ref={ref}
       id={id}
       data-testid="board-columns"
-      className={cn(styles.boardScroll, "mt-4 w-full max-w-none overflow-x-auto overflow-y-visible pb-2")}
+      className={cn(
+        "mt-4 w-full min-w-0 max-w-full overflow-x-auto overflow-y-visible overscroll-x-contain pb-2"
+      )}
       {...props}
     >
       <div
@@ -139,7 +140,7 @@ const JiraBoardCard = React.forwardRef<HTMLDivElement, JiraBoardCardProps>(
       role="button"
       tabIndex={0}
       className={cn(
-        "min-h-[132px] w-full shrink-0 rounded-md border bg-white px-3 py-2.5 text-[13px] shadow-sm transition grid grid-rows-[40px_24px_24px] gap-2 overflow-hidden",
+        "min-h-[132px] w-full min-w-0 shrink-0 rounded-md border bg-white px-3 py-2.5 text-[13px] shadow-sm transition grid grid-rows-[40px_24px_24px] gap-2 overflow-hidden",
         "border-slate-200 hover:border-slate-300 hover:shadow",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
         isDragging && "border-blue-400 bg-blue-50 shadow-lg",
@@ -148,21 +149,22 @@ const JiraBoardCard = React.forwardRef<HTMLDivElement, JiraBoardCardProps>(
       )}
       {...props}
     >
-      <div className="h-[40px] min-w-0 w-full">
+      {/* min-h-0: Safari grid items default to min-height:auto and won't shrink to the row track, so titles overflow into the next rows; overflow-hidden clips. */}
+      <div className="h-[40px] min-h-0 min-w-0 w-full overflow-hidden">
         {typeof summary === "string" ? (
-          <div className="w-full overflow-hidden text-[13px] font-medium leading-5 text-slate-900 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+          <div className="line-clamp-2 w-full min-w-0 break-words text-[13px] font-medium leading-5 text-slate-900">
             {summary}
           </div>
         ) : (
           summary
         )}
       </div>
-      <div className="h-6">
+      <div className="h-6 min-h-0 min-w-0 overflow-hidden">
         {dueDate ? (
           <JiraDueDateBadge label={dueDate} tone={dueTone} className="self-start" />
         ) : null}
       </div>
-      <div className="flex h-6 items-center justify-between gap-2">
+      <div className="flex h-6 min-h-0 min-w-0 items-center justify-between gap-2 overflow-hidden">
         <div className="flex min-w-0 items-center gap-2">
           <JiraTicketTypeIcon type={type} size={18} />
           <JiraTicketKey

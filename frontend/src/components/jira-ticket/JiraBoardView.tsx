@@ -5,7 +5,6 @@ import {
   JiraBoardColumn,
   JiraBoardColumns,
 } from "@/components/jira-ticket/JiraBoard";
-import BottomHScrollbar from "@/components/jira-ticket/BottomHScrollbar";
 
 type BoardColumn = {
   key: string;
@@ -40,7 +39,8 @@ type BoardHeaderUser = {
 interface JiraBoardViewProps {
   boardColumns: BoardColumn[];
   tasksByType: Record<string, TaskLike[]>;
-  onCreateTask: () => void;
+  /** Open create modal; from a column pass work type key and optional summary prefill. */
+  onCreateTask: (workTypeKey?: string, summaryPrefill?: string) => void;
   onTaskClick: (task: TaskLike) => void;
   getTicketKey: (task: TaskLike) => string;
   getBoardTypeIcon: (type?: string) => string;
@@ -241,8 +241,6 @@ const JiraBoardView: React.FC<JiraBoardViewProps> = ({
 }) => {
   const [boardSearchQuery, setBoardSearchQuery] = useState("");
   const [filters, setFilters] = useState<BoardFilters>(DEFAULT_BOARD_FILTERS);
-  const boardScrollRef = useRef<HTMLDivElement>(null);
-
   const allBoardTasks = useMemo(
     () =>
       boardColumns.flatMap((column) => {
@@ -330,7 +328,7 @@ const JiraBoardView: React.FC<JiraBoardViewProps> = ({
   }, [boardColumns, filteredTasksByType]);
 
   return (
-    <div className="mt-4 space-y-4 pb-4">
+    <div className="mt-4 min-w-0 space-y-4 pb-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative w-[280px] md:w-[340px]">
@@ -393,15 +391,15 @@ const JiraBoardView: React.FC<JiraBoardViewProps> = ({
         </div>
         <button
           type="button"
-          onClick={onCreateTask}
+          onClick={() => onCreateTask()}
           className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
         >
           <Plus className="h-4 w-4" />
           Create
         </button>
       </div>
-      <div className="relative">
-        <JiraBoardColumns ref={boardScrollRef}>
+      <div className="relative min-w-0 max-w-full overflow-x-hidden">
+        <JiraBoardColumns>
           {orderedColumns.map((column) => {
             const columnTasks = filteredTasksByType[column.key] || [];
             return (
@@ -412,7 +410,9 @@ const JiraBoardView: React.FC<JiraBoardViewProps> = ({
                 footer={
                   <button
                     type="button"
-                    onClick={onCreateTask}
+                    onClick={() =>
+                      onCreateTask(column.key, `${column.title}`)
+                    }
                     className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-slate-500 hover:bg-slate-100"
                   >
                     <span className="text-base">+</span>
@@ -454,10 +454,13 @@ const JiraBoardView: React.FC<JiraBoardViewProps> = ({
                               event.stopPropagation();
                               startBoardEdit(task);
                             }}
-                            className="min-h-[40px] w-full max-w-full overflow-hidden text-left text-[13px] font-medium leading-5 text-slate-900 hover:text-slate-900 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
+                            className="w-full min-w-0 max-w-full overflow-hidden text-left text-[13px] font-medium leading-5 text-slate-900 hover:text-slate-900"
                             title={task.summary || "Untitled task"}
                           >
-                            {task.summary || "Untitled task"}
+                            {/* Line-clamp on inner span: Safari often ignores -webkit-line-clamp on <button>. */}
+                            <span className="line-clamp-2 block min-w-0 break-words">
+                              {task.summary || "Untitled task"}
+                            </span>
                           </button>
                         )
                       }
@@ -489,19 +492,8 @@ const JiraBoardView: React.FC<JiraBoardViewProps> = ({
               </JiraBoardColumn>
             );
           })}
-          {/* <button
-            type="button"
-            onClick={onCreateTask}
-            className="flex min-h-[420px] w-14 shrink-0 items-start justify-center bg-[#f7f8f9] pt-3 text-slate-600 hover:bg-slate-100"
-            aria-label="Create task"
-          >
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white shadow-sm">
-              <Plus className="h-4 w-4" />
-            </span>
-          </button> */}
         </JiraBoardColumns>
       </div>
-      {/* <BottomHScrollbar targetRef={boardScrollRef} /> */}
     </div>
   );
 };
