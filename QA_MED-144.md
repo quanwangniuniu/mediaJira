@@ -8,7 +8,7 @@
 
 ## Feature Overview
 
-Adds "Ask Agent" entry points on the Calendar page (toolbar + event panel). The AI Agent receives real calendar event data, answers scheduling questions using the user's local timezone, and can create new calendar events on the user's behalf.
+Adds "Ask Agent" entry points on the Calendar page (toolbar + event panel). The AI Agent receives real calendar event data, answers scheduling questions using the user's local timezone, can create new calendar events on the user's behalf, and auto-refreshes the calendar after event creation.
 
 ---
 
@@ -65,38 +65,68 @@ Adds "Ask Agent" entry points on the Calendar page (toolbar + event panel). The 
 
 ---
 
-## 5. Timezone Correctness
+## 5. Calendar Auto-Refresh After Event Creation
 
 | # | Test Case | Expected Result | Pass/Fail |
 |---|-----------|-----------------|-----------|
-| 5.1 | Ask Agent what events are scheduled "today". | Agent reports today's date as local date (e.g. March 24, not March 23). | ✅ |
-| 5.2 | Ask Agent to create an event at 10:00 AM on a specific date. | Event appears at 10:00 AM in the calendar (local timezone), not at a UTC-converted time. | ✅ |
-| 5.3 | Agent's response references times with the local timezone label (e.g. "Australia/Melbourne" or "AEDT"). | Timezone is correctly identified in responses. | ✅ |
+| 5.1 | On `/calendar`, click "Ask Agent". On `/agent`, ask Agent to create an event. Then navigate back to `/calendar`. | New event appears in the calendar **without manually refreshing the page**. | |
+| 5.2 | On `/calendar`, click "Ask Agent". On `/agent`, create an event. Then click the browser **Back button** to return to `/calendar`. | New event appears without manual refresh (bfcache restore handled). | |
+| 5.3 | Open `/calendar` in Tab A and `/agent` in Tab B. Create an event in Tab B. Switch to Tab A. | Calendar in Tab A auto-refreshes and shows the new event. | |
 
 ---
 
-## 6. Error & Edge Cases
+## 6. Proactive Calendar Invite Prompt
 
 | # | Test Case | Expected Result | Pass/Fail |
 |---|-----------|-----------------|-----------|
-| 6.1 | Navigate to `/agent` directly (without clicking Ask Agent from calendar). Send a message. | Agent responds normally with generic agent behavior (not calendar mode). | ✅ |
-| 6.2 | Click "New Chat" in the Agent sidebar while in a calendar session. Send a message. | New chat has no calendar context; Agent uses generic mode. | ✅ |
-| 6.3 | Ask Agent a calendar question when the calendar has no events in the current week. | Agent responds gracefully: "You have no events this week." or similar. | ✅ |
+| 6.1 | Click "Ask Agent" from `/calendar`. After the Agent answers the calendar question, check the chat. | A **violet card** appears below the answer: "Do you need me to create an event for you? If so, please tell me the specific time (down to the hour)." | |
+| 6.2 | Ask Agent to create a specific event (e.g. "Create a meeting on April 5th at 2pm"). | The violet invite card does **NOT** appear after the creation confirmation — only the ✅ success message. | |
+| 6.3 | After the violet invite card appears, type a reply: "Yes, please create a team sync on April 10th at 3pm." | Agent creates the event and shows ✅ confirmation. | |
+| 6.4 | Refresh the `/agent` page after a calendar answer that showed the invite card. | The violet invite card is still visible in the restored chat history. | |
 
 ---
 
-## 7. Regression — Existing Agent Features
+## 7. Deleted Events Not Recognized by Agent
 
 | # | Test Case | Expected Result | Pass/Fail |
 |---|-----------|-----------------|-----------|
-| 7.1 | Upload a CSV file and analyze it. | Existing spreadsheet analysis flow works normally. | ✅ |
-| 7.2 | Create a Decision via Agent. | Decision creation flow works normally. | ✅ |
-| 7.3 | Use follow-up chat after analysis. | Follow-up chat flow works normally. | ✅ |
+| 7.1 | Delete an event from the calendar. Then ask Agent about the current week's events. | Agent does **not** mention the deleted event. | |
+| 7.2 | Delete an event. Ask Agent to list all events for that day. | Deleted event is absent from Agent's response. | |
+
+---
+
+## 8. Timezone Correctness
+
+| # | Test Case | Expected Result | Pass/Fail |
+|---|-----------|-----------------|-----------|
+| 8.1 | Ask Agent what events are scheduled "today". | Agent reports today's date as local date (e.g. March 24, not March 23). | ✅ |
+| 8.2 | Ask Agent to create an event at 10:00 AM on a specific date. | Event appears at 10:00 AM in the calendar (local timezone), not at a UTC-converted time. | ✅ |
+| 8.3 | Agent's response references times with the local timezone label (e.g. "Australia/Melbourne" or "AEDT"). | Timezone is correctly identified in responses. | ✅ |
+
+---
+
+## 9. Error & Edge Cases
+
+| # | Test Case | Expected Result | Pass/Fail |
+|---|-----------|-----------------|-----------|
+| 9.1 | Navigate to `/agent` directly (without clicking Ask Agent from calendar). Send a message. | Agent responds normally with generic agent behavior (not calendar mode). | ✅ |
+| 9.2 | Click "New Chat" in the Agent sidebar while in a calendar session. Send a message. | New chat has no calendar context; Agent uses generic mode. | ✅ |
+| 9.3 | Ask Agent a calendar question when the calendar has no events in the current week. | Agent responds gracefully: "You have no events this week." or similar. | ✅ |
+
+---
+
+## 10. Regression — Existing Agent Features
+
+| # | Test Case | Expected Result | Pass/Fail |
+|---|-----------|-----------------|-----------|
+| 10.1 | Upload a CSV file and analyze it. | Existing spreadsheet analysis flow works normally. | ✅ |
+| 10.2 | Create a Decision via Agent. | Decision creation flow works normally. | ✅ |
+| 10.3 | Use follow-up chat after analysis. | Follow-up chat flow works normally. | ✅ |
 
 ---
 
 ## Notes
 
-- After Agent creates a calendar event, the calendar page does **not** auto-refresh. User must manually refresh or switch views to see the new event. This is expected behavior (out of scope for MED-144).
 - The "Ask Agent" button on the event panel is only visible in the event **view** mode, not in edit mode.
 - Calendar context is scoped to the current session tab. Opening a new browser tab will start a fresh Agent session.
+- Auto-refresh covers: same-window navigation, browser back button (bfcache), and cross-tab via localStorage.
