@@ -8,7 +8,7 @@ import { useItemResize } from "./hooks/useItemResize";
 import { useFreehandDrawing } from "./hooks/useFreehandDrawing";
 import BoardItemContainer from "./items/BoardItemContainer";
 import InlineContentEditor from "./InlineContentEditor";
-import { ToolType } from "./hooks/useToolDnD";
+import { TOOL_DND_MIME, ToolOptions, ToolType } from "./hooks/useToolDnD";
 
 interface BoardCanvasProps {
   viewport: Viewport;
@@ -23,7 +23,7 @@ interface BoardCanvasProps {
   onPanUpdate: (x: number, y: number) => void;
   onPanEnd: () => void;
   onZoom: (mouseX: number, mouseY: number, delta: number) => void;
-  onItemCreate?: (toolType: ToolType, worldX: number, worldY: number) => void;
+  onItemCreate?: (toolType: ToolType, worldX: number, worldY: number, options?: ToolOptions) => void;
   onFreehandCreate?: (data: { x: number; y: number; width: number; height: number; style: { svgPath: string; strokeColor: string; strokeWidth: number } }) => void;
   width: number;
   height: number;
@@ -378,19 +378,34 @@ export default function BoardCanvas({
       e.preventDefault();
       e.stopPropagation();
       
-      const toolType = e.dataTransfer.getData("toolType");
-      const source = e.dataTransfer.getData("source");
-      
-      if (source !== "toolbar" || !toolType || !onItemCreate || !canvasRef.current) {
-        return;
+      let toolType = "";
+      let source = e.dataTransfer.getData("source");
+      let options: ToolOptions | undefined;
+
+      const jsonPayload = e.dataTransfer.getData(TOOL_DND_MIME);
+      if (jsonPayload) {
+        try {
+          const parsed = JSON.parse(jsonPayload);
+          toolType = String(parsed?.toolType ?? "");
+          options = (parsed?.options ?? {}) as ToolOptions;
+          source = "toolbar";
+        } catch {
+          // Fall back to legacy payload below
+        }
       }
+
+      if (!toolType) {
+        toolType = e.dataTransfer.getData("toolType");
+      }
+
+      if (source !== "toolbar" || !toolType || !onItemCreate || !canvasRef.current) return;
 
           const rect = canvasRef.current.getBoundingClientRect();
           const screenX = e.clientX - rect.left;
           const screenY = e.clientY - rect.top;
       const worldPoint = screenToWorld(screenX, screenY);
 
-      onItemCreate(toolType as ToolType, worldPoint.x, worldPoint.y);
+      onItemCreate(toolType as ToolType, worldPoint.x, worldPoint.y, options);
     },
     [onItemCreate, screenToWorld]
   );
@@ -640,6 +655,7 @@ export default function BoardCanvas({
             strokeWidth={brushSettings.strokeWidth * viewport.zoom}
             strokeLinecap="round"
             strokeLinejoin="round"
+            shapeRendering="geometricPrecision"
           />
         </svg>
       )}
