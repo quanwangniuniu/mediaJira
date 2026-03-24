@@ -257,12 +257,17 @@ function CalendarPageContent() {
   // Auto-refresh when the agent creates a calendar event.
   // On mount: consume any pending flag written before this page loaded (navigation case).
   // Custom event: same-window floating chat. Storage event: cross-tab.
+  // pageshow / visibilitychange: handle bfcache restores (browser back button).
   React.useEffect(() => {
-    const pending = localStorage.getItem("calendar-events-updated");
-    if (pending) {
-      localStorage.removeItem("calendar-events-updated");
-      refetch();
-    }
+    const consumePending = () => {
+      const pending = localStorage.getItem("calendar-events-updated");
+      if (pending) {
+        localStorage.removeItem("calendar-events-updated");
+        refetch();
+      }
+    };
+
+    consumePending();
 
     const handleRefresh = () => refetch();
     const handleStorage = (e: StorageEvent) => {
@@ -271,11 +276,22 @@ function CalendarPageContent() {
         refetch();
       }
     };
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) consumePending();
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") consumePending();
+    };
+
     window.addEventListener("agent:calendar-updated", handleRefresh);
     window.addEventListener("storage", handleStorage);
+    window.addEventListener("pageshow", handlePageShow);
+    document.addEventListener("visibilitychange", handleVisibility);
     return () => {
       window.removeEventListener("agent:calendar-updated", handleRefresh);
       window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("pageshow", handlePageShow);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [refetch]);
 

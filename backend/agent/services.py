@@ -861,7 +861,9 @@ class AgentOrchestrator:
                     events_to_create = [single]
             # Track whether Dify included ANY creation-related key (even if empty/declined).
             # Used to suppress the calendar invite when the user already asked to create.
-            had_creation_intent = "create_events" in parsed or "create_event" in parsed
+            # Only True when Dify actually provided event data to create.
+            # Key presence alone (e.g. create_events: null / []) does not count.
+            had_creation_intent = bool(parsed.get("create_events")) or bool(parsed.get("create_event"))
         except (json.JSONDecodeError, AttributeError):
             answer_text = raw_answer
             events_to_create = []
