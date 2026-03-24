@@ -61,6 +61,7 @@ const BOARD_TYPE_ORDER = [
   "experiment",
   "optimization",
   "communication",
+  "platform_policy_update",
 ];
 
 const BOARD_TYPE_META = {
@@ -114,7 +115,15 @@ const BOARD_TYPE_META = {
     empty: "No communication tasks",
     icon: "task",
   },
+  platform_policy_update: {
+    title: "Platform Policy Update",
+    empty: "No platform policy update tasks",
+    icon: "task",
+  },
 };
+
+/** Types that support create-modal prefill from a board column — mirrors TASK_TYPE_CONFIG_STATIC. */
+const VALID_BOARD_WORK_TYPES = Object.keys(TASK_TYPE_CONFIG_STATIC);
 
 const normalizeBoardTypeKey = (value) => {
   if (typeof value !== "string") return "task";
@@ -1162,33 +1171,23 @@ function TasksPageContent() {
     }
   };
 
-  // Valid work types that can be auto-selected from a board section
-  const VALID_BOARD_WORK_TYPES = [
-    "budget",
-    "asset",
-    "retrospective",
-    "report",
-    "scaling",
-    "alert",
-    "experiment",
-    "optimization",
-    "communication",
-  ];
-
   // Generic function to reset form data. initialWorkType: when opening from a board column, pre-fill Work Type.
   const resetFormData = (
     projectOverride = projectId ?? null,
     initialWorkType = "",
+    initialSummary = "",
   ) => {
     const defaultDates = getDefaultTaskDates();
     const workType =
       initialWorkType && VALID_BOARD_WORK_TYPES.includes(initialWorkType)
         ? initialWorkType
         : "";
+    const summary =
+      typeof initialSummary === "string" ? initialSummary : "";
     setTaskData({
       project_id: projectOverride,
       type: workType,
-      summary: "",
+      summary,
       description: "",
       current_approver_id: null,
       start_date: defaultDates.start_date,
@@ -1270,11 +1269,12 @@ function TasksPageContent() {
   };
 
   // Open create task modal with fresh form state.
-  // When opening from a board column: (sectionKey) only — sectionKey is the column work type.
+  // When opening from a board column: (sectionKey, summaryPrefill?) — sectionKey is the column work type.
   // When opening from timeline/elsewhere: (projectIdOverride?) — optional project id.
   const handleOpenCreateTaskModal = (
     projectIdOverrideOrSectionKey,
-    sectionKeyArg,
+    sectionKeyOrSummaryPrefill,
+    summaryWhenProjectIdFirst,
   ) => {
     setDraftEditingTaskId(null);
     const isSectionKeyOnly =
@@ -1287,8 +1287,15 @@ function TasksPageContent() {
       : projectId ?? null;
     const initialWorkType = isSectionKeyOnly
       ? projectIdOverrideOrSectionKey
-      : sectionKeyArg ?? "";
-    resetFormData(resolvedProjectId, initialWorkType);
+      : sectionKeyOrSummaryPrefill ?? "";
+    const initialSummary = isSectionKeyOnly
+      ? typeof sectionKeyOrSummaryPrefill === "string"
+        ? sectionKeyOrSummaryPrefill
+        : ""
+      : typeof summaryWhenProjectIdFirst === "string"
+      ? summaryWhenProjectIdFirst
+      : "";
+    resetFormData(resolvedProjectId, initialWorkType, initialSummary);
     clearAllValidationErrors();
     setCreateModalOpen(true);
     setCreateModalExpanded(false);
