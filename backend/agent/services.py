@@ -704,6 +704,7 @@ class AgentOrchestrator:
             organization_id=org_id,
             start_datetime__gte=window_start,
             start_datetime__lte=window_end,
+            is_deleted=False,
         ).select_related('calendar').order_by('start_datetime')
 
         # Filter by visible calendar IDs if provided in context
@@ -726,8 +727,13 @@ class AgentOrchestrator:
             def _parse_dt(dt_str):
                 if not dt_str:
                     return None
-                dt = date_parser.parse(str(dt_str))
-                # Dify returns naive datetimes — treat them as user's local time
+                # Dify may echo back the timezone-name suffix we used for existing
+                # events (e.g. "2026-03-31T14:00:00 Australia/Melbourne").
+                # dateutil cannot parse IANA timezone names inline, so strip the
+                # suffix and let user_tz.localize() apply the correct timezone.
+                raw = str(dt_str).strip()
+                date_part = raw.split(" ")[0] if " " in raw else raw
+                dt = date_parser.parse(date_part)
                 if dt.tzinfo is None and user_tz:
                     dt = user_tz.localize(dt)
                 elif dt.tzinfo is None:
@@ -853,9 +859,13 @@ class AgentOrchestrator:
                 single = parsed.get("create_event")
                 if single and isinstance(single, dict):
                     events_to_create = [single]
+            # Track whether Dify included ANY creation-related key (even if empty/declined).
+            # Used to suppress the calendar invite when the user already asked to create.
+            had_creation_intent = "create_events" in parsed or "create_event" in parsed
         except (json.JSONDecodeError, AttributeError):
             answer_text = raw_answer
             events_to_create = []
+            had_creation_intent = False
 
         # Create all suggested events
         org_id = getattr(self.user, 'organization_id', None)
@@ -880,6 +890,16 @@ class AgentOrchestrator:
             "type": "text",
             "content": answer_text,
         }
+        if created_count:
+            # Notify the calendar page to refresh
+            yield {"type": "calendar_updated"}
+        elif not had_creation_intent:
+            # Only invite when the user asked a general calendar question,
+            # not when they explicitly requested creation (even if Dify declined).
+            yield {
+                "type": "calendar_invite",
+                "content": "Do you need me to create an event for you? If so, please tell me the specific time (down to the hour).",
+            }
 
     def analyze_file(self, file_id):
         """Analyse any uploaded file (CSV/Excel) by its DB id."""

@@ -254,6 +254,31 @@ function CalendarPageContent() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Auto-refresh when the agent creates a calendar event.
+  // On mount: consume any pending flag written before this page loaded (navigation case).
+  // Custom event: same-window floating chat. Storage event: cross-tab.
+  React.useEffect(() => {
+    const pending = localStorage.getItem("calendar-events-updated");
+    if (pending) {
+      localStorage.removeItem("calendar-events-updated");
+      refetch();
+    }
+
+    const handleRefresh = () => refetch();
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === "calendar-events-updated") {
+        localStorage.removeItem("calendar-events-updated");
+        refetch();
+      }
+    };
+    window.addEventListener("agent:calendar-updated", handleRefresh);
+    window.addEventListener("storage", handleStorage);
+    return () => {
+      window.removeEventListener("agent:calendar-updated", handleRefresh);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, [refetch]);
+
   return (
     <Layout>
       <div className="flex min-h-screen flex-col bg-[#f8fafd]">

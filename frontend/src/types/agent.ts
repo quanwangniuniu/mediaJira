@@ -63,6 +63,8 @@ export type SSEEventType =
   | 'decision_draft'
   | 'task_created'
   | 'file_uploaded'
+  | 'calendar_invite'
+  | 'calendar_updated'
   | 'done'
   | 'error';
 

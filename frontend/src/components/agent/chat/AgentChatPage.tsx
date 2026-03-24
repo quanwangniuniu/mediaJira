@@ -29,7 +29,9 @@ function restoreMessage(m: AgentMessage): ChatMessage {
   let navigateLabel: string | undefined
   const isFollowUpPrompt = m.message_type === "confirmation_request"
 
-  if (m.data?.anomalies) {
+  if (m.message_type === "calendar_invite") {
+    type = "calendar_invite"
+  } else if (m.data?.anomalies) {
     type = "analysis"
   } else if (m.message_type === "decision_draft" || m.data?.decision_id) {
     type = "decision_created"
@@ -332,6 +334,33 @@ export function AgentChatPage() {
       { message: text, ...(effectiveCalendarContext ? { calendar_context: effectiveCalendarContext as any } : {}) },
       (event: SSEEvent) => {
         if (event.type === "done") return
+
+        // Notify the calendar page to refresh when events are created.
+        // Dispatch a custom event for same-window (floating chat) communication,
+        // and also write to localStorage for cross-tab communication.
+        if (event.type === "calendar_updated") {
+          window.dispatchEvent(new CustomEvent("agent:calendar-updated"))
+          localStorage.setItem("calendar-events-updated", String(Date.now()))
+          return
+        }
+
+        // Add a separate invite message so the calendar answer is preserved.
+        // Switch to calendar mode so the user's reply goes through the calendar workflow.
+        if (event.type === "calendar_invite") {
+          addMessage({
+            id: `ai-invite-${Date.now()}`,
+            role: "assistant",
+            content: event.content || "",
+            type: "calendar_invite",
+          })
+          setSessionCalendarContext({
+            type: "calendar",
+            userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            currentView: "week",
+            currentDate: new Date().toISOString().split("T")[0],
+          })
+          return
+        }
 
         if (event.content) {
           contentParts.push(event.content)

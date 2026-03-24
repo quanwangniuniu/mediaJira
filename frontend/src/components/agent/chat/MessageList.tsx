@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef } from "react"
-import { Bot, User, FileSpreadsheet, ArrowRight } from "lucide-react"
+import { Bot, User, FileSpreadsheet, ArrowRight, CalendarPlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { AGENT_MESSAGES } from "@/lib/agentMessages"
@@ -10,7 +10,7 @@ import { DecisionCard } from "./DecisionCard"
 import { TaskListCard } from "./TaskListCard"
 import type { AnomalyItem, SuggestedDecision, RecommendedTask } from "@/types/agent"
 
-export type ChatMessageType = "text" | "analysis" | "file_uploaded" | "decision_created" | "tasks_created" | "error"
+export type ChatMessageType = "text" | "analysis" | "file_uploaded" | "decision_created" | "tasks_created" | "error" | "calendar_invite"
 
 export interface ChatMessage {
   id: string
@@ -74,8 +74,8 @@ export function MessageList({ messages, onAction, onNavigate }: MessageListProps
               </div>
             )}
 
-            {/* Text bubble */}
-            {message.content && (
+            {/* Text bubble — hidden for calendar_invite which renders its own card */}
+            {message.content && message.type !== "calendar_invite" && (
               <div
                 className={cn(
                   "rounded-lg px-4 py-2.5 text-sm whitespace-pre-wrap",
@@ -100,6 +100,14 @@ export function MessageList({ messages, onAction, onNavigate }: MessageListProps
                 {message.navigateLabel}
                 <ArrowRight className="h-3.5 w-3.5" />
               </Button>
+            )}
+
+            {/* Calendar invite prompt */}
+            {message.type === "calendar_invite" && (
+              <div className="flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2">
+                <CalendarPlus className="h-4 w-4 shrink-0 text-violet-600" />
+                <span className="text-sm text-violet-800">{message.content}</span>
+              </div>
             )}
 
             {/* Analysis result cards */}
