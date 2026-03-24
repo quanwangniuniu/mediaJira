@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import Layout from "@/components/layout/Layout";
 import useAuth from "@/hooks/useAuth";
 import { useTaskData } from "@/hooks/useTaskData";
@@ -153,6 +153,7 @@ const getBoardColumnMeta = (typeKey) => {
 function TasksPageContent() {
   const { user, loading: userLoading, logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   // Get project_id from search params
   const searchParams = useSearchParams();
   const projectIdParam = searchParams.get("project_id");
@@ -316,7 +317,9 @@ function TasksPageContent() {
       }
       return next;
     });
-    router.push(`/tasks?project_id=${selectedProjectId}`);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("project_id", String(selectedProjectId));
+    router.push(`${pathname}?${params.toString()}`);
   };
 
   const filteredProjects = useMemo(() => {
@@ -424,8 +427,8 @@ function TasksPageContent() {
     }
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", viewMode);
-    router.replace(`?${params.toString()}`);
-  }, [viewMode, router, searchParams]);
+    router.replace(`${pathname}?${params.toString()}`);
+  }, [viewMode, router, searchParams, pathname]);
 
   // When the project_id in the URL changes, fetch the tasks list according to it
   useEffect(() => {

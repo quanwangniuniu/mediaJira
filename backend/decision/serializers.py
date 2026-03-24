@@ -220,6 +220,8 @@ class DecisionListSerializer(serializers.ModelSerializer):
     projectSeq = serializers.IntegerField(source="project_seq")
     selectedOptionText = serializers.SerializerMethodField()
     hasReviews = serializers.SerializerMethodField()
+    createdByAgent = serializers.BooleanField(source="created_by_agent", read_only=True)
+    agentSessionId = serializers.UUIDField(source="agent_session_id", read_only=True, allow_null=True)
 
     class Meta:
         model = Decision
@@ -238,6 +240,8 @@ class DecisionListSerializer(serializers.ModelSerializer):
             "projectId",
             "projectName",
             "hasReviews",
+            "createdByAgent",
+            "agentSessionId",
         ]
 
     def get_selectedOptionText(self, obj):
@@ -314,6 +318,12 @@ class DecisionDraftSerializer(serializers.ModelSerializer):
         source="is_reference_case", required=False
     )
     projectSeq = serializers.IntegerField(source="project_seq", read_only=True)
+    createdByAgent = serializers.BooleanField(
+        source="created_by_agent", required=False, default=False
+    )
+    agentSessionId = serializers.UUIDField(
+        source="agent_session_id", required=False, allow_null=True
+    )
 
     def to_internal_value(self, data):
         if self.instance is not None:
@@ -374,6 +384,8 @@ class DecisionDraftSerializer(serializers.ModelSerializer):
             "isReferenceCase",
             "projectSeq",
             "parentDecisionIds",
+            "createdByAgent",
+            "agentSessionId",
         ]
 
 
@@ -482,6 +494,8 @@ class DecisionCommittedSerializer(serializers.ModelSerializer):
     approvedBy = serializers.IntegerField(source="approved_by_id", read_only=True)
     isReferenceCase = serializers.BooleanField(source="is_reference_case", read_only=True)
     projectSeq = serializers.IntegerField(source="project_seq", read_only=True)
+    createdByAgent = serializers.BooleanField(source="created_by_agent", read_only=True)
+    agentSessionId = serializers.UUIDField(source="agent_session_id", read_only=True, allow_null=True)
     signals = CommittedSignalSerializer(many=True, read_only=True)
     options = CommittedOptionSerializer(many=True, read_only=True)
     reviews = CommittedReviewSerializer(many=True, read_only=True)
@@ -505,6 +519,8 @@ class DecisionCommittedSerializer(serializers.ModelSerializer):
             "approvedAt",
             "approvedBy",
             "isReferenceCase",
+            "createdByAgent",
+            "agentSessionId",
             "signals",
             "options",
             "reviews",

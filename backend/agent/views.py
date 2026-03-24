@@ -203,7 +203,11 @@ class SpreadsheetListView(EnglishResponseMixin, APIView):
             project=project,
             is_deleted=False,
         ).values('id', 'name', 'created_at').order_by('-created_at')
-        return Response(list(spreadsheets))
+        result = [
+            {**s, 'project_id': project.id, 'updated_at': s['created_at']}
+            for s in spreadsheets
+        ]
+        return Response(result)
 
 
 

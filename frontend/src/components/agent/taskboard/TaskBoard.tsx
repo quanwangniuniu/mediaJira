@@ -5,11 +5,11 @@ import { FilterBar } from "./FilterBar"
 import { KanbanColumn, type ColumnStatus } from "./KanbanColumn"
 import type { Task, TaskType, TaskPriority } from "./TaskCard"
 import { TaskAPI } from "@/lib/api/taskApi"
-import { useBatchManage } from "@/hooks/useBatchManage"
-import ConfirmDialog from "@/components/common/ConfirmDialog"
+// import { useBatchManage } from "@/hooks/useBatchManage"
+// import ConfirmDialog from "@/components/common/ConfirmDialog"
 import { TaskDetailModal } from "./TaskDetailModal"
 import { NewTaskModal } from "./NewTaskModal"
-import toast from "react-hot-toast"
+// import toast from "react-hot-toast"
 import { useTaskFilterParams } from "@/hooks/useTaskFilterParams"
 import { TaskFilterPanel } from "@/components/tasks/TaskFilterPanel"
 
@@ -39,7 +39,7 @@ export function TaskBoard() {
   const [typeFilter, setTypeFilter] = useState("all")
   const [priorityFilter, setPriorityFilter] = useState("all")
   const [ownerFilter, setOwnerFilter] = useState("all")
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  // const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [showNewTask, setShowNewTask] = useState(false)
 
@@ -85,21 +85,21 @@ export function TaskBoard() {
     return () => window.removeEventListener("agent:tasks-changed", handler)
   }, [reload])
 
-  const batchDeleteFn = useCallback(async (id: string | number) => {
-    await TaskAPI.deleteTask(Number(id))
-  }, [])
-
-  const batchDeleteComplete = useCallback((deletedIds: (string | number)[]) => {
-    const idSet = new Set(deletedIds.map(String))
-    setTasks((prev) => prev.filter((t) => !idSet.has(t.id)))
-    toast.success(`Deleted ${deletedIds.length} task${deletedIds.length > 1 ? "s" : ""}`)
-  }, [])
-
-  const batch = useBatchManage({
-    items: tasks.map((t) => ({ id: t.id })),
-    deleteFn: batchDeleteFn,
-    onDeleteComplete: batchDeleteComplete,
-  })
+  // const batchDeleteFn = useCallback(async (id: string | number) => {
+  //   await TaskAPI.deleteTask(Number(id))
+  // }, [])
+  //
+  // const batchDeleteComplete = useCallback((deletedIds: (string | number)[]) => {
+  //   const idSet = new Set(deletedIds.map(String))
+  //   setTasks((prev) => prev.filter((t) => !idSet.has(t.id)))
+  //   toast.success(`Deleted ${deletedIds.length} task${deletedIds.length > 1 ? "s" : ""}`)
+  // }, [])
+  //
+  // const batch = useBatchManage({
+  //   items: tasks.map((t) => ({ id: t.id })),
+  //   deleteFn: batchDeleteFn,
+  //   onDeleteComplete: batchDeleteComplete,
+  // })
 
   // Extract unique owners for filter dropdown
   const owners = Array.from(
@@ -138,17 +138,7 @@ export function TaskBoard() {
         onPriorityChange={setPriorityFilter}
         onOwnerChange={setOwnerFilter}
         owners={owners}
-        isManaging={batch.isManaging}
-        onEnterManage={batch.enterManageMode}
-        onExitManage={batch.exitManageMode}
-        selectedCount={batch.selectedCount}
-        isAllSelected={batch.isAllSelected}
-        isIndeterminate={batch.isIndeterminate}
-        onSelectAll={batch.selectAll}
-        onDeselectAll={batch.deselectAll}
-        onDeleteClick={() => setShowDeleteConfirm(true)}
-        isDeleting={batch.isDeleting}
-        hasItems={tasks.length > 0}
+        // Manage batch delete removed
         onNewTask={() => setShowNewTask(true)}
       />
 
@@ -158,10 +148,6 @@ export function TaskBoard() {
             key={status}
             status={status}
             tasks={filteredTasks.filter((t) => t.status === status)}
-            isManaging={batch.isManaging}
-            selectedIds={batch.selectedIds}
-            exitingIds={batch.exitingIds}
-            onToggleSelect={batch.toggleSelect}
             onCardClick={(task) => setSelectedTask(task)}
           />
         ))}
@@ -170,6 +156,7 @@ export function TaskBoard() {
       <TaskDetailModal task={selectedTask} onClose={() => setSelectedTask(null)} />
       <NewTaskModal open={showNewTask} onClose={() => setShowNewTask(false)} onCreated={reload} />
 
+      {/* Manage batch delete confirm dialog removed
       <ConfirmDialog
         isOpen={showDeleteConfirm}
         title="Delete Tasks"
@@ -183,6 +170,7 @@ export function TaskBoard() {
         }}
         onCancel={() => setShowDeleteConfirm(false)}
       />
+      */}
     </div>
   )
 }
