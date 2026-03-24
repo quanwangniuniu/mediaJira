@@ -2,6 +2,7 @@ import logging
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -11,10 +12,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.models import Organization, Project, ProjectInvitation, ProjectMember
+from core.models import Organization, Project, ProjectInvitation, ProjectMember, Role
 from core.permissions import (
     CanManageProjectMembers,
     IsProjectMember,
+    can_invite_project_members,
     IsProjectOwner,
     can_manage_project_members,
 )
@@ -363,11 +365,13 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = ProjectMemberSerializer
-    permission_classes = [IsAuthenticated, CanManageProjectMembers]
+    permission_classes = [IsAuthenticated]
     owner_transfer_default_role = 'Team Leader'
 
     def get_queryset(self):
         """Filter members by project."""
+        from core.utils.bot_user import AGENT_BOT_EMAIL
+
         project_id = self.kwargs.get('project_id')
         project = get_object_or_404(Project, id=project_id)
 
@@ -379,9 +383,14 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
         ).exists():
             return ProjectMember.objects.none()
 
+        # Exclude bot users from member list
+        # Bot users are system-managed and automatically added to projects,
+        # they should not appear in the regular member list UI
         return ProjectMember.objects.filter(
             project=project,
             is_active=True
+        ).exclude(
+            user__email=AGENT_BOT_EMAIL  # Exclude agent bot user
         ).select_related('user', 'project')
 
     def get_permissions(self):
@@ -389,7 +398,9 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
         if self.action in ['update', 'partial_update', 'destroy']:
             # Restrict role changes and removals to privileged roles.
             return [IsAuthenticated(), CanManageProjectMembers()]
-        return [IsAuthenticated(), CanManageProjectMembers()]
+        # For list/retrieve/create: object-level management permissions are handled
+        # inside the endpoints (create is owner-only).
+        return [IsAuthenticated()]
 
     def _transfer_project_owner(self, instance):
         project = instance.project
@@ -460,13 +471,16 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
         project_id = self.kwargs.get('project_id')
         project = get_object_or_404(Project, id=project_id)
 
-        # Check permissions (owner or member with invite permission)
+        # Invite is owner-only: verify actor is the authoritative project owner
         user = request.user
-        if not can_manage_project_members(user, project):
-            raise PermissionDenied('Only privileged project roles can invite members')
+        if not can_invite_project_members(user, project):
+            raise PermissionDenied('Only project owner can invite members')
 
         # Use ProjectMemberInviteSerializer for validation
-        invite_serializer = ProjectMemberInviteSerializer(data=request.data)
+        invite_serializer = ProjectMemberInviteSerializer(
+            data=request.data,
+            context={"request": request},
+        )
         invite_serializer.is_valid(raise_exception=True)
 
         email = invite_serializer.validated_data['email']
@@ -523,6 +537,75 @@ class ProjectMemberViewSet(viewsets.ModelViewSet):
         # Deactivate instead of delete
         instance.is_active = False
         instance.save()
+
+
+class ListProjectAvailableRolesView(APIView):
+    """
+    Return available project roles for the current organization.
+
+    Used by frontend role dropdowns:
+    - Invitation role selection (owner is not included)
+    - Member role editing (owner is also excluded; ownership transfer is separate)
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, project_id: int):
+        project = get_object_or_404(Project, id=project_id)
+
+        # Prevent leaking role definitions to non-members.
+        if not ProjectMember.objects.filter(
+            user=request.user,
+            project=project,
+            is_active=True,
+        ).exists():
+            return Response(
+                {'error': 'You do not have access to this project'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # Keep role names in sync with frontend `getRoleBadgeClasses()` switch cases.
+        # `owner` is excluded from dropdown responses.
+        base_roles = {
+            "member",
+            "viewer",
+            "Approver",
+            "Reviewer",
+            "Super Administrator",
+            "Organization Admin",
+            "Team Leader",
+            "Campaign Manager",
+            "Budget Controller",
+            "Data Analyst",
+            "Senior Media Buyer",
+            "Specialist Media Buyer",
+            "Junior Media Buyer",
+            "Designer",
+            "Copywriter",
+        }
+
+        user_org = getattr(request.user, "organization", None)
+        role_qs = Role.objects.filter(is_deleted=False)
+        if user_org:
+            role_qs = role_qs.filter(Q(organization=user_org) | Q(organization__isnull=True))
+        else:
+            role_qs = role_qs.filter(organization__isnull=True)
+
+        role_names = set(role_qs.values_list("name", flat=True))
+
+        allowed_roles = (base_roles | role_names) - {"owner"}
+
+        roles = [
+            {"value": role_name, "label": role_name}
+            for role_name in sorted(allowed_roles)
+        ]
+        return Response(
+            {
+                "roles": roles,
+                "default_role": "member",
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class AcceptInvitationView(APIView):

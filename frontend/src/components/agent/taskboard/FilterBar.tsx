@@ -19,7 +19,8 @@ interface FilterBarProps {
   onPriorityChange: (value: string) => void
   onOwnerChange: (value: string) => void
   owners: { name: string; initials: string }[]
-  // Batch manage props
+  // Batch manage props — currently unused, manage batch delete removed
+  // Props retained for interface compatibility; not passing hasItems hides the Manage button
   isManaging?: boolean
   onEnterManage?: () => void
   onExitManage?: () => void

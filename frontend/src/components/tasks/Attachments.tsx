@@ -131,7 +131,10 @@ export default function Attachments({ taskId }: AttachmentsProps) {
   };
 
   return (
-    <section className="border-t border-slate-200 pt-5">
+    <section
+      data-testid="task-attachments-section"
+      className="border-t border-slate-200 pt-5"
+    >
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-2">
           <h3 className="text-lg font-semibold text-gray-900">Attachments</h3>

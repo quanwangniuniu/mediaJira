@@ -203,6 +203,323 @@ def _run_analysis(spreadsheet_data, user_id=None):
     )
 
 
+def _serialize_project_members(project, excluded_users=None):
+    """Return a minimal project member list for Dify follow-up disambiguation."""
+    from core.models import ProjectMember
+
+    excluded_user_ids = {
+        user.id for user in (excluded_users or []) if getattr(user, 'id', None)
+    }
+    members = (
+        ProjectMember.objects.filter(project=project, is_active=True)
+        .exclude(user_id__in=excluded_user_ids)
+        .select_related('user')
+    )
+
+    serialized = []
+    for member in members:
+        user = member.user
+        display_name = user.get_full_name().strip() or user.username or user.email
+        serialized.append(
+            {
+                'username': user.username,
+                'email': user.email,
+                'display_name': display_name,
+            }
+        )
+    return serialized
+
+
+def _coerce_json(value):
+    """Parse a JSON string if possible, otherwise return the original value."""
+    if not isinstance(value, str):
+        return value
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return value
+
+
+def _normalize_dify_chat_output(output):
+    """Normalize Dify follow-up output to {status, text, forwards}."""
+    parsed = _coerce_json(output)
+    if isinstance(parsed, dict):
+        status = parsed.get('status') or 'completed'
+        if status not in ('completed', 'needs_clarification'):
+            status = 'completed'
+
+        text = parsed.get('text')
+        if not isinstance(text, str) or not text.strip():
+            fallback_text = parsed.get('result') or parsed.get('output') or parsed.get('answer')
+            if isinstance(fallback_text, str) and fallback_text.strip():
+                text = fallback_text
+            else:
+                text = ''
+
+        forwards = _coerce_json(parsed.get('forwards', []))
+        if not isinstance(forwards, list):
+            forwards = []
+
+        normalized_forwards = []
+        for item in forwards:
+            if not isinstance(item, dict):
+                continue
+            username = item.get('username')
+            content = item.get('content')
+            if not isinstance(username, str) or not username.strip():
+                continue
+            if not isinstance(content, str) or not content.strip():
+                continue
+            normalized_forwards.append(
+                {
+                    'username': username.strip(),
+                    'content': content.strip(),
+                }
+            )
+
+        if text.strip():
+            return {
+                'status': status,
+                'text': text.strip(),
+                'forwards': normalized_forwards,
+            }
+
+    if isinstance(parsed, str) and parsed.strip():
+        return {
+            'status': 'completed',
+            'text': parsed.strip(),
+            'forwards': [],
+        }
+    return None
+
+
+def _call_dify_chat(chat_messages, user_id=None, analysis_result=None, project_members=None):
+    """Call Dify chat workflow API with conversation context."""
+    api_url = getattr(settings, 'DIFY_API_URL', '') or os.environ.get('DIFY_API_URL', '')
+    api_key = getattr(settings, 'DIFY_CHAT_API_KEY', '') or os.environ.get('DIFY_CHAT_API_KEY', '')
+    if not api_url or not api_key:
+        raise RuntimeError("Dify chat not configured (DIFY_API_URL / DIFY_CHAT_API_KEY missing)")
+
+    api_url = api_url.rstrip('/')
+    headers = {
+        'Authorization': f"Bearer {api_key}",
+        'Content-Type': 'application/json',
+    }
+
+    payload = {
+        'inputs': {
+            'chat_messages': chat_messages,
+            'analysis_result': json.dumps(analysis_result, default=str) if analysis_result else '',
+            'project_members': json.dumps(project_members or [], default=str),
+        },
+        'response_mode': 'blocking',
+        'user': str(user_id or 'agent'),
+    }
+
+    response = requests.post(
+        f"{api_url}/v1/workflows/run",
+        headers=headers,
+        json=payload,
+        timeout=120,
+    )
+
+    if response.status_code != 200:
+        logger.error(f"Dify chat API error: HTTP {response.status_code}")
+        raise RuntimeError(f"Dify chat API returned {response.status_code}")
+
+    result = response.json()
+    outputs = result.get('data', {}).get('outputs', {})
+
+    if isinstance(outputs, dict):
+        candidates = [outputs]
+        for key in ('result', 'text', 'output', 'answer'):
+            val = outputs.get(key)
+            if val:
+                candidates.append(val)
+        for candidate in candidates:
+            normalized = _normalize_dify_chat_output(candidate)
+            if normalized:
+                return normalized
+    else:
+        normalized = _normalize_dify_chat_output(outputs)
+        if normalized:
+            return normalized
+
+    # Extract text reply and forwards
+    reply = ''
+    forwards = []
+
+    if isinstance(outputs, dict):
+        for key in ('result', 'text', 'output', 'answer'):
+            val = outputs.get(key)
+            if val and isinstance(val, str):
+                # Try to parse as JSON — Dify may wrap {text, forwards} in a string
+                try:
+                    parsed = json.loads(val)
+                    if isinstance(parsed, dict) and 'text' in parsed:
+                        reply = parsed['text']
+                        ft = parsed.get('forwards', [])
+                        if isinstance(ft, str):
+                            try:
+                                ft = json.loads(ft)
+                            except (json.JSONDecodeError, TypeError):
+                                ft = []
+                        if isinstance(ft, list):
+                            forwards = ft
+                        break
+                except (json.JSONDecodeError, TypeError):
+                    pass
+                # Not JSON or no 'text' key — use as plain reply
+                reply = val
+                break
+    elif isinstance(outputs, str):
+        try:
+            parsed = json.loads(outputs)
+            if isinstance(parsed, dict) and 'text' in parsed:
+                reply = parsed['text']
+                ft = parsed.get('forwards', [])
+                if isinstance(ft, str):
+                    try:
+                        ft = json.loads(ft)
+                    except (json.JSONDecodeError, TypeError):
+                        ft = []
+                if isinstance(ft, list):
+                    forwards = ft
+        except (json.JSONDecodeError, TypeError):
+            reply = outputs
+
+    if not reply:
+        logger.warning(f"Unexpected Dify chat output format: {type(outputs)}")
+        raise RuntimeError("Dify chat returned unexpected output format")
+
+    # Fallback: if forwards not extracted above, check outputs directly
+    if not forwards and isinstance(outputs, dict):
+        ft = outputs.get('forwards', [])
+        if isinstance(ft, str):
+            try:
+                ft = json.loads(ft)
+            except (json.JSONDecodeError, TypeError):
+                ft = []
+        if isinstance(ft, list):
+            forwards = ft
+
+    return {"reply": reply, "forwards": forwards}
+
+
+def _get_or_create_bot_private_chat(bot, target_user, project):
+    """Find or create a private chat with exactly 2 participants: bot and target.
+
+    Unlike ChatService.create_private_chat, this enforces participant_count==2
+    so it won't accidentally match a group-like chat where bot was added as a
+    third participant (e.g. via @Agent lazy-join).
+    """
+    from chat.models import Chat, ChatType, ChatParticipant
+
+    # First, find chats that contain both bot and target_user
+    chat = (
+        Chat.objects.filter(
+            project=project,
+            type=ChatType.PRIVATE,
+            participants__user=bot,
+        )
+        .filter(participants__user=target_user)
+        .distinct()
+        .first()
+    )
+
+    # Second, verify it has exactly 2 participants (not a group chat)
+    if chat:
+        participant_count = chat.participants.count()
+        if participant_count != 2:
+            # Not exactly 2 participants, might be a group chat
+            chat = None
+
+    # If found, reactivate any inactive participants
+    if chat:
+        participants = ChatParticipant.objects.filter(chat=chat, user__in=[bot, target_user])
+        for participant in participants:
+            if not participant.is_active:
+                participant.is_active = True
+                participant.save(update_fields=['is_active', 'updated_at'])
+        return chat, False
+
+    # Not found, create new chat
+    chat = Chat.objects.create(project=project, type=ChatType.PRIVATE)
+    ChatParticipant.objects.create(chat=chat, user=bot, is_active=True)
+    ChatParticipant.objects.create(chat=chat, user=target_user, is_active=True)
+    return chat, True
+
+
+def _forward_to_users(forwards, sender, project):
+    """Send messages to users based on Dify forwards structure.
+
+    Uses the Agent Bot system user as the chat sender so that
+    the private chat always involves two distinct users — avoiding the
+    sender==target bug when forwarding to oneself.
+    """
+    from chat.services import MessageService
+    from chat.tasks import notify_new_message
+    from core.models import ProjectMember
+    from core.utils.bot_user import get_agent_bot_user
+
+    bot = get_agent_bot_user()
+    sender_name = sender.get_full_name() or sender.username or sender.email
+
+    results = []
+    for item in forwards:
+        username = (item.get('username') or '').strip()
+        content = (item.get('content') or '').strip()
+        if not username or not content:
+            continue
+
+        prefixed_content = f"from {sender_name} by agent:\n{content}"
+
+        members = (
+            ProjectMember.objects.filter(project=project, is_active=True)
+            .exclude(user=bot)
+            .filter(user__username__iexact=username)
+            .select_related('user')
+        )
+        if not members.exists():
+            members = (
+                ProjectMember.objects.filter(project=project, is_active=True)
+                .exclude(user=bot)
+                .filter(user__email__iexact=username)
+                .select_related('user')
+            )
+
+        if not members.exists():
+            logger.warning(f"Forward target '{username}' not found in project {project.id}")
+            results.append({"username": username, "status": "not_found"})
+            continue
+
+        if members.count() > 1:
+            logger.warning(f"Forward target '{username}' is ambiguous in project {project.id}")
+            results.append({"username": username, "status": "ambiguous"})
+            continue
+
+        target_user = members.first().user
+        try:
+            chat, _ = _get_or_create_bot_private_chat(bot, target_user, project)
+            message = MessageService.create_message(chat=chat, sender=bot, content=prefixed_content)
+            notify_new_message.delay(message.id)
+            logger.info(
+                "Agent forwarded message for project=%s sender=%s target_user=%s username=%s chat=%s message=%s",
+                project.id,
+                sender.id,
+                target_user.id,
+                username,
+                chat.id,
+                message.id,
+            )
+            results.append({"username": username, "status": "sent", "user_id": target_user.id})
+        except Exception as e:
+            logger.error(f"Failed to forward to {username}: {e}")
+            results.append({"username": username, "status": "error", "detail": str(e)})
+
+    return results
+
+
 class AgentOrchestrator:
     def __init__(self, user, project, session):
         self.user = user
@@ -241,14 +558,78 @@ class AgentOrchestrator:
             else:
                 yield {"type": "error", "content": "No analysis found to create tasks from."}
         else:
-            # General chat — echo back with guidance
-            yield {
-                "type": "text",
-                "content": (
-                    "I can help you analyze spreadsheet data and create decisions. "
-                    "To get started, select a spreadsheet and use the 'analyze' action."
-                ),
-            }
+            # Check if there's a completed analysis awaiting follow-up
+            latest_run = self.session.workflow_runs.filter(
+                status='awaiting_confirmation',
+                chat_followed_up=False,
+            ).order_by('-created_at').first()
+
+            if latest_run:
+                yield {"type": "text", "content": "Thinking..."}
+                history = AgentMessage.objects.filter(
+                    session=self.session
+                ).order_by('created_at')
+                chat_context = "\n".join(
+                    f"[{m.role}]: {m.content}" for m in history
+                )
+                full_input = f"{chat_context}\n\n[user]: {message}"
+                try:
+                    from core.utils.bot_user import get_agent_bot_user
+
+                    bot = get_agent_bot_user()
+                    project_members = _serialize_project_members(
+                        self.project,
+                        excluded_users=[bot],
+                    )
+                    logger.info(
+                        "Running agent follow-up chat for project=%s session=%s workflow_run=%s user=%s project_members=%s",
+                        self.project.id,
+                        self.session.id,
+                        latest_run.id,
+                        self.user.id,
+                        len(project_members),
+                    )
+                    result = _call_dify_chat(
+                        full_input,
+                        user_id=self.user.id,
+                        analysis_result=latest_run.analysis_result,
+                        project_members=project_members,
+                    )
+                    follow_up_status = result.get("status", "completed")
+                    reply = result.get("text") or result.get("reply", "")
+                    forwards = result.get("forwards", [])
+                    logger.info(
+                        "Agent follow-up chat completed for workflow_run=%s status=%s forwards=%s close_follow_up=%s",
+                        latest_run.id,
+                        follow_up_status,
+                        len(forwards),
+                        follow_up_status == 'completed',
+                    )
+
+                    if follow_up_status == 'completed':
+                        latest_run.chat_followed_up = True
+                        latest_run.save(update_fields=['chat_followed_up'])
+                    yield {"type": "text", "content": reply}
+
+                    if forwards:
+                        fwd_results = _forward_to_users(forwards, self.user, self.project)
+                        sent = [r["username"] for r in fwd_results if r["status"] == "sent"]
+                        failed = [r["username"] for r in fwd_results if r["status"] != "sent"]
+                        if sent:
+                            yield {"type": "text", "content": f"Message forwarded to: {', '.join(sent)}"}
+                        if failed:
+                            yield {"type": "text", "content": f"Could not forward to: {', '.join(failed)}"}
+                except Exception as e:
+                    logger.error(f"Dify chat call failed: {e}")
+                    yield {"type": "error", "content": str(e)}
+            else:
+                yield {
+                    "type": "text",
+                    "content": (
+                        "I can help you analyze spreadsheet data and create decisions. "
+                        "To get started, select a spreadsheet and use the 'analyze' action."
+                    ),
+                }
         yield {"type": "done"}
 
     def _fetch_events_for_context(self, calendar_context):
@@ -484,7 +865,7 @@ class AgentOrchestrator:
         }
         yield {
             "type": "confirmation_request",
-            "content": "Would you like me to create a Decision draft based on this analysis?",
+            "content": "I've finished the analysis. You can send one follow-up message now. I can explain the findings, turn them into a short report, or prepare messages to forward to specific project members. If you want me to forward something, include the exact username or email.",
             "data": {"workflow_run_id": str(workflow_run.id)},
         }
 
@@ -535,7 +916,7 @@ class AgentOrchestrator:
         }
         yield {
             "type": "confirmation_request",
-            "content": "Would you like me to create a Decision draft based on this analysis?",
+            "content": "I've finished the analysis. You can send one follow-up message now. I can explain the findings, turn them into a short report, or prepare messages to forward to specific project members. If you want me to forward something, include the exact username or email.",
             "data": {"workflow_run_id": str(workflow_run.id)},
         }
 
@@ -605,7 +986,7 @@ class AgentOrchestrator:
         }
         yield {
             "type": "confirmation_request",
-            "content": "Would you like me to create a Decision draft based on this analysis?",
+            "content": "I've finished the analysis. You can send one follow-up message now. I can explain the findings, turn them into a short report, or prepare messages to forward to specific project members. If you want me to forward something, include the exact username or email.",
             "data": {"workflow_run_id": str(workflow_run.id)},
         }
 
@@ -625,7 +1006,7 @@ class AgentOrchestrator:
         ).aggregate(Max('project_seq'))['project_seq__max'] or 0
 
         decision = Decision.objects.create(
-            title=suggested.get("title", "AI Agent Analysis"),
+            title=suggested.get("title") or "AI Agent Analysis",
             context_summary=suggested.get("context_summary", ""),
             reasoning=suggested.get("reasoning", ""),
             risk_level=suggested.get("risk_level", "MEDIUM"),
@@ -633,6 +1014,8 @@ class AgentOrchestrator:
             project=self.project,
             project_seq=max_seq + 1,
             author=self.user,
+            created_by_agent=True,
+            agent_session_id=self.session.id,
         )
 
         # Create signals from anomalies
@@ -651,13 +1034,15 @@ class AgentOrchestrator:
                 display_text=anomaly.get("description", ""),
             )
 
-        # Create options
+        # Create options — first option is selected by default so the decision
+        # satisfies validate_can_commit() (exactly one option must be selected).
         options = suggested.get("options", [])
-        for opt in options:
+        for idx, opt in enumerate(options):
             Option.objects.create(
                 decision=decision,
                 text=opt.get("text", ""),
-                order=opt.get("order", 0),
+                order=opt.get("order", idx),
+                is_selected=(idx == 0),
             )
 
         if workflow_run:

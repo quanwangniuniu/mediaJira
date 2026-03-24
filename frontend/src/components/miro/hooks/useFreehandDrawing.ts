@@ -1,5 +1,10 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { ToolType } from './useToolDnD';
+import {
+  freehandPointsToWorldPath,
+  worldPathToLocalPath,
+  worldPointsToScreenPath,
+} from '../utils/cubicBsplinePath';
 
 interface UseFreehandDrawingProps {
   activeTool: ToolType;
@@ -79,14 +84,14 @@ export function useFreehandDrawing({
     const worldPoint = screenToWorldRef.current(screenX, screenY);
     freehandPointsRef.current.push({ x: worldPoint.x, y: worldPoint.y });
 
-    // Direct SVG path update - NO React re-render
-    // Note: First point is already set in mouseDown, so we always append line to here
-    const screen = worldToScreenRef.current(worldPoint.x, worldPoint.y);
-    currentPathRef.current += ` L ${screen.x} ${screen.y}`;
-
-    // Update SVG path directly via DOM manipulation
+    const halfW = brushSettingsRef.current.strokeWidth / 2;
+    currentPathRef.current = worldPointsToScreenPath(
+      freehandPointsRef.current,
+      halfW,
+      worldToScreenRef.current
+    );
     if (svgPathRef.current) {
-      svgPathRef.current.setAttribute('d', currentPathRef.current);
+      svgPathRef.current.setAttribute("d", currentPathRef.current);
     }
   }, []);
 
@@ -95,37 +100,15 @@ export function useFreehandDrawing({
 
     const points = freehandPointsRef.current;
     if (points.length >= 2 && onFreehandCreateRef.current) {
-      // Compute bounding box
-      let minX = Infinity,
-        minY = Infinity;
-      let maxX = -Infinity,
-        maxY = -Infinity;
-
-      points.forEach((p) => {
-        minX = Math.min(minX, p.x);
-        minY = Math.min(minY, p.y);
-        maxX = Math.max(maxX, p.x);
-        maxY = Math.max(maxY, p.y);
-      });
-
-      const width = maxX - minX || 1;
-      const height = maxY - minY || 1;
-
-      // Build SVG path relative to (minX, minY)
-      let svgPath = "";
-      points.forEach((p, i) => {
-        const relX = p.x - minX;
-        const relY = p.y - minY;
-        if (i === 0) {
-          svgPath += `M ${relX} ${relY}`;
-        } else {
-          svgPath += ` L ${relX} ${relY}`;
-        }
-      });
+      const halfW = brushSettingsRef.current.strokeWidth / 2;
+      const { pathWorld, bbox } = freehandPointsToWorldPath(points, halfW);
+      const svgPath = worldPathToLocalPath(pathWorld, bbox.minX, bbox.minY);
+      const width = Math.max(bbox.maxX - bbox.minX, 1);
+      const height = Math.max(bbox.maxY - bbox.minY, 1);
 
       onFreehandCreateRef.current({
-        x: minX,
-        y: minY,
+        x: bbox.minX,
+        y: bbox.minY,
         width,
         height,
         style: {
@@ -195,10 +178,12 @@ export function useFreehandDrawing({
       const screenY = e.clientY - rect.top;
       const worldPoint = screenToWorld(screenX, screenY);
       freehandPointsRef.current = [{ x: worldPoint.x, y: worldPoint.y }];
-      
-      // Initialize path with first point
-      const screen = worldToScreen(worldPoint.x, worldPoint.y);
-      currentPathRef.current = `M ${screen.x} ${screen.y}`;
+      const halfW = brushSettingsRef.current.strokeWidth / 2;
+      currentPathRef.current = worldPointsToScreenPath(
+        freehandPointsRef.current,
+        halfW,
+        worldToScreen
+      );
       
       // Show overlay (state update only for visibility toggle)
       // This triggers React render to mount the SVG element

@@ -8,7 +8,7 @@ from rest_framework import status
 
 from core.models import Organization, Project, ProjectMember, CustomUser
 from .models import AgentSession, AgentMessage, AgentWorkflowRun
-from .services import AgentOrchestrator
+from .services import AgentOrchestrator, _forward_to_users
 
 
 def _test_analysis_data():
@@ -282,6 +282,12 @@ class OrchestratorTests(TestCase):
             organization=self.org,
             owner=self.user,
         )
+        ProjectMember.objects.create(
+            user=self.user,
+            project=self.project,
+            role='owner',
+            is_active=True,
+        )
         self.session = AgentSession.objects.create(
             user=self.user,
             project=self.project,
@@ -334,3 +340,398 @@ class OrchestratorTests(TestCase):
         self.assertTrue(tasks.exists())
         workflow_run.refresh_from_db()
         self.assertEqual(workflow_run.status, 'completed')
+
+
+    @patch('agent.services._call_dify_chat')
+    def test_follow_up_completed_marks_run_and_passes_project_members(self, mock_call_dify_chat):
+        teammate = CustomUser.objects.create_user(
+            email='alice@test.com',
+            username='alice',
+            password='testpass123',
+            first_name='Alice',
+            last_name='Chen',
+        )
+        teammate.organization = self.org
+        teammate.save()
+        ProjectMember.objects.create(
+            user=teammate,
+            project=self.project,
+            role='member',
+            is_active=True,
+        )
+        workflow_run = AgentWorkflowRun.objects.create(
+            session=self.session,
+            status='awaiting_confirmation',
+            analysis_result=_test_analysis_data(),
+        )
+        AgentMessage.objects.create(
+            session=self.session,
+            role='assistant',
+            content='Analysis complete.',
+        )
+        mock_call_dify_chat.return_value = {
+            'status': 'completed',
+            'text': 'Prepared a summary.',
+            'forwards': [],
+        }
+
+        orchestrator = AgentOrchestrator(self.user, self.project, self.session)
+        chunks = list(orchestrator.handle_message("Explain this to me."))
+
+        self.assertIn(
+            {'type': 'text', 'content': 'Prepared a summary.'},
+            chunks,
+        )
+        workflow_run.refresh_from_db()
+        self.assertTrue(workflow_run.chat_followed_up)
+
+        self.assertTrue(mock_call_dify_chat.called)
+        project_members = mock_call_dify_chat.call_args.kwargs['project_members']
+        usernames = {member['username'] for member in project_members}
+        self.assertIn('orchuser', usernames)
+        self.assertIn('alice', usernames)
+        self.assertNotIn('agent-bot', usernames)
+
+    @patch('agent.services._call_dify_chat')
+    def test_follow_up_needs_clarification_keeps_run_open(self, mock_call_dify_chat):
+        workflow_run = AgentWorkflowRun.objects.create(
+            session=self.session,
+            status='awaiting_confirmation',
+            analysis_result=_test_analysis_data(),
+        )
+        mock_call_dify_chat.return_value = {
+            'status': 'needs_clarification',
+            'text': 'Please provide the exact username.',
+            'forwards': [],
+        }
+
+        orchestrator = AgentOrchestrator(self.user, self.project, self.session)
+        chunks = list(orchestrator.handle_message("Forward this to Alex."))
+
+        self.assertIn(
+            {'type': 'text', 'content': 'Please provide the exact username.'},
+            chunks,
+        )
+        workflow_run.refresh_from_db()
+        self.assertFalse(workflow_run.chat_followed_up)
+
+    @patch('chat.tasks.notify_new_message.delay')
+    def test_forward_to_users_does_not_match_first_name(self, mock_notify_delay):
+        teammate = CustomUser.objects.create_user(
+            email='alice-fn@test.com',
+            username='alice-ops',
+            password='testpass123',
+            first_name='Alice',
+            last_name='Operator',
+        )
+        teammate.organization = self.org
+        teammate.save()
+        ProjectMember.objects.create(
+            user=teammate,
+            project=self.project,
+            role='member',
+            is_active=True,
+        )
+
+        results = _forward_to_users(
+            [{'username': 'Alice', 'content': 'Please review the report.'}],
+            self.user,
+            self.project,
+        )
+
+        self.assertEqual(results[0]['status'], 'not_found')
+        mock_notify_delay.assert_not_called()
+
+    @patch('chat.tasks.notify_new_message.delay')
+    def test_forward_to_users_reactivates_existing_private_chat(self, mock_notify_delay):
+        from chat.models import Chat, ChatParticipant, ChatType
+        from core.utils.bot_user import get_agent_bot_user
+
+        teammate = CustomUser.objects.create_user(
+            email='alice-chat@test.com',
+            username='alice-chat',
+            password='testpass123',
+        )
+        teammate.organization = self.org
+        teammate.save()
+        ProjectMember.objects.create(
+            user=teammate,
+            project=self.project,
+            role='member',
+            is_active=True,
+        )
+
+        bot = get_agent_bot_user()
+        chat = Chat.objects.create(project=self.project, type=ChatType.PRIVATE)
+        ChatParticipant.objects.create(chat=chat, user=bot, is_active=True)
+        participant = ChatParticipant.objects.create(chat=chat, user=teammate, is_active=False)
+
+        results = _forward_to_users(
+            [{'username': 'alice-chat', 'content': 'Please review Campaign A.'}],
+            self.user,
+            self.project,
+        )
+
+        participant.refresh_from_db()
+        self.assertTrue(participant.is_active)
+        self.assertEqual(results[0]['status'], 'sent')
+        mock_notify_delay.assert_called_once()
+
+
+class DecisionFieldCompatibilityTests(TestCase):
+    """
+    Verify that every field written by create_decision_draft() is compatible
+    with the existing Decision module (models, validation, FSM transitions).
+
+    Ray's requirement: John's workflow must fully pass through decision creation
+    and every field must be checked in detail, with tests to support.
+    """
+
+    def setUp(self):
+        self.org = Organization.objects.create(name='Test Org FieldCompat', slug='test-org-fc')
+        self.user = CustomUser.objects.create_user(
+            email='fc@test.com',
+            username='fcuser',
+            password='testpass123',
+        )
+        self.user.organization = self.org
+        self.user.save()
+        self.project = Project.objects.create(
+            name='Test Project FieldCompat',
+            organization=self.org,
+            owner=self.user,
+        )
+        self.session = AgentSession.objects.create(
+            user=self.user,
+            project=self.project,
+        )
+        self.orchestrator = AgentOrchestrator(self.user, self.project, self.session)
+
+    def _create_decision(self, analysis=None):
+        """Helper: run create_decision_draft and return the created Decision."""
+        from decision.models import Decision
+        data = analysis or _test_analysis_data()
+        list(self.orchestrator.create_decision_draft(data))
+        # ordering is '-created_at', so .first() returns the most recently created
+        return Decision.objects.filter(project=self.project).first()
+
+    # ------------------------------------------------------------------ #
+    # Decision top-level fields                                           #
+    # ------------------------------------------------------------------ #
+
+    def test_decision_title_set(self):
+        decision = self._create_decision()
+        self.assertEqual(decision.title, 'Test Decision')
+
+    def test_decision_context_summary_set(self):
+        decision = self._create_decision()
+        self.assertEqual(decision.context_summary, 'Test context')
+
+    def test_decision_reasoning_set(self):
+        decision = self._create_decision()
+        self.assertEqual(decision.reasoning, 'Test reasoning')
+
+    def test_decision_risk_level_valid_choice(self):
+        from decision.models import Decision
+        decision = self._create_decision()
+        valid_choices = [c[0] for c in Decision.RiskLevel.choices]
+        self.assertIn(decision.risk_level, valid_choices)
+
+    def test_decision_confidence_in_valid_range(self):
+        decision = self._create_decision()
+        self.assertIn(decision.confidence, [1, 2, 3, 4, 5])
+
+    def test_decision_status_is_draft(self):
+        from decision.models import Decision
+        decision = self._create_decision()
+        self.assertEqual(decision.status, Decision.Status.DRAFT)
+
+    def test_decision_project_linked(self):
+        decision = self._create_decision()
+        self.assertEqual(decision.project, self.project)
+
+    def test_decision_author_linked(self):
+        decision = self._create_decision()
+        self.assertEqual(decision.author, self.user)
+
+    def test_decision_created_by_agent_flag(self):
+        decision = self._create_decision()
+        self.assertTrue(decision.created_by_agent)
+
+    def test_decision_agent_session_id_linked(self):
+        decision = self._create_decision()
+        self.assertEqual(decision.agent_session_id, self.session.id)
+
+    def test_decision_project_seq_assigned(self):
+        decision = self._create_decision()
+        self.assertIsNotNone(decision.project_seq)
+        self.assertGreater(decision.project_seq, 0)
+
+    def test_decision_project_seq_increments(self):
+        d1 = self._create_decision()
+        d1_seq = d1.project_seq
+        d2 = self._create_decision()
+        self.assertEqual(d2.project_seq, d1_seq + 1)
+
+    # ------------------------------------------------------------------ #
+    # Option fields                                                       #
+    # ------------------------------------------------------------------ #
+
+    def test_options_count_at_least_two(self):
+        decision = self._create_decision()
+        self.assertGreaterEqual(decision.options.count(), 2)
+
+    def test_options_have_non_empty_text(self):
+        decision = self._create_decision()
+        for opt in decision.options.all():
+            self.assertTrue(opt.text.strip(), f"Option id={opt.id} has empty text")
+
+    def test_exactly_one_option_is_selected(self):
+        decision = self._create_decision()
+        selected_count = decision.options.filter(is_selected=True).count()
+        self.assertEqual(selected_count, 1)
+
+    def test_first_option_is_selected(self):
+        decision = self._create_decision()
+        first_option = decision.options.order_by('order').first()
+        self.assertTrue(first_option.is_selected)
+
+    def test_options_order_is_sequential(self):
+        decision = self._create_decision()
+        orders = list(decision.options.order_by('order').values_list('order', flat=True))
+        self.assertEqual(orders, list(range(len(orders))))
+
+    # ------------------------------------------------------------------ #
+    # Signal fields                                                       #
+    # ------------------------------------------------------------------ #
+
+    def test_signals_count_at_least_one(self):
+        decision = self._create_decision()
+        self.assertGreaterEqual(decision.signals.count(), 1)
+
+    def test_signal_metric_valid_choice(self):
+        from decision.models import Signal
+        decision = self._create_decision()
+        valid_metrics = [c[0] for c in Signal.Metric.choices]
+        for signal in decision.signals.all():
+            self.assertIn(
+                signal.metric, valid_metrics,
+                f"Signal metric '{signal.metric}' is not a valid choice"
+            )
+
+    def test_signal_movement_valid_choice(self):
+        from decision.models import Signal
+        decision = self._create_decision()
+        valid_movements = [c[0] for c in Signal.Movement.choices]
+        for signal in decision.signals.all():
+            self.assertIn(
+                signal.movement, valid_movements,
+                f"Signal movement '{signal.movement}' is not a valid choice"
+            )
+
+    def test_signal_period_valid_choice(self):
+        from decision.models import Signal
+        decision = self._create_decision()
+        valid_periods = [c[0] for c in Signal.Period.choices]
+        for signal in decision.signals.all():
+            self.assertIn(
+                signal.period, valid_periods,
+                f"Signal period '{signal.period}' is not a valid choice"
+            )
+
+    def test_signal_scope_type_valid_choice(self):
+        from decision.models import Signal
+        decision = self._create_decision()
+        valid_scope_types = [c[0] for c in Signal.ScopeType.choices]
+        for signal in decision.signals.all():
+            if signal.scope_type:
+                self.assertIn(
+                    signal.scope_type, valid_scope_types,
+                    f"Signal scope_type '{signal.scope_type}' is not a valid choice"
+                )
+
+    def test_signal_delta_unit_valid_choice(self):
+        from decision.models import Signal
+        decision = self._create_decision()
+        valid_units = [c[0] for c in Signal.DeltaUnit.choices]
+        for signal in decision.signals.all():
+            if signal.delta_unit:
+                self.assertIn(
+                    signal.delta_unit, valid_units,
+                    f"Signal delta_unit '{signal.delta_unit}' is not a valid choice"
+                )
+
+    def test_signal_display_text_set(self):
+        decision = self._create_decision()
+        for signal in decision.signals.all():
+            self.assertTrue(
+                len(signal.display_text) > 0,
+                "Signal display_text should not be empty"
+            )
+
+    def test_signal_author_linked(self):
+        decision = self._create_decision()
+        for signal in decision.signals.all():
+            self.assertEqual(signal.author, self.user)
+
+    # ------------------------------------------------------------------ #
+    # Full commit flow — end-to-end compatibility with Decision module    #
+    # ------------------------------------------------------------------ #
+
+    def test_agent_decision_can_be_committed(self):
+        """
+        The decision created by the agent must pass validate_can_commit()
+        and successfully transition to COMMITTED (or AWAITING_APPROVAL for HIGH risk).
+        This is the definitive compatibility test.
+        """
+        from decision.models import Decision
+        decision = self._create_decision()
+        self.assertEqual(decision.status, Decision.Status.DRAFT)
+
+        # Should not raise ValidationError
+        try:
+            decision.validate_can_commit()
+        except Exception as e:
+            self.fail(f"validate_can_commit() raised {e!r} on agent-created decision")
+
+    def test_agent_decision_fsm_commit_transition(self):
+        """Agent-created MEDIUM/LOW risk decision transitions to COMMITTED via FSM."""
+        from decision.models import Decision
+        analysis = _test_analysis_data()
+        analysis['suggested_decision']['risk_level'] = 'MEDIUM'
+        decision = self._create_decision(analysis)
+
+        decision.commit(user=self.user)
+        decision.save()
+        # refresh_from_db() cannot be used on protected FSMField; fetch a new instance
+        committed = Decision.objects.get(pk=decision.pk)
+        self.assertEqual(committed.status, Decision.Status.COMMITTED)
+
+    def test_agent_decision_fsm_high_risk_awaiting_approval(self):
+        """Agent-created HIGH risk decision transitions to AWAITING_APPROVAL via FSM."""
+        from decision.models import Decision
+        analysis = _test_analysis_data()
+        analysis['suggested_decision']['risk_level'] = 'HIGH'
+        decision = self._create_decision(analysis)
+
+        decision.submit_for_approval(user=self.user)
+        decision.save()
+        # refresh_from_db() cannot be used on protected FSMField; fetch a new instance
+        approved = Decision.objects.get(pk=decision.pk)
+        self.assertEqual(approved.status, Decision.Status.AWAITING_APPROVAL)
+
+    def test_agent_decision_appears_in_project_decision_list(self):
+        """Agent-created decision is queryable via the same project FK as manual decisions."""
+        from decision.models import Decision
+        decision = self._create_decision()
+        qs = Decision.objects.filter(project=self.project, created_by_agent=True)
+        self.assertIn(decision, qs)
+
+    def test_sse_response_includes_decision_id(self):
+        """The decision_draft SSE event must include decision_id for frontend navigation."""
+        data = _test_analysis_data()
+        chunks = list(self.orchestrator.create_decision_draft(data))
+        draft_chunk = next((c for c in chunks if c['type'] == 'decision_draft'), None)
+        self.assertIsNotNone(draft_chunk)
+        self.assertIn('decision_id', draft_chunk.get('data', {}))
+        self.assertIsNotNone(draft_chunk['data']['decision_id'])

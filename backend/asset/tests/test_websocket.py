@@ -1,10 +1,14 @@
 import json
 import asyncio
 from channels.testing import WebsocketCommunicator
+from channels.layers import channel_layers
+from asgiref.sync import async_to_sync
 from rest_framework_simplejwt.tokens import AccessToken
-from django.test import TransactionTestCase
+from django.test import TransactionTestCase, override_settings
 
-from backend.asgi import application
+from channels.routing import URLRouter
+from asset.middleware import JWTAuthMiddleware
+from asset.routing import websocket_urlpatterns
 from asset.models import Asset, AssetVersion, AssetComment, ReviewAssignment
 from core.models import Organization, Team, Project
 from task.models import Task
@@ -12,12 +16,41 @@ from asset.services import AssetEventService
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
+TEST_CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
 
 
+def _build_ws_application():
+    """Build a fresh ASGI app per test to avoid cross-event-loop lock reuse."""
+    return JWTAuthMiddleware(URLRouter(websocket_urlpatterns))
+
+
+def _reset_channel_layers():
+    """
+    Close and clear cached channel-layer instances.
+    Prevents Redis/asyncio locks from leaking across different event loops.
+    """
+    cache = getattr(channel_layers, "_layers", None)
+    if not isinstance(cache, dict):
+        return
+    for layer in list(cache.values()):
+        close_fn = getattr(layer, "close", None)
+        if callable(close_fn):
+            try:
+                async_to_sync(close_fn)()
+            except Exception:
+                try:
+                    close_fn()
+                except Exception:
+                    pass
+    cache.clear()
+
+
+@override_settings(CHANNEL_LAYERS=TEST_CHANNEL_LAYERS)
 class TestWebSocketConnection(TransactionTestCase):
     """Test WebSocket connection functionality"""
     
     def setUp(self):
+        _reset_channel_layers()
         # Create test user
         self.user1 = User.objects.create_user(
             email='user1@example.com',
@@ -49,6 +82,10 @@ class TestWebSocketConnection(TransactionTestCase):
         
         # Create JWT token for authentication
         self.token = str(AccessToken.for_user(self.user1))
+
+    def tearDown(self):
+        _reset_channel_layers()
+        super().tearDown()
     
     def test_websocket_connect_success(self):
         """Test successful WebSocket connection with valid authentication"""
@@ -58,7 +95,7 @@ class TestWebSocketConnection(TransactionTestCase):
             ]
             
             communicator = WebsocketCommunicator(
-                application,
+                _build_ws_application(),
                 f"/ws/assets/{self.asset.id}/",
                 headers=headers
             )
@@ -77,7 +114,7 @@ class TestWebSocketConnection(TransactionTestCase):
             ]
             
             communicator = WebsocketCommunicator(
-                application,
+                _build_ws_application(),
                 f"/ws/assets/{self.asset.id}/",
                 headers=headers
             )
@@ -103,7 +140,7 @@ class TestWebSocketConnection(TransactionTestCase):
         """Test WebSocket connection without authentication should fail"""
         async def test_connection():
             communicator = WebsocketCommunicator(
-                application,
+                _build_ws_application(),
                 f"/ws/assets/{self.asset.id}/"
             )
             connected, _ = await communicator.connect()
@@ -120,7 +157,7 @@ class TestWebSocketConnection(TransactionTestCase):
             ]
             
             communicator = WebsocketCommunicator(
-                application,
+                _build_ws_application(),
                 f"/ws/assets/{self.asset.id}/",
                 headers=headers
             )
@@ -138,7 +175,7 @@ class TestWebSocketConnection(TransactionTestCase):
             ]
             
             communicator = WebsocketCommunicator(
-                application,
+                _build_ws_application(),
                 f"/ws/assets/99999/",  # Non-existent asset ID
                 headers=headers
             )
@@ -149,10 +186,12 @@ class TestWebSocketConnection(TransactionTestCase):
         asyncio.run(test_connection())
 
 
+@override_settings(CHANNEL_LAYERS=TEST_CHANNEL_LAYERS)
 class TestWebSocketMessageHandling(TransactionTestCase):
     """Test WebSocket message handling functionality"""
     
     def setUp(self):
+        _reset_channel_layers()
         # Create test user
         self.user1 = User.objects.create_user(
             email='user1@example.com',
@@ -184,6 +223,10 @@ class TestWebSocketMessageHandling(TransactionTestCase):
         
         # Create JWT token for authentication
         self.token = str(AccessToken.for_user(self.user1))
+
+    def tearDown(self):
+        _reset_channel_layers()
+        super().tearDown()
     
     def test_websocket_ping_pong(self):
         """Test ping-pong functionality for connection keep-alive"""
@@ -193,7 +236,7 @@ class TestWebSocketMessageHandling(TransactionTestCase):
             ]
             
             communicator = WebsocketCommunicator(
-                application,
+                _build_ws_application(),
                 f"/ws/assets/{self.asset.id}/",
                 headers=headers
             )
@@ -229,7 +272,7 @@ class TestWebSocketMessageHandling(TransactionTestCase):
             ]
             
             communicator = WebsocketCommunicator(
-                application,
+                _build_ws_application(),
                 f"/ws/assets/{self.asset.id}/",
                 headers=headers
             )
@@ -261,7 +304,7 @@ class TestWebSocketMessageHandling(TransactionTestCase):
             ]
             
             communicator = WebsocketCommunicator(
-                application,
+                _build_ws_application(),
                 f"/ws/assets/{self.asset.id}/",
                 headers=headers
             )
@@ -290,10 +333,12 @@ class TestWebSocketMessageHandling(TransactionTestCase):
         asyncio.run(test_connection())
 
 
+@override_settings(CHANNEL_LAYERS=TEST_CHANNEL_LAYERS)
 class TestWebSocketEventBroadcasting(TransactionTestCase):
     """Test WebSocket event broadcasting functionality"""
     
     def setUp(self):
+        _reset_channel_layers()
         # Create test users
         self.user1 = User.objects.create_user(
             email='user1@example.com',
@@ -332,6 +377,10 @@ class TestWebSocketEventBroadcasting(TransactionTestCase):
         # Create JWT tokens for authentication
         self.token1 = str(AccessToken.for_user(self.user1))
         self.token2 = str(AccessToken.for_user(self.user2))
+
+    def tearDown(self):
+        _reset_channel_layers()
+        super().tearDown()
     
     async def test_status_change_broadcasting(self):
         """Test broadcasting asset status change events"""
@@ -340,7 +389,7 @@ class TestWebSocketEventBroadcasting(TransactionTestCase):
         # Connect user1 to WebSocket
         headers1 = [(b'authorization', f'Bearer {self.token1}'.encode())]
         communicator1 = WebsocketCommunicator(
-            application,
+            _build_ws_application(),
             f"/ws/assets/{self.asset.id}/",
             headers=headers1
         )
@@ -350,7 +399,7 @@ class TestWebSocketEventBroadcasting(TransactionTestCase):
         # Connect user2 to WebSocket
         headers2 = [(b'authorization', f'Bearer {self.token2}'.encode())]
         communicator2 = WebsocketCommunicator(
-            application,
+            _build_ws_application(),
             f"/ws/assets/{self.asset.id}/",
             headers=headers2
         )
@@ -403,7 +452,7 @@ class TestWebSocketEventBroadcasting(TransactionTestCase):
         # Connect to WebSocket
         headers = [(b'authorization', f'Bearer {self.token1}'.encode())]
         communicator = WebsocketCommunicator(
-            application,
+            _build_ws_application(),
             f"/ws/assets/{self.asset.id}/",
             headers=headers
         )
@@ -446,7 +495,7 @@ class TestWebSocketEventBroadcasting(TransactionTestCase):
             # Connect to WebSocket
             headers = [(b'authorization', f'Bearer {self.token1}'.encode())]
             communicator = WebsocketCommunicator(
-                application,
+                _build_ws_application(),
                 f"/ws/assets/{self.asset.id}/",
                 headers=headers
             )
@@ -506,7 +555,7 @@ class TestWebSocketEventBroadcasting(TransactionTestCase):
         # Connect to WebSocket
         headers = [(b'authorization', f'Bearer {self.token1}'.encode())]
         communicator = WebsocketCommunicator(
-            application,
+            _build_ws_application(),
             f"/ws/assets/{self.asset.id}/",
             headers=headers
         )
@@ -550,7 +599,7 @@ class TestWebSocketEventBroadcasting(TransactionTestCase):
         # Connect to WebSocket
         headers = [(b'authorization', f'Bearer {self.token1}'.encode())]
         communicator = WebsocketCommunicator(
-            application,
+            _build_ws_application(),
             f"/ws/assets/{self.asset.id}/",
             headers=headers
         )
@@ -588,10 +637,12 @@ class TestWebSocketEventBroadcasting(TransactionTestCase):
         await communicator.disconnect()
 
 
+@override_settings(CHANNEL_LAYERS=TEST_CHANNEL_LAYERS)
 class TestWebSocketMultipleUsers(TransactionTestCase):
     """Test WebSocket functionality with multiple users"""
     
     def setUp(self):
+        _reset_channel_layers()
         # Create test users
         self.user1 = User.objects.create_user(
             email='user1@example.com',
@@ -630,6 +681,10 @@ class TestWebSocketMultipleUsers(TransactionTestCase):
         # Create JWT tokens for authentication
         self.token1 = str(AccessToken.for_user(self.user1))
         self.token2 = str(AccessToken.for_user(self.user2))
+
+    def tearDown(self):
+        _reset_channel_layers()
+        super().tearDown()
     
     async def test_multiple_users_receive_notifications(self):
         """Test that multiple connected users receive the same notifications"""
@@ -638,7 +693,7 @@ class TestWebSocketMultipleUsers(TransactionTestCase):
         # Connect user1 to WebSocket
         headers1 = [(b'authorization', f'Bearer {self.token1}'.encode())]
         communicator1 = WebsocketCommunicator(
-            application,
+            _build_ws_application(),
             f"/ws/assets/{self.asset.id}/",
             headers=headers1
         )
@@ -648,7 +703,7 @@ class TestWebSocketMultipleUsers(TransactionTestCase):
         # Connect user2 to WebSocket
         headers2 = [(b'authorization', f'Bearer {self.token2}'.encode())]
         communicator2 = WebsocketCommunicator(
-            application,
+            _build_ws_application(),
             f"/ws/assets/{self.asset.id}/",
             headers=headers2
         )

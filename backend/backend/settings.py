@@ -87,6 +87,7 @@ INSTALLED_APPS = [
     'campaign.apps.CampaignConfig',
     'slack_integration.apps.SlackIntegrationConfig',
     'agent.apps.AgentConfig',
+    'meetings.apps.MeetingsConfig',
 ]
 
 MIDDLEWARE = [
@@ -249,6 +250,7 @@ AGENT_CSV_DIR = config(
 # Set these to route agent analysis through Dify instead of direct Claude API
 DIFY_API_URL = config('DIFY_API_URL', default='')
 DIFY_API_KEY = config('DIFY_API_KEY', default='')
+DIFY_CHAT_API_KEY = config('DIFY_CHAT_API_KEY', default='')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
@@ -348,6 +350,7 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = config('TIME_ZONE', default='UTC')
+broker_connection_retry_on_startup = True
 
 # Celery Beat Configuration for Periodic Tasks
 CELERY_BEAT_SCHEDULE = {
@@ -610,3 +613,10 @@ SLACK_CLIENT_ID = config('SLACK_CLIENT_ID', default='')
 SLACK_CLIENT_SECRET = config('SLACK_CLIENT_SECRET', default='')
 SLACK_SIGNING_SECRET = config('SLACK_SIGNING_SECRET', default='')
 SLACK_REDIRECT_URI = config('SLACK_REDIRECT_URI', default='http://localhost:3000/slack/callback')
+
+# Meetings (SMP-484): when True, creating a meeting requires at least one participant_user_ids entry
+MEETINGS_REQUIRE_PARTICIPANTS_AT_CREATE = config(
+    'MEETINGS_REQUIRE_PARTICIPANTS_AT_CREATE',
+    default=False,
+    cast=bool,
+)

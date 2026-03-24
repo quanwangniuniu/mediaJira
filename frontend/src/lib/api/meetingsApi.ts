@@ -1,0 +1,217 @@
+import api from '../api';
+import type {
+  Meeting,
+  MeetingCreateRequest,
+  MeetingUpdateRequest,
+  MeetingPartialUpdateRequest,
+  AgendaItem,
+  AgendaItemCreateRequest,
+  AgendaItemUpdateRequest,
+  AgendaItemPartialUpdateRequest,
+  AgendaItemsReorderRequest,
+  ParticipantLink,
+  ParticipantLinkCreateRequest,
+  ParticipantLinkPartialUpdateRequest,
+  ArtifactLink,
+  ArtifactLinkCreateRequest,
+} from '@/types/meeting';
+
+const basePath = (projectId: number) => `/api/v1/projects/${projectId}/meetings`;
+
+export const MeetingsAPI = {
+  async listMeetings(projectId: number): Promise<Meeting[]> {
+    const response = await api.get(`${basePath(projectId)}/`);
+    const data = response.data as any;
+    if (Array.isArray(data)) return data as Meeting[];
+    if (data && Array.isArray(data.results)) return data.results as Meeting[];
+    return [];
+  },
+
+  async createMeeting(projectId: number, payload: MeetingCreateRequest): Promise<Meeting> {
+    const response = await api.post<Meeting>(`${basePath(projectId)}/`, payload);
+    return response.data;
+  },
+
+  async getMeeting(projectId: number, meetingId: number): Promise<Meeting> {
+    const response = await api.get<Meeting>(`${basePath(projectId)}/${meetingId}/`);
+    return response.data;
+  },
+
+  async updateMeeting(
+    projectId: number,
+    meetingId: number,
+    payload: MeetingUpdateRequest,
+  ): Promise<Meeting> {
+    const response = await api.put<Meeting>(`${basePath(projectId)}/${meetingId}/`, payload);
+    return response.data;
+  },
+
+  async patchMeeting(
+    projectId: number,
+    meetingId: number,
+    payload: MeetingPartialUpdateRequest,
+  ): Promise<Meeting> {
+    const response = await api.patch<Meeting>(`${basePath(projectId)}/${meetingId}/`, payload);
+    return response.data;
+  },
+
+  async deleteMeeting(projectId: number, meetingId: number): Promise<void> {
+    await api.delete(`${basePath(projectId)}/${meetingId}/`);
+  },
+
+  async listAgendaItems(
+    projectId: number,
+    meetingId: number,
+  ): Promise<AgendaItem[]> {
+    const response = await api.get(
+      `${basePath(projectId)}/${meetingId}/agenda-items/`,
+    );
+    const data = response.data as any;
+    if (Array.isArray(data)) return data as AgendaItem[];
+    if (data && Array.isArray(data.results)) return data.results as AgendaItem[];
+    return [];
+  },
+
+  async createAgendaItem(
+    projectId: number,
+    meetingId: number,
+    payload: AgendaItemCreateRequest,
+  ): Promise<AgendaItem> {
+    const response = await api.post<AgendaItem>(
+      `${basePath(projectId)}/${meetingId}/agenda-items/`,
+      payload,
+    );
+    return response.data;
+  },
+
+  async updateAgendaItem(
+    projectId: number,
+    meetingId: number,
+    agendaItemId: number,
+    payload: AgendaItemUpdateRequest,
+  ): Promise<AgendaItem> {
+    const response = await api.put<AgendaItem>(
+      `${basePath(projectId)}/${meetingId}/agenda-items/${agendaItemId}/`,
+      payload,
+    );
+    return response.data;
+  },
+
+  async patchAgendaItem(
+    projectId: number,
+    meetingId: number,
+    agendaItemId: number,
+    payload: AgendaItemPartialUpdateRequest,
+  ): Promise<AgendaItem> {
+    const response = await api.patch<AgendaItem>(
+      `${basePath(projectId)}/${meetingId}/agenda-items/${agendaItemId}/`,
+      payload,
+    );
+    return response.data;
+  },
+
+  async deleteAgendaItem(
+    projectId: number,
+    meetingId: number,
+    agendaItemId: number,
+  ): Promise<void> {
+    await api.delete(
+      `${basePath(projectId)}/${meetingId}/agenda-items/${agendaItemId}/`,
+    );
+  },
+
+  async reorderAgendaItems(
+    projectId: number,
+    meetingId: number,
+    payload: AgendaItemsReorderRequest,
+  ): Promise<AgendaItem[]> {
+    const response = await api.patch<AgendaItem[]>(
+      `${basePath(projectId)}/${meetingId}/agenda-items/reorder/`,
+      payload,
+    );
+    return response.data;
+  },
+
+  async listParticipants(
+    projectId: number,
+    meetingId: number,
+  ): Promise<ParticipantLink[]> {
+    const response = await api.get(
+      `${basePath(projectId)}/${meetingId}/participants/`,
+    );
+    const data = response.data as any;
+    if (Array.isArray(data)) return data as ParticipantLink[];
+    if (data && Array.isArray(data.results)) return data.results as ParticipantLink[];
+    return [];
+  },
+
+  async addParticipant(
+    projectId: number,
+    meetingId: number,
+    payload: ParticipantLinkCreateRequest,
+  ): Promise<ParticipantLink> {
+    const response = await api.post<ParticipantLink>(
+      `${basePath(projectId)}/${meetingId}/participants/`,
+      payload,
+    );
+    return response.data;
+  },
+
+  async patchParticipant(
+    projectId: number,
+    meetingId: number,
+    participantLinkId: number,
+    payload: ParticipantLinkPartialUpdateRequest,
+  ): Promise<ParticipantLink> {
+    const response = await api.patch<ParticipantLink>(
+      `${basePath(projectId)}/${meetingId}/participants/${participantLinkId}/`,
+      payload,
+    );
+    return response.data;
+  },
+
+  async removeParticipant(
+    projectId: number,
+    meetingId: number,
+    participantLinkId: number,
+  ): Promise<void> {
+    await api.delete(
+      `${basePath(projectId)}/${meetingId}/participants/${participantLinkId}/`,
+    );
+  },
+
+  async listArtifacts(
+    projectId: number,
+    meetingId: number,
+  ): Promise<ArtifactLink[]> {
+    const response = await api.get(
+      `${basePath(projectId)}/${meetingId}/artifacts/`,
+    );
+    const data = response.data as any;
+    if (Array.isArray(data)) return data as ArtifactLink[];
+    if (data && Array.isArray(data.results)) return data.results as ArtifactLink[];
+    return [];
+  },
+
+  async addArtifact(
+    projectId: number,
+    meetingId: number,
+    payload: ArtifactLinkCreateRequest,
+  ): Promise<ArtifactLink> {
+    const response = await api.post<ArtifactLink>(
+      `${basePath(projectId)}/${meetingId}/artifacts/`,
+      payload,
+    );
+    return response.data;
+  },
+
+  async removeArtifact(
+    projectId: number,
+    meetingId: number,
+    artifactLinkId: number,
+  ): Promise<void> {
+    await api.delete(
+      `${basePath(projectId)}/${meetingId}/artifacts/${artifactLinkId}/`,
+    );
+  },
+};

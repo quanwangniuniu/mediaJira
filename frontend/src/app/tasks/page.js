@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import Layout from "@/components/layout/Layout";
 import useAuth from "@/hooks/useAuth";
 import { useTaskData } from "@/hooks/useTaskData";
@@ -47,6 +47,8 @@ import {
   TASK_TYPE_CONFIG_STATIC,
   defaultReportContext,
 } from "@/lib/taskTypeConfigRegistry";
+import { useTaskFilterParams } from "@/hooks/useTaskFilterParams";
+import { TaskFilterPanel } from "@/components/tasks/TaskFilterPanel";
 
 const BOARD_TYPE_ORDER = [
   "task",
@@ -59,6 +61,7 @@ const BOARD_TYPE_ORDER = [
   "experiment",
   "optimization",
   "communication",
+  "platform_policy_update",
 ];
 
 const BOARD_TYPE_META = {
@@ -112,7 +115,15 @@ const BOARD_TYPE_META = {
     empty: "No communication tasks",
     icon: "task",
   },
+  platform_policy_update: {
+    title: "Platform Policy Update",
+    empty: "No platform policy update tasks",
+    icon: "task",
+  },
 };
+
+/** Types that support create-modal prefill from a board column — mirrors TASK_TYPE_CONFIG_STATIC. */
+const VALID_BOARD_WORK_TYPES = Object.keys(TASK_TYPE_CONFIG_STATIC);
 
 const normalizeBoardTypeKey = (value) => {
   if (typeof value !== "string") return "task";
@@ -151,10 +162,27 @@ const getBoardColumnMeta = (typeKey) => {
 function TasksPageContent() {
   const { user, loading: userLoading, logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   // Get project_id from search params
   const searchParams = useSearchParams();
   const projectIdParam = searchParams.get("project_id");
   const projectId = projectIdParam ? Number(projectIdParam) : null;
+
+  // URL-backed filters (including project_id, status, priority, dates, etc.)
+  const [filters, setFilters, clearFilters] = useTaskFilterParams();
+  const [taskTypeOptions, setTaskTypeOptions] = useState([]);
+
+  useEffect(() => {
+    const loadTypes = async () => {
+      try {
+        const types = await TaskAPI.getTaskTypes();
+        setTaskTypeOptions(Array.isArray(types) ? types : []);
+      } catch {
+        setTaskTypeOptions([]);
+      }
+    };
+    loadTypes();
+  }, []);
 
   // Task data management
   const {
@@ -298,7 +326,9 @@ function TasksPageContent() {
       }
       return next;
     });
-    router.push(`/tasks?project_id=${selectedProjectId}`);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("project_id", String(selectedProjectId));
+    router.push(`${pathname}?${params.toString()}`);
   };
 
   const filteredProjects = useMemo(() => {
@@ -406,8 +436,8 @@ function TasksPageContent() {
     }
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", viewMode);
-    router.replace(`?${params.toString()}`);
-  }, [viewMode, router, searchParams]);
+    router.replace(`${pathname}?${params.toString()}`);
+  }, [viewMode, router, searchParams, pathname]);
 
   // When the project_id in the URL changes, fetch the tasks list according to it
   useEffect(() => {
@@ -462,14 +492,14 @@ function TasksPageContent() {
     const loadTasks = async () => {
       try {
         console.log("[TasksPage] Fetching tasks for project:", projectId);
-        await fetchTasks({ project_id: projectId });
+        await fetchTasks({ ...filters, project_id: projectId });
       } catch (error) {
         console.error("[TasksPage] Failed to fetch tasks:", error);
       }
     };
 
     loadTasks();
-  }, [projectId, fetchTasks]);
+  }, [projectId, fetchTasks, filters]);
 
   const selectedProject = useMemo(() => {
     if (!projectId) return null;
@@ -845,6 +875,7 @@ function TasksPageContent() {
       summary: task.summary,
       type: task.type || "task",
       status: statusMap[task.status] || "TODO",
+      statusRaw: task.status,
       backendStatus: task.status,
       owner: task.owner?.username,
       ownerId: task.owner?.id,
@@ -1140,33 +1171,23 @@ function TasksPageContent() {
     }
   };
 
-  // Valid work types that can be auto-selected from a board section
-  const VALID_BOARD_WORK_TYPES = [
-    "budget",
-    "asset",
-    "retrospective",
-    "report",
-    "scaling",
-    "alert",
-    "experiment",
-    "optimization",
-    "communication",
-  ];
-
   // Generic function to reset form data. initialWorkType: when opening from a board column, pre-fill Work Type.
   const resetFormData = (
     projectOverride = projectId ?? null,
     initialWorkType = "",
+    initialSummary = "",
   ) => {
     const defaultDates = getDefaultTaskDates();
     const workType =
       initialWorkType && VALID_BOARD_WORK_TYPES.includes(initialWorkType)
         ? initialWorkType
         : "";
+    const summary =
+      typeof initialSummary === "string" ? initialSummary : "";
     setTaskData({
       project_id: projectOverride,
       type: workType,
-      summary: "",
+      summary,
       description: "",
       current_approver_id: null,
       start_date: defaultDates.start_date,
@@ -1248,11 +1269,12 @@ function TasksPageContent() {
   };
 
   // Open create task modal with fresh form state.
-  // When opening from a board column: (sectionKey) only — sectionKey is the column work type.
+  // When opening from a board column: (sectionKey, summaryPrefill?) — sectionKey is the column work type.
   // When opening from timeline/elsewhere: (projectIdOverride?) — optional project id.
   const handleOpenCreateTaskModal = (
     projectIdOverrideOrSectionKey,
-    sectionKeyArg,
+    sectionKeyOrSummaryPrefill,
+    summaryWhenProjectIdFirst,
   ) => {
     setDraftEditingTaskId(null);
     const isSectionKeyOnly =
@@ -1265,8 +1287,15 @@ function TasksPageContent() {
       : projectId ?? null;
     const initialWorkType = isSectionKeyOnly
       ? projectIdOverrideOrSectionKey
-      : sectionKeyArg ?? "";
-    resetFormData(resolvedProjectId, initialWorkType);
+      : sectionKeyOrSummaryPrefill ?? "";
+    const initialSummary = isSectionKeyOnly
+      ? typeof sectionKeyOrSummaryPrefill === "string"
+        ? sectionKeyOrSummaryPrefill
+        : ""
+      : typeof summaryWhenProjectIdFirst === "string"
+      ? summaryWhenProjectIdFirst
+      : "";
+    resetFormData(resolvedProjectId, initialWorkType, initialSummary);
     clearAllValidationErrors();
     setCreateModalOpen(true);
     setCreateModalExpanded(false);
@@ -2384,34 +2413,34 @@ function TasksPageContent() {
           )}
 
           {projectId && activeTab === "board" && (
-            <div data-testid="tab-content-board" className="mt-6 space-y-6">
-              {tasksLoading ? (
-                <TasksWorkspaceSkeleton mode="board" />
-              ) : (
-                <JiraBoardView
-                  boardColumns={boardColumns}
-                  tasksByType={tasksByType}
-                  onCreateTask={handleOpenCreateTaskModal}
-                  onTaskClick={handleTaskClick}
-                  getTicketKey={getTicketKey}
-                  getBoardTypeIcon={getBoardTypeIcon}
-                  formatBoardDate={formatBoardDate}
-                  getDueTone={getDueTone}
-                  editingTaskId={editingTaskId}
-                  editingSummary={editingSummary}
-                  setEditingSummary={setEditingSummary}
-                  startBoardEdit={startBoardEdit}
-                  cancelBoardEdit={cancelBoardEdit}
-                  saveBoardEdit={saveBoardEdit}
-                  currentUser={user || undefined}
-                />
-              )}
+            <div className="mt-6 space-y-6">
+              <JiraBoardView
+                boardColumns={boardColumns}
+                tasksByType={tasksByType}
+                onCreateTask={handleOpenCreateTaskModal}
+                onTaskClick={handleTaskClick}
+                getTicketKey={getTicketKey}
+                getBoardTypeIcon={getBoardTypeIcon}
+                formatBoardDate={formatBoardDate}
+                getDueTone={getDueTone}
+                editingTaskId={editingTaskId}
+                editingSummary={editingSummary}
+                setEditingSummary={setEditingSummary}
+                startBoardEdit={startBoardEdit}
+                cancelBoardEdit={cancelBoardEdit}
+                saveBoardEdit={saveBoardEdit}
+                currentUser={user || undefined}
+                externalFilters={
+                  <TaskFilterPanel
+                    filters={filters}
+                    onChange={setFilters}
+                    onClearAll={clearFilters}
+                    projectOptions={projectOptions}
+                    typeOptions={taskTypeOptions}
+                  />
+                }
+              />
             </div>
-          )}
-
-          {/* Loading State */}
-          {projectId && activeTab === "tasks" && tasksLoading && (
-            <TasksWorkspaceSkeleton mode="tasks" />
           )}
 
           {/* Error State */}
@@ -2423,9 +2452,9 @@ function TasksPageContent() {
               <button
                 onClick={() => {
                   if (projectId) {
-                    fetchTasks({ project_id: projectId });
+                    fetchTasks({ ...filters, project_id: projectId });
                   } else {
-                    fetchTasks();
+                    fetchTasks(filters);
                   }
                 }}
                 className="mt-2 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
@@ -2436,36 +2465,42 @@ function TasksPageContent() {
           )}
 
           {/* Tasks Display */}
-          {!tasksLoading &&
-            !tasksError &&
-            projectId &&
-            activeTab === "tasks" && (
-              <div className="min-h-screen bg-[#f8f9fb] px-6 py-6">
-                <div className="mx-auto max-w-6xl">
-                  <JiraTasksView
-                    tasks={filteredJiraTasks}
-                    viewMode={viewMode}
-                    onViewModeChange={setViewMode}
-                    searchValue={searchQuery}
-                    onSearchChange={setSearchQuery}
-                    searchPlaceholder="Search tasks..."
-                    onTaskClick={handleJiraTaskClick}
-                    onTaskUpdate={reloadTasks}
-                    renderTimeline={() => (
-                      <TimelineViewComponent
-                        tasks={tasksForTimeline}
-                        onTaskClick={handleTaskClick}
-                        reloadTasks={reloadTasks}
-                        onCreateTask={(projectIdOverride) =>
-                          handleOpenCreateTaskModal(projectIdOverride)
-                        }
-                        currentUser={user || undefined}
-                      />
-                    )}
-                  />
-                </div>
+          {!tasksError && projectId && activeTab === "tasks" && (
+            <div className="min-h-screen bg-[#f8f9fb] px-6 py-6">
+              <div className="mx-auto max-w-6xl space-y-4">
+                <JiraTasksView
+                  tasks={filteredJiraTasks}
+                  viewMode={viewMode}
+                  onViewModeChange={setViewMode}
+                  searchValue={searchQuery}
+                  onSearchChange={setSearchQuery}
+                  searchPlaceholder="Search tasks..."
+                  rightOfSearch={
+                    <TaskFilterPanel
+                      filters={filters}
+                      onChange={setFilters}
+                      onClearAll={clearFilters}
+                      projectOptions={projectOptions}
+                      typeOptions={taskTypeOptions}
+                    />
+                  }
+                  onTaskClick={handleJiraTaskClick}
+                  onTaskUpdate={reloadTasks}
+                  renderTimeline={() => (
+                    <TimelineViewComponent
+                      tasks={tasksForTimeline}
+                      onTaskClick={handleTaskClick}
+                      reloadTasks={reloadTasks}
+                      onCreateTask={(projectIdOverride) =>
+                        handleOpenCreateTaskModal(projectIdOverride)
+                      }
+                      currentUser={user || undefined}
+                    />
+                  )}
+                />
               </div>
-            )}
+            </div>
+          )}
         </div>
       </div>
 

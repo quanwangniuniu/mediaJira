@@ -27,6 +27,7 @@ function restoreMessage(m: AgentMessage): ChatMessage {
   let type: ChatMessage["type"] = "text"
   let navigateTo: string | undefined
   let navigateLabel: string | undefined
+  const isFollowUpPrompt = m.message_type === "confirmation_request"
 
   if (m.data?.anomalies) {
     type = "analysis"
@@ -45,6 +46,7 @@ function restoreMessage(m: AgentMessage): ChatMessage {
     role: m.role,
     content: m.content,
     type,
+    isFollowUpPrompt,
     anomalies: m.data?.anomalies,
     suggestedDecision: m.data?.suggested_decision,
     recommendedTasks: m.data?.recommended_tasks,
@@ -99,6 +101,19 @@ export function AgentChatPage() {
     pendingCalendarPreload ? pendingCalendarPreload.context : null
   )
   const handleSendMessageRef = useRef<typeof handleSendMessage | null>(null)
+  const latestMessage = messages[messages.length - 1]
+  const isAwaitingFollowUp = Boolean(
+    latestMessage &&
+    latestMessage.role === "assistant" &&
+    latestMessage.isFollowUpPrompt &&
+    !isStreaming
+  )
+  const inputPlaceholder = isAwaitingFollowUp
+    ? "Ask one follow-up question about the analysis, or include an exact username/email for forwarding..."
+    : "Ask about your data or upload a file..."
+  const inputHelperText = isAwaitingFollowUp
+    ? "You can send one follow-up message now. Ask for an explanation, a short report, or forwarding to specific project members."
+    : undefined
 
   // Abort SSE on unmount
   useEffect(() => {
@@ -237,7 +252,10 @@ export function AgentChatPage() {
           }
         } else if (event.type === "confirmation_request") {
           contentParts.push(event.content || "")
-          updateMessage(aiMsgId, { content: contentParts.join("\n") })
+          updateMessage(aiMsgId, {
+            content: contentParts.join("\n"),
+            isFollowUpPrompt: true,
+          })
         } else if (event.type === "error") {
           updateMessage(aiMsgId, { content: event.content || "An error occurred.", type: "error" })
         } else if (event.type === "done") {
@@ -445,6 +463,8 @@ export function AgentChatPage() {
         onSend={handleSendMessage}
         onFileUpload={handleFileUpload}
         disabled={isStreaming}
+        placeholder={inputPlaceholder}
+        helperText={inputHelperText}
       />
     </div>
   )
