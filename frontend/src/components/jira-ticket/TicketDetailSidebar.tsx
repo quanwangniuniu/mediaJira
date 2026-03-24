@@ -96,7 +96,7 @@ const TicketDetailSidebar = React.forwardRef<
         const details = [
             { label: "Assignee", value: "Unassigned" },
             { label: "Labels", value: "design, ux" },
-            { label: "Parent", value: "EPIC-18" },
+            { label: "Parent", value: "TASK-18" },
             { label: "Sprint", value: "Sprint 24" },
             { label: "Reporter", value: "Taylor Reid" },
             { label: "Priority", value: "Medium" },

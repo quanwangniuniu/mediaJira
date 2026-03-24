@@ -186,7 +186,7 @@ const KlaviyoButtonInspector: React.FC<KlaviyoButtonInspectorProps> = ({
               onChange={(e) =>
                 updateButtonSettings({ content: e.target.value })
               }
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
               placeholder="SHOP NOW"
             />
           </div>
@@ -203,7 +203,7 @@ const KlaviyoButtonInspector: React.FC<KlaviyoButtonInspectorProps> = ({
                 updateButtonSettings({ buttonLinkValue: e.target.value })
               }
               placeholder={linkPlaceholders[buttonLinkType]}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
             />
           </div>
 
@@ -218,7 +218,7 @@ const KlaviyoButtonInspector: React.FC<KlaviyoButtonInspectorProps> = ({
                 onChange={(e) =>
                   updateTextStyles({ fontFamily: e.target.value })
                 }
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600 appearance-none bg-white"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 appearance-none bg-white"
               >
                 <option value="Arial">Arial</option>
                 <option value="Helvetica">Helvetica</option>
@@ -322,7 +322,7 @@ const KlaviyoButtonInspector: React.FC<KlaviyoButtonInspectorProps> = ({
                 }
                 className={`p-2 border rounded-lg ${
                   isBold
-                    ? "bg-emerald-600 text-white border-emerald-600"
+                    ? "bg-blue-600 text-white border-blue-600"
                     : "border-gray-200 text-gray-700 hover:bg-gray-50"
                 }`}
               >
@@ -337,7 +337,7 @@ const KlaviyoButtonInspector: React.FC<KlaviyoButtonInspectorProps> = ({
                 }
                 className={`p-2 border rounded-lg ${
                   isItalic
-                    ? "bg-emerald-600 text-white border-emerald-600"
+                    ? "bg-blue-600 text-white border-blue-600"
                     : "border-gray-200 text-gray-700 hover:bg-gray-50"
                 }`}
               >
@@ -355,7 +355,7 @@ const KlaviyoButtonInspector: React.FC<KlaviyoButtonInspectorProps> = ({
                 }
                 className={`p-2 border rounded-lg ${
                   isUnderline && !isStrikethrough
-                    ? "bg-emerald-600 text-white border-emerald-600"
+                    ? "bg-blue-600 text-white border-blue-600"
                     : "border-gray-200 text-gray-700 hover:bg-gray-50"
                 }`}
               >
@@ -371,7 +371,7 @@ const KlaviyoButtonInspector: React.FC<KlaviyoButtonInspectorProps> = ({
                 }
                 className={`p-2 border rounded-lg ${
                   isStrikethrough
-                    ? "bg-emerald-600 text-white border-emerald-600"
+                    ? "bg-blue-600 text-white border-blue-600"
                     : "border-gray-200 text-gray-700 hover:bg-gray-50"
                 }`}
               >
@@ -420,7 +420,7 @@ const KlaviyoButtonInspector: React.FC<KlaviyoButtonInspectorProps> = ({
                 }}
                 className={`px-4 py-2 text-sm font-medium rounded-lg border ${
                   !isFullWidth
-                    ? "bg-emerald-600 text-white border-emerald-600"
+                    ? "bg-blue-600 text-white border-blue-600"
                     : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
                 }`}
               >
@@ -433,7 +433,7 @@ const KlaviyoButtonInspector: React.FC<KlaviyoButtonInspectorProps> = ({
                 }}
                 className={`px-4 py-2 text-sm font-medium rounded-lg border ${
                   isFullWidth
-                    ? "bg-emerald-600 text-white border-emerald-600"
+                    ? "bg-blue-600 text-white border-blue-600"
                     : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
                 }`}
               >
@@ -455,7 +455,7 @@ const KlaviyoButtonInspector: React.FC<KlaviyoButtonInspectorProps> = ({
                 }
                 className={`p-2 border rounded-lg ${
                   buttonAlignment === "left"
-                    ? "bg-emerald-600 text-white border-emerald-600"
+                    ? "bg-blue-600 text-white border-blue-600"
                     : "border-gray-200 text-gray-700 hover:bg-gray-50"
                 }`}
               >
@@ -468,7 +468,7 @@ const KlaviyoButtonInspector: React.FC<KlaviyoButtonInspectorProps> = ({
                 }
                 className={`p-2 border rounded-lg ${
                   buttonAlignment === "center"
-                    ? "bg-emerald-600 text-white border-emerald-600"
+                    ? "bg-blue-600 text-white border-blue-600"
                     : "border-gray-200 text-gray-700 hover:bg-gray-50"
                 }`}
               >
@@ -481,7 +481,7 @@ const KlaviyoButtonInspector: React.FC<KlaviyoButtonInspectorProps> = ({
                 }
                 className={`p-2 border rounded-lg ${
                   buttonAlignment === "right"
-                    ? "bg-emerald-600 text-white border-emerald-600"
+                    ? "bg-blue-600 text-white border-blue-600"
                     : "border-gray-200 text-gray-700 hover:bg-gray-50"
                 }`}
               >
@@ -548,7 +548,7 @@ const KlaviyoButtonInspector: React.FC<KlaviyoButtonInspectorProps> = ({
                   buttonSize: e.target.value as ButtonSize,
                 })
               }
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
             >
               <option value="Small">Small</option>
               <option value="Medium">Medium</option>
@@ -591,7 +591,7 @@ const KlaviyoButtonInspector: React.FC<KlaviyoButtonInspectorProps> = ({
                     });
                   }
                 }}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600 appearance-none bg-white"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 appearance-none bg-white"
               >
                 <option value="none">None</option>
                 <option value="solid">Solid</option>
@@ -629,7 +629,7 @@ const KlaviyoButtonInspector: React.FC<KlaviyoButtonInspectorProps> = ({
                         : undefined,
                     })
                   }
-                  className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                  className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
                 />
                 <span className="text-xs text-gray-500">px</span>
                 <button

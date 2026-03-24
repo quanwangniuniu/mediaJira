@@ -1,4 +1,5 @@
 import logging
+from typing import Any, Dict, Optional
 from celery import shared_task
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -9,6 +10,60 @@ from .services import OnlineStatusService
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
+
+
+def _build_forwarded_from_payload(message: Message) -> Optional[Dict[str, Any]]:
+    """Build structured forwarded source payload for realtime message events."""
+    is_forwarded = bool(
+        message.forwarded_from_message_id
+        or message.forwarded_from_sender_display
+        or message.forwarded_from_created_at
+    )
+    if not is_forwarded:
+        return None
+
+    return {
+        'message_id': message.forwarded_from_message_id,
+        'sender_display': message.forwarded_from_sender_display or '',
+        'created_at': message.forwarded_from_created_at.isoformat() if message.forwarded_from_created_at else None,
+    }
+
+
+def build_realtime_message_payload(message: Message) -> Dict[str, Any]:
+    """Serialize message payload for websocket/celery delivery with attachments and forward metadata."""
+    attachments = []
+    for attachment in message.attachments.all():
+        attachments.append({
+            'id': attachment.id,
+            'message': attachment.message_id,
+            'file_type': attachment.file_type,
+            'file_url': attachment.file.url if attachment.file else None,
+            'thumbnail_url': attachment.thumbnail.url if attachment.thumbnail else None,
+            'file_size': attachment.file_size,
+            'file_size_display': attachment.file_size_display,
+            'original_filename': attachment.original_filename,
+            'mime_type': attachment.mime_type,
+            'created_at': attachment.created_at.isoformat(),
+        })
+
+    forwarded_from = _build_forwarded_from_payload(message)
+    return {
+        'id': message.id,
+        'chat_id': message.chat.id,
+        'sender': {
+            'id': message.sender.id,
+            'username': message.sender.username,
+            'email': message.sender.email,
+        },
+        'content': message.content,
+        'created_at': message.created_at.isoformat(),
+        'updated_at': message.updated_at.isoformat(),
+        'has_attachments': bool(message.has_attachments or attachments),
+        'attachment_count': len(attachments),
+        'attachments': attachments,
+        'is_forwarded': forwarded_from is not None,
+        'forwarded_from': forwarded_from,
+    }
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
@@ -23,7 +78,8 @@ def deliver_message_task(self, message_id: int):
         message_id: ID of the message to deliver
     """
     try:
-        message = Message.objects.select_related('chat', 'sender').get(id=message_id)
+        message = Message.objects.select_related('chat', 'sender').prefetch_related('attachments').get(id=message_id)
+        message_payload = build_realtime_message_payload(message)
         
         # Get all recipients who haven't received the message
         pending_statuses = MessageStatus.objects.filter(
@@ -49,16 +105,7 @@ def deliver_message_task(self, message_id: int):
                         f'chat_user_{user.id}',
                         {
                             'type': 'chat_message',
-                            'message': {
-                                'id': message.id,
-                                'chat_id': message.chat.id,
-                                'sender': {
-                                    'id': message.sender.id,
-                                    'username': message.sender.username,
-                                },
-                                'content': message.content,
-                                'created_at': message.created_at.isoformat(),
-                            }
+                            'message': message_payload
                         }
                     )
                     
@@ -205,7 +252,8 @@ def notify_new_message(message_id: int):
         message_id: ID of the newly created message
     """
     try:
-        message = Message.objects.select_related('chat', 'sender').get(id=message_id)
+        message = Message.objects.select_related('chat', 'sender').prefetch_related('attachments').get(id=message_id)
+        message_payload = build_realtime_message_payload(message)
         
         # Get all active participants except sender
         participants = ChatParticipant.objects.filter(
@@ -230,17 +278,7 @@ def notify_new_message(message_id: int):
                         f'chat_user_{user.id}',
                         {
                             'type': 'chat_message',
-                            'message': {
-                                'id': message.id,
-                                'chat_id': message.chat.id,
-                                'sender': {
-                                    'id': message.sender.id,
-                                    'username': message.sender.username,
-                                    'email': message.sender.email,
-                                },
-                                'content': message.content,
-                                'created_at': message.created_at.isoformat(),
-                            }
+                            'message': message_payload
                         }
                     )
                     
@@ -272,4 +310,3 @@ def notify_new_message(message_id: int):
         logger.error(f"Message {message_id} not found")
     except Exception as e:
         logger.error(f"Error notifying new message {message_id}: {e}")
-

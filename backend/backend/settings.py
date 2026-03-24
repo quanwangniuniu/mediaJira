@@ -35,7 +35,6 @@ ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,0.0.0.0').s
     'lipographic-damon-unshrinkable.ngrok-free.dev',
     'volar-probankruptcy-orval.ngrok-free.dev',
     'christeen-gawkiest-carmelia.ngrok-free.dev',
-    'semirhythmic-boyd-unlethargic.ngrok-free.dev',
 ]
 
 
@@ -66,7 +65,7 @@ INSTALLED_APPS = [
     'alerting.apps.AlertingConfig',
     'dashboard',
     'metric_upload.apps.MetricUploadConfig',
-    'reports',
+    'report',
     'optimization',
     'facebook_meta',
     'stripe_meta',
@@ -87,6 +86,8 @@ INSTALLED_APPS = [
     'policy.apps.PolicyConfig',
     'campaign.apps.CampaignConfig',
     'slack_integration.apps.SlackIntegrationConfig',
+    'agent.apps.AgentConfig',
+    'meetings.apps.MeetingsConfig',
 ]
 
 MIDDLEWARE = [
@@ -162,6 +163,9 @@ DATABASES = {
         'PASSWORD': config('POSTGRES_PASSWORD', default='cocofly4321'),
         'HOST': config('DB_HOST', default='localhost'),
         'PORT': config('POSTGRES_PORT', default='5432'),
+        'OPTIONS': {
+            'options': '-c search_path=public'
+        },
         'TEST': {
             'NAME': 'test_mediajira_db',
         }
@@ -236,6 +240,18 @@ FILE_STORAGE_DIR = config(
     default=os.path.join(BASE_DIR, 'media')
 )
 
+# Agent CSV data directory
+AGENT_CSV_DIR = config(
+    'AGENT_CSV_DIR',
+    default=os.path.join(BASE_DIR, 'agent_data')
+)
+
+# Dify LLM Platform integration (optional)
+# Set these to route agent analysis through Dify instead of direct Claude API
+DIFY_API_URL = config('DIFY_API_URL', default='')
+DIFY_API_KEY = config('DIFY_API_KEY', default='')
+DIFY_CHAT_API_KEY = config('DIFY_CHAT_API_KEY', default='')
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
@@ -251,8 +267,6 @@ CORS_ALLOWED_ORIGINS = [
     "http://lipographic-damon-unshrinkable.ngrok-free.dev",
     "http://volar-probankruptcy-orval.ngrok-free.dev",
     "http://christeen-gawkiest-carmelia.ngrok-free.dev",
-    "https://semirhythmic-boyd-unlethargic.ngrok-free.dev",
-    "http://semirhythmic-boyd-unlethargic.ngrok-free.dev",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -266,8 +280,6 @@ CSRF_TRUSTED_ORIGINS = [
     "http://christeen-gawkiest-carmelia.ngrok-free.dev",
     "http://lipographic-damon-unshrinkable.ngrok-free.dev",
     "http://volar-probankruptcy-orval.ngrok-free.dev",
-    "https://semirhythmic-boyd-unlethargic.ngrok-free.dev",
-    "http://semirhythmic-boyd-unlethargic.ngrok-free.dev",
 ]
 
 # Session Configuration for OAuth
@@ -338,6 +350,7 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = config('TIME_ZONE', default='UTC')
+broker_connection_retry_on_startup = True
 
 # Celery Beat Configuration for Periodic Tasks
 CELERY_BEAT_SCHEDULE = {
@@ -407,9 +420,6 @@ KAFKA_TOPICS = {
     'BUDGET_REQUEST_REJECTED': 'budget_approval.request_rejected.json',
     
     # Report domain
-    'REPORT_CREATED': 'reports.report_created.json',
-    'REPORT_PUBLISHED': 'reports.report_published.json',
-    'REPORT_UPDATED': 'reports.report_updated.json',
     
     # Metric Upload domain
     'METRIC_UPLOADED': 'metric_upload.uploaded.json',
@@ -602,4 +612,11 @@ else:
 SLACK_CLIENT_ID = config('SLACK_CLIENT_ID', default='')
 SLACK_CLIENT_SECRET = config('SLACK_CLIENT_SECRET', default='')
 SLACK_SIGNING_SECRET = config('SLACK_SIGNING_SECRET', default='')
-SLACK_REDIRECT_URI = config('SLACK_REDIRECT_URI', default='')
+SLACK_REDIRECT_URI = config('SLACK_REDIRECT_URI', default='http://localhost:3000/slack/callback')
+
+# Meetings (SMP-484): when True, creating a meeting requires at least one participant_user_ids entry
+MEETINGS_REQUIRE_PARTICIPANTS_AT_CREATE = config(
+    'MEETINGS_REQUIRE_PARTICIPANTS_AT_CREATE',
+    default=False,
+    cast=bool,
+)

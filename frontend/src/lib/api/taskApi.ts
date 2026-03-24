@@ -9,6 +9,7 @@ import {
   TaskRelationsResponse,
   TaskRelationAddRequest,
   TaskAttachment,
+  TaskListFilters,
 } from "@/types/task";
 
 export const TaskAPI = {
@@ -22,23 +23,27 @@ export const TaskAPI = {
   forceCreateTask: (data: CreateTaskData) =>
     api.post("/api/tasks/force-create/", data),
 
+  // Bulk action on multiple tasks
+  bulkAction: (data: {
+    task_ids: number[];
+    action: 'submit' | 'assign_approver' | 'change_status';
+    payload?: {
+      approver_id?: number;
+      status?: string;
+    };
+  }) => api.post('/api/tasks/bulk_action/', data),
+
   // Get all tasks with optional filters
-  getTasks: (params?: {
-    type?: string;
-    project_id?: number;
-    owner_id?: number;
-    status?: string;
-    content_type?: string;
-    object_id?: string;
-    include_subtasks?: boolean;
-    all_projects?: boolean;
-  }) => {
+  getTasks: (params?: TaskListFilters & { content_type?: string; object_id?: string; page?: number }) => {
     const queryParams: any = { ...params };
     if (queryParams.include_subtasks !== undefined) {
       queryParams.include_subtasks = queryParams.include_subtasks.toString();
     }
     if (queryParams.all_projects !== undefined) {
       queryParams.all_projects = queryParams.all_projects.toString();
+    }
+    if (queryParams.has_parent !== undefined) {
+      queryParams.has_parent = queryParams.has_parent.toString();
     }
     return api.get("/api/tasks/", { params: queryParams });
   },
@@ -60,6 +65,10 @@ export const TaskAPI = {
       object_id: objectId,
     }),
 
+  // Submit a task (DRAFT -> SUBMITTED)
+  submitTask: (taskId: number) =>
+    api.post(`/api/tasks/${taskId}/submit/`),
+
   // Start review for a task
   startReview: (taskId: number) =>
     api.post(`/api/tasks/${taskId}/start-review/`),
@@ -73,6 +82,13 @@ export const TaskAPI = {
 
   // Lock a task
   lock: (taskId: number) => api.post(`/api/tasks/${taskId}/lock/`),
+
+  // Unlock a task (LOCKED -> APPROVED)
+  unlock: (taskId: number) => api.post(`/api/tasks/${taskId}/unlock/`),
+
+  // Cancel a task
+  cancelTask: (taskId: number) =>
+    api.post(`/api/tasks/${taskId}/cancel/`),
 
   // Forward task to next approver
   forward: (taskId: number, data: TaskForwardData) =>

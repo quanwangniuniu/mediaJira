@@ -90,7 +90,7 @@ const FilterDropdown: React.FC<FilterDropdownProps> = ({
         {label}:
       </span>
       
-      <div className="relative min-w-[180px]" ref={dropdownRef}>
+      <div className="relative min-w-[150px]" ref={dropdownRef}>
         <button
           type="button"
           onClick={handleToggle}

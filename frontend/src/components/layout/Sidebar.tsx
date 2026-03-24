@@ -10,7 +10,6 @@ import { useChatStore } from "@/lib/chatStore";
 // import { useRouter } from 'next/router';
 
 import {
-  Home,
   FolderOpen,
   Shield,
   MessageSquare,
@@ -20,6 +19,7 @@ import {
   Users,
   BarChart3,
   FileText,
+  FileSpreadsheet,
   CheckSquare,
   Calendar,
   Bell,
@@ -32,6 +32,8 @@ import {
   Mail,
   LayoutDashboard,
   Square,
+  Bot,
+  Presentation,
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { usePathname } from "next/navigation";
@@ -52,6 +54,10 @@ interface SidebarProps {
   onCollapseChange?: (collapsed: boolean) => void;
   userRole?: string;
   userRoleLevel?: number;
+  unsavedChangesGuard?: {
+    hasChanges: boolean;
+    onNavigateAway: (destination: string) => void;
+  };
 }
 
 // Navigation configuration - can be dynamically adjusted based on user role
@@ -62,42 +68,30 @@ const getNavigationItems = (
 ): NavigationItem[] => {
   const baseItems: NavigationItem[] = [
     {
-      name: t ? t("sidebar.home") : "Home",
-      href: "/",
-      icon: Home,
-      description: t
-        ? t("sidebar.dashboard_overview")
-        : "Dashboard and overview",
+      name: "Spreadsheet",
+      href: "/spreadsheet",
+      icon: FileSpreadsheet,
+      description: "Choose a project and open its spreadsheets",
     },
     {
       name: t ? t("sidebar.projects") : "Projects",
       href: "/projects",
       icon: FolderOpen,
       description: t ? t("sidebar.manage_projects") : "Manage your projects",
-      children: [
-        {
-          name: t ? t("sidebar.all_projects") : "All Projects",
-          href: "/projects",
-          icon: FolderOpen,
-          exactMatch: true,
-        },
-        {
-          name: t ? t("sidebar.active_projects") : "Active Projects",
-          href: "/projects/active",
-          icon: FolderOpen,
-        },
-        {
-          name: t ? t("sidebar.completed") : "Completed",
-          href: "/projects/completed",
-          icon: FolderOpen,
-        },
-      ],
     },
     {
       name: t ? t("sidebar.campaigns") : "Campaigns",
       href: "/campaigns",
       icon: BarChart3,
       description: t ? t("sidebar.campaign_management") : "Campaign management",
+    },
+    {
+      name: t ? t("sidebar.meetings") : "Meetings",
+      href: "/meetings",
+      icon: Presentation,
+      description: t
+        ? t("sidebar.meetings_description")
+        : "Meeting preparation and project meetings",
     },
     {
       name: "Ad Variations",
@@ -242,6 +236,7 @@ const Sidebar: FC<SidebarProps> = ({
   onCollapseChange,
   userRole = "user",
   userRoleLevel = 10,
+  unsavedChangesGuard,
 }) => {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
@@ -249,15 +244,18 @@ const Sidebar: FC<SidebarProps> = ({
 
   // Get current pathname using Next.js 13+ App Router hook
   const pathname = usePathname();
-  
+
+  /** Hub /meetings, or any /projects/:id/meetings/... — only Meetings nav should be active */
+  const pathnameIsMeetingsWorkspace = useMemo(
+    () =>
+      pathname === "/meetings" ||
+      pathname.startsWith("/meetings/") ||
+      /^\/projects\/[^/]+\/meetings(\/.*)?$/.test(pathname),
+    [pathname]
+  );
+
   // Get global unread count from chat store for Messages badge (across ALL projects)
   const globalUnreadCount = useChatStore(state => state.globalUnreadCount);
-  const fetchGlobalUnreadCount = useChatStore(state => state.fetchGlobalUnreadCount);
-  
-  // Fetch global unread count on mount
-  useEffect(() => {
-    fetchGlobalUnreadCount();
-  }, [fetchGlobalUnreadCount]);
 
   const navigationItems = useMemo(() => {
     const items = getNavigationItems(userRole, userRoleLevel, t);
@@ -293,13 +291,31 @@ const Sidebar: FC<SidebarProps> = ({
     );
   };
 
+  // Intercept navigation when on Notion page with unsaved changes
+  const handleLinkClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    if (!unsavedChangesGuard?.hasChanges || href === "#") return;
+    const isOnNotion = pathname === "/notion" || pathname.startsWith("/notion/");
+    const isNavigatingAway = href !== "/notion" && !href.startsWith("/notion/");
+    if (isOnNotion && isNavigatingAway) {
+      e.preventDefault();
+      unsavedChangesGuard.onNavigateAway(href);
+    }
+  };
+
   // Check if path matches
   const isActive = (href: string, exactMatch?: boolean) => {
+    if (href === "#") {
+      return false;
+    }
     if (href === "/") {
       return pathname === "/";
     }
     if (exactMatch) {
       return pathname === href;
+    }
+    // On any Meetings URL, highlight only Meetings (not Projects, etc.)
+    if (pathnameIsMeetingsWorkspace) {
+      return href === "/meetings";
     }
     // For exact match or sub-path match, but avoid partial matches
     // e.g., '/admin' should match '/admin' and '/admin/xxx', but not '/administrator'
@@ -425,6 +441,7 @@ const Sidebar: FC<SidebarProps> = ({
                   // <Link href={item.href} className={...}>
                   <a
                     href={item.href}
+                    onClick={(e) => handleLinkClick(e, item.href)}
                     className={`
                       flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200
                       ${
@@ -476,6 +493,7 @@ const Sidebar: FC<SidebarProps> = ({
                       <a
                         key={child.href}
                         href={child.href}
+                        onClick={(e) => handleLinkClick(e, child.href)}
                         className={`
                           flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-all duration-200
                           ${
@@ -497,6 +515,37 @@ const Sidebar: FC<SidebarProps> = ({
           );
         })}
       </nav>
+
+      {/* Agent AI Link */}
+      <div className="px-2 pb-2 border-t border-gray-200 pt-2">
+        <a
+          href="/agent"
+          onClick={(e) => handleLinkClick(e, "/agent")}
+          className={`
+            flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200
+            ${
+              isActive("/agent")
+                ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md"
+                : "bg-gradient-to-r from-blue-50 to-purple-50 text-blue-700 hover:from-blue-100 hover:to-purple-100 hover:shadow-sm"
+            }
+            ${collapsed ? "justify-center" : ""}
+          `}
+        >
+          <Bot className="h-5 w-5 flex-shrink-0" />
+          {!collapsed && (
+            <>
+              <span>Agent</span>
+              <span className={`ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                isActive("/agent")
+                  ? "bg-white/20 text-white"
+                  : "bg-blue-100 text-blue-600"
+              }`}>
+                AI
+              </span>
+            </>
+          )}
+        </a>
+      </div>
 
       {/* Footer information */}
       {!collapsed && (

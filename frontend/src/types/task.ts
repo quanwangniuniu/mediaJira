@@ -1,11 +1,35 @@
-import { ReportData } from "./report";
+export interface ApprovalChainStepRecord {
+  approved_by: UserSummary;
+  is_approved: boolean;
+  decided_time: string;
+  comment: string | null;
+}
+
+export interface ApprovalChainStepData {
+  step_number: number;
+  role_name: string;
+  status: 'approved' | 'current' | 'pending';
+  approver: UserSummary;
+  record: ApprovalChainStepRecord | null;
+}
+
+export interface ApprovalChainProgress {
+  current_step: number;
+  total_steps: number;
+  step_display: string;
+  chain_name: string;
+  next_approver: UserSummary | null;
+  steps: ApprovalChainStepData[];
+}
 
 // Type for getting an existing task
 export interface TaskData {
   id?: number;
   owner?: UserSummary;
+  owner_id?: number | null; // Write-only for updates
   project_id: number; // Required for creation
-  type: "budget" | "asset" | "retrospective" | "report" | "scaling" | "alert" | "experiment" | "optimization" | "communication"; // Valid task types
+  /** Task type; valid values come from GET /api/task-types/ */
+  type: string;
   summary: string;
   description?: string;
   current_approver?: UserSummary; // For display (from API response)
@@ -23,21 +47,36 @@ export interface TaskData {
     | "REJECTED"
     | "LOCKED"
     | "CANCELLED";
-  linked_object?: ReportData | any;
+  linked_object?: unknown;
   is_subtask?: boolean; // Indicates if this task is a subtask
   parent_relationship?: any; // Parent relationship if this is a subtask
   order_in_project?: number; // Order of task within its project
+  approval_chain_progress?: ApprovalChainProgress | null;
+  can_lock?: boolean;
+  approvals_summary?: {
+    approved_count: number;
+    required_count: number;
+    display: string;
+  } | null;
+  /** Draft-only: persisted create-panel state (backend stores JSON) */
+  draft_payload?: unknown | null;
 }
 
 // Type for creating a new task (current_approver_id is user ID)
 export interface CreateTaskData {
   project_id: number;
-  type: "budget" | "asset" | "retrospective" | "report" | "scaling" | "alert" | "experiment" | "optimization" | "communication";
+  /** Task type; valid values come from GET /api/task-types/ */
+  type: string;
   summary: string;
   description?: string;
+  priority?: string;
   current_approver_id?: number; // User ID for creation
   start_date?: string | null; // Date field
   due_date?: string;
+  /** If true, task stays in DRAFT and draft_payload is persisted. */
+  create_as_draft?: boolean;
+  /** Draft-only: persisted create-panel state (backend stores JSON) */
+  draft_payload?: unknown | null;
 }
 
 export interface UserSummary {
@@ -108,4 +147,21 @@ export interface TaskAttachment {
   scan_status: 'pending' | 'scanning' | 'clean' | 'infected' | 'error_scanning';
   uploaded_by: UserSummary;
   created_at: string;
+}
+
+// Shared filter shape for task list/board/timeline views
+export interface TaskListFilters {
+  project_id?: number;
+  type?: string | string[];
+  status?: string | string[];
+  priority?: string | string[];
+  owner_id?: number | number[];
+  current_approver_id?: number | number[];
+  has_parent?: boolean; // true = subtasks only, false = top-level only
+  due_date_after?: string; // YYYY-MM-DD
+  due_date_before?: string;
+  created_after?: string;
+  created_before?: string;
+  include_subtasks?: boolean;
+  all_projects?: boolean;
 }

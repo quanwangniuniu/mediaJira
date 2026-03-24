@@ -7,7 +7,7 @@ import Layout from '@/components/layout/Layout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import DecisionWorkbenchHeader from '@/components/decisions/DecisionWorkbenchHeader';
 import SignalsPanel from '@/components/decisions/SignalsPanel';
-import ExecutionPanel from '@/components/decisions/ExecutionPanel';
+import DecisionExecutionSummaryPanel from '@/components/decisions/DecisionExecutionSummaryPanel';
 import DecisionReviewPanel from '@/components/decisions/DecisionReviewPanel';
 import { DecisionAPI } from '@/lib/api/decisionApi';
 import { ProjectAPI } from '@/lib/api/projectApi';
@@ -224,12 +224,10 @@ const DecisionReviewPage = () => {
               </div>
             </div>
             <div className="h-full w-[22%] min-w-[220px] max-w-[300px]">
-              <div className="h-full border-l border-gray-200 bg-gray-50">
-                <ExecutionPanel />
-                <div className="px-4 pb-4 text-xs text-gray-500">
-                  Execution is managed after commitment.
-                </div>
-              </div>
+              <DecisionExecutionSummaryPanel
+                decisionId={decision.id}
+                projectId={projectIdValue}
+              />
             </div>
             <div className="h-full w-[24%] min-w-[260px] max-w-[360px]">
               <DecisionReviewPanel

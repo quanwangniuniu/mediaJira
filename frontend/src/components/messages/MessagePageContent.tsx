@@ -2,17 +2,19 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { MessageSquare, Plus, Search } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/authStore';
 import { useChatStore } from '@/lib/chatStore';
 import { useChatData } from '@/hooks/useChatData';
 import { useChatSocket } from '@/hooks/useChatSocket';
+import { useProjectMemberRoles } from '@/hooks/useProjectMemberRoles';
 import ProjectSelector from './ProjectSelector';
 import ChatList from '@/components/chat/ChatList';
 import ChatWindow from '@/components/chat/ChatWindow';
 import CreateChatDialog from '@/components/chat/CreateChatDialog';
-import EmptyChatState from '@/components/chat/EmptyChatState';
 
 export default function MessagePageContent() {
+  const searchParams = useSearchParams();
   const user = useAuthStore(state => state.user);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -27,6 +29,8 @@ export default function MessagePageContent() {
   const chatsByProject = useChatStore(state => state.chatsByProject);
   // Get chats for the selected project only (independent from widget)
   const chats = selectedProjectId ? (chatsByProject[selectedProjectId] || []) : [];
+
+  const { roleByUserId } = useProjectMemberRoles(selectedProjectId);
   
   // Fetch chats for selected project
   const { fetchChats, isLoading } = useChatData({
@@ -36,6 +40,7 @@ export default function MessagePageContent() {
   
   // Connect to WebSocket for real-time updates
   const { connected } = useChatSocket(userId, {
+    enabled: true,
     onMessage: (message) => {
       console.log('[MessagePage] New message received:', message);
     },
@@ -50,6 +55,29 @@ export default function MessagePageContent() {
   // Fetch chats when project changes or WebSocket connects
   // Combined into one effect to prevent duplicate fetches
   const hasFetchedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const projectIdParam = searchParams.get('projectId');
+    const chatIdParam = searchParams.get('chatId');
+    const projectIdFromQuery = projectIdParam ? Number(projectIdParam) : NaN;
+    const chatIdFromQuery = chatIdParam ? Number(chatIdParam) : NaN;
+
+    if (
+      Number.isFinite(projectIdFromQuery) &&
+      projectIdFromQuery > 0 &&
+      projectIdFromQuery !== selectedProjectId
+    ) {
+      setSelectedProjectId(projectIdFromQuery);
+    }
+
+    if (
+      Number.isFinite(chatIdFromQuery) &&
+      chatIdFromQuery > 0 &&
+      chatIdFromQuery !== currentChatId
+    ) {
+      setCurrentChat(chatIdFromQuery);
+    }
+  }, [searchParams, selectedProjectId, currentChatId, setCurrentChat]);
   
   useEffect(() => {
     if (selectedProjectId) {
@@ -58,8 +86,8 @@ export default function MessagePageContent() {
       if (hasFetchedRef.current !== fetchKey) {
         hasFetchedRef.current = fetchKey;
         console.log('[MessagePage] Fetching chats for project:', selectedProjectId, 'connected:', connected);
-      fetchChats();
-    }
+        fetchChats();
+      }
     }
   }, [selectedProjectId, connected, fetchChats]);
   
@@ -178,6 +206,7 @@ export default function MessagePageContent() {
               currentChatId={currentChatId}
               onSelectChat={handleSelectChat}
               onCreateChat={handleCreateChat}
+              roleByUserId={roleByUserId}
             />
           )}
         </div>
@@ -219,6 +248,7 @@ export default function MessagePageContent() {
             <ChatWindow
               chat={currentChat}
               onBack={handleBackToList}
+              roleByUserId={roleByUserId}
             />
           )}
         </div>
@@ -236,4 +266,3 @@ export default function MessagePageContent() {
     </div>
   );
 }
-

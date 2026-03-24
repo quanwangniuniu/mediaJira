@@ -190,6 +190,7 @@ def accept_invitation(token, user=None, password=None, username=None):
     """
     from django.contrib.auth import get_user_model
     from core.models import ProjectMember
+    from core.utils.project_calendars import ensure_project_calendar
     
     User = get_user_model()
     
@@ -241,6 +242,7 @@ def accept_invitation(token, user=None, password=None, username=None):
             'is_active': True,
         },
     )
+    ensure_project_calendar(invitation.project)
     
     # Ensure prior accepted invites do not conflict with unique constraints
     ProjectInvitation.objects.filter(

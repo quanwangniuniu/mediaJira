@@ -10,8 +10,8 @@ RUN adduser --disabled-password --gecos "" --home /home/appuser appuser
 RUN mkdir -p /app/.next && chown -R appuser:appuser /app/.next
 
 # Install dependencies
-RUN npm install -g sonarqube-scanner 
-RUN apt-get update && apt-get install -y curl
+# RUN npm install -g sonarqube-scanner 
+# RUN apt-get update && apt-get install -y curl
 
 # Copy the rest of the application
 COPY --chown=appuser:appuser . /app

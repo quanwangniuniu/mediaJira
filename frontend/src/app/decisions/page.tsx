@@ -12,15 +12,21 @@ import {
   FileText,
   PencilLine,
   CheckCircle2,
+  Trash2,
 } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { DecisionAPI } from '@/lib/api/decisionApi';
 import { ProjectAPI, type ProjectData } from '@/lib/api/projectApi';
 import { useAuthStore } from '@/lib/authStore';
-import DecisionTree from '@/components/decisions/DecisionTree';
 import DecisionEditModal from '@/components/decisions/DecisionEditModal';
+import DecisionLinkEditor from '@/components/decisions/DecisionLinkEditor';
+import ConfirmModal from '@/components/ui/ConfirmModal';
 import type { DecisionGraphResponse, DecisionListItem } from '@/types/decision';
+
+type PendingDelete =
+  | { type: 'tree'; node: DecisionGraphResponse['nodes'][number]; projectId: number }
+  | { type: 'list'; decision: DecisionListItem; projectId: number };
 
 const statusColor = (status: string) => {
   switch (status) {
@@ -66,6 +72,7 @@ const ROLE_LEVELS: Record<string, number> = {
 };
 
 const APPROVAL_REVIEW_MAX_LEVEL = 8;
+const EDIT_MAX_LEVEL = 13;
 const DEFAULT_PAGE_SIZE = 12;
 const DEFAULT_VIEW_MODE = 'cards' as const;
 const DEFAULT_SORT_MODE = 'SEQ' as const;
@@ -95,7 +102,6 @@ const DecisionsPage = () => {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editDecisionId, setEditDecisionId] = useState<number | null>(null);
   const [editProjectId, setEditProjectId] = useState<number | null>(null);
-  const [focusDateByProject, setFocusDateByProject] = useState<Record<number, string>>({});
   const [paginationByProject, setPaginationByProject] = useState<
     Record<number, { pageIndex: number; pageSize: number }>
   >({});
@@ -108,6 +114,9 @@ const DecisionsPage = () => {
   const [sortDirByProject, setSortDirByProject] = useState<Record<number, 'asc' | 'desc'>>(
     {}
   );
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const fallbackProjectId = useMemo(() => projects[0]?.id ?? null, [projects]);
 
   const handleCreateDecision = async (project: ProjectData) => {
@@ -127,7 +136,7 @@ const DecisionsPage = () => {
     setCreatingProjectId(project.id);
     try {
       const draft = await DecisionAPI.createDraft(project.id);
-      handleOpenEditModal(draft.id, project.id);
+      if (draft?.id != null) handleOpenEditModal(draft.id, project.id);
     } catch (error) {
       console.error('Failed to create decision draft:', error);
       toast.error('Failed to create decision draft.');
@@ -148,6 +157,36 @@ const DecisionsPage = () => {
     setEditProjectId(null);
   };
 
+  const handleDeleteFromTree = (node: DecisionGraphResponse['nodes'][number], projectId: number) => {
+    setPendingDelete({ type: 'tree', node, projectId });
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteDecision = (decision: DecisionListItem, projectId: number) => {
+    setPendingDelete({ type: 'list', decision, projectId });
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDeleteDecision = async () => {
+    if (!pendingDelete) return;
+    const id = pendingDelete.type === 'tree' ? pendingDelete.node.id : pendingDelete.decision.id;
+    const projectId = pendingDelete.projectId;
+    setDeleting(true);
+    try {
+      await DecisionAPI.deleteDecision(id, projectId);
+      await fetchProjectsAndDecisions();
+      toast.success('Decision deleted.');
+    } catch (error: any) {
+      console.error('Failed to delete decision:', error);
+      const message = error?.response?.data?.detail || 'Failed to delete decision.';
+      toast.error(message);
+    } finally {
+      setDeleting(false);
+      setPendingDelete(null);
+      setDeleteConfirmOpen(false);
+    }
+  };
+
   const fetchProjectsAndDecisions = async () => {
     setLoading(true);
     try {
@@ -163,13 +202,16 @@ const DecisionsPage = () => {
       const items = response.items || [];
       setDecisions(items);
       const graphEntries = await Promise.all(
-        projectList.map(async (project) => {
+        projectList.map(async (project): Promise<[number, DecisionGraphResponse]> => {
           try {
             const graph = await DecisionAPI.getDecisionGraph(project.id);
-            return [project.id, graph] as const;
+            return [project.id, graph];
           } catch (error) {
             console.warn('Failed to load graph for project:', project.id, error);
-            return [project.id, { nodes: [], edges: [] }] as const;
+            return [
+              project.id,
+              { nodes: [], edges: [] } as DecisionGraphResponse,
+            ] as const;
           }
         })
       );
@@ -270,6 +312,16 @@ const DecisionsPage = () => {
     }
   }, [loading, projects, decisionsByProject, paginationByProject, viewModeByProject]);
 
+  const seqByDecisionId = useMemo(() => {
+    const map = new Map<number, number>();
+    Object.values(graphsByProject).forEach((g) => {
+      g.nodes.forEach((n) => {
+        if (n.projectSeq != null) map.set(n.id, n.projectSeq);
+      });
+    });
+    return map;
+  }, [graphsByProject]);
+
   const listContent = useMemo(() => {
     if (loading) {
       return (
@@ -294,8 +346,11 @@ const DecisionsPage = () => {
           const roleLabel = projectRoles[project.id] || 'member';
           const roleLevel = ROLE_LEVELS[roleLabel] ?? ROLE_LEVELS.member;
           const canReview = roleLevel <= APPROVAL_REVIEW_MAX_LEVEL;
+          const canDelete = roleLevel <= EDIT_MAX_LEVEL;
           const decisions = decisionsByProject[project.id] || [];
-          const graph = graphsByProject[project.id] || { nodes: [], edges: [] };
+          const graph =
+            graphsByProject[project.id] ??
+            ({ nodes: [], edges: [] } as DecisionGraphResponse);
           return (
           <div
             key={groupKey}
@@ -329,18 +384,12 @@ const DecisionsPage = () => {
             <div className="space-y-4 px-6 py-4">
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <h3 className="text-sm font-semibold text-gray-900">Decision Tree</h3>
-                  <input
-                    type="date"
-                    value={focusDateByProject[project.id] || ''}
-                    onChange={(event) =>
-                      setFocusDateByProject((prev) => ({
-                        ...prev,
-                        [project.id]: event.target.value,
-                      }))
-                    }
-                    className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-700"
-                  />
+                  <div className="leading-tight">
+                    <h3 className="text-sm font-semibold text-gray-900">Decision Tree</h3>
+                    <p className="mt-0.5 text-xs text-gray-500">
+                      Tip: Drag from one decision to another to create a link. Click a link to remove it.
+                    </p>
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -356,15 +405,19 @@ const DecisionsPage = () => {
                 </button>
               </div>
               {!isTreeCollapsed ? (
-                <DecisionTree
-                  nodes={graph.nodes}
-                  edges={graph.edges}
+                <DecisionLinkEditor
+                  variant="inline"
                   projectId={project.id}
+                  onSaved={fetchProjectsAndDecisions}
+                  onClose={() =>
+                    setCollapsedTrees((prev) => ({ ...prev, [project.id]: true }))
+                  }
                   onEditDecision={(node) => handleOpenEditModal(node.id, project.id)}
                   onCreateDecision={() => handleCreateDecisionModal(project)}
-                  autoFocusToday
-                  focusDateKey={focusDateByProject[project.id] || null}
+                  onDelete={(node) => handleDeleteFromTree(node, project.id)}
                   canReview={canReview}
+                  canDelete={canDelete}
+                  autoFocusToday
                 />
               ) : (
                 <div className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-3 text-sm text-gray-500">
@@ -483,6 +536,13 @@ const DecisionsPage = () => {
                     const sortDir =
                       sortDirByProject[project.id] ||
                       (sortMode === 'UPDATED' || sortMode === 'SEQ' ? 'desc' : 'asc');
+                    // Create a map from decision ID to projectSeq from the graph nodes
+                    const seqByDecisionId = new Map<number, number>();
+                    graph.nodes.forEach((node) => {
+                      if (node.id && node.projectSeq !== undefined && node.projectSeq !== null) {
+                        seqByDecisionId.set(node.id, node.projectSeq);
+                      }
+                    });
                     const statusRank: Record<string, number> = {
                       DRAFT: 1,
                       AWAITING_APPROVAL: 2,
@@ -586,6 +646,11 @@ const DecisionsPage = () => {
                                   >
                                     {decision.status}
                                   </span>
+                                  {'riskLevel' in decision && (decision as any).riskLevel ? (
+                                    <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                                      {(decision as any).riskLevel}
+                                    </span>
+                                  ) : null}
                                   <h3 className="truncate text-sm font-semibold text-gray-900">
                                     {decision.title || 'Untitled'}
                                   </h3>
@@ -639,6 +704,21 @@ const DecisionsPage = () => {
                                   <FileText className="h-3.5 w-3.5" />
                                   Details
                                 </Link>
+                                {canDelete ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleDeleteDecision(
+                                        decision,
+                                        decision.projectId ?? fallbackProjectId ?? project.id
+                                      )
+                                    }
+                                    className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:border-red-300"
+                                    title="Delete decision"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                ) : null}
                               </div>
                             </div>
                             );
@@ -732,19 +812,34 @@ const DecisionsPage = () => {
                                     <FileText className="h-3.5 w-3.5" />
                                     Details
                                   </Link>
+                                  {canDelete ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleDeleteDecision(
+                                          decision,
+                                          decision.projectId ?? fallbackProjectId ?? project.id
+                                        )
+                                      }
+                                      className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:border-red-300"
+                                      title="Delete decision"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  ) : null}
                                 </div>
                               </div>
                             ))}
                           </div>
                         ) : (
                           <div className="overflow-hidden rounded-xl border border-gray-200">
-                            <div className="grid grid-cols-[70px_minmax(220px,1fr)_105px_105px_130px_auto] gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                            <div className="grid grid-cols-[70px_minmax(220px,1fr)_105px_105px_130px_150px] gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                               <div>#Seq</div>
                               <div>Title</div>
-                              <div className="-ml-10">Status</div>
-                              <div className="-ml-7">Risk</div>
-                              <div className="-ml-10">Updated</div>
-                              <div className="-ml-10 text-right">Actions</div>
+                              <div className="flex justify-center">Status</div>
+                              <div className="flex justify-center">Risk</div>
+                              <div className="flex justify-center">Updated</div>
+                              <div className="flex justify-center">Actions</div>
                             </div>
                             <div className="divide-y divide-gray-200 bg-white">
                               {visible.map((decision) => {
@@ -752,7 +847,7 @@ const DecisionsPage = () => {
                                 return (
                                 <div
                                   key={decision.id}
-                                  className="grid grid-cols-[70px_minmax(220px,1fr)_105px_105px_130px_auto] items-center gap-2 px-4 py-2 text-xs text-gray-700"
+                                  className="grid grid-cols-[70px_minmax(220px,1fr)_105px_105px_130px_150px] items-center gap-2 px-4 py-2 text-xs text-gray-700"
                                 >
                                   <div className="text-[11px] font-semibold text-gray-500">
                                     {typeof seq === 'number' ? `#${seq}` : '—'}
@@ -781,14 +876,14 @@ const DecisionsPage = () => {
                                       ? (decision as any).riskLevel
                                       : '—'}
                                   </div>
-                                  <div className="text-[11px] text-gray-500">
+                                  <div className="text-[11px] text-gray-500 text-center">
                                     {formatDate(
                                       decision.updatedAt ||
                                         decision.committedAt ||
                                         decision.createdAt
                                     )}
                                   </div>
-                                  <div className="flex items-center justify-end gap-2">
+                                  <div className="flex items-center justify-center gap-2">
                                     {decision.status === 'COMMITTED' && canReview ? (
                                       <Link
                                         href={`/decisions/${decision.id}/review${
@@ -825,6 +920,21 @@ const DecisionsPage = () => {
                                       <span className="inline-flex w-[80px] items-center justify-center rounded-md border border-transparent px-2.5 py-1 text-[11px] font-semibold text-gray-300">
                                         —
                                       </span>
+                                    ) : null}
+                                    {canDelete ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleDeleteDecision(
+                                            decision,
+                                            decision.projectId ?? fallbackProjectId ?? project.id
+                                          )
+                                        }
+                                        className="inline-flex items-center justify-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-700 hover:border-red-300"
+                                        title="Delete decision"
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </button>
                                     ) : null}
                                   </div>
                                 </div>
@@ -918,7 +1028,8 @@ const DecisionsPage = () => {
     fallbackProjectId,
     currentUserId,
     projects,
-    focusDateByProject,
+    graphsByProject,
+    seqByDecisionId,
     paginationByProject,
     viewModeByProject,
     sortByProject,
@@ -948,6 +1059,26 @@ const DecisionsPage = () => {
         isOpen={editModalOpen}
         onClose={handleCloseEditModal}
         onSaved={fetchProjectsAndDecisions}
+      />
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => {
+          if (!deleting) {
+            setDeleteConfirmOpen(false);
+            setPendingDelete(null);
+          }
+        }}
+        onConfirm={confirmDeleteDecision}
+        title="Delete decision"
+        message={
+          pendingDelete
+            ? `Are you sure you want to delete decision "${pendingDelete.type === 'tree' ? pendingDelete.node.title || 'Untitled' : pendingDelete.decision.title || 'Untitled'}"? This action cannot be undone.`
+            : ''
+        }
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+        loading={deleting}
       />
     </Layout>
   );

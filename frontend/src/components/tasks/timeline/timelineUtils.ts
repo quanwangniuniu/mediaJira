@@ -1,6 +1,21 @@
-import { addDays, addHours, addWeeks, endOfDay, format, isAfter, isBefore, parseISO, startOfDay, startOfMonth, startOfWeek } from 'date-fns';
+import {
+  addDays,
+  addHours,
+  addMonths,
+  addWeeks,
+  endOfDay,
+  endOfQuarter,
+  format,
+  isAfter,
+  isBefore,
+  parseISO,
+  startOfDay,
+  startOfMonth,
+  startOfQuarter,
+  startOfWeek,
+} from 'date-fns';
 
-export type TimelineScale = 'today' | 'week' | 'month';
+export type TimelineScale = 'today' | 'week' | 'month' | 'quarter';
 
 export interface TimelineColumn {
   key: string;
@@ -14,6 +29,7 @@ const COLUMN_WIDTHS: Record<TimelineScale, number> = {
   today: 64,
   week: 80,
   month: 120,
+  quarter: 140,
 };
 
 export const getColumnWidth = (scale: TimelineScale) => COLUMN_WIDTHS[scale];
@@ -69,12 +85,29 @@ export const buildTimelineColumns = (
     return columns;
   }
 
-  let cursor = startOfWeek(startOfMonth(safeStart), { weekStartsOn: 1 });
-  while (cursor <= safeEnd) {
-    const next = addWeeks(cursor, 1);
+  if (scale === 'month') {
+    let cursor = startOfWeek(startOfMonth(safeStart), { weekStartsOn: 1 });
+    while (cursor <= safeEnd) {
+      const next = addWeeks(cursor, 1);
+      columns.push({
+        key: format(cursor, 'yyyy-MM-dd'),
+        label: format(cursor, 'MMM d'),
+        start: cursor,
+        end: next,
+        width,
+      });
+      cursor = next;
+    }
+    return columns;
+  }
+
+  let cursor = startOfMonth(startOfQuarter(startOfMonth(safeStart)));
+  const quarterEnd = endOfQuarter(safeEnd);
+  while (cursor <= quarterEnd) {
+    const next = addMonths(cursor, 1);
     columns.push({
-      key: format(cursor, 'yyyy-MM-dd'),
-      label: format(cursor, 'MMM d'),
+      key: format(cursor, 'yyyy-MM'),
+      label: format(cursor, 'MMM'),
       start: cursor,
       end: next,
       width,

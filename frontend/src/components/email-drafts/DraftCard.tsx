@@ -8,6 +8,7 @@ export type DraftCardStatus = "draft" | "scheduled" | "sent" | "error" | string;
 
 export type DraftCardProps = {
   subject: string;
+  onSubjectClick?: () => void;
   previewText?: string;
   fromName?: string;
   status?: DraftCardStatus;
@@ -47,6 +48,7 @@ const formatDate = (dateString?: string) => {
 
 export function DraftCard({
   subject,
+  onSubjectClick,
   previewText,
   fromName,
   status = "draft",
@@ -100,9 +102,19 @@ export function DraftCard({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <h3 className="min-w-0 flex-1 truncate text-base font-semibold text-blue-700">
-                  {subject}
-                </h3>
+                {onSubjectClick ? (
+                  <button
+                    type="button"
+                    onClick={onSubjectClick}
+                    className="min-w-0 flex-1 truncate text-left text-base font-semibold text-blue-700 hover:underline"
+                  >
+                    {subject}
+                  </button>
+                ) : (
+                  <h3 className="min-w-0 flex-1 truncate text-base font-semibold text-blue-700">
+                    {subject}
+                  </h3>
+                )}
                 <span className={`px-2 py-1 text-xs rounded-full ${badgeClass}`}>
                   {badgeLabel}
                 </span>
@@ -132,3 +144,5 @@ export function DraftCard({
     </div>
   );
 }
+
+

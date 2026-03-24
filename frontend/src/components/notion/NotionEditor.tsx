@@ -1,8 +1,10 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { EditorBlock, NotionBlockType } from '@/types/notion';
 import { NotionDraftAPI } from '@/lib/api/notionDraftApi';
+import useOutline from '@/hooks/useOutline';
+import OutlineOverlay from './OutlineOverlay';
 import { toast } from 'react-hot-toast';
 
 type Command = 'bold' | 'italic' | 'underline' | 'link';
@@ -794,6 +796,18 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
   const [highlightedCode, setHighlightedCode] = useState<Record<string, string>>({});
   const [resizingColumn, setResizingColumn] = useState<{ blockId: string; columnIndex: number } | null>(null);
   const resizingRef = useRef<{ blockId: string; columnIndex: number; startX: number; startWidth: number } | null>(null);
+
+  const editorScrollRef = useRef<HTMLDivElement>(null);
+  const [scrollReady, setScrollReady] = useState(false);
+
+  useLayoutEffect(() => {
+    if (editorScrollRef.current) {
+      setScrollReady(true);
+    }
+  }, []);
+
+  const { outlineItems, activeOutlineId, hoveredOutlineId, setHoveredOutlineId, handleOutlineClick } =
+    useOutline(blocks, editorScrollRef, scrollReady);
 
   const activeBlock = useMemo(
     () => blocks.find((block) => block.id === activeBlockId) || null,
@@ -3060,12 +3074,14 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
   }, []);
 
   return (
-    <div className="flex-1 flex flex-col bg-white h-full">
-      <div 
-        className="flex-1 pb-24 relative"
+    <div className="relative h-full min-h-0 overflow-hidden">
+      <div
+        ref={editorScrollRef}
+        className="absolute inset-0 overflow-y-auto overflow-x-hidden overscroll-contain"
         data-notion-editor-container
       >
-        <div className="max-w-3xl mx-auto w-full py-10 space-y-0 relative">
+        <div className="flex-1 min-w-0 pb-24">
+          <div className="max-w-3xl mx-auto w-full py-10 px-8 space-y-0 relative">
           {displayBlocks.map((block, index) => {
             const isActive = block.id === activeBlockId;
             const isHovered = hoveredBlockId === block.id;
@@ -3717,8 +3733,18 @@ export default function NotionEditor({ blocks, setBlocks, draftId }: NotionEdito
               </div>
             );
           })}
+          </div>
         </div>
       </div>
+
+      <OutlineOverlay
+        items={outlineItems}
+        activeId={activeOutlineId}
+        hoveredId={hoveredOutlineId}
+        setHoveredId={setHoveredOutlineId}
+        onItemClick={handleOutlineClick}
+        editorScrollRef={editorScrollRef}
+      />
 
       {/* Command Menu */}
       {showCommandMenu && activeBlockId && (

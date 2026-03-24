@@ -52,7 +52,7 @@ export function useChatData(options: UseChatDataOptions = {}) {
   }, [projectId]);
 
   // Create new chat
-  const createNewChat = useCallback(async (data: CreateChatRequest): Promise<Chat | null> => {
+  const createNewChat = useCallback(async (data: CreateChatRequest): Promise<Chat> => {
     // Get fresh actions from store
     const { addChat } = useChatStore.getState();
     
@@ -73,11 +73,13 @@ export function useChatData(options: UseChatDataOptions = {}) {
       
       return newChat;
     } catch (err: any) {
-      const errorMsg = err?.response?.data?.detail || 'Failed to create chat';
+      const errorMsg =
+        err?.response?.data?.detail ||
+        err?.response?.data?.error ||
+        'Failed to create chat';
       setError(errorMsg);
       console.error('Error creating chat:', err);
-      toast.error(errorMsg);
-      return null;
+      throw err;
     } finally {
       setIsLoading(false);
     }

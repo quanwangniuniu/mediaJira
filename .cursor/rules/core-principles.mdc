@@ -1,0 +1,14 @@
+---
+description: Core coding principles (non-negotiable) for MediaJira. KISS, small files, single responsibility, thin edges, no secrets.
+alwaysApply: true
+---
+
+# Core principles (non‑negotiable)
+
+These rules are the default "how we build things" for this repo. Optimize for **KISS**: simplest thing that works, easy to review, easy to maintain.
+
+- **Keep it small**: prefer many small files over one massive file.
+- **Single responsibility**: one component/module should have one reason to change.
+- **Thin edges, fat core**: pages/views/controllers stay thin; business logic lives in dedicated modules.
+- **Consistency beats cleverness**: follow existing patterns in this repo even if you know another "better" way.
+- **No secrets in git**: never commit `.env`, tokens, private keys, credentials.

@@ -3,12 +3,10 @@ from copy import deepcopy
 from typing import Dict, List
 
 from core.utils.project import initialize_project_dashboards, validate_project_config
-from reports.models import ReportTemplate
 
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_TEMPLATE_VERSION = 1
 DEFAULT_BUDGET_STRUCTURES: Dict[str, List[Dict]] = {
     'single_consolidated': [
         {
@@ -83,37 +81,11 @@ class ProjectInitializationService:
             )
 
         try:
-            dashboards = cls._initialize_dashboards(project)
-            cls._initialize_report_templates(project, dashboards)
+            cls._initialize_dashboards(project)
             if project.budget_management_type:
                 cls._initialize_budget_structures(project)
         except Exception:  # pragma: no cover - safeguard
             logger.exception("Project initialization encountered an error.")
-
-    @classmethod
-    def _initialize_report_templates(cls, project, dashboards: List[Dict]):
-        """
-        Persist high-level dashboard definitions into report templates so that
-        downstream reporting can reuse them.
-        """
-
-        if not dashboards:
-            return
-
-        for dashboard in dashboards:
-            template_id = f"{project.id}-{dashboard['slug']}"
-            variables = {'project_id': project.id}
-            variables.update(dashboard.get('variables', {}))
-            ReportTemplate.objects.update_or_create(
-                id=template_id,
-                defaults={
-                    'name': dashboard['title'],
-                    'version': dashboard.get('version', DEFAULT_TEMPLATE_VERSION),
-                    'is_default': True,
-                    'blocks': dashboard.get('widgets', []),
-                    'variables': variables,
-                },
-            )
 
     @classmethod
     def _initialize_dashboards(cls, project) -> List[Dict]:

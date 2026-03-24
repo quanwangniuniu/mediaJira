@@ -22,10 +22,10 @@ RUN apt-get update && apt-get install -y \
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Install sonar-scanner
-RUN wget https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip \
-    && unzip sonar-scanner-cli-*.zip -d /opt \
-    && rm sonar-scanner-cli-*.zip
-ENV PATH="/opt/sonar-scanner-5.0.1.3006-linux/bin:${PATH}"
+# RUN wget https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip \
+#     && unzip sonar-scanner-cli-*.zip -d /opt \
+#     && rm sonar-scanner-cli-*.zip
+# ENV PATH="/opt/sonar-scanner-5.0.1.3006-linux/bin:${PATH}"
 
 # Expose port
 EXPOSE 8000

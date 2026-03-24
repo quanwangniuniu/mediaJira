@@ -25,6 +25,7 @@ export interface ChatParticipant {
 export interface Chat {
   id: number;
   project_id: number;
+  project?: number; // Backend may send this instead of project_id
   type: ChatType;
   name?: string | null;
   participants: ChatParticipant[];
@@ -66,11 +67,18 @@ export interface Message {
   chat?: number;  // Backend may send this instead of chat_id
   sender: User;
   content: string;
+  is_forwarded?: boolean;
+  forwarded_from?: {
+    message_id: number | null;
+    sender_display: string;
+    created_at: string | null;
+  } | null;
   created_at: string;
   updated_at: string;
   statuses?: MessageStatus[];
   is_read?: boolean;
   has_attachments?: boolean;
+  attachment_count?: number;
   attachments?: MessageAttachment[];
 }
 
@@ -92,6 +100,38 @@ export interface SendMessageRequest {
 }
 
 export interface SendMessageResponse extends Message {}
+
+export interface ForwardBatchRequest {
+  source_chat_id: number;
+  source_message_ids: number[];
+  target_chat_ids?: number[];
+  target_user_ids?: number[];
+}
+
+export interface ForwardFailureItem {
+  target_chat_id: number | null;
+  target_user_id?: number | null;
+  source_message_id: number | null;
+  reason: string;
+}
+
+export interface ForwardBatchResponse {
+  status: 'success' | 'partial_success' | 'failed';
+  summary: {
+    requested_messages: number;
+    forwardable_messages: number;
+    target_chats: number;
+    attempted_sends: number;
+    succeeded_sends: number;
+    failed_sends: number;
+  };
+  resolved: {
+    target_chat_ids: number[];
+    created_private_chat_ids: number[];
+    skipped_message_ids: number[];
+  };
+  failures: ForwardFailureItem[];
+}
 
 export interface GetChatsParams {
   project_id?: number;
@@ -175,6 +215,7 @@ export interface ChatState {
   setChatsForProject: (projectId: number, chats: Chat[]) => void;
   getChatsForProject: (projectId: number | null) => Chat[];
   addChat: (chat: Chat) => void;
+  removeChat: (chatId: number) => void;
   updateChat: (chatId: number, updates: Partial<Chat>) => void;
   setCurrentChat: (chatId: number | null) => void;
   setWidgetChat: (chatId: number | null) => void;
@@ -220,12 +261,14 @@ export interface ChatListProps {
   currentChatId: number | null;
   onSelectChat: (chatId: number) => void;
   onCreateChat: () => void;
+  roleByUserId?: Record<number, string>;
 }
 
 export interface ChatListItemProps {
   chat: Chat;
   isActive: boolean;
   onClick: () => void;
+  roleByUserId?: Record<number, string>;
 }
 
 export interface ChatWindowProps {
@@ -244,12 +287,21 @@ export interface MessageListProps {
   onLoadMore: () => void;
   hasMore: boolean;
   isLoading: boolean;
+  roleByUserId?: Record<number, string>;
+  isGroupChat?: boolean;
+  isSelectMode?: boolean;
+  selectedMessageIds?: number[];
+  onToggleSelectMessage?: (messageId: number) => void;
 }
 
 export interface MessageItemProps {
   message: Message;
   isOwnMessage: boolean;
   showSender?: boolean;
+  senderRole?: string;
+  isSelectMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: (messageId: number) => void;
 }
 
 export interface MessageInputProps {
@@ -297,19 +349,3 @@ export interface LinkPreview {
   site_name: string | null;
   type: string;
 }
-
-
-  updated_at: string;
-}
-
-// ==================== Link Preview Types ====================
-
-export interface LinkPreview {
-  url: string;
-  title: string | null;
-  description: string | null;
-  image: string | null;
-  site_name: string | null;
-  type: string;
-}
-

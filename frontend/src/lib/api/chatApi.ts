@@ -7,6 +7,8 @@ import type {
   CreateChatResponse,
   SendMessageRequest,
   SendMessageResponse,
+  ForwardBatchRequest,
+  ForwardBatchResponse,
   GetChatsParams,
   GetMessagesParams,
   PaginatedResponse,
@@ -145,6 +147,23 @@ export const markChatAsRead = async (chatId: number): Promise<void> => {
   await api.post(`/api/chat/chats/${chatId}/mark_as_read/`);
 };
 
+/**
+ * Forward multiple messages to multiple chats/users
+ */
+export const forwardMessagesBatch = async (
+  data: ForwardBatchRequest
+): Promise<ForwardBatchResponse> => {
+  const payload = {
+    source_chat_id: data.source_chat_id,
+    source_message_ids: data.source_message_ids,
+    target_chat_ids: data.target_chat_ids || [],
+    target_user_ids: data.target_user_ids || [],
+  };
+
+  const response = await api.post('/api/chat/messages/forward_batch/', payload);
+  return response.data;
+};
+
 // ==================== Helper Functions ====================
 
 /**
@@ -200,6 +219,7 @@ const chatApi = {
   getMessages,
   getMessage,
   sendMessage,
+  forwardMessagesBatch,
   markMessageAsRead,
   markChatAsRead,
   findPrivateChat,
@@ -207,4 +227,3 @@ const chatApi = {
 };
 
 export default chatApi;
-

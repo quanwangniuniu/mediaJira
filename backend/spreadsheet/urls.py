@@ -15,7 +15,9 @@ urlpatterns = [
     path('spreadsheets/<int:spreadsheet_id>/sheets/', views.SheetListView.as_view(), name='sheet-list'),
     path('spreadsheets/<int:spreadsheet_id>/sheets/<int:id>/', views.SheetDetailView.as_view(), name='sheet-detail'),
     path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/resize/', views.SheetResizeView.as_view(), name='sheet-resize'),
-    
+    path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/sort/', views.SheetSortView.as_view(), name='sheet-sort'),
+    path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/reorder-rows/', views.SheetReorderView.as_view(), name='sheet-reorder-rows'),
+
     # Rows and Columns (read-only)
     path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/rows/', views.SheetRowListView.as_view(), name='sheet-row-list'),
     path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/columns/', views.SheetColumnListView.as_view(), name='sheet-column-list'),
@@ -35,9 +37,18 @@ urlpatterns = [
     # Cells
     path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/cells/range/', views.CellRangeReadView.as_view(), name='cell-range-read'),
     path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/cells/batch/', views.CellBatchUpdateView.as_view(), name='cell-batch-update'),
+    path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/cells/import-finalize/', views.ImportFinalizeView.as_view(), name='cell-import-finalize'),
+    path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/pivot-config/', views.PivotConfigView.as_view(), name='pivot-config'),
+    path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/pivot-recompute/', views.PivotRecomputeView.as_view(), name='pivot-recompute'),
+    path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/highlights/', views.SpreadsheetHighlightListView.as_view(), name='sheet-highlight-list'),
+    path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/highlights/batch/', views.SpreadsheetHighlightBatchView.as_view(), name='sheet-highlight-batch'),
+    path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/cell-formats/', views.SpreadsheetCellFormatListView.as_view(), name='sheet-cell-format-list'),
+    path('spreadsheets/<int:spreadsheet_id>/sheets/<int:sheet_id>/cell-formats/batch/', views.SpreadsheetCellFormatBatchView.as_view(), name='sheet-cell-format-batch'),
 
     # Workflow patterns
     path('patterns/', views.WorkflowPatternListCreateView.as_view(), name='pattern-list'),
     path('patterns/<uuid:id>/', views.WorkflowPatternDetailView.as_view(), name='pattern-detail'),
+    path('patterns/<uuid:id>/apply/', views.WorkflowPatternApplyView.as_view(), name='pattern-apply'),
+    path('pattern-jobs/<uuid:job_id>/', views.PatternJobStatusView.as_view(), name='pattern-job-status'),
 ]
 

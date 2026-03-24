@@ -28,6 +28,20 @@ const sidebarCache: {
   subscriptions?: CalendarSubscriptionDTO[];
 } = {};
 
+function normalizeListResponse<T>(payload: unknown): T[] {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+  if (
+    payload &&
+    typeof payload === "object" &&
+    Array.isArray((payload as { results?: unknown[] }).results)
+  ) {
+    return (payload as { results: T[] }).results;
+  }
+  return [];
+}
+
 export function useCalendarSidebarData(): UseCalendarSidebarResult {
   const [calendars, setCalendars] = useState<CalendarDTO[]>([]);
   const [subscriptions, setSubscriptions] = useState<CalendarSubscriptionDTO[]>([]);
@@ -38,7 +52,10 @@ export function useCalendarSidebarData(): UseCalendarSidebarResult {
   const currentUserId = user?.id;
 
   useEffect(() => {
-    if (sidebarCache.calendars && sidebarCache.subscriptions) {
+    if (
+      Array.isArray(sidebarCache.calendars) &&
+      Array.isArray(sidebarCache.subscriptions)
+    ) {
       setCalendars(sidebarCache.calendars);
       setSubscriptions(sidebarCache.subscriptions);
       return;
@@ -49,10 +66,14 @@ export function useCalendarSidebarData(): UseCalendarSidebarResult {
 
     Promise.all([CalendarAPI.listCalendars(), CalendarAPI.listSubscriptions()])
       .then(([calRes, subRes]) => {
-        sidebarCache.calendars = calRes.data;
-        sidebarCache.subscriptions = subRes.data;
-        setCalendars(calRes.data);
-        setSubscriptions(subRes.data);
+        const normalizedCalendars = normalizeListResponse<CalendarDTO>(calRes.data);
+        const normalizedSubscriptions = normalizeListResponse<CalendarSubscriptionDTO>(
+          subRes.data,
+        );
+        sidebarCache.calendars = normalizedCalendars;
+        sidebarCache.subscriptions = normalizedSubscriptions;
+        setCalendars(normalizedCalendars);
+        setSubscriptions(normalizedSubscriptions);
       })
       .catch((err: any) => {
         setError(
@@ -97,8 +118,14 @@ export function useCalendarSidebarData(): UseCalendarSidebarResult {
     });
   }, [calendars, subscriptions, currentUserId]);
 
-  const myCalendars = items.filter((item) => item.isMine);
-  const otherCalendars = items.filter((item) => !item.isMine);
+  const myCalendars = useMemo(
+    () => items.filter((item) => item.isMine),
+    [items],
+  );
+  const otherCalendars = useMemo(
+    () => items.filter((item) => !item.isMine),
+    [items],
+  );
 
   const toggleVisibility = async (item: SidebarCalendarItem) => {
     if (!item.subscriptionId) {
@@ -134,4 +161,3 @@ export function useCalendarSidebarData(): UseCalendarSidebarResult {
     toggleVisibility,
   };
 }
-

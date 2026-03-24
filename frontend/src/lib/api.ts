@@ -17,12 +17,17 @@ const API_BASE_URL =
   DEFAULT_API_BASE_URL;
 
 // Create axios instance for API calls
+// indexes: null => array params serialize as repeated keys (e.g. status=A&status=B)
+// so Django QueryDict.getlist('status') works; default axios uses status[]=... which Django ignores.
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json, text/plain, */*',
+  },
+  paramsSerializer: {
+    indexes: null,
   },
 });
 
@@ -84,7 +89,10 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const status = error.response?.status;
+    const url = error.config?.url;
+
+    if (status === 401 && url !== '/auth/login/') {
       // Clear auth data and redirect to login on unauthorized requests
       // This will be handled by the Zustand store
       if (typeof window !== 'undefined') {

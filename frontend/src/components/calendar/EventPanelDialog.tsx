@@ -1,0 +1,411 @@
+import React, { useCallback } from "react";
+import { format } from "date-fns";
+import {
+  AlignLeft,
+  Calendar as CalendarIcon,
+  Clock,
+  Pencil,
+  Trash2,
+  X,
+} from "lucide-react";
+import toast from "react-hot-toast";
+import { CalendarAPI } from "@/lib/api/calendarApi";
+import type { CalendarDTO, EventDTO } from "@/lib/api/calendarApi";
+import type { CalendarDialogMode, EventPanelPosition } from "@/components/calendar/types";
+
+type EventPanelDialogProps = {
+  open: boolean;
+  mode: CalendarDialogMode;
+  onModeChange: (mode: CalendarDialogMode) => void;
+  onOpenChange: (open: boolean) => void;
+  start: Date | null;
+  end: Date | null;
+  event: EventDTO | null;
+  calendars: CalendarDTO[];
+  preferredCalendarId?: string | null;
+  onSave: (payload: { action: () => Promise<void> }) => Promise<void>;
+  onDelete?: (event: EventDTO) => Promise<void>;
+  position: EventPanelPosition | null;
+};
+
+export function EventPanelDialog({
+  open,
+  mode,
+  onModeChange,
+  onOpenChange,
+  start,
+  end,
+  event,
+  calendars,
+  preferredCalendarId,
+  onSave,
+  onDelete,
+  position,
+}: EventPanelDialogProps) {
+  const resolveDefaultCalendarId = useCallback(
+    (eventCalendarId?: string | null) => {
+      const availableIds = new Set(calendars.map((cal) => cal.id));
+      if (eventCalendarId && availableIds.has(eventCalendarId)) {
+        return eventCalendarId;
+      }
+      if (preferredCalendarId && availableIds.has(preferredCalendarId)) {
+        return preferredCalendarId;
+      }
+      return calendars[0]?.id || "";
+    },
+    [calendars, preferredCalendarId],
+  );
+
+  const [title, setTitle] = React.useState(event?.title ?? "");
+  const [description, setDescription] = React.useState(event?.description ?? "");
+  const [localStart, setLocalStart] = React.useState<Date | null>(start);
+  const [localEnd, setLocalEnd] = React.useState<Date | null>(end);
+  const [calendarId, setCalendarId] = React.useState<string>(
+    resolveDefaultCalendarId(event?.calendar_id),
+  );
+
+  React.useEffect(() => {
+    setTitle(event?.title ?? "");
+    setDescription(event?.description ?? "");
+    setCalendarId(resolveDefaultCalendarId(event?.calendar_id));
+    setLocalStart(start);
+    setLocalEnd(end);
+  }, [event, mode, resolveDefaultCalendarId, start, end]);
+
+  if (!open || !localStart || !localEnd || !position) {
+    return null;
+  }
+
+  const backdrop = (
+    <div
+      className="fixed inset-0 z-40"
+      aria-hidden
+      onClick={() => onOpenChange(false)}
+    />
+  );
+
+  if (mode === "view" && event) {
+    const calendarName =
+      calendars.find((c) => c.id === event.calendar_id)?.name || "Calendar";
+    const color =
+      event.color ||
+      calendars.find((c) => c.id === event.calendar_id)?.color ||
+      "#1E88E5";
+
+    return (
+      <>
+        {backdrop}
+        <div
+          className="fixed z-50 w-[360px] rounded-3xl border bg-[#f0f4f9] shadow-xl animate-in slide-in-from-bottom-8 fade-in duration-300"
+          style={{ top: position.top, left: position.left }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between px-4 pt-3">
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-block h-3 w-3 rounded-full"
+                style={{ backgroundColor: color }}
+              />
+              <span className="text-sm font-semibold text-gray-900">
+                {event.title || "(No title)"}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-gray-500">
+              {!event.is_recurring && onDelete && (
+                <button
+                  type="button"
+                  className="rounded-full p-1 hover:bg-gray-100"
+                  onClick={() => onModeChange("edit")}
+                  aria-label="Edit event"
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
+              )}
+              {!event.is_recurring && onDelete && (
+                <button
+                  type="button"
+                  className="rounded-full p-1 hover:bg-gray-100"
+                  onClick={async () => {
+                    await onDelete(event);
+                  }}
+                  aria-label="Delete event"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+              <button
+                type="button"
+                className="rounded-full p-1 hover:bg-gray-100"
+                onClick={() => onOpenChange(false)}
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+          <div className="px-4 pb-4 pt-2 text-sm">
+            <div className="mb-2 flex items-start gap-3 text-gray-700">
+              <Clock className="mt-0.5 h-4 w-4 text-gray-500" />
+              <div>
+                <div>
+                  {format(localStart, "EEEE, MMMM d")} •{" "}
+                  {format(localStart, "h:mm a")} – {format(localEnd, "h:mm a")}
+                </div>
+              </div>
+            </div>
+            {event.description && (
+              <div className="mb-2 flex items-start gap-3 text-gray-700">
+                <AlignLeft className="mt-0.5 h-4 w-4 text-gray-500" />
+                <p className="whitespace-pre-line text-sm">{event.description}</p>
+              </div>
+            )}
+            <div className="flex items-start gap-3 text-gray-700">
+              <CalendarIcon className="mt-0.5 h-4 w-4 text-gray-500" />
+              <span className="text-sm">{calendarName}</span>
+            </div>
+            {event.is_recurring && (
+              <p className="mt-2 text-xs text-gray-500">
+                This is a recurring event. Editing applies to the entire series.
+              </p>
+            )}
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  const formatForInput = (date: Date) => format(date, "yyyy-MM-dd'T'HH:mm");
+
+  const handleSubmit = async () => {
+    if (!calendarId) {
+      toast.error("Please select a calendar");
+      return;
+    }
+    if (!title.trim()) {
+      toast.error("Title is required");
+      return;
+    }
+
+    const timezone =
+      typeof Intl !== "undefined" && Intl.DateTimeFormat().resolvedOptions().timeZone
+        ? Intl.DateTimeFormat().resolvedOptions().timeZone
+        : "UTC";
+
+    if (mode === "create") {
+      await onSave({
+        action: async () => {
+          await CalendarAPI.createEvent({
+            calendar_id: calendarId,
+            title: title.trim(),
+            description: description || "",
+            start_datetime: localStart.toISOString(),
+            end_datetime: localEnd.toISOString(),
+            timezone,
+            is_all_day: false,
+          });
+        },
+      });
+    } else if (mode === "edit" && event) {
+      await onSave({
+        action: async () => {
+          await CalendarAPI.updateEvent(
+            event.id,
+            {
+              calendar_id: calendarId || event.calendar_id,
+              title: title.trim(),
+              description: description || "",
+              start_datetime: localStart.toISOString(),
+              end_datetime: localEnd.toISOString(),
+              timezone: event.timezone || timezone,
+            },
+            event.etag,
+          );
+        },
+      });
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!event || !onDelete) {
+      return;
+    }
+    await onDelete(event);
+  };
+
+  return (
+    <>
+      {backdrop}
+      <div
+        className="fixed z-50 w-[420px] rounded-3xl border bg-[#f0f4f9] shadow-xl animate-in slide-in-from-bottom-8 fade-in duration-300"
+        style={{ top: position.top, left: position.left }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex flex-col">
+          <div className="px-6 pt-4 pb-2">
+            <input
+              autoFocus
+              className="w-full border-b border-gray-200 bg-inherit pb-1 text-xl font-semibold text-gray-900 outline-none focus:border-blue-500"
+              placeholder="Add title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </div>
+
+          <div className="px-6 pb-4">
+            <div className="mb-3 flex gap-2 text-sm">
+              <button
+                type="button"
+                className="rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700"
+              >
+                Event
+              </button>
+              <button
+                type="button"
+                disabled
+                className="cursor-default rounded-full px-3 py-1 text-xs font-medium text-gray-400"
+              >
+                Task
+              </button>
+              <button
+                type="button"
+                disabled
+                className="cursor-default rounded-full px-3 py-1 text-xs font-medium text-gray-400"
+              >
+                Appointment schedule
+              </button>
+            </div>
+
+            <div className="space-y-3 text-sm">
+              <div className="flex items-start gap-4">
+                <Clock className="mt-1 h-4 w-4 text-gray-500" />
+                <div className="flex-1 space-y-1">
+                  <p className="bg-inherit text-gray-900">
+                    {format(localStart, "EEEE, MMMM d")}{" "}
+                    <span className="text-gray-500">
+                      • {format(localStart, "HH:mm")} - {format(localEnd, "HH:mm")}
+                    </span>
+                  </p>
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                    <input
+                      type="datetime-local"
+                      className="w-full rounded-md border border-gray-300 bg-[#dde3ea] px-2 py-1 text-sm text-gray-900 outline-none focus:border-blue-500"
+                      value={formatForInput(localStart)}
+                      onChange={(e) => {
+                        const next = new Date(e.target.value);
+                        if (!Number.isNaN(next.getTime())) {
+                          setLocalStart(next);
+                        }
+                      }}
+                    />
+                    <input
+                      type="datetime-local"
+                      className="w-full rounded-md border border-gray-300 bg-[#dde3ea] px-2 py-1 text-sm text-gray-900 outline-none focus:border-blue-500"
+                      value={formatForInput(localEnd)}
+                      onChange={(e) => {
+                        const next = new Date(e.target.value);
+                        if (!Number.isNaN(next.getTime())) {
+                          setLocalEnd(next);
+                        }
+                      }}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500">Time zone • Does not repeat</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-4">
+                <AlignLeft className="mt-1 h-4 w-4 text-gray-500" />
+                <textarea
+                  className="min-h-[72px] w-full resize-none rounded-md border border-gray-300 bg-[#dde3ea] px-2 py-1 text-sm text-gray-900 outline-none focus:border-blue-500"
+                  placeholder="Add description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
+
+              {mode === "create" ? (
+                <div className="flex items-center gap-4">
+                  <CalendarIcon className="h-4 w-4 text-gray-500" />
+                  <div className="flex-1">
+                    <p className="text-xs text-gray-500">Calendar</p>
+                    <select
+                      className="mt-1 w-full rounded-md border border-gray-300 bg-[#dde3ea] px-2 py-1 text-sm text-gray-900 outline-none focus:border-blue-500"
+                      value={calendarId}
+                      onChange={(e) => setCalendarId(e.target.value)}
+                    >
+                      {calendars.map((cal) => (
+                        <option key={cal.id} value={cal.id}>
+                          {cal.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              ) : (
+                event && (
+                  <div className="flex items-center gap-4">
+                    <CalendarIcon className="h-4 w-4 text-gray-500" />
+                    <div className="flex items-center gap-2 text-sm text-gray-900">
+                      <span
+                        className="inline-block h-2.5 w-2.5 rounded-full"
+                        style={{
+                          backgroundColor:
+                            calendars.find((c) => c.id === event.calendar_id)?.color || "#1E88E5",
+                        }}
+                      />
+                      <span>
+                        {calendars.find((c) => c.id === event.calendar_id)?.name}
+                      </span>
+                    </div>
+                  </div>
+                )
+              )}
+
+              {event?.is_recurring && (
+                <p className="text-xs text-gray-500">
+                  This is a recurring event. Editing is currently applied to the
+                  entire series. Per-instance editing will be added later.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between border-t bg-inherit px-6 py-3">
+            <button
+              type="button"
+              className="text-sm font-medium text-blue-600 hover:text-blue-700"
+              onClick={() => {}}
+            >
+              More options
+            </button>
+            <div className="flex items-center gap-2">
+              {mode === "edit" && event && !event.is_recurring && (
+                <button
+                  type="button"
+                  className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
+                  onClick={handleDelete}
+                >
+                  Delete
+                </button>
+              )}
+              <button
+                type="button"
+                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                onClick={() => onOpenChange(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded-full bg-blue-600 px-5 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+                onClick={handleSubmit}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}

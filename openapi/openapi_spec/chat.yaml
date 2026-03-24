@@ -31,7 +31,7 @@ info:
     - **Status tracking**: Each message has per-recipient status (sent/delivered/read)
     
     ## Limitations (Current Version)
-    - Text messages only (no files/images)
+    - Rich attachment processing (virus scan/transcoding) is not included
     - No message editing or deletion
     - No message search functionality
     - No external notifications (email/push)
@@ -154,7 +154,7 @@ components:
 
     Message:
       type: object
-      description: A text message in a chat
+      description: A message in a chat (text and/or attachments)
       properties:
         id:
           type: integer
@@ -168,9 +168,31 @@ components:
           readOnly: true
         content:
           type: string
-          description: Message text content
-          minLength: 1
+          description: Message text content (can be empty when message contains attachments)
           maxLength: 10000
+        has_attachments:
+          type: boolean
+          description: Whether this message includes one or more attachments
+          readOnly: true
+        attachment_count:
+          type: integer
+          description: Number of attachments linked to this message
+          readOnly: true
+        attachments:
+          type: array
+          description: Attachment metadata for this message
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/MessageAttachment'
+        is_forwarded:
+          type: boolean
+          description: Whether the message is a forwarded message
+          readOnly: true
+        forwarded_from:
+          allOf:
+            - $ref: '#/components/schemas/ForwardedFrom'
+          nullable: true
+          readOnly: true
         status:
           type: string
           enum: [sent, delivered, read]
@@ -183,6 +205,56 @@ components:
           readOnly: true
       required:
         - content
+
+    ForwardedFrom:
+      type: object
+      description: Metadata about the original message for forwarded messages
+      properties:
+        message_id:
+          type: integer
+          nullable: true
+          description: Original message ID (may be null if source message was deleted)
+        sender_display:
+          type: string
+          description: Snapshot of original sender display name
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Snapshot of original message creation time
+      required:
+        - sender_display
+
+    MessageAttachment:
+      type: object
+      description: Attachment metadata linked to a message
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        message:
+          type: integer
+          nullable: true
+        file_type:
+          type: string
+          enum: [image, video, document]
+        file_url:
+          type: string
+          nullable: true
+        thumbnail_url:
+          type: string
+          nullable: true
+        file_size:
+          type: integer
+        file_size_display:
+          type: string
+        original_filename:
+          type: string
+        mime_type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
 
     MessageStatus:
       type: object
@@ -273,6 +345,119 @@ components:
           minItems: 1
       required:
         - message_ids
+
+    ForwardBatchRequest:
+      type: object
+      description: Request to forward multiple messages to multiple chats/users
+      properties:
+        source_chat_id:
+          type: integer
+          description: Source chat ID where selected messages belong
+        source_message_ids:
+          type: array
+          description: Message IDs selected for forwarding (max 100)
+          minItems: 1
+          maxItems: 100
+          items:
+            type: integer
+        target_chat_ids:
+          type: array
+          description: Existing target chat IDs to forward into
+          items:
+            type: integer
+        target_user_ids:
+          type: array
+          description: Target user IDs. Backend resolves or creates private chats in same project.
+          items:
+            type: integer
+      required:
+        - source_chat_id
+        - source_message_ids
+
+    ForwardFailureItem:
+      type: object
+      description: Failed forwarding record for a single source-message/target pair
+      properties:
+        target_chat_id:
+          type: integer
+          nullable: true
+        target_user_id:
+          type: integer
+          nullable: true
+        source_message_id:
+          type: integer
+          nullable: true
+        reason:
+          type: string
+          description: |
+            Machine-readable failure reason.
+            Includes reasons like `not_participant`, `target_chat_not_found`,
+            `attachment_copy_failed`, and `source_attachment_missing`.
+      required:
+        - reason
+
+    ForwardBatchSummary:
+      type: object
+      properties:
+        requested_messages:
+          type: integer
+        forwardable_messages:
+          type: integer
+        target_chats:
+          type: integer
+        attempted_sends:
+          type: integer
+        succeeded_sends:
+          type: integer
+        failed_sends:
+          type: integer
+      required:
+        - requested_messages
+        - forwardable_messages
+        - target_chats
+        - attempted_sends
+        - succeeded_sends
+        - failed_sends
+
+    ForwardBatchResolved:
+      type: object
+      properties:
+        target_chat_ids:
+          type: array
+          items:
+            type: integer
+        created_private_chat_ids:
+          type: array
+          items:
+            type: integer
+        skipped_message_ids:
+          type: array
+          items:
+            type: integer
+      required:
+        - target_chat_ids
+        - created_private_chat_ids
+        - skipped_message_ids
+
+    ForwardBatchResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success, partial_success, failed]
+        summary:
+          $ref: '#/components/schemas/ForwardBatchSummary'
+        resolved:
+          $ref: '#/components/schemas/ForwardBatchResolved'
+        failures:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForwardFailureItem'
+      required:
+        - status
+        - summary
+        - resolved
+        - failures
 
     AddParticipantsRequest:
       type: object
@@ -750,6 +935,45 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /messages/forward_batch/:
+    post:
+      summary: Forward multiple messages in batch
+      description: |
+        Forward selected messages from a source chat to multiple target chats and/or users.
+        Users are resolved to private chats in the same project as the source chat.
+        This endpoint supports partial success and returns detailed failure records.
+        Supports both text and attachment forwarding. Attachments are copied as new files per forwarded message.
+      operationId: forwardMessagesBatch
+      tags:
+        - Message Management
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForwardBatchRequest'
+      responses:
+        '200':
+          description: Forward completed (full or partial success)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForwardBatchResponse'
+        '400':
+          description: Invalid request or complete failure
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ForwardBatchResponse'
+                  - $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   # ==================== Message Status ====================
 
   /chats/{chat_id}/messages/mark-read/:
@@ -1207,4 +1431,3 @@ paths:
 # - Invalid token: Connection closed with code 4001
 # - Server error: Connection closed with code 1011
 # - Client should implement automatic reconnection with exponential backoff
-

@@ -115,12 +115,18 @@ class MessageSerializer(MessageContentValidationMixin, serializers.ModelSerializ
     sender = UserSimpleSerializer(read_only=True)
     status = serializers.SerializerMethodField()
     statuses = MessageStatusSerializer(many=True, read_only=True)
+    has_attachments = serializers.SerializerMethodField()
+    attachment_count = serializers.SerializerMethodField()
+    is_forwarded = serializers.SerializerMethodField()
+    forwarded_from = serializers.SerializerMethodField()
     
     class Meta:
         model = Message
         fields = [
             'id', 'chat', 'sender', 'content', 'status', 'statuses',
-            'created_at', 'updated_at', 'is_deleted'
+            'created_at', 'updated_at', 'is_deleted',
+            'has_attachments', 'attachment_count',
+            'is_forwarded', 'forwarded_from'
         ]
         read_only_fields = ['id', 'sender', 'created_at', 'updated_at']
     
@@ -143,6 +149,33 @@ class MessageSerializer(MessageContentValidationMixin, serializers.ModelSerializ
             return msg_status.status
         except MessageStatus.DoesNotExist:
             return 'sent'
+
+    def get_is_forwarded(self, obj):
+        """Whether message has forwarded metadata."""
+        return bool(
+            obj.forwarded_from_message_id
+            or obj.forwarded_from_sender_display
+            or obj.forwarded_from_created_at
+        )
+
+    def get_has_attachments(self, obj):
+        """Whether message contains attachments."""
+        return bool(obj.has_attachments or obj.attachments.exists())
+
+    def get_attachment_count(self, obj):
+        """Number of attachments linked to this message."""
+        return obj.attachments.count()
+
+    def get_forwarded_from(self, obj):
+        """Forwarded source metadata."""
+        if not self.get_is_forwarded(obj):
+            return None
+
+        return {
+            'message_id': obj.forwarded_from_message_id,
+            'sender_display': obj.forwarded_from_sender_display or '',
+            'created_at': obj.forwarded_from_created_at,
+        }
 
 
 class MessageCreateSerializer(MessageContentValidationMixin, ChatParticipantValidationMixin, serializers.ModelSerializer):
@@ -238,6 +271,13 @@ class ChatListSerializer(ChatUnreadCountMixin, serializers.ModelSerializer):
         ).select_related('sender').order_by('-created_at').first()
         
         if last_msg:
+            attachment_count = last_msg.attachments.count()
+            has_attachments = bool(last_msg.has_attachments or attachment_count > 0)
+            is_forwarded = bool(
+                last_msg.forwarded_from_message_id
+                or last_msg.forwarded_from_sender_display
+                or last_msg.forwarded_from_created_at
+            )
             return {
                 'id': last_msg.id,
                 'chat_id': last_msg.chat_id,
@@ -247,6 +287,18 @@ class ChatListSerializer(ChatUnreadCountMixin, serializers.ModelSerializer):
                     'email': last_msg.sender.email,
                 },
                 'content': last_msg.content,
+                'is_forwarded': is_forwarded,
+                'forwarded_from': (
+                    {
+                        'message_id': last_msg.forwarded_from_message_id,
+                        'sender_display': last_msg.forwarded_from_sender_display or '',
+                        'created_at': last_msg.forwarded_from_created_at.isoformat() if last_msg.forwarded_from_created_at else None,
+                    }
+                    if is_forwarded
+                    else None
+                ),
+                'has_attachments': has_attachments,
+                'attachment_count': attachment_count,
                 'created_at': last_msg.created_at.isoformat(),
                 'updated_at': last_msg.updated_at.isoformat(),
             }
@@ -398,6 +450,56 @@ class MarkAsReadSerializer(serializers.Serializer):
             except Message.DoesNotExist:
                 raise serializers.ValidationError("Message not found")
         return value
+
+
+class ForwardBatchSerializer(serializers.Serializer):
+    """Serializer for forwarding multiple messages to multiple targets"""
+    source_chat_id = serializers.IntegerField(required=True)
+    source_message_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=True,
+        allow_empty=False,
+        max_length=100
+    )
+    target_chat_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=False,
+        allow_empty=True,
+        default=list,
+        max_length=100
+    )
+    target_user_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=False,
+        allow_empty=True,
+        default=list,
+        max_length=100
+    )
+    def validate_source_message_ids(self, value):
+        """Normalize and validate source message ids"""
+        unique_ids = list(dict.fromkeys(value))
+        if not unique_ids:
+            raise serializers.ValidationError("source_message_ids cannot be empty")
+        return unique_ids
+
+    def validate_target_chat_ids(self, value):
+        """Normalize target chat ids"""
+        return list(dict.fromkeys(value))
+
+    def validate_target_user_ids(self, value):
+        """Normalize target user ids"""
+        return list(dict.fromkeys(value))
+
+    def validate(self, attrs):
+        target_chat_ids = attrs.get('target_chat_ids', [])
+        target_user_ids = attrs.get('target_user_ids', [])
+
+        if not target_chat_ids and not target_user_ids:
+            raise serializers.ValidationError(
+                "At least one target is required (target_chat_ids or target_user_ids)"
+            )
+
+        return attrs
 
 
 class MessageAttachmentSerializer(serializers.ModelSerializer):
@@ -574,10 +676,13 @@ class MessageCreateWithAttachmentsSerializer(ChatParticipantValidationMixin, ser
         
         # Link attachments to the message
         if attachment_ids:
-            MessageAttachment.objects.filter(
+            linked_count = MessageAttachment.objects.filter(
                 id__in=attachment_ids,
                 uploader=request.user,
                 message__isnull=True
             ).update(message=message)
+            if linked_count > 0 and not message.has_attachments:
+                message.has_attachments = True
+                message.save(update_fields=['has_attachments', 'updated_at'])
         
         return message

@@ -10,9 +10,10 @@ import {
   PaginatedResponse
 } from '@/types/permission';
 
-// API settings
-const DEFAULT_API_BASE_URL = 'https://volar-probankruptcy-orval.ngrok-free.dev';
+// API settings — base must point at access_control namespace so /roles/, /organizations/, etc. resolve correctly
+const DEFAULT_API_BASE_URL = 'https://volar-probankruptcy-orval.ngrok-free.dev/api/access_control';
 
+// When overriding, set NEXT_PUBLIC_API_URL to the access_control base (e.g. https://<host>/api/access_control).
 const API_BASE_URL =
   (process.env.NEXT_PUBLIC_API_URL && process.env.NEXT_PUBLIC_API_URL.trim()) ||
   DEFAULT_API_BASE_URL;
@@ -247,118 +248,26 @@ export class PermissionAPI {
 
 
 
-  // fetch current user's roles from /auth/me/ endpoint (which queries UserRole table)
-  // This function ONLY returns roles that actually exist in the database for the current user
-  // No fallback logic - if user has no roles, returns empty array
+  // Current user's roles from auth store only — no network calls (avoids /api/access_control/roles/).
   static async getCurrentUserRoles(): Promise<Role[]> {
     try {
-      // Get current user from auth store
       const { useAuthStore } = await import('../authStore');
       const currentUser = useAuthStore.getState().user;
-      
-      if (!currentUser) {
-        console.warn('⚠️ No current user found - returning empty roles');
+
+      if (!currentUser?.roles || !Array.isArray(currentUser.roles) || currentUser.roles.length === 0) {
         return [];
       }
-      
-      console.log('👤 Current user:', currentUser.email);
-      
-      // Strategy 1: Check if user object already has roles from /auth/me/
-      if (currentUser.roles && Array.isArray(currentUser.roles) && currentUser.roles.length > 0) {
-        console.log('✅ Found roles in user object:', currentUser.roles);
-        
-        // Get all roles to find matching role objects
-        const allRoles = await this.getRoles();
-        const userRoleObjects = allRoles.filter(role => 
-          currentUser.roles.includes(role.name)
-        );
-        
-        if (userRoleObjects.length > 0) {
-          console.log('✅ Matched user roles from database:', userRoleObjects);
-          console.log('📊 Role ranks:', userRoleObjects.map(r => ({ name: r.name, rank: r.rank })));
-          
-          // Verify: check if all role names from /auth/me/ were matched
-          const unmatchedRoles = currentUser.roles.filter(roleName => 
-            !userRoleObjects.some(role => role.name === roleName)
-          );
-          if (unmatchedRoles.length > 0) {
-            console.warn('⚠️ Some role names from /auth/me/ could not be matched:', unmatchedRoles);
-            console.warn('This might indicate a data inconsistency between UserRole table and Role table');
-          }
-          
-          return userRoleObjects;
-        } else {
-          console.warn('⚠️ No matching roles found for role names:', currentUser.roles);
-          console.warn('User has roles in /auth/me/ but they do not exist in Role table');
-          // Return empty array - user has no valid roles
-          return [];
-        }
-      }
-      
-      // Strategy 2: Force refresh user data from /auth/me/ to get latest roles
-      console.log('🔄 Refreshing user data from /auth/me/ to get latest roles...');
-      
-      try {
-        // Import authAPI to call /auth/me/ directly
-        const { authAPI } = await import('../api');
-        const freshUserData = await authAPI.getCurrentUser();
-        console.log('📡 Fresh user data from /auth/me/:', freshUserData);
-        
-        if (freshUserData.roles && Array.isArray(freshUserData.roles) && freshUserData.roles.length > 0) {
-          console.log('✅ Found fresh roles from /auth/me/:', freshUserData.roles);
-          
-          // Get all roles to find matching role objects
-          const allRoles = await this.getRoles();
-          console.log('📋 All available roles:', allRoles.map(r => ({ name: r.name, rank: r.rank })));
-          
-          const userRoleObjects = allRoles.filter(role => 
-            freshUserData.roles.includes(role.name)
-          );
-          
-          if (userRoleObjects.length > 0) {
-            console.log('✅ Matched fresh user roles:', userRoleObjects);
-            console.log('📊 Role ranks:', userRoleObjects.map(r => ({ name: r.name, rank: r.rank })));
-            
-            // Verify: check if all role names from /auth/me/ were matched
-            const unmatchedRoles = freshUserData.roles.filter(roleName => 
-              !userRoleObjects.some(role => role.name === roleName)
-            );
-            if (unmatchedRoles.length > 0) {
-              console.warn('⚠️ Some role names from /auth/me/ could not be matched:', unmatchedRoles);
-              console.warn('This might indicate a data inconsistency between UserRole table and Role table');
-            }
-            
-            // Update auth store with fresh data
-            const authStore = useAuthStore.getState();
-            authStore.setUser(freshUserData);
-            
-            return userRoleObjects;
-          } else {
-            console.warn('⚠️ No matching roles found for role names:', freshUserData.roles);
-            console.warn('User has roles in /auth/me/ but they do not exist in Role table');
-            // Return empty array - user has no valid roles
-            return [];
-          }
-        } else {
-          console.log('ℹ️ User has no roles assigned in database (empty roles array from /auth/me/)');
-          // User exists but has no roles - this is valid, return empty array
-          return [];
-        }
-        
-      } catch (authError) {
-        console.error('❌ Could not refresh user data from /auth/me/:', authError);
-        // If we can't get fresh data, return empty array for safety
-        return [];
-      }
-      
-      // No fallback logic - if user has no roles, return empty array
-      // This ensures we never assign roles that don't belong to the user
-      console.log('ℹ️ User has no roles - returning empty array (safe default)');
-      return [];
-      
-    } catch (error) {
-      console.error('❌ Error in getCurrentUserRoles:', error);
-      // Return empty array on error for safety
+
+      const defaultRank = 10;
+      return currentUser.roles.map((name: string, index: number) => ({
+        id: `auth-${index}-${name}`,
+        name,
+        description: `Role: ${name}`,
+        rank: defaultRank,
+        organizationId: undefined,
+        isReadOnly: false,
+      }));
+    } catch {
       return [];
     }
   }

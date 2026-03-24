@@ -1,7 +1,6 @@
 import * as React from "react"
 import { AlertTriangle, Check } from "lucide-react"
 import { cn } from "@/lib/utils"
-import ScrollableContainer from "@/components/layout/primitives/ScrollableContainer"
 import JiraTicketKey from "@/components/jira-ticket/JiraTicketKey"
 import JiraTicketTypeIcon, { JiraTicketType } from "@/components/jira-ticket/JiraTicketTypeIcon"
 import { Avatar } from "@/components/avatar/Avatar"
@@ -11,17 +10,26 @@ export interface JiraBoardColumnsProps extends React.HTMLAttributes<HTMLDivEleme
 }
 
 const JiraBoardColumns = React.forwardRef<HTMLDivElement, JiraBoardColumnsProps>(
-  ({ children, className, minWidth = 920, ...props }, ref) => (
-    <ScrollableContainer direction="horizontal" className="mt-4 pb-2">
+  ({ children, className, minWidth, id = "mj-board-columns-scroll", ...props }, ref) => (
+    <div
+      ref={ref}
+      id={id}
+      data-testid="board-columns"
+      className={cn(
+        "mt-4 w-full min-w-0 max-w-full overflow-x-auto overflow-y-visible overscroll-x-contain pb-2"
+      )}
+      {...props}
+    >
       <div
-        ref={ref}
-        className={cn("flex items-start gap-4", className)}
-        style={{ minWidth }}
-        {...props}
+        className={cn(
+          "flex w-max min-w-full items-stretch divide-x divide-slate-200",
+          className
+        )}
+        style={typeof minWidth === "number" ? { minWidth } : undefined}
       >
         {children}
       </div>
-    </ScrollableContainer>
+    </div>
   )
 )
 JiraBoardColumns.displayName = "JiraBoardColumns"
@@ -38,32 +46,37 @@ const JiraBoardColumn = React.forwardRef<HTMLDivElement, JiraBoardColumnProps>(
     <div
       ref={ref}
       className={cn(
-        "flex w-[252px] flex-col rounded-md border border-slate-200 bg-[#f7f8f9] p-3",
+        "flex min-h-[420px] min-w-[240px] max-w-[300px] flex-1 basis-0 flex-col overflow-hidden bg-[#f7f8f9]",
         className
       )}
       {...props}
     >
-      <div className="mb-3 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-        <div className="flex items-center gap-2">
-          <span>{title}</span>
+      <div className="flex h-11 items-center justify-between border-b border-slate-200 px-4 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate">{title}</span>
           {typeof count === "number" ? (
-            <span className="rounded-sm bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+            <span className="shrink-0 rounded-sm bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
               {count}
             </span>
           ) : null}
         </div>
         {showDoneIcon ? <Check className="h-4 w-4 text-emerald-500" /> : null}
       </div>
-      <div className="flex min-h-[120px] flex-1 flex-col gap-2 overflow-y-auto pr-1">
+      <div className="flex flex-1 flex-col gap-0.5 px-2 py-2 ">
         {children}
       </div>
-      {footer ? <div className="mt-3">{footer}</div> : null}
+      {footer ? <div className="border-t border-slate-200 px-2 py-2">{footer}</div> : null}
     </div>
   )
 )
 JiraBoardColumn.displayName = "JiraBoardColumn"
 
 export type JiraBoardDueTone = "default" | "warning" | "danger"
+
+export interface JiraDueDateBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
+  label: string
+  tone?: JiraBoardDueTone
+}
 
 export interface JiraBoardCardProps extends React.HTMLAttributes<HTMLDivElement> {
   summary: React.ReactNode
@@ -87,6 +100,24 @@ const dueToneClasses: Record<JiraBoardDueTone, string> = {
   danger: "border-red-500 bg-white text-red-500",
 }
 
+const JiraDueDateBadge = React.forwardRef<HTMLDivElement, JiraDueDateBadgeProps>(
+  ({ label, tone = "default", className, ...props }, ref) => (
+    <div
+      ref={ref}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap",
+        dueToneClasses[tone],
+        className
+      )}
+      {...props}
+    >
+      <AlertTriangle className="h-3 w-3" />
+      {label}
+    </div>
+  )
+)
+JiraDueDateBadge.displayName = "JiraDueDateBadge"
+
 const JiraBoardCard = React.forwardRef<HTMLDivElement, JiraBoardCardProps>(
   (
     {
@@ -109,7 +140,7 @@ const JiraBoardCard = React.forwardRef<HTMLDivElement, JiraBoardCardProps>(
       role="button"
       tabIndex={0}
       className={cn(
-        "min-h-[88px] rounded-md border bg-white px-3 py-2.5 text-[13px] shadow-sm transition",
+        "min-h-[132px] w-full min-w-0 shrink-0 rounded-md border bg-white px-3 py-2.5 text-[13px] shadow-sm transition grid grid-rows-[40px_24px_24px] gap-2 overflow-hidden",
         "border-slate-200 hover:border-slate-300 hover:shadow",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
         isDragging && "border-blue-400 bg-blue-50 shadow-lg",
@@ -118,28 +149,31 @@ const JiraBoardCard = React.forwardRef<HTMLDivElement, JiraBoardCardProps>(
       )}
       {...props}
     >
-      {typeof summary === "string" ? (
-        <div className="text-[13px] font-medium text-slate-900">{summary}</div>
-      ) : (
-        summary
-      )}
-      {dueDate ? (
-        <div
-          className={cn(
-            "mt-2 inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-[11px] font-semibold",
-            dueToneClasses[dueTone]
-          )}
-        >
-          <AlertTriangle className="h-3 w-3" />
-          {dueDate}
-        </div>
-      ) : null}
-      <div className="mt-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+      {/* min-h-0: Safari grid items default to min-height:auto and won't shrink to the row track, so titles overflow into the next rows; overflow-hidden clips. */}
+      <div className="h-[40px] min-h-0 min-w-0 w-full overflow-hidden">
+        {typeof summary === "string" ? (
+          <div className="line-clamp-2 w-full min-w-0 break-words text-[13px] font-medium leading-5 text-slate-900">
+            {summary}
+          </div>
+        ) : (
+          summary
+        )}
+      </div>
+      <div className="h-6 min-h-0 min-w-0 overflow-hidden">
+        {dueDate ? (
+          <JiraDueDateBadge label={dueDate} tone={dueTone} className="self-start" />
+        ) : null}
+      </div>
+      <div className="flex h-6 min-h-0 min-w-0 items-center justify-between gap-2 overflow-hidden">
+        <div className="flex min-w-0 items-center gap-2">
           <JiraTicketTypeIcon type={type} size={18} />
-          <JiraTicketKey jiraTicketKey={ticketKey} onClick={() => {}} />
+          <JiraTicketKey
+            jiraTicketKey={ticketKey}
+            onClick={() => {}}
+            className="block max-w-[140px] truncate"
+          />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           {meta}
           {assignee ? (
             <Avatar
@@ -174,4 +208,4 @@ const JiraBoardCard = React.forwardRef<HTMLDivElement, JiraBoardCardProps>(
 )
 JiraBoardCard.displayName = "JiraBoardCard"
 
-export { JiraBoardColumns, JiraBoardColumn, JiraBoardCard }
+export { JiraBoardColumns, JiraBoardColumn, JiraBoardCard, JiraDueDateBadge }

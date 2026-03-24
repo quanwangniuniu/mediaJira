@@ -296,7 +296,7 @@ export default function PreviewModal({
                     />
                   </MobileCardFrame>
                 ) : (
-                  <DesktopCardFrame locked={v.locked} variantKey={v.variantKey}>
+                  <DesktopCardFrame variantKey={v.variantKey}>
                     <PlacementCard
                       locked={v.locked}
                       kind={v.kind}

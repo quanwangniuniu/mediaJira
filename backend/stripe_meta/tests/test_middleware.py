@@ -50,6 +50,9 @@ class UsageTrackingMiddlewareTest(TestCase):
             is_active=True
         )
         
+        # Delete auto-created Free subscription to keep tests focused on Basic Plan
+        Subscription.objects.filter(organization=self.organization, plan__name="Free").delete()
+        
         # Generate organization access token
         self.org_token = generate_organization_access_token(self.user)
     

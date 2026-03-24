@@ -11,7 +11,12 @@ import {
 const meta: Meta<typeof Tooltip> = {
   title: 'Overlay/Primitives',
   component: Tooltip,
-  subcomponents: { Popover, Menu, MenuItem, Dropdown },
+  subcomponents: { 
+    Popover: Popover as any, 
+    Menu: Menu as any, 
+    MenuItem: MenuItem as any, 
+    Dropdown: Dropdown as any 
+  },
   parameters: {
     layout: 'centered',
   },

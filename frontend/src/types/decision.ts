@@ -110,6 +110,10 @@ export interface DecisionDraftResponse {
   lastEditedAt?: string;
   lastEditedBy?: number | null;
   isReferenceCase?: boolean;
+  /** Whether this decision was created by the Agent. */
+  createdByAgent?: boolean;
+  /** The UUID of the Agent session that created this decision, if any. */
+  agentSessionId?: string | null;
 }
 
 export interface DecisionCommittedResponse {
@@ -124,9 +128,15 @@ export interface DecisionCommittedResponse {
   createdAt?: string;
   createdBy?: number | null;
   committedAt?: string | null;
+  approvedAt?: string | null;
+  approvedBy?: number | null;
   isReferenceCase?: boolean;
   options?: DecisionOptionDraft[];
   signals?: DecisionSignalDraft[];
+  /** Whether this decision was created by the Agent. */
+  createdByAgent?: boolean;
+  /** The UUID of the Agent session that created this decision, if any. */
+  agentSessionId?: string | null;
 }
 
 export interface DecisionListItem {
@@ -139,6 +149,10 @@ export interface DecisionListItem {
   createdAt?: string | null;
   committedAt?: string | null;
   lastEditedAt?: string | null;
+  /** Whether this decision was created by the Agent. */
+  createdByAgent?: boolean;
+  /** The UUID of the Agent session that created this decision, if any. */
+  agentSessionId?: string | null;
 }
 
 export interface DecisionListResponse {

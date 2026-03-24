@@ -35,6 +35,11 @@ class Spreadsheet(TimeStampedModel):
         return f"{self.name} (Project: {self.project.name})"
 
 
+class SheetKind(models.TextChoices):
+    NORMAL = 'normal', 'Normal'
+    PIVOT = 'pivot', 'Pivot'
+
+
 class Sheet(TimeStampedModel):
     spreadsheet = models.ForeignKey(
         Spreadsheet,
@@ -48,6 +53,20 @@ class Sheet(TimeStampedModel):
     )
     position = models.IntegerField(
         help_text="Position/order of the sheet within the spreadsheet"
+    )
+    kind = models.CharField(
+        max_length=20,
+        choices=SheetKind.choices,
+        default=SheetKind.NORMAL,
+        help_text="normal = standard sheet, pivot = pivot table sheet"
+    )
+    frozen_row_count = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Number of rows to freeze (0 = none, 1 = freeze first row, etc.)"
+    )
+    frozen_column_count = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Number of columns to freeze (0 = none)"
     )
 
     class Meta:
@@ -75,6 +94,37 @@ class Sheet(TimeStampedModel):
 
     def __str__(self):
         return f"{self.name} (in {self.spreadsheet.name})"
+
+
+class PivotConfig(TimeStampedModel):
+    """Persisted pivot table definition linked 1:1 to a pivot sheet."""
+
+    pivot_sheet = models.OneToOneField(
+        Sheet,
+        on_delete=models.CASCADE,
+        related_name='pivot_config',
+        help_text="Pivot sheet that displays aggregated results"
+    )
+    source_sheet = models.ForeignKey(
+        Sheet,
+        on_delete=models.CASCADE,
+        related_name='pivot_sources',
+        help_text="Source sheet whose data is aggregated"
+    )
+    rows_config = models.JSONField(default=list, help_text="List of row field names")
+    columns_config = models.JSONField(default=list, help_text="List of column configs (field or {field, sort})")
+    values_config = models.JSONField(default=list, help_text="List of {field, aggregation, display}")
+    filters_config = models.JSONField(default=dict, blank=True, help_text="Optional filters")
+    show_grand_total_row = models.BooleanField(default=True)
+    show_grand_total_column = models.BooleanField(default=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['source_sheet'], name='pivotconfig_source_sheet_idx'),
+        ]
+
+    def __str__(self):
+        return f"PivotConfig pivot_sheet={self.pivot_sheet_id} source_sheet={self.source_sheet_id}"
 
 
 class SheetRow(TimeStampedModel):
@@ -367,6 +417,76 @@ class CellDependency(TimeStampedModel):
         return f"{self.from_cell} depends on {self.to_cell}"
 
 
+class SpreadsheetHighlightScope(models.TextChoices):
+    CELL = 'CELL', 'Cell'
+    ROW = 'ROW', 'Row'
+    COLUMN = 'COLUMN', 'Column'
+
+
+class SpreadsheetHighlight(TimeStampedModel):
+    spreadsheet = models.ForeignKey(
+        Spreadsheet,
+        on_delete=models.CASCADE,
+        related_name='highlights'
+    )
+    sheet = models.ForeignKey(
+        Sheet,
+        on_delete=models.CASCADE,
+        related_name='highlights'
+    )
+    scope = models.CharField(max_length=10, choices=SpreadsheetHighlightScope.choices)
+    row_index = models.IntegerField(null=True, blank=True)
+    col_index = models.IntegerField(null=True, blank=True)
+    color = models.CharField(max_length=20)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['sheet', 'scope', 'row_index', 'col_index'],
+                name='unique_sheet_highlight_scope_position'
+            )
+        ]
+        indexes = [
+            models.Index(fields=['sheet', 'scope']),
+        ]
+
+    def __str__(self):
+        return f"{self.scope} highlight on sheet {self.sheet_id}"
+
+
+class SpreadsheetCellFormat(TimeStampedModel):
+    """Per-cell text formatting (bold, italic, strikethrough, text color, font family, font size)."""
+    sheet = models.ForeignKey(
+        Sheet,
+        on_delete=models.CASCADE,
+        related_name='cell_formats'
+    )
+    row_index = models.IntegerField(help_text="0-based row position")
+    column_index = models.IntegerField(help_text="0-based column position")
+    bold = models.BooleanField(default=False)
+    italic = models.BooleanField(default=False)
+    strikethrough = models.BooleanField(default=False)
+    text_color = models.CharField(max_length=20, null=True, blank=True, help_text="Hex color e.g. #333333")
+    font_family = models.CharField(max_length=100, null=True, blank=True, help_text="Font family e.g. Arial, Helvetica")
+    font_size = models.PositiveSmallIntegerField(null=True, blank=True, help_text="Font size in pixels")
+    # Number format: { "type": "GENERAL"|"NUMBER"|"CURRENCY"|"PERCENT", "currency_code": "USD"|"EUR"|..., "decimal_places": 0..10 }
+    number_format = models.JSONField(null=True, blank=True, help_text="Display format for numeric cells (type, currency_code, decimal_places)")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['sheet', 'row_index', 'column_index'],
+                name='unique_sheet_cell_format_position'
+            )
+        ]
+        indexes = [
+            models.Index(fields=['sheet']),
+        ]
+
+    def __str__(self):
+        return f"Cell format at ({self.row_index},{self.column_index}) on sheet {self.sheet_id}"
+
+
 class WorkflowPattern(TimeStampedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     owner = models.ForeignKey(
@@ -417,4 +537,59 @@ class WorkflowPatternStep(TimeStampedModel):
 
     def __str__(self):
         return f"{self.pattern_id} step {self.seq}"
+
+
+class PatternJobStatus(models.TextChoices):
+    QUEUED = 'queued', 'Queued'
+    RUNNING = 'running', 'Running'
+    SUCCEEDED = 'succeeded', 'Succeeded'
+    FAILED = 'failed', 'Failed'
+
+
+class PatternJob(TimeStampedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    pattern = models.ForeignKey(
+        WorkflowPattern,
+        on_delete=models.CASCADE,
+        related_name='jobs'
+    )
+    spreadsheet = models.ForeignKey(
+        Spreadsheet,
+        on_delete=models.CASCADE,
+        related_name='pattern_jobs'
+    )
+    sheet = models.ForeignKey(
+        Sheet,
+        on_delete=models.CASCADE,
+        related_name='pattern_jobs'
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=PatternJobStatus.choices,
+        default=PatternJobStatus.QUEUED
+    )
+    progress = models.PositiveSmallIntegerField(default=0)
+    step_cursor = models.IntegerField(null=True, blank=True)
+    error_code = models.CharField(max_length=50, null=True, blank=True)
+    error_message = models.TextField(blank=True, default='')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='pattern_jobs'
+    )
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['created_by', 'status']),
+            models.Index(fields=['pattern', 'status']),
+            models.Index(fields=['sheet', 'status']),
+        ]
+
+    def __str__(self):
+        return f"PatternJob {self.id} ({self.status})"
 

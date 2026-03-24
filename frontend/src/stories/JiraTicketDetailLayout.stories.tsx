@@ -1,5 +1,6 @@
 import React from "react"
 import { MoreHorizontal, Share2 } from "lucide-react"
+import { expect, within } from "@storybook/test"
 import JiraTicketKey from "../components/jira-ticket/JiraTicketKey"
 import JiraTicketSummary from "../components/jira-ticket/JiraTicketSummary"
 import JiraTicketTypeIcon from "../components/jira-ticket/JiraTicketTypeIcon"
@@ -107,6 +108,11 @@ export const ContentDefault = {
 
 export const SidebarDefault = {
     name: "Sidebar / Default",
+    parameters: {
+        chromatic: {
+            viewports: [768, 1200],
+        },
+    },
     render: () => (
         <StoryShell>
             <div className="max-w-[360px]">
@@ -114,10 +120,21 @@ export const SidebarDefault = {
             </div>
         </StoryShell>
     ),
+    play: async ({ canvasElement }: { canvasElement: HTMLElement }) => {
+        const canvas = within(canvasElement)
+        await expect(canvas.getByRole("button", { name: /details/i })).toBeInTheDocument()
+        await expect(canvas.getByText("Assignee")).toBeInTheDocument()
+        await expect(canvas.getByText("Reporter")).toBeInTheDocument()
+    },
 }
 
 export const SidebarCollapsed = {
     name: "Sidebar / Collapsed",
+    parameters: {
+        chromatic: {
+            viewports: [768, 1200],
+        },
+    },
     render: () => (
         <StoryShell>
             <div className="max-w-[360px]">
@@ -125,6 +142,45 @@ export const SidebarCollapsed = {
             </div>
         </StoryShell>
     ),
+    play: async ({ canvasElement }: { canvasElement: HTMLElement }) => {
+        const canvas = within(canvasElement)
+        const trigger = canvas.getByRole("button", { name: /details/i })
+        await expect(trigger).toHaveAttribute("aria-expanded", "false")
+        await expect(canvas.queryByText("Assignee")).not.toBeInTheDocument()
+    },
+}
+
+export const SidebarVisualRegression = {
+    name: "Visual Test / Sidebar States",
+    parameters: {
+        chromatic: {
+            viewports: [768, 1200],
+        },
+        docs: {
+            description: {
+                story:
+                    "Visual regression baseline for the Jira-like detail sidebar. This story is intended for Storybook + Chromatic visual tests.",
+            },
+        },
+    },
+    render: () => (
+        <StoryShell>
+            <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-lg border border-slate-200 bg-white">
+                    <TicketDetailSidebar className="border-l-0" />
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-white">
+                    <TicketDetailSidebar defaultCollapsed className="border-l-0" />
+                </div>
+            </div>
+        </StoryShell>
+    ),
+    play: async ({ canvasElement }: { canvasElement: HTMLElement }) => {
+        const canvas = within(canvasElement)
+        const detailButtons = canvas.getAllByRole("button", { name: /details/i })
+        await expect(detailButtons).toHaveLength(2)
+        await expect(canvas.getByText("Assignee")).toBeInTheDocument()
+    },
 }
 
 export const SidebarResizable = {

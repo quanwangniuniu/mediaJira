@@ -14,7 +14,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 
-from core.models import Organization
+from core.models import ProjectMember
 from .models import (
     Calendar,
     CalendarShare,
@@ -61,6 +61,13 @@ class CalendarViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticatedInOrganization, CalendarAccessPermission]
     required_permission = "view_all"
 
+    def initial(self, request, *args, **kwargs):
+        if getattr(self, "action", None) in {"update", "partial_update", "destroy"}:
+            self.required_permission = "manage"
+        else:
+            self.required_permission = "view_all"
+        super().initial(request, *args, **kwargs)
+
     def get_queryset(self):
         user = self.request.user
         organization = get_user_organization(user)
@@ -68,6 +75,7 @@ class CalendarViewSet(viewsets.ModelViewSet):
             return Calendar.objects.none()
 
         visibility = self.request.query_params.get("visibility")
+        project_id_param = self.request.query_params.get("project_id")
         include_subscriptions_param = self.request.query_params.get("include_subscriptions", "true")
         include_subscriptions = include_subscriptions_param.lower() != "false"
 
@@ -83,7 +91,7 @@ class CalendarViewSet(viewsets.ModelViewSet):
             is_deleted=False,
         ).values_list("calendar_id", flat=True)
 
-        qs = Calendar.objects.filter(
+        legacy_qs = Calendar.objects.filter(
             Q(pk__in=owned_qs.values_list("pk", flat=True))
             | Q(pk__in=shared_calendar_ids)
         ).filter(is_deleted=False, organization=organization)
@@ -95,14 +103,31 @@ class CalendarViewSet(viewsets.ModelViewSet):
                 is_deleted=False,
                 calendar__isnull=False,
             ).values_list("calendar_id", flat=True)
-            qs = qs | Calendar.objects.filter(
+            legacy_qs = legacy_qs | Calendar.objects.filter(
                 pk__in=subscribed_calendar_ids,
                 organization=organization,
                 is_deleted=False,
             )
 
+        project_ids = ProjectMember.objects.filter(
+            user=user,
+            is_active=True,
+        ).values_list("project_id", flat=True)
+        project_qs = Calendar.objects.filter(
+            project_id__in=project_ids,
+            is_deleted=False,
+        )
+
+        qs = legacy_qs | project_qs
+
         if visibility:
             qs = qs.filter(visibility=visibility)
+
+        if project_id_param:
+            try:
+                qs = qs.filter(project_id=int(project_id_param))
+            except (TypeError, ValueError):
+                return Calendar.objects.none()
 
         return qs.distinct().order_by("-is_primary", "name")
 
@@ -333,14 +358,26 @@ class EventViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticatedInOrganization, EventAccessPermission]
     required_permission = "view_all"
 
+    def initial(self, request, *args, **kwargs):
+        if getattr(self, "action", None) in {"create", "update", "partial_update", "destroy"}:
+            self.required_permission = "edit"
+        else:
+            self.required_permission = "view_all"
+        super().initial(request, *args, **kwargs)
+
     def get_queryset(self):
         user = self.request.user
-        organization = get_user_organization(user)
-        if not organization:
-            return Event.objects.none()
+        project_id_param = self.request.query_params.get("project_id")
+        project_id = None
+        if project_id_param:
+            try:
+                project_id = int(project_id_param)
+            except (TypeError, ValueError):
+                return Event.objects.none()
 
+        calendars = _get_accessible_calendars(user, project_id=project_id)
         queryset = Event.objects.select_related("calendar", "created_by").filter(
-            organization=organization,
+            calendar__in=calendars,
             is_deleted=False,
         )
 
@@ -394,7 +431,22 @@ class EventViewSet(viewsets.ModelViewSet):
         """
         serializer = EventCreateUpdateSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
-        event = serializer.save()
+
+        target_calendar = get_object_or_404(
+            Calendar,
+            id=serializer.validated_data["calendar_id"],
+            is_deleted=False,
+        )
+        perm = CalendarAccessPermission()
+        self.required_permission = "edit"
+        if not perm.has_object_permission(request, self, target_calendar):
+            raise PermissionDenied("You do not have permission to create events on this calendar.")
+
+        event = serializer.save(
+            calendar=target_calendar,
+            organization=target_calendar.organization,
+            created_by=request.user if request.user.is_authenticated else None,
+        )
         output_serializer = EventSerializer(event)
         headers = self.get_success_headers(output_serializer.data)
         return Response(output_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
@@ -442,12 +494,17 @@ class EventSearchView(generics.ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        organization = get_user_organization(user)
-        if not organization:
-            return Event.objects.none()
+        project_id_param = self.request.query_params.get("project_id")
+        project_id = None
+        if project_id_param:
+            try:
+                project_id = int(project_id_param)
+            except (TypeError, ValueError):
+                return Event.objects.none()
 
+        calendars = _get_accessible_calendars(user, project_id=project_id)
         queryset = Event.objects.select_related("calendar", "created_by").filter(
-            organization=organization,
+            calendar__in=calendars,
             is_deleted=False,
         )
 
@@ -494,40 +551,57 @@ def _parse_date(value: str) -> date:
         raise ValueError("Invalid date format, expected YYYY-MM-DD")
 
 
-def _get_accessible_calendars(user, calendar_ids: list[str] | None = None):
+def _get_accessible_calendars(
+    user,
+    calendar_ids: list[str] | None = None,
+    project_id: int | None = None,
+):
     organization = get_user_organization(user)
-    if not organization:
-        return Calendar.objects.none()
+    qs = Calendar.objects.none()
 
-    owned = Calendar.objects.filter(
-        organization=organization,
-        owner=user,
-        is_deleted=False,
-    )
-    shared_ids = CalendarShare.objects.filter(
-        organization=organization,
-        shared_with=user,
-        is_deleted=False,
-    ).values_list("calendar_id", flat=True)
-    subscribed_ids = CalendarSubscription.objects.filter(
-        organization=organization,
+    if organization:
+        owned = Calendar.objects.filter(
+            organization=organization,
+            owner=user,
+            is_deleted=False,
+        )
+        shared_ids = CalendarShare.objects.filter(
+            organization=organization,
+            shared_with=user,
+            is_deleted=False,
+        ).values_list("calendar_id", flat=True)
+        subscribed_ids = CalendarSubscription.objects.filter(
+            organization=organization,
+            user=user,
+            is_deleted=False,
+            calendar__isnull=False,
+            is_hidden=False,
+        ).values_list("calendar_id", flat=True)
+
+        legacy_qs = Calendar.objects.filter(
+            organization=organization,
+            is_deleted=False,
+        ).filter(
+            Q(pk__in=owned.values_list("pk", flat=True))
+            | Q(pk__in=shared_ids)
+            | Q(pk__in=subscribed_ids)
+        )
+        qs = qs | legacy_qs
+
+    project_ids = ProjectMember.objects.filter(
         user=user,
+        is_active=True,
+    ).values_list("project_id", flat=True)
+    project_qs = Calendar.objects.filter(
+        project_id__in=project_ids,
         is_deleted=False,
-        calendar__isnull=False,
-        is_hidden=False,
-    ).values_list("calendar_id", flat=True)
-
-    qs = Calendar.objects.filter(
-        organization=organization,
-        is_deleted=False,
-    ).filter(
-        Q(pk__in=owned.values_list("pk", flat=True))
-        | Q(pk__in=shared_ids)
-        | Q(pk__in=subscribed_ids)
     )
+    qs = qs | project_qs
 
     if calendar_ids:
         qs = qs.filter(id__in=calendar_ids)
+    if project_id is not None:
+        qs = qs.filter(project_id=project_id)
 
     return qs.distinct()
 
@@ -537,17 +611,10 @@ def _build_calendar_view_payload(
     start_dt,
     end_dt,
     calendar_ids: list[str] | None,
+    project_id: int | None,
     view_type: str,
 ):
-    organization = get_user_organization(user)
-    if not organization:
-        return calendar_error_response(
-            "BAD_REQUEST",
-            "Organization context is required.",
-            status_code=status.HTTP_400_BAD_REQUEST,
-        )
-
-    calendars = _get_accessible_calendars(user, calendar_ids)
+    calendars = _get_accessible_calendars(user, calendar_ids, project_id=project_id)
     if not calendars.exists():
         return {
             "view_type": view_type,
@@ -560,7 +627,6 @@ def _build_calendar_view_payload(
     events_qs = (
         Event.objects.select_related("calendar", "created_by", "recurrence_rule")
         .filter(
-            organization=organization,
             calendar__in=calendars,
             is_deleted=False,
             start_datetime__lt=end_dt,
@@ -670,18 +736,9 @@ class EventInstancesView(generics.ListAPIView):
 
     def get(self, request, *args, **kwargs):
         event_id = self.kwargs["event_id"]
-        user = request.user
-        organization = get_user_organization(user)
-        if not organization:
-            return Response(
-                {"detail": "Organization context is required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
         event = get_object_or_404(
             Event,
             id=event_id,
-            organization=organization,
             is_deleted=False,
         )
 
@@ -760,12 +817,15 @@ class DayView(generics.GenericAPIView):
 
         calendar_ids_param = request.query_params.get("calendar_ids")
         calendar_ids = calendar_ids_param.split(",") if calendar_ids_param else None
+        project_id_param = request.query_params.get("project_id")
+        project_id = int(project_id_param) if project_id_param and project_id_param.isdigit() else None
 
         payload = _build_calendar_view_payload(
             request.user,
             start_dt,
             end_dt,
             calendar_ids,
+            project_id,
             view_type="day",
         )
         if isinstance(payload, Response):
@@ -802,12 +862,15 @@ class WeekView(generics.GenericAPIView):
 
         calendar_ids_param = request.query_params.get("calendar_ids")
         calendar_ids = calendar_ids_param.split(",") if calendar_ids_param else None
+        project_id_param = request.query_params.get("project_id")
+        project_id = int(project_id_param) if project_id_param and project_id_param.isdigit() else None
 
         payload = _build_calendar_view_payload(
             request.user,
             start_dt,
             end_dt,
             calendar_ids,
+            project_id,
             view_type="week",
         )
         if isinstance(payload, Response):
@@ -852,12 +915,15 @@ class MonthView(generics.GenericAPIView):
 
         calendar_ids_param = request.query_params.get("calendar_ids")
         calendar_ids = calendar_ids_param.split(",") if calendar_ids_param else None
+        project_id_param = request.query_params.get("project_id")
+        project_id = int(project_id_param) if project_id_param and project_id_param.isdigit() else None
 
         payload = _build_calendar_view_payload(
             request.user,
             start_dt,
             end_dt,
             calendar_ids,
+            project_id,
             view_type="month",
         )
         if isinstance(payload, Response):
@@ -896,12 +962,15 @@ class AgendaView(generics.GenericAPIView):
 
         calendar_ids_param = request.query_params.get("calendar_ids")
         calendar_ids = calendar_ids_param.split(",") if calendar_ids_param else None
+        project_id_param = request.query_params.get("project_id")
+        project_id = int(project_id_param) if project_id_param and project_id_param.isdigit() else None
 
         payload = _build_calendar_view_payload(
             request.user,
             start_dt,
             end_dt,
             calendar_ids,
+            project_id,
             view_type="agenda",
         )
         if isinstance(payload, Response):
@@ -928,16 +997,10 @@ class EventAttendeeListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticatedInOrganization]
 
     def _get_event(self) -> Event:
-        user = self.request.user
-        organization = get_user_organization(user)
-        if not organization:
-            raise PermissionDenied("Organization context is required.")
-
         event_id = self.kwargs["event_id"]
         event = get_object_or_404(
             Event,
             id=event_id,
-            organization=organization,
             is_deleted=False,
         )
 
@@ -980,11 +1043,10 @@ class EventAttendeeListCreateView(generics.ListCreateAPIView):
 
         if data.get("user_id"):
             user_model = self.request.user.__class__
-            user = get_object_or_404(
-                user_model,
-                id=data["user_id"],
-                organization_id=event.organization_id,
-            )
+            user_queryset = user_model.objects.filter(id=data["user_id"])
+            if not event.calendar.project_id:
+                user_queryset = user_queryset.filter(organization_id=event.organization_id)
+            user = get_object_or_404(user_queryset)
             if not email:
                 email = user.email
 
@@ -1012,16 +1074,10 @@ class EventAttendeeDetailView(generics.DestroyAPIView):
     lookup_url_kwarg = "attendee_id"
 
     def _get_event(self) -> Event:
-        user = self.request.user
-        organization = get_user_organization(user)
-        if not organization:
-            raise PermissionDenied("Organization context is required.")
-
         event_id = self.kwargs["event_id"]
         event = get_object_or_404(
             Event,
             id=event_id,
-            organization=organization,
             is_deleted=False,
         )
 
@@ -1058,16 +1114,10 @@ class EventRSVPView(generics.GenericAPIView):
     permission_classes = [IsAuthenticatedInOrganization]
 
     def _get_event(self) -> Event:
-        user = self.request.user
-        organization = get_user_organization(user)
-        if not organization:
-            raise PermissionDenied("Organization context is required.")
-
         event_id = self.kwargs["event_id"]
         event = get_object_or_404(
             Event,
             id=event_id,
-            organization=organization,
             is_deleted=False,
         )
 
@@ -1124,16 +1174,10 @@ class EventInstanceModifyView(generics.GenericAPIView):
     permission_classes = [IsAuthenticatedInOrganization, EventAccessPermission]
 
     def _get_event(self, request, *args, **kwargs) -> Event:
-        user = request.user
-        organization = get_user_organization(user)
-        if not organization:
-            raise PermissionDenied("Organization context is required.")
-
         event_id = self.kwargs["event_id"]
         event = get_object_or_404(
             Event,
             id=event_id,
-            organization=organization,
             is_deleted=False,
         )
 
@@ -1238,16 +1282,10 @@ class EventInstanceCancelView(generics.GenericAPIView):
     permission_classes = [IsAuthenticatedInOrganization, EventAccessPermission]
 
     def _get_event(self, request, *args, **kwargs) -> Event:
-        user = request.user
-        organization = get_user_organization(user)
-        if not organization:
-            raise PermissionDenied("Organization context is required.")
-
         event_id = self.kwargs["event_id"]
         event = get_object_or_404(
             Event,
             id=event_id,
-            organization=organization,
             is_deleted=False,
         )
 
@@ -1350,15 +1388,10 @@ class FreeBusyView(generics.GenericAPIView):
         calendar_ids = body.get("calendar_ids") or []
         if isinstance(calendar_ids, str):
             calendar_ids = [calendar_ids]
+        project_id_raw = body.get("project_id")
+        project_id = int(project_id_raw) if str(project_id_raw).isdigit() else None
 
-        calendars = _get_accessible_calendars(request.user, calendar_ids or None)
-        organization = get_user_organization(request.user)
-        if not organization:
-            return calendar_error_response(
-                "BAD_REQUEST",
-                "Organization context is required.",
-                status_code=status.HTTP_400_BAD_REQUEST,
-            )
+        calendars = _get_accessible_calendars(request.user, calendar_ids or None, project_id=project_id)
 
         result = {
             "time_min": time_min.isoformat().replace("+00:00", "Z"),
@@ -1369,7 +1402,6 @@ class FreeBusyView(generics.GenericAPIView):
         for cal in calendars:
             events_qs = (
                 Event.objects.filter(
-                    organization=organization,
                     calendar=cal,
                     is_deleted=False,
                     start_datetime__lt=time_max,
@@ -1430,16 +1462,10 @@ class EventReminderListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticatedInOrganization]
 
     def _get_event(self) -> Event:
-        user = self.request.user
-        organization = get_user_organization(user)
-        if not organization:
-            raise PermissionDenied("Organization context is required.")
-
         event_id = self.kwargs["event_id"]
         event = get_object_or_404(
             Event,
             id=event_id,
-            organization=organization,
             is_deleted=False,
         )
 

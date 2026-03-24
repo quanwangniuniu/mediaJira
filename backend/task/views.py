@@ -3,23 +3,64 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, ValidationError as DRFValidationError
+from datetime import datetime
 from django.core.exceptions import ValidationError
+from django.db.models import Q
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.shortcuts import get_object_or_404
-from task.models import Task, ApprovalRecord, TaskComment, TaskAttachment, TaskHierarchy, TaskRelation
-from task.serializers import TaskSerializer, TaskLinkSerializer, ApprovalRecordSerializer, TaskApprovalSerializer, TaskForwardSerializer, TaskCommentSerializer, TaskAttachmentSerializer, SubtaskAddSerializer, TaskRelationAddSerializer
+from task.models import Task, ApprovalRecord, TaskComment, TaskAttachment, TaskHierarchy, TaskRelation, ApprovalChain
+from task.serializers import TaskSerializer, TaskListSerializer, TaskLinkSerializer, ApprovalRecordSerializer, TaskApprovalSerializer, TaskForwardSerializer, TaskCommentSerializer, TaskAttachmentSerializer, SubtaskAddSerializer, TaskRelationAddSerializer
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from core.models import ProjectMember, Project
 from core.utils.project import get_user_active_project
+import json
+import traceback
+
+# region agent log
+def _debug_log(session_id, location, message, data=None, hypothesis_id=None):
+    import os
+    payload = {"sessionId": session_id, "location": location, "message": message, "timestamp": __import__("time").time() * 1000}
+    if data is not None:
+        payload["data"] = data
+    if hypothesis_id is not None:
+        payload["hypothesisId"] = hypothesis_id
+    line = json.dumps(payload) + "\n"
+    for path in [
+        "/Users/huangtaowen/Desktop/Proj/mediaJira/.cursor/debug-70a616.log",
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "debug-70a616.log"),
+    ]:
+        try:
+            with open(path, "a") as f:
+                f.write(line)
+            break
+        except Exception:
+            continue
+# endregion
+
 
 class TaskViewSet(viewsets.ModelViewSet):
     """ViewSet for Task model"""
     queryset = Task.objects.select_related('project', 'owner', 'current_approver')
     serializer_class = TaskSerializer
     permission_classes = [IsAuthenticated]
-    
+
+    def get_serializer_class(self):
+        if getattr(self, "action", None) == "list":
+            return TaskListSerializer
+        return TaskSerializer
+
+    def create(self, request, *args, **kwargs):
+        try:
+            return super().create(request, *args, **kwargs)
+        except Exception as e:
+            import logging
+            logging.getLogger("task.views").error(
+                "TaskViewSet.create exception: %s\n%s", e, traceback.format_exc()
+            )
+            raise
+
     def force_create(self, request):
         """
         Fallback task creation endpoint.
@@ -60,6 +101,9 @@ class TaskViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         """Filter queryset based on user permissions and query parameters"""
+        # region agent log
+        _debug_log("70a616", "task/views.py:get_queryset", "get_queryset_start", {"user_id": getattr(self.request.user, "id", None)}, "H2")
+        # endregion
         user = self.request.user
         if not user.is_authenticated:
             return Task.objects.none()
@@ -87,49 +131,162 @@ class TaskViewSet(viewsets.ModelViewSet):
         all_projects_param = self.request.query_params.get('all_projects', 'false')
         all_projects = all_projects_param.lower() == 'true'
 
-        requested_project_id = self.request.query_params.get('project_id')
-        if requested_project_id is not None:
+        # Treat blank project_id as absent (?project_id= should not 400 or force strict empty scope)
+        requested_project_id_raw = self.request.query_params.get('project_id')
+        if requested_project_id_raw is not None:
+            requested_project_id_raw = str(requested_project_id_raw).strip()
+            if requested_project_id_raw == '':
+                requested_project_id_raw = None
+
+        has_explicit_project_id = requested_project_id_raw is not None
+
+        include_cross_project_param = self.request.query_params.get(
+            'include_cross_project_approvals', 'false'
+        )
+        include_cross_project_approvals = include_cross_project_param.lower() == 'true'
+
+        if has_explicit_project_id:
             try:
-                requested_project_id = int(requested_project_id)
+                requested_project_id = int(requested_project_id_raw)
             except (TypeError, ValueError):
                 raise DRFValidationError({'project_id': 'project_id must be an integer'})
 
             if requested_project_id not in accessible_project_ids:
                 raise PermissionDenied('You do not have access to this project.')
 
-            queryset = queryset.filter(project_id=requested_project_id)
+            project_filter = Q(project_id=requested_project_id)
         else:
-            # Previous logic (before all_projects support):
-            # if active_project:
-            #     queryset = queryset.filter(project_id=active_project.id)
-            # elif accessible_project_ids:
-            #     queryset = queryset.filter(project_id__in=accessible_project_ids)
-            # else:
-            #     return Task.objects.none()
-            
             # New logic: support all_projects parameter
             if all_projects and accessible_project_ids:
-                queryset = queryset.filter(project_id__in=accessible_project_ids)
+                project_filter = Q(project_id__in=accessible_project_ids)
             elif active_project:
-                queryset = queryset.filter(project_id=active_project.id)
+                project_filter = Q(project_id=active_project.id)
             elif accessible_project_ids:
-                queryset = queryset.filter(project_id__in=accessible_project_ids)
+                project_filter = Q(project_id__in=accessible_project_ids)
             else:
-                return Task.objects.none()
+                project_filter = Q(pk__in=[])
+
+        # Explicit project_id => default strict scope (only that project). Optional
+        # include_cross_project_approvals=true restores union with tasks where this user is
+        # current_approver (other projects). Without explicit project_id, always use that union.
+        if has_explicit_project_id:
+            if include_cross_project_approvals:
+                queryset = queryset.filter(project_filter | Q(current_approver=user))
+            else:
+                queryset = queryset.filter(project_filter)
+        else:
+            queryset = queryset.filter(project_filter | Q(current_approver=user))
+
+        def _get_multi_values(param_name: str):
+            """
+            Accept multi-values in either:
+            - repeated query params: ?status=A&status=B
+            - comma-separated: ?status=A,B
+            - bracket style from some clients: ?status[]=A&status[]=B
+            Returns list[str] (possibly empty).
+            """
+            values = list(self.request.query_params.getlist(param_name))
+            values.extend(self.request.query_params.getlist(param_name + '[]'))
+            if not values:
+                raw = self.request.query_params.get(param_name)
+                if raw:
+                    values = [raw]
+            expanded = []
+            for v in values:
+                if v is None:
+                    continue
+                parts = [p.strip() for p in str(v).split(",")]
+                expanded.extend([p for p in parts if p])
+            return expanded
+
+        def _parse_int_list(param_name: str):
+            raw_values = _get_multi_values(param_name)
+            if not raw_values:
+                return []
+            parsed = []
+            for v in raw_values:
+                try:
+                    iv = int(v)
+                except (TypeError, ValueError):
+                    raise DRFValidationError({param_name: f"{param_name} must be an integer"})
+                if iv < 1:
+                    raise DRFValidationError({param_name: f"{param_name} must be a positive integer"})
+                parsed.append(iv)
+            return parsed
 
         # Apply filters
-        task_type = self.request.query_params.get('type')
-        if task_type:
-            queryset = queryset.filter(type=task_type)
-        
-        owner_id = self.request.query_params.get('owner_id')
-        if owner_id:
-            queryset = queryset.filter(owner_id=owner_id)
-        
-        status = self.request.query_params.get('status')
-        if status:
-            queryset = queryset.filter(status=status)
-        
+        task_types = _get_multi_values("type")
+        if task_types:
+            valid_types = {c[0] for c in Task._meta.get_field("type").choices}
+            invalid = [t for t in task_types if t not in valid_types]
+            if invalid:
+                raise DRFValidationError({"type": "Invalid type value"})
+            queryset = queryset.filter(type__in=task_types)
+
+        owner_ids = _parse_int_list("owner_id")
+        if owner_ids:
+            queryset = queryset.filter(owner_id__in=owner_ids)
+
+        statuses = _get_multi_values("status")
+        if statuses:
+            valid_statuses = {c[0] for c in Task.Status.choices}
+            invalid = [s for s in statuses if s not in valid_statuses]
+            if invalid:
+                raise DRFValidationError({"status": "Invalid status value"})
+            queryset = queryset.filter(status__in=statuses)
+
+        # Priority filter (multi-select)
+        priorities = _get_multi_values("priority")
+        if priorities:
+            valid_priorities = {c[0] for c in Task.Priority.choices}
+            invalid = [p for p in priorities if p not in valid_priorities]
+            if invalid:
+                raise DRFValidationError({"priority": "Invalid priority value"})
+            queryset = queryset.filter(priority__in=priorities)
+
+        # Current approver (assignee) filter (multi-select)
+        approver_ids = _parse_int_list("current_approver_id")
+        if approver_ids:
+            queryset = queryset.filter(current_approver_id__in=approver_ids)
+
+        # Due date range filters
+        due_date_after = self.request.query_params.get('due_date_after')
+        if due_date_after:
+            try:
+                d = datetime.strptime(due_date_after, '%Y-%m-%d').date()
+                queryset = queryset.filter(due_date__gte=d)
+            except (ValueError, TypeError):
+                raise DRFValidationError({'due_date_after': 'due_date_after must be YYYY-MM-DD'})
+        due_date_before = self.request.query_params.get('due_date_before')
+        if due_date_before:
+            try:
+                d = datetime.strptime(due_date_before, '%Y-%m-%d').date()
+                queryset = queryset.filter(due_date__lte=d)
+            except (ValueError, TypeError):
+                raise DRFValidationError({'due_date_before': 'due_date_before must be YYYY-MM-DD'})
+
+        # Created date range filters (compare date part of created_at)
+        created_after = self.request.query_params.get('created_after')
+        if created_after:
+            try:
+                if 'T' in created_after or ' ' in created_after:
+                    d = datetime.fromisoformat(created_after.replace('Z', '+00:00')).date()
+                else:
+                    d = datetime.strptime(created_after, '%Y-%m-%d').date()
+                queryset = queryset.filter(created_at__date__gte=d)
+            except (ValueError, TypeError):
+                raise DRFValidationError({'created_after': 'created_after must be YYYY-MM-DD or ISO datetime'})
+        created_before = self.request.query_params.get('created_before')
+        if created_before:
+            try:
+                if 'T' in created_before or ' ' in created_before:
+                    d = datetime.fromisoformat(created_before.replace('Z', '+00:00')).date()
+                else:
+                    d = datetime.strptime(created_before, '%Y-%m-%d').date()
+                queryset = queryset.filter(created_at__date__lte=d)
+            except (ValueError, TypeError):
+                raise DRFValidationError({'created_before': 'created_before must be YYYY-MM-DD or ISO datetime'})
+
         # Filter by content_type
         content_type = self.request.query_params.get('content_type')
         if content_type:
@@ -154,11 +311,46 @@ class TaskViewSet(viewsets.ModelViewSet):
         if not include_subtasks:
             # Exclude all tasks that have is_subtask=True
             queryset = queryset.filter(is_subtask=False)
-        
+
+        # Parent filter: show only subtasks or only top-level tasks
+        has_parent_param = self.request.query_params.get('has_parent')
+        if has_parent_param is not None:
+            if has_parent_param.lower() == 'true':
+                queryset = queryset.filter(is_subtask=True)
+            elif has_parent_param.lower() == 'false':
+                queryset = queryset.filter(is_subtask=False)
+            else:
+                raise DRFValidationError({'has_parent': 'has_parent must be true or false'})
+
         # Order by order_in_project, then by creation date (newest first)
         queryset = queryset.order_by('order_in_project', '-id')
-        
+        # List response does not include draft_payload; defer it so list works if migration adding the column is not yet applied.
+        if getattr(self, 'action', None) == 'list':
+            queryset = queryset.defer('draft_payload')
+        # region agent log
+        _debug_log("70a616", "task/views.py:get_queryset", "get_queryset_end", None, "H2")
+        # endregion
         return queryset
+
+    def list(self, request, *args, **kwargs):
+        # region agent log
+        _debug_log("70a616", "task/views.py:list", "list_start", {"query": dict(request.query_params)}, "H5")
+        # endregion
+        try:
+            response = super().list(request, *args, **kwargs)
+            # region agent log
+            _debug_log("70a616", "task/views.py:list", "list_end", None, "H5")
+            # endregion
+            return response
+        except Exception as e:
+            # region agent log
+            _debug_log("70a616", "task/views.py:list", "list_failed", {
+                "exc_type": type(e).__name__,
+                "exc_message": str(e),
+                "traceback": traceback.format_exc(),
+            }, "H2_H3_H5")
+            # endregion
+            raise
 
     def get_object(self):
         """
@@ -179,14 +371,19 @@ class TaskViewSet(viewsets.ModelViewSet):
         if not user.is_authenticated:
             raise PermissionDenied('Authentication credentials were not provided.')
 
-        # Ensure the user is an active member of the task's project
+        # Ensure the user is an active member of the task's project,
+        # OR is the current designated approver (cross-project approval chain).
         has_membership = ProjectMember.objects.filter(
             user=user,
             project=task.project,
             is_active=True,
         ).exists()
+        is_current_approver = (
+            task.current_approver_id is not None and
+            task.current_approver_id == user.id
+        )
 
-        if not has_membership:
+        if not has_membership and not is_current_approver:
             raise PermissionDenied('You do not have access to this task.')
 
         self.check_object_permissions(self.request, task)
@@ -233,21 +430,26 @@ class TaskViewSet(viewsets.ModelViewSet):
         """Link task to an existing object"""
         task = self.get_object()
         
-        # Check if task is already linked
-        if task.is_linked:
-            return Response(
-                {'error': 'Task is already linked to an object'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
         # Validate link data
         serializer = TaskLinkSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
+
         # Get the linked object from validated data
         linked_object = serializer.validated_data['linked_object']
-        
+
+        # Check if task is already linked
+        if task.is_linked:
+            # Idempotent: if already linked to the same object, return success
+            ct = ContentType.objects.get_for_model(linked_object.__class__)
+            if task.content_type_id == ct.id and task.object_id == str(linked_object.id):
+                task_serializer = TaskSerializer(task, context={'request': request})
+                return Response(task_serializer.data, status=status.HTTP_200_OK)
+            return Response(
+                {'error': 'Task is already linked to a different object'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         # Link the task to the object
         task.link_to_object(linked_object)
         
@@ -272,7 +474,14 @@ class TaskViewSet(viewsets.ModelViewSet):
                 {'error': 'Task must be in UNDER_REVIEW status to be approved or rejected'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
+        # Verify the requesting user is the designated approver for this step
+        if task.current_approver_id and request.user.id != task.current_approver_id:
+            return Response(
+                {'error': 'Only the designated approver for this step can approve or reject.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         # Validate request data
         serializer = TaskApprovalSerializer(data=request.data)
         if not serializer.is_valid():
@@ -284,36 +493,51 @@ class TaskViewSet(viewsets.ModelViewSet):
         try:
             # Execute the action
             if action == 'approve':
-                task.approve()
+                task.approve()   # UNDER_REVIEW → APPROVED
                 is_approved = True
             else:  # action == 'reject'
-                task.reject()
+                task.reject()    # UNDER_REVIEW → REJECTED
                 is_approved = False
-            
-            # Create approval record
-            next_step = task.approval_records.count() + 1
+
+            # Record the decision for the current step
+            step_number = (
+                task.current_approval_step
+                if task.current_approval_step
+                else task.approval_records.count() + 1
+            )
             ApprovalRecord.objects.create(
                 task=task,
                 approved_by=task.current_approver or request.user,
                 is_approved=is_approved,
                 comment=comment,
-                step_number=next_step
+                step_number=step_number
             )
-            
-            # Save the task to persist the state change
+
+            # If approved and a chain is active, auto-advance to the next step
+            if is_approved and task.approval_chain and task.current_approval_step:
+                next_step_num = task.current_approval_step + 1
+                next_step = task.approval_chain.get_step(next_step_num)
+                if next_step:
+                    # More steps remain: APPROVED → UNDER_REVIEW with next approver
+                    task.forward_to_next()
+                    task.current_approver = next_step.approver
+                    task.current_approval_step = next_step_num
+                # else: chain is complete — task stays APPROVED, ready to be locked
+
+            # Save all changes
             task.save()
-            
+
             # Return both the approval record and updated task data
             approval_serializer = ApprovalRecordSerializer(
                 task.approval_records.latest('step_number')
             )
             task_serializer = TaskSerializer(task, context={'request': request})
-            
+
             return Response({
                 'approval_record': approval_serializer.data,
                 'task': task_serializer.data
             }, status=status.HTTP_200_OK)
-            
+
         except Exception as e:
             return Response(
                 {'error': str(e)},
@@ -341,10 +565,11 @@ class TaskViewSet(viewsets.ModelViewSet):
         try:
             # Cancel the task
             task.cancel()
-            
+            task.save()
+
             # Delete all approval records
             task.approval_records.all().delete()
-            
+
             # Return task
             task_serializer = TaskSerializer(task, context={'request': request})
             return Response({
@@ -362,15 +587,27 @@ class TaskViewSet(viewsets.ModelViewSet):
     def approval_history(self, request, pk=None):
         """Get approval history for a task"""
         task = self.get_object()
-        
+
         # Get approval records ordered by step_number
         approval_records = task.approval_records.all().order_by('step_number')
-        
-        # Serialize the approval records
+
+        # Build role_name lookup from chain name (e.g. "Buyer → Lead → Client")
+        role_labels = {}
+        if task.approval_chain:
+            parts = [p.strip() for p in task.approval_chain.name.split('→')]
+            role_labels = {i + 1: label for i, label in enumerate(parts)}
+
+        # Serialize and annotate each record with its role_name
         approval_serializer = ApprovalRecordSerializer(approval_records, many=True)
-        
+        history = []
+        for record_data in approval_serializer.data:
+            step_num = record_data.get('step_number')
+            entry = dict(record_data)
+            entry['role_name'] = role_labels.get(step_num)
+            history.append(entry)
+
         return Response({
-            'history': approval_serializer.data
+            'history': history
         }, status=status.HTTP_200_OK)
     
     @action(detail=True, methods=['post'])
@@ -456,28 +693,64 @@ class TaskViewSet(viewsets.ModelViewSet):
             )
 
     @action(detail=True, methods=['post'])
-    def start_review(self, request, pk=None):
-        """Start review for a task (change status to UNDER_REVIEW)"""
+    def submit_task(self, request, pk=None):
+        """Submit a task (change status from DRAFT to SUBMITTED)"""
         task = self.get_object()
-        
+        if task.status != Task.Status.DRAFT:
+            return Response(
+                {'error': 'Task must be in DRAFT status to submit'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            task.submit()
+            task.save()
+            task_serializer = TaskSerializer(task, context={'request': request})
+            return Response({'task': task_serializer.data}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=['post'])
+    def start_review(self, request, pk=None):
+        """Start review for a task (change status to UNDER_REVIEW).
+
+        If a predefined ApprovalChain exists for this task's project + type,
+        it is automatically assigned and the first step's approver becomes
+        current_approver. Otherwise the task falls back to legacy single-approver mode.
+        """
+        task = self.get_object()
+
         # Validate task can start review
         if task.status != Task.Status.SUBMITTED:
             return Response(
                 {'error': 'Task must be in SUBMITTED status to start review'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         try:
-            # Start review
+            # Transition status: SUBMITTED → UNDER_REVIEW
             task.start_review()
-            task.save()  # Save the state change
-            
+
+            # Auto-assign approval chain if one is configured and not already set
+            if not task.approval_chain:
+                chain = Task.find_approval_chain(task.project, task.type)
+                if chain and chain.total_steps > 0:
+                    first_step = chain.get_step(1)
+                    if first_step:
+                        task.approval_chain = chain
+                        task.current_approval_step = 1
+                        task.current_approver = first_step.approver
+
+            task.save()
+
             # Return updated task
             task_serializer = TaskSerializer(task, context={'request': request})
             return Response({
                 'task': task_serializer.data
             }, status=status.HTTP_200_OK)
-            
+
         except Exception as e:
             return Response(
                 {'error': str(e)},
@@ -488,7 +761,7 @@ class TaskViewSet(viewsets.ModelViewSet):
     def lock(self, request, pk=None):
         """Lock a task (change status to LOCKED)"""
         task = self.get_object()
-        
+
         # Validate task can be locked
         lockable_statuses = [Task.Status.APPROVED]
         if task.status not in lockable_statuses:
@@ -496,7 +769,22 @@ class TaskViewSet(viewsets.ModelViewSet):
                 {'error': 'Task must be in APPROVED status to be locked'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
+        # Enforce minimum approval count when an approval chain is assigned
+        if task.approval_chain:
+            approved_count = task.approval_records.filter(is_approved=True).count()
+            required = task.approval_chain.effective_required_approvals
+            if approved_count < required:
+                return Response(
+                    {
+                        'error': (
+                            f'Task requires {required} approval(s) before it can be locked. '
+                            f'{approved_count} of {required} approvals completed.'
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
         try:
             # Lock the task
             task.lock()
@@ -513,6 +801,19 @@ class TaskViewSet(viewsets.ModelViewSet):
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+    @action(detail=True, methods=['post'], url_path='unlock')
+    def unlock(self, request, pk=None):
+        task = self.get_object()
+        try:
+            task.unlock()
+            task.save()
+            return Response(
+                {'task': TaskSerializer(task).data},
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=True, methods=['get', 'post'])
     def subtasks(self, request, pk=None):
@@ -711,6 +1012,72 @@ class TaskViewSet(viewsets.ModelViewSet):
         relation.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    @action(detail=False, methods=['post'], url_path='bulk_action')
+    def bulk_action(self, request):
+        """
+        Dispatch bulk action to Celery.
+        Waits for result synchronously (timeout 30s) for immediate feedback.
+
+        Request body:
+        {
+          "task_ids": [1, 2, 3],
+          "action": "submit" | "assign_approver" | "change_status",
+          "payload": {
+            "approver_id": 5,
+            "status": "CANCELLED"
+          }
+        }
+
+        Response (always HTTP 200):
+        {
+          "succeeded": [1, 2],
+          "failed": [{ "task_id": 3, "reason": "..." }]
+        }
+        """
+        from task.tasks import process_bulk_action
+
+        task_ids = request.data.get('task_ids', [])
+        action = request.data.get('action')
+        payload = request.data.get('payload', {})
+
+        if not task_ids or not action:
+            return Response(
+                {'error': 'task_ids and action are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            result = process_bulk_action.apply_async(
+                args=[task_ids, action, payload, request.user.id]
+            )
+            try:
+                data = result.get(timeout=10)
+            except Exception:
+                # Celery worker unavailable, run synchronously
+                data = process_bulk_action.run(
+                    task_ids, action, payload, request.user.id
+                )
+            return Response(data, status=status.HTTP_200_OK)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(
+                f"bulk_action failed: {str(e)}", exc_info=True
+            )
+            return Response(
+                {'error': f'Bulk action failed: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+def _user_can_access_task(user, task):
+    """Return True if user is an active project member or the current designated approver.
+
+    Mirrors the same permission check used in TaskViewSet.get_object().
+    """
+    if ProjectMember.objects.filter(user=user, project=task.project, is_active=True).exists():
+        return True
+    return task.current_approver_id is not None and task.current_approver_id == user.id
+
 
 class TaskCommentListView(generics.ListCreateAPIView):
     """
@@ -724,15 +1091,7 @@ class TaskCommentListView(generics.ListCreateAPIView):
         task_id = self.kwargs.get('task_id')
         task = get_object_or_404(Task, pk=task_id)
 
-        # Enforce same project-based access control as TaskViewSet
-        user = self.request.user
-        has_membership = ProjectMember.objects.filter(
-            user=user,
-            project=task.project,
-            is_active=True,
-        ).exists()
-
-        if not has_membership:
+        if not _user_can_access_task(self.request.user, task):
             raise PermissionDenied('You do not have access to this task.')
 
         return TaskComment.objects.filter(task_id=task_id)
@@ -741,13 +1100,7 @@ class TaskCommentListView(generics.ListCreateAPIView):
         task_id = self.kwargs.get('task_id')
         task = get_object_or_404(Task, pk=task_id)
 
-        has_membership = ProjectMember.objects.filter(
-            user=self.request.user,
-            project=task.project,
-            is_active=True,
-        ).exists()
-
-        if not has_membership:
+        if not _user_can_access_task(self.request.user, task):
             raise PermissionDenied('You do not have access to comment on this task.')
 
         serializer.save(task=task, user=self.request.user)
@@ -766,15 +1119,7 @@ class TaskAttachmentListView(generics.ListCreateAPIView):
         task_id = self.kwargs.get('task_id')
         task = get_object_or_404(Task, pk=task_id)
 
-        # Enforce same project-based access control as TaskViewSet
-        user = self.request.user
-        has_membership = ProjectMember.objects.filter(
-            user=user,
-            project=task.project,
-            is_active=True,
-        ).exists()
-
-        if not has_membership:
+        if not _user_can_access_task(self.request.user, task):
             raise PermissionDenied('You do not have access to this task.')
 
         return TaskAttachment.objects.filter(task_id=task_id)
@@ -783,13 +1128,7 @@ class TaskAttachmentListView(generics.ListCreateAPIView):
         task_id = self.kwargs.get('task_id')
         task = get_object_or_404(Task, pk=task_id)
 
-        has_membership = ProjectMember.objects.filter(
-            user=self.request.user,
-            project=task.project,
-            is_active=True,
-        ).exists()
-
-        if not has_membership:
+        if not _user_can_access_task(self.request.user, task):
             raise PermissionDenied('You do not have access to upload attachments to this task.')
 
         serializer.save(task=task, uploaded_by=self.request.user)
@@ -806,15 +1145,7 @@ class TaskAttachmentDetailView(generics.RetrieveDestroyAPIView):
         task_id = self.kwargs.get('task_id')
         task = get_object_or_404(Task, pk=task_id)
 
-        # Enforce same project-based access control
-        user = self.request.user
-        has_membership = ProjectMember.objects.filter(
-            user=user,
-            project=task.project,
-            is_active=True,
-        ).exists()
-
-        if not has_membership:
+        if not _user_can_access_task(self.request.user, task):
             raise PermissionDenied('You do not have access to this task.')
 
         return TaskAttachment.objects.filter(task_id=task_id)
@@ -838,15 +1169,7 @@ class TaskAttachmentDownloadView(APIView):
         # Get the specific attachment
         attachment = get_object_or_404(TaskAttachment, pk=attachment_id, task_id=task_id)
         
-        # Check project membership
-        user = request.user
-        has_membership = ProjectMember.objects.filter(
-            user=user,
-            project=attachment.task.project,
-            is_active=True,
-        ).exists()
-        
-        if not has_membership:
+        if not _user_can_access_task(request.user, attachment.task):
             raise PermissionDenied('You do not have access to this task.')
         
         # Check if the attachment has a file
@@ -888,7 +1211,7 @@ def get_task_types(request):
     task_types = [
         {'value': choice[0], 'label': choice[1]}
         for choice in task_type_choices
-        if choice[0] not in ['execution', 'platform_policy_update']  # Exclude types not used in UI
+        if choice[0] not in ['execution']  # Exclude types not used in UI
     ]
     
     return Response({'task_types': task_types}, status=status.HTTP_200_OK)

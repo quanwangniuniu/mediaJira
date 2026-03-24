@@ -1309,8 +1309,11 @@ class SubscriptionCheckoutErrorTests(TestCase):
 
     def test_get_subscription_no_active_subscription(self):
         """Test get_subscription when no active subscription exists"""
-        # Create a subscription but mark it as inactive
-        subscription = Subscription.objects.create(
+        # Delete auto-created Free subscription (from setUp)
+        Subscription.objects.filter(organization=self.organization).delete()
+        
+        # Create an inactive subscription
+        Subscription.objects.create(
             organization=self.organization,
             plan=self.plan,
             stripe_subscription_id="sub_inactive",
@@ -1345,6 +1348,9 @@ class SubscriptionCheckoutErrorTests(TestCase):
 
     def test_switch_plan_no_active_subscription(self):
         """Test switch_plan when no active subscription exists"""
+        # Delete auto-created Free subscription (from setUp)
+        Subscription.objects.filter(organization=self.organization).delete()
+        
         response = self.client.post(
             reverse("stripe_meta:switch_plan"),
             data={"plan_id": self.plan2.id},
@@ -1412,6 +1418,9 @@ class SubscriptionCheckoutErrorTests(TestCase):
 
     def test_cancel_subscription_no_active_subscription(self):
         """Test cancel_subscription when no active subscription exists"""
+        # Delete auto-created Free subscription (from setUp)
+        Subscription.objects.filter(organization=self.organization).delete()
+        
         response = self.client.post(
             reverse("stripe_meta:cancel_subscription"),
             HTTP_X_ORGANIZATION_TOKEN=self.org_token
@@ -1473,6 +1482,9 @@ class SubscriptionCheckoutErrorTests(TestCase):
 
     def test_create_checkout_session_stripe_error_handling(self):
         """Test create_checkout_session Stripe error handling"""
+        # Delete auto-created Free subscription so we can reach the Stripe API call
+        Subscription.objects.filter(organization=self.organization).delete()
+        
         # Mock stripe.checkout.Session.create to raise a StripeError
         with patch("stripe_meta.views.stripe.checkout.Session.create") as mock_create:
             mock_create.side_effect = stripe.StripeError("Stripe API error")

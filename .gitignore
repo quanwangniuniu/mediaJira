@@ -1,5 +1,7 @@
 .env
 .DS_Store
+/Dockerfile.dev
+docker-compose.dev*.yml
 backend/backend/settings.py
 dev.sh
 DOCKER_README.md
@@ -17,3 +19,5 @@ devops/infra/terraform/.terraform.lock.hcl
 package*.json
 frontend/storybook-static/
 backend/venv/
+docker-compose.dev.override.yml
+.claude/

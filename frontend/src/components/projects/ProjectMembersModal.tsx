@@ -17,7 +17,7 @@ import {
   ProjectData,
   ProjectInvitationData,
   ProjectMemberData,
-  ProjectMemberInvitePayload,
+  ProjectRoleOption,
 } from "@/lib/api/projectApi";
 
 type ProjectMembersModalProps = {
@@ -28,25 +28,7 @@ type ProjectMembersModalProps = {
   variant?: "modal" | "panel";
 };
 
-const DEFAULT_INVITE_ROLE = "Team Leader";
-
-const inviteRoleOptions: { value: string; label: string }[] = [
-  { value: "Super Administrator", label: "Super Administrator" },
-  { value: "Organization Admin", label: "Organization Admin" },
-  { value: "Team Leader", label: "Team Leader" },
-  { value: "Campaign Manager", label: "Campaign Manager" },
-  { value: "Budget Controller", label: "Budget Controller" },
-  { value: "Approver", label: "Approver" },
-  { value: "Reviewer", label: "Reviewer" },
-  { value: "Data Analyst", label: "Data Analyst" },
-  { value: "Senior Media Buyer", label: "Senior Media Buyer" },
-  { value: "Specialist Media Buyer", label: "Specialist Media Buyer" },
-  { value: "Junior Media Buyer", label: "Junior Media Buyer" },
-  { value: "Designer", label: "Designer" },
-  { value: "Copywriter", label: "Copywriter" },
-];
-
-const memberRoleOptions: { value: string; label: string }[] = inviteRoleOptions;
+// Role dropdown options are loaded from backend `GET /api/core/projects/{id}/roles/`.
 
 const formatMemberLabel = (member: ProjectMemberData) => {
   const user = member.user || ({} as ProjectMemberData["user"]);
@@ -112,8 +94,8 @@ export default function ProjectMembersModal({
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [myInviteError, setMyInviteError] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] =
-    useState<ProjectMemberInvitePayload["role"]>(DEFAULT_INVITE_ROLE);
+  const [inviteRole, setInviteRole] = useState<string>("member");
+  const [defaultInviteRole, setDefaultInviteRole] = useState<string>("member");
   const [inviting, setInviting] = useState(false);
   const [removingId, setRemovingId] = useState<number | null>(null);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
@@ -122,26 +104,54 @@ export default function ProjectMembersModal({
     "members" | "approvals" | "acceptances" | "invites"
   >("members");
 
+  const [availableRoles, setAvailableRoles] = useState<ProjectRoleOption[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(false);
+  const [rolesError, setRolesError] = useState<string | null>(null);
+
   const projectId = useMemo(() => project?.id ?? null, [project]);
   const currentUserId = useAuthStore((state) => state.user?.id);
   const isOwner = useMemo(() => {
     if (!currentUserId) return false;
     const numericId = Number(currentUserId);
-    return members.some(
-      (member) => member.user?.id === numericId && member.role === "owner"
-    );
-  }, [currentUserId, members]);
+    return project?.owner?.id === numericId;
+  }, [currentUserId, project]);
   const canManageMembers = useMemo(() => {
     if (!currentUserId) return false;
+    if (isOwner) return true;
     const numericId = Number(currentUserId);
     return members.some(
       (member) =>
         member.user?.id === numericId &&
-        ["owner", "Super Administrator", "Team Leader"].includes(
-          member.role || ""
-        )
+        [
+          "Super Administrator",
+          "Organization Admin",
+          "Team Leader",
+          "Campaign Manager",
+        ].includes(member.role || "")
     );
-  }, [currentUserId, members]);
+  }, [currentUserId, members, isOwner]);
+
+  const roleOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const options: ProjectRoleOption[] = [];
+
+    availableRoles.forEach((r) => {
+      if (r.value === "owner") return;
+      if (seen.has(r.value)) return;
+      seen.add(r.value);
+      options.push(r);
+    });
+
+    // Ensure current member roles are present in the dropdown.
+    members.forEach((m) => {
+      if (!m.role || m.role === "owner") return;
+      if (seen.has(m.role)) return;
+      seen.add(m.role);
+      options.push({ value: m.role, label: m.role });
+    });
+
+    return options;
+  }, [availableRoles, members]);
 
   const loadMembers = useCallback(async () => {
     if (!projectId) return;
@@ -161,6 +171,33 @@ export default function ProjectMembersModal({
       setLoading(false);
     }
   }, [projectId]);
+
+  const loadAvailableRoles = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      setRolesLoading(true);
+      setRolesError(null);
+      const data = await ProjectAPI.getProjectAvailableRoles(projectId);
+      setAvailableRoles(data?.roles || []);
+      const defaultRole = data?.default_role || "member";
+      setDefaultInviteRole(defaultRole);
+      setInviteRole(defaultRole);
+    } catch (err: any) {
+      const message =
+        err?.response?.data?.detail ||
+        err?.response?.data?.message ||
+        err?.message ||
+        "Failed to load project roles.";
+      setRolesError(message);
+    } finally {
+      setRolesLoading(false);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    loadAvailableRoles();
+  }, [isOpen, loadAvailableRoles]);
 
   const loadPendingApprovals = useCallback(async () => {
     if (!projectId) return;
@@ -270,7 +307,7 @@ export default function ProjectMembersModal({
       setInviting(true);
       const response = await ProjectAPI.inviteProjectMember(projectId, {
         email,
-        role: inviteRole || DEFAULT_INVITE_ROLE,
+        role: inviteRole || defaultInviteRole,
       });
       if (response?.invitation || response?.user_exists === false) {
         toast.success("Invitation submitted for approval.");
@@ -278,7 +315,7 @@ export default function ProjectMembersModal({
         toast.success("Invitation submitted for approval.");
       }
       setInviteEmail("");
-      setInviteRole(DEFAULT_INVITE_ROLE);
+      setInviteRole(defaultInviteRole);
       await loadMembers();
       await loadPendingApprovals();
       await loadPendingInvites();
@@ -330,7 +367,7 @@ export default function ProjectMembersModal({
     member: ProjectMemberData,
     nextRole: string
   ): Promise<boolean> => {
-    if (!projectId) return;
+    if (!projectId) return false;
     if (member.role === nextRole) return false;
     try {
       setUpdatingId(member.id);
@@ -582,21 +619,29 @@ export default function ProjectMembersModal({
                       className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                     />
                   </div>
-                  <select
-                    value={inviteRole || DEFAULT_INVITE_ROLE}
-                    onChange={(event) =>
-                      setInviteRole(
-                        event.target.value as ProjectMemberInvitePayload["role"]
-                      )
-                    }
-                    className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                  >
-                    {inviteRoleOptions.map((role) => (
-                      <option key={role.value} value={role.value}>
-                        {role.label}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex flex-col">
+                    <select
+                      value={inviteRole}
+                      onChange={(event) => setInviteRole(event.target.value)}
+                      disabled={rolesLoading || roleOptions.length === 0}
+                      className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                    >
+                      {rolesLoading ? (
+                        <option value="" disabled>
+                          Loading roles...
+                        </option>
+                      ) : (
+                        roleOptions.map((role) => (
+                          <option key={role.value} value={role.value}>
+                            {role.label}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                    {rolesError && (
+                      <p className="mt-1 text-xs text-red-600">{rolesError}</p>
+                    )}
+                  </div>
                   <button
                     type="submit"
                     disabled={inviting}
@@ -609,7 +654,7 @@ export default function ProjectMembersModal({
               </form>
             ) : (
               <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-5 text-sm text-gray-500">
-                Only privileged project roles can invite members or manage approvals.
+                Only privileged project roles can invite members.
               </div>
             )}
 
@@ -681,7 +726,7 @@ export default function ProjectMembersModal({
                               disabled={updatingId === member.id}
                               className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-70"
                             >
-                              {memberRoleOptions.map((role) => (
+                              {roleOptions.map((role) => (
                                 <option key={role.value} value={role.value}>
                                   {role.label}
                                 </option>

@@ -31,6 +31,12 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
   const [pageSize, setPageSize] = useState(10);
   const [loadingMembers, setLoadingMembers] = useState(false);
 
+  // New state for invite modal
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+
+  // Check if user has permission to manage members
+  const canManageMembers = user.roles?.includes('Organization Admin') || user.roles?.includes('Owner');
+
   const handleCreateOrganization = async (data: { name: string; description?: string; email_domain?: string }) => {
     try {
       await createOrganization(data);
@@ -106,6 +112,10 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
           onClose={() => setIsModalOpen(false)}
           onSubmit={handleCreateOrganization}
           loading={createOrganizationLoading}
+        />
+        <InviteMembersModal
+          isOpen={isInviteModalOpen}
+          onClose={() => setIsInviteModalOpen(false)}
         />
       </>
     );
@@ -240,26 +250,19 @@ export default function OrganizationContent({ user }: OrganizationContentProps) 
                   → Invite Organization Members
                 </button>
               )}
-              <button className="w-full text-left text-sm text-blue-600 hover:text-blue-800 transition-colors py-3 px-4 rounded-lg hover:bg-blue-50 border border-transparent hover:border-blue-200">
-                → Manage Permissions
+              <button className="w-full text-left text-sm text-gray-500 hover:text-gray-900 transition-colors py-3 px-4 rounded-lg hover:bg-gray-300 ">
+                Manage Permissions
               </button>
-              <button className="w-full text-left text-sm text-blue-600 hover:text-blue-800 transition-colors py-3 px-4 rounded-lg hover:bg-blue-50 border border-transparent hover:border-blue-200">
-                → Organization Settings
+              <button className="w-full text-left text-sm text-gray-500 hover:text-gray-900 transition-colors py-3 px-4 rounded-lg hover:bg-gray-300 ">
+                Organization Settings
               </button>
             </div>
-          </div >
-        </div >
-      </div >
+          </div>
+        </div>
+      </div>
       <InviteMembersModal
         isOpen={isInviteModalOpen}
         onClose={() => setIsInviteModalOpen(false)}
-        onInvited={async () => {
-          try {
-            const res = await getOrganizationUsers(page, pageSize);
-            setMembers(res.results || []);
-            setCount(res.count || 0);
-          } catch { }
-        }}
       />
     </>
   );

@@ -40,7 +40,7 @@ const TableFrame = ({
       <thead className="border-b text-gray-600">
         <tr>
           <th className="w-10 py-1 px-3 text-left">
-            <input type="checkbox" className="accent-emerald-600" />
+            <input type="checkbox" className="accent-blue-600" />
           </th>
           <th className="py-1 px-3 text-left font-medium">Name</th>
           <th className="py-1 px-3 text-left font-medium">Status</th>
@@ -199,3 +199,4 @@ export const ManyRows = {
     </div>
   ),
 }
+

@@ -11,9 +11,14 @@ import { LanguageProvider } from '@/contexts/LanguageContext';
 interface LayoutProps {
   children: React.ReactNode;
   className?: string;
+  mainScrollMode?: 'container' | 'page';
   sidebarCollapsed?: boolean;
   showHeader?: boolean;
   showSidebar?: boolean;
+  unsavedChangesGuard?: {
+    hasChanges: boolean;
+    onNavigateAway: (destination: string) => void;
+  };
   user?: {
     name: string;
     email: string;
@@ -29,15 +34,18 @@ interface LayoutProps {
 const Layout: React.FC<LayoutProps> = ({
   children,
   className = '',
+  mainScrollMode = 'page',
   sidebarCollapsed = false,
   showHeader = true,
   showSidebar = true,
   showPermissionRole = false,
+  unsavedChangesGuard,
   user: propUser,
   onUserAction,
   onSearch,
   onNotificationClick,
 }) => {
+  const usePageScroll = mainScrollMode === 'page';
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(sidebarCollapsed);
   const [isMobile, setIsMobile] = useState(false);
   const router = useRouter();
@@ -130,7 +138,7 @@ const Layout: React.FC<LayoutProps> = ({
 
   return (
     <LanguageProvider>
-      <div className={`h-screen flex flex-col bg-gray-100 ${className}`}>
+      <div className={`${usePageScroll ? 'min-h-screen' : 'h-screen'} flex flex-col bg-gray-100 ${className}`}>
         {/* Header */}
         {showHeader && (
           <Header
@@ -142,7 +150,7 @@ const Layout: React.FC<LayoutProps> = ({
         )}
 
         {/* main */}
-        <div className="flex flex-1 overflow-hidden">
+        <div className={`flex flex-1 ${usePageScroll ? 'overflow-visible' : 'overflow-hidden'}`}>
           {/* sidebar */}
           {showSidebar && (
             <Sidebar
@@ -150,12 +158,16 @@ const Layout: React.FC<LayoutProps> = ({
               onCollapseChange={handleSidebarCollapseChange}
               userRole={user.role}
               userRoleLevel={userRoleLevel}
+              unsavedChangesGuard={unsavedChangesGuard}
             />
           )}
 
           {/* main content */}
           <main className={`
-            flex-1 overflow-auto bg-gray-50 
+
+            flex-1 overflow-hidden bg-white 
+            ${usePageScroll ? 'overflow-visible' : 'overflow-hidden'} 
+            bg-gray-50
             ${isMobile && !isSidebarCollapsed ? 'hidden' : 'block'}
             transition-all duration-300 ease-in-out
           `}>

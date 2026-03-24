@@ -12,6 +12,7 @@ export interface UserSummaryDTO {
 export interface CalendarDTO {
   id: string;
   organization_id: string;
+  project_id?: number | null;
   owner: UserSummaryDTO;
   name: string;
   description?: string | null;

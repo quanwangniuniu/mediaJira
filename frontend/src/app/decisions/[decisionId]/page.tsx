@@ -8,11 +8,10 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import DecisionWorkbenchHeader from '@/components/decisions/DecisionWorkbenchHeader';
 import SignalsPanel from '@/components/decisions/SignalsPanel';
 import DecisionWorkspaceEditor from '@/components/decisions/DecisionWorkspaceEditor';
-import ExecutionPanel from '@/components/decisions/ExecutionPanel';
 import DecisionDetailView from '@/components/decisions/DecisionDetailView';
 import DecisionCommitConfirmationModal from '@/components/decisions/DecisionCommitConfirmationModal';
 import DecisionApproveConfirmationModal from '@/components/decisions/DecisionApproveConfirmationModal';
-import DecisionLinkModal from '@/components/decisions/DecisionLinkModal';
+import ConfirmModal from '@/components/ui/ConfirmModal';
 import { DecisionAPI } from '@/lib/api/decisionApi';
 import { ProjectAPI } from '@/lib/api/projectApi';
 import type {
@@ -76,15 +75,16 @@ const DecisionPage = () => {
   const [saving, setSaving] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [approveModalOpen, setApproveModalOpen] = useState(false);
-  const [approveConfirmations, setApproveConfirmations] = useState({
+  const [approveConfirmations, setApproveConfirmations] = useState<Record<string, boolean>>({
     reviewed: false,
     ready: false,
     accountable: false,
   });
   const [commitModalOpen, setCommitModalOpen] = useState(false);
-  const [linkModalOpen, setLinkModalOpen] = useState(false);
-  const [commitConfirmations, setCommitConfirmations] = useState({
+  const [commitConfirmations, setCommitConfirmations] = useState<Record<string, boolean>>({
     alternatives: false,
     risk: false,
     review: false,
@@ -217,23 +217,27 @@ const DecisionPage = () => {
     setDirty(true);
   };
 
+  const buildDraftPayload = useCallback(
+    () => ({
+      title: title || null,
+      contextSummary: contextSummary || null,
+      reasoning: reasoning || null,
+      riskLevel: riskLevel || null,
+      confidenceScore: confidenceScore,
+      options: options.map((option, index) => ({
+        ...option,
+        order: index,
+      })),
+    }),
+    [title, contextSummary, reasoning, riskLevel, confidenceScore, options]
+  );
+
   const handleSaveDraft = async () => {
     if (!decisionId) return;
     setSaving(true);
     setErrors({});
     try {
-      const payload = {
-        title: title || null,
-        contextSummary: contextSummary || null,
-        reasoning: reasoning || null,
-        riskLevel: riskLevel || null,
-        confidenceScore: confidenceScore,
-        options: options.map((option, index) => ({
-          ...option,
-          order: index,
-        })),
-      };
-      const draft = await DecisionAPI.patchDraft(decisionId, payload, projectIdValue);
+      const draft = await DecisionAPI.patchDraft(decisionId, buildDraftPayload(), projectIdValue);
       syncDraftState(draft);
       toast.success('Draft saved.');
     } catch (error: any) {
@@ -265,15 +269,34 @@ const DecisionPage = () => {
   };
 
   const handleCommit = async () => {
-    if (!decisionId) return;
+    if (!decisionId) return false;
     setCommitting(true);
     setErrors({});
     try {
+      if (dirty) {
+        setSaving(true);
+        try {
+          const syncedDraft = await DecisionAPI.patchDraft(
+            decisionId,
+            buildDraftPayload(),
+            projectIdValue
+          );
+          syncDraftState(syncedDraft);
+        } catch (syncError) {
+          console.error('Failed to sync latest draft before commit:', syncError);
+          toast.error('Failed to sync latest changes before commit.');
+          return false;
+        } finally {
+          setSaving(false);
+        }
+      }
+
       const response = await DecisionAPI.commit(decisionId, projectIdValue);
       setStatus(response.status);
       setCommittedSnapshot(response.decision);
       setDirty(false);
       toast.success(response.detail || 'Decision committed.');
+      return true;
     } catch (error: any) {
       const response = error?.response;
       if (response?.status === 400 && response?.data?.error) {
@@ -286,6 +309,7 @@ const DecisionPage = () => {
         console.error('Commit failed:', error);
         toast.error('Commit failed.');
       }
+      return false;
     } finally {
       setCommitting(false);
     }
@@ -308,8 +332,10 @@ const DecisionPage = () => {
   };
 
   const handleConfirmCommit = async () => {
-    await handleCommit();
-    setCommitModalOpen(false);
+    const committed = await handleCommit();
+    if (committed) {
+      setCommitModalOpen(false);
+    }
   };
 
   const handleApprove = async () => {
@@ -345,6 +371,34 @@ const DecisionPage = () => {
     setApproveModalOpen(false);
   };
 
+  const handleDelete = () => {
+    if (!decisionId) return;
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!decisionId || projectIdValue == null) return;
+    setDeleting(true);
+    try {
+      await DecisionAPI.deleteDecision(decisionId, projectIdValue);
+      toast.success('Decision deleted.');
+      setDeleteConfirmOpen(false);
+      router.push('/decisions');
+    } catch (error: any) {
+      const response = error?.response;
+      if (response?.status === 403) {
+        toast.error('You do not have permission to delete this decision.');
+      } else if (response?.status === 404) {
+        toast.error('Decision not found.');
+      } else {
+        console.error('Delete failed:', error);
+        toast.error('Failed to delete decision.');
+      }
+    } finally {
+      setDeleting(false);
+    }
+  };
+
 
   if (loading) {
     return (
@@ -371,14 +425,13 @@ const DecisionPage = () => {
             lastSavedAt={committedSnapshot?.committedAt || null}
             saving={false}
             committing={false}
+            deleting={deleting}
             onTitleChange={() => null}
             onSave={() => null}
             onCommit={() => null}
+            onDelete={handleDelete}
             mode="readOnly"
             onBack={() => router.push('/decisions')}
-            onLinkDecisions={
-              status === 'REVIEWED' ? () => setLinkModalOpen(true) : undefined
-            }
           />
             {committedSnapshot ? (
               <>
@@ -400,13 +453,16 @@ const DecisionPage = () => {
                   }
                   confirming={approving}
                 />
-                <DecisionLinkModal
-                  isOpen={linkModalOpen}
-                  onClose={() => setLinkModalOpen(false)}
-                  decisionId={decisionId}
-                  projectId={projectIdValue}
-                  selfSeq={projectSeq}
-                  onSaved={fetchDecision}
+                <ConfirmModal
+                  isOpen={deleteConfirmOpen}
+                  onClose={() => setDeleteConfirmOpen(false)}
+                  onConfirm={confirmDelete}
+                  title="Delete decision"
+                  message={`Are you sure you want to delete decision "${title || committedSnapshot?.title || 'Untitled'}"? This action cannot be undone.`}
+                  confirmText="Delete"
+                  cancelText="Cancel"
+                  type="danger"
+                  loading={deleting}
                 />
               </>
             ) : (
@@ -432,12 +488,13 @@ const DecisionPage = () => {
             lastSavedAt={lastSavedAt}
             saving={saving}
             committing={committing}
+            deleting={deleting}
             onTitleChange={handleTitleChange}
             onTitleSave={handleTitleSave}
             onSave={handleSaveDraft}
             onCommit={handleOpenCommitModal}
+            onDelete={handleDelete}
             onBack={() => router.push('/decisions')}
-            onLinkDecisions={status === 'DRAFT' ? () => setLinkModalOpen(true) : undefined}
           />
           <div className="flex flex-1 min-h-0">
             <div className="h-full w-[24%] min-w-[240px] max-w-[340px]">
@@ -455,11 +512,6 @@ const DecisionPage = () => {
                 onOptionsChange={handleOptionsChange}
               />
             </div>
-            {!isDraft ? (
-              <div className="h-full w-[24%] min-w-[220px] max-w-[320px]">
-                <ExecutionPanel />
-              </div>
-            ) : null}
           </div>
         </div>
         <DecisionCommitConfirmationModal
@@ -490,13 +542,16 @@ const DecisionPage = () => {
           }
           confirming={approving}
         />
-        <DecisionLinkModal
-          isOpen={linkModalOpen}
-          onClose={() => setLinkModalOpen(false)}
-          decisionId={decisionId}
-          projectId={projectIdValue}
-          selfSeq={projectSeq}
-          onSaved={fetchDecision}
+        <ConfirmModal
+          isOpen={deleteConfirmOpen}
+          onClose={() => setDeleteConfirmOpen(false)}
+          onConfirm={confirmDelete}
+          title="Delete decision"
+          message={`Are you sure you want to delete decision "${title || committedSnapshot?.title || 'Untitled'}"? This action cannot be undone.`}
+          confirmText="Delete"
+          cancelText="Cancel"
+          type="danger"
+          loading={deleting}
         />
       </ProtectedRoute>
     </Layout>

@@ -2,6 +2,8 @@ import api from '../api';
 import {
   CreatePatternPayload,
   ListPatternsResponse,
+  ApplyPatternResponse,
+  PatternJobResponse,
   WorkflowPatternDetail,
   WorkflowPatternSummary,
 } from '@/types/patterns';
@@ -24,6 +26,19 @@ export const PatternAPI = {
 
   deletePattern: async (patternId: string): Promise<void> => {
     await api.delete(`/api/spreadsheet/patterns/${patternId}/`);
+  },
+
+  applyPattern: async (
+    patternId: string,
+    payload: { spreadsheet_id: number; sheet_id: number }
+  ): Promise<ApplyPatternResponse> => {
+    const response = await api.post<ApplyPatternResponse>(`/api/spreadsheet/patterns/${patternId}/apply/`, payload);
+    return response.data;
+  },
+
+  getPatternJob: async (jobId: string): Promise<PatternJobResponse> => {
+    const response = await api.get<PatternJobResponse>(`/api/spreadsheet/pattern-jobs/${jobId}/`);
+    return response.data;
   },
 };
 

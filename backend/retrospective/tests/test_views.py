@@ -47,6 +47,15 @@ class RetrospectiveTaskViewSetTest(TestCase):
             created_by=self.user,
             status=RetrospectiveStatus.SCHEDULED
         )
+
+    def _retrospective_payload(self, campaign_id):
+        return {
+            'campaign': str(campaign_id),
+            'decision': 'Scale budget toward best performing channel',
+            'confidence_level': 4,
+            'primary_assumption': 'Recent KPI lift will continue next sprint',
+            'key_risk_ignore': 'Short-term auction volatility',
+        }
     
     def test_list_retrospectives(self):
         """Test listing retrospectives"""
@@ -72,13 +81,79 @@ class RetrospectiveTaskViewSetTest(TestCase):
         
         self.client.force_authenticate(user=self.user)
         url = reverse('retrospective:retrospective-list')
-        data = {
-            'campaign': str(second_campaign.id)
-        }
+        data = self._retrospective_payload(second_campaign.id)
         response = self.client.post(url, data)
         
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(RetrospectiveTask.objects.count(), 2)  # Including the one from setUp
+
+    def test_create_retrospective_requires_new_fields(self):
+        """Test required decision fields on retrospective creation"""
+        third_campaign = Project.objects.create(
+            name='Third Test Campaign',
+            organization=self.organization
+        )
+        self.client.force_authenticate(user=self.user)
+        url = reverse('retrospective:retrospective-list')
+        response = self.client.post(url, {'campaign': str(third_campaign.id)})
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('decision', response.data)
+        self.assertIn('confidence_level', response.data)
+        self.assertIn('primary_assumption', response.data)
+
+    def test_create_retrospective_rejects_invalid_confidence_level(self):
+        """Test confidence_level option validation on create"""
+        fourth_campaign = Project.objects.create(
+            name='Fourth Test Campaign',
+            organization=self.organization
+        )
+        self.client.force_authenticate(user=self.user)
+        url = reverse('retrospective:retrospective-list')
+        data = self._retrospective_payload(fourth_campaign.id)
+        data['confidence_level'] = 6
+        response = self.client.post(url, data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('confidence_level', response.data)
+    
+    def test_create_retrospective_rejects_float_confidence_level(self):
+        fifth_campaign = Project.objects.create(
+            name='Fifth Test Campaign',
+            organization=self.organization
+        )
+        self.client.force_authenticate(user=self.user)
+        url = reverse('retrospective:retrospective-list')
+        data = {
+            'campaign': str(fifth_campaign.id),
+            'decision': 'Keep budget steady',
+            'confidence_level': 3.5,
+            'primary_assumption': 'Performance remains stable',
+            'key_risk_ignore': '',
+        }
+
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('confidence_level', response.data)
+    
+    def test_create_retrospective_rejects_string_confidence_level(self):
+        fifth_campaign = Project.objects.create(
+            name='Sixth Test Campaign',
+            organization=self.organization
+        )
+        self.client.force_authenticate(user=self.user)
+        url = reverse('retrospective:retrospective-list')
+        data = {
+            'campaign': str(fifth_campaign.id),
+            'decision': 'Keep budget steady',
+            'confidence_level': 'high',
+            'primary_assumption': 'Performance remains stable',
+            'key_risk_ignore': '',
+        }
+
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('confidence_level', response.data)
     
     def test_retrieve_retrospective(self):
         """Test retrieving a retrospective"""
@@ -108,6 +183,90 @@ class RetrospectiveTaskViewSetTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.retrospective.refresh_from_db()
         self.assertEqual(self.retrospective.status, RetrospectiveStatus.IN_PROGRESS)
+
+    def test_update_retrospective_accepts_post_outcome_fields(self):
+        """Test valid post-outcome update values via PATCH"""
+        self.client.force_authenticate(user=self.user)
+        url = reverse('retrospective:retrospective-detail', args=[str(self.retrospective.id)])
+        data = {
+            'outcome_compared_to_expectation': 'better',
+            'biggest_wrong_assumption': 'Expected conversion lag to continue',
+            'would_make_same_decision_again': 'yes',
+        }
+        response = self.client.patch(url, data)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.retrospective.refresh_from_db()
+        self.assertEqual(self.retrospective.outcome_compared_to_expectation, 'better')
+        self.assertEqual(
+            self.retrospective.biggest_wrong_assumption,
+            'Expected conversion lag to continue',
+        )
+        self.assertEqual(self.retrospective.would_make_same_decision_again, 'yes')
+
+    def test_update_retrospective_rejects_invalid_post_outcome_options(self):
+        """Test invalid enum values for post-outcome fields via PATCH"""
+        self.client.force_authenticate(user=self.user)
+        url = reverse('retrospective:retrospective-detail', args=[str(self.retrospective.id)])
+        data = {
+            'outcome_compared_to_expectation': 'much_better',
+            'would_make_same_decision_again': 'maybe',
+        }
+        response = self.client.patch(url, data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('outcome_compared_to_expectation', response.data)
+        self.assertIn('would_make_same_decision_again', response.data)
+
+    def test_create_retrospective_rejects_update_only_post_outcome_fields(self):
+        """Test post-outcome fields cannot be set during create"""
+        extra_campaign = Project.objects.create(
+            name='Update Only Field Campaign',
+            organization=self.organization
+        )
+        self.client.force_authenticate(user=self.user)
+        url = reverse('retrospective:retrospective-list')
+        data = self._retrospective_payload(extra_campaign.id)
+        data.update({
+            'outcome_compared_to_expectation': 'better',
+            'biggest_wrong_assumption': 'Assumption text',
+            'would_make_same_decision_again': 'yes',
+        })
+        response = self.client.post(url, data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('outcome_compared_to_expectation', response.data)
+        self.assertIn('biggest_wrong_assumption', response.data)
+        self.assertIn('would_make_same_decision_again', response.data)
+
+    def test_update_retrospective_post_outcome_fields_are_optional(self):
+        """Test PATCH succeeds when only one post-outcome field is provided"""
+        self.client.force_authenticate(user=self.user)
+        url = reverse('retrospective:retrospective-detail', args=[str(self.retrospective.id)])
+        response = self.client.patch(
+            url,
+            {'biggest_wrong_assumption': 'Assumed CPA would remain high'},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.retrospective.refresh_from_db()
+        self.assertEqual(
+            self.retrospective.biggest_wrong_assumption,
+            'Assumed CPA would remain high',
+        )
+    
+    def test_patch_with_no_fields(self):
+        """Test PATCH succeeds when no fields are provided"""
+        self.client.force_authenticate(user=self.user)
+
+        url = reverse(
+            "retrospective:retrospective-detail",
+            args=[str(self.retrospective.id)]
+        )
+
+        response = self.client.patch(url, {})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
     
     @patch('retrospective.views.generate_retrospective')
     def test_start_analysis(self, mock_generate_task):
@@ -467,7 +626,11 @@ class APIIntegrationTest(TestCase):
         # 1. Create retrospective
         url = reverse('retrospective:retrospective-list')
         data = {
-            'campaign': str(self.campaign.id)
+            'campaign': str(self.campaign.id),
+            'decision': 'Keep the current creative mix',
+            'confidence_level': 3,
+            'primary_assumption': 'Current conversion trend remains stable',
+            'key_risk_ignore': '',
         }
         response = self.client.post(url, data)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)

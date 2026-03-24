@@ -1,0 +1,8 @@
+---
+description: Git and PR conventions (Conventional Commits, Jira key).
+alwaysApply: true
+---
+
+# Git + PR rules (keep review easy)
+
+- **Commit messages**: prefer Conventional Commits (`feat(scope): ...`, `fix(scope): ...`) and include the Jira key when applicable.

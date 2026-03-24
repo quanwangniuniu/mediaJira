@@ -4,21 +4,21 @@ info:
   version: v0.1-draft
   description: |
     API and ERD extension for scheduled campaign retrospectives, KPI metric storage, and analytics/reporting. 
-    
+
     **Usage Examples:**
     - Campaign auto-triggers a retrospective task after completion.
     - Data Analyst submits optimization notes and insights for a campaign.
     - KPI metrics are stored and later queried for dashboard/reporting.
-    
+
     **Retrospective Task States:**
     - Scheduled → In Progress → Completed → Reported
-    
+
     **Entities:**
     - RetrospectiveTask (1:1 with CampaignTask, type=Retrospective)
     - CampaignKPI (1:n → CampaignTask)
     - Insight (n:1 → RetrospectiveTask)
     - CustomReport (optional, for saved filters/visualizations)
-    
+
     **See also:** BE5 for dashboard/reporting integration, BE1 for asset/feedback loop compatibility.
 servers:
   - description: Local Development
@@ -43,12 +43,42 @@ components:
         created_by:
           type: integer
           description: User ID
-        scheduled_time:
+        scheduled_at:
           type: string
           format: date-time
         status:
           type: string
-          enum: [Scheduled, In Progress, Completed, Reported]
+          enum: [scheduled, in_progress, completed, reported, cancelled]
+        decision:
+          type: string
+          description: Core decision captured during retrospective planning
+        confidence_level:
+          type: integer
+          enum: [1, 2, 3, 4, 5]
+          minimum: 1
+          maximum: 5
+          description: Confidence score for the decision (1-5)
+        primary_assumption:
+          type: string
+          description: Primary assumption supporting the decision
+        key_risk_ignore:
+          type: string
+          description: Optional key risk intentionally ignored
+          nullable: true
+        outcome_compared_to_expectation:
+          type: string
+          enum: [better, worse, as_expected]
+          description: Post-outcome field. Set during retrospective update after creation.
+          nullable: true
+        biggest_wrong_assumption:
+          type: string
+          description: Post-outcome field. Biggest wrong assumption discovered after execution.
+          nullable: true
+        would_make_same_decision_again:
+          type: string
+          enum: [yes, no]
+          description: Post-outcome field. Whether the same decision would be made again.
+          nullable: true
         report_url:
           type: string
           format: uri
@@ -65,6 +95,29 @@ components:
         - created_by
         - scheduled_time
         - status
+        - decision
+        - confidence_level
+        - primary_assumption
+    RetrospectiveTaskUpdateRequest:
+      type: object
+      description: |
+        Partial update payload for retrospective tasks.
+        Post-outcome fields are intended to be filled after task creation.
+      properties:
+        status:
+          type: string
+          enum: [scheduled, in_progress, completed, reported, cancelled]
+        scheduled_at:
+          type: string
+          format: date-time
+        outcome_compared_to_expectation:
+          type: string
+          enum: [better, worse, as_expected]
+        biggest_wrong_assumption:
+          type: string
+        would_make_same_decision_again:
+          type: string
+          enum: [yes, no]
     CampaignKPI:
       type: object
       properties:
@@ -146,16 +199,20 @@ paths:
       security:
         - bearerAuth: []
       responses:
-        '200':
+        "200":
           description: List of retrospective tasks
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/RetrospectiveTask'
+                  $ref: "#/components/schemas/RetrospectiveTask"
     post:
       summary: Create a new retrospective task
+      description: |
+        Create a retrospective task.
+        Post-outcome fields (`outcome_compared_to_expectation`, `biggest_wrong_assumption`,
+        `would_make_same_decision_again`) are update-only and should not be provided on create.
       security:
         - bearerAuth: []
       requestBody:
@@ -163,14 +220,82 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RetrospectiveTask'
+              $ref: "#/components/schemas/RetrospectiveTask"
       responses:
-        '201':
+        "201":
           description: Created retrospective task
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RetrospectiveTask'
+                $ref: "#/components/schemas/RetrospectiveTask"
+  /retrospectives/{id}/:
+    get:
+      summary: Retrieve one retrospective task
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Retrospective task details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetrospectiveTask"
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Retrospective task not found
+    patch:
+      summary: Update retrospective task (partial)
+      description: |
+        Partially update a retrospective task.
+        This endpoint is used to submit post-outcome fields after creation.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RetrospectiveTaskUpdateRequest"
+            examples:
+              outcomeOnly:
+                value:
+                  outcome_compared_to_expectation: better
+              fullPostOutcome:
+                value:
+                  outcome_compared_to_expectation: better
+                  biggest_wrong_assumption: Assumed conversion lag would continue
+                  would_make_same_decision_again: "yes"
+      responses:
+        "200":
+          description: Updated retrospective task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetrospectiveTask"
+        "400":
+          description: Bad Request
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "404":
+          description: Retrospective task not found
   /retrospectives/{id}/insights/:
     get:
       summary: List insights for a retrospective task
@@ -183,14 +308,14 @@ paths:
           schema:
             type: integer
       responses:
-        '200':
+        "200":
           description: List of insights
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Insight'
+                  $ref: "#/components/schemas/Insight"
     post:
       summary: Add an insight to a retrospective task
       security:
@@ -206,14 +331,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Insight'
+              $ref: "#/components/schemas/Insight"
       responses:
-        '201':
+        "201":
           description: Created insight
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Insight'
+                $ref: "#/components/schemas/Insight"
   /campaign-tasks/{id}/kpis/:
     get:
       summary: List KPIs for a campaign task
@@ -226,14 +351,14 @@ paths:
           schema:
             type: integer
       responses:
-        '200':
+        "200":
           description: List of KPIs
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/CampaignKPI'
+                  $ref: "#/components/schemas/CampaignKPI"
     post:
       summary: Add a KPI metric to a campaign task
       security:
@@ -249,28 +374,28 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CampaignKPI'
+              $ref: "#/components/schemas/CampaignKPI"
       responses:
-        '201':
+        "201":
           description: Created KPI
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CampaignKPI'
+                $ref: "#/components/schemas/CampaignKPI"
   /custom-reports/:
     get:
       summary: List custom reports
       security:
         - bearerAuth: []
       responses:
-        '200':
+        "200":
           description: List of custom reports
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/CustomReport'
+                  $ref: "#/components/schemas/CustomReport"
     post:
       summary: Create a custom report
       security:
@@ -280,11 +405,11 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CustomReport'
+              $ref: "#/components/schemas/CustomReport"
       responses:
-        '201':
+        "201":
           description: Created custom report
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CustomReport' 
+                $ref: "#/components/schemas/CustomReport"

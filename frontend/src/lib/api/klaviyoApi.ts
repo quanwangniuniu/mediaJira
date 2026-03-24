@@ -169,6 +169,7 @@ export const klaviyoApi = {
     } catch (error) {
       console.error("Failed to fetch Klaviyo email drafts:", error);
       normalizeApiError(error, "Failed to fetch Klaviyo email drafts");
+      return []; // Unreachable but satisfies TypeScript
     }
   },
 
@@ -180,6 +181,7 @@ export const klaviyoApi = {
     } catch (error) {
       console.error(`Failed to fetch Klaviyo email draft ${id}:`, error);
       normalizeApiError(error, `Failed to fetch Klaviyo email draft ${id}`);
+      return {} as KlaviyoDraft; // Unreachable but satisfies TypeScript
     }
   },
 
@@ -197,11 +199,43 @@ export const klaviyoApi = {
         payload.name = data.name;
       }
 
+      // Preserve template/canvas initialization when creating a draft
+      if (Array.isArray(data.blocks)) {
+        payload.blocks = data.blocks;
+      }
+
       const response = await api.post("/api/klaviyo/klaviyo-drafts/", payload);
-      return response.data;
+      const createdDraft = response.data as Partial<KlaviyoDraft>;
+      if (createdDraft && typeof createdDraft.id === "number") {
+        return createdDraft as KlaviyoDraft;
+      }
+
+      // Backward compatibility: some backend serializers returned create payload
+      // without id. Resolve it from the latest drafts list to avoid /undefined routes.
+      const draftsResponse = await api.get("/api/klaviyo/klaviyo-drafts/");
+      const draftsData = draftsResponse.data;
+      const drafts = (draftsData?.results || draftsData || []) as KlaviyoDraft[];
+      const sortedDrafts = [...drafts].sort(
+        (a, b) =>
+          new Date(b.updated_at || b.created_at).getTime() -
+          new Date(a.updated_at || a.created_at).getTime()
+      );
+      const resolvedDraft =
+        sortedDrafts.find(
+          (draft) =>
+            draft.subject === payload.subject &&
+            (payload.name ? draft.name === payload.name : true)
+        ) || sortedDrafts[0];
+
+      if (resolvedDraft && typeof resolvedDraft.id === "number") {
+        return resolvedDraft;
+      }
+
+      throw new Error("Draft created but response did not include draft id");
     } catch (error) {
       console.error("Failed to create Klaviyo email draft:", error);
       normalizeApiError(error, "Failed to create Klaviyo email draft");
+      return {} as KlaviyoDraft; // Unreachable but satisfies TypeScript
     }
   },
 
@@ -216,6 +250,7 @@ export const klaviyoApi = {
     } catch (error) {
       console.error(`Failed to update Klaviyo email draft ${id}:`, error);
       normalizeApiError(error, `Failed to update Klaviyo email draft ${id}`);
+      return {} as KlaviyoDraft; // Unreachable but satisfies TypeScript
     }
   },
 
@@ -233,6 +268,7 @@ export const klaviyoApi = {
     } catch (error) {
       console.error(`Failed to patch Klaviyo email draft ${id}:`, error);
       normalizeApiError(error, `Failed to patch Klaviyo email draft ${id}`);
+      return {} as KlaviyoDraft; // Unreachable but satisfies TypeScript
     }
   },
 
@@ -290,7 +326,7 @@ export const klaviyoImageApi = {
 
       const response = await api.post("/api/klaviyo/images/upload/", formData, {
         headers: { "Content-Type": "multipart/form-data" },
-        onUploadProgress: (event) => {
+        onUploadProgress: (event: { loaded: number; total?: number }) => {
           if (!onUploadProgress || !event.total) return;
           const percent = Math.round((event.loaded / event.total) * 100);
           onUploadProgress(percent);
@@ -301,6 +337,7 @@ export const klaviyoImageApi = {
     } catch (error) {
       console.error("Failed to upload Klaviyo image:", error);
       normalizeApiError(error, "Failed to upload Klaviyo image");
+      return {} as KlaviyoImageItem; // Unreachable but satisfies TypeScript
     }
   },
 
@@ -317,6 +354,7 @@ export const klaviyoImageApi = {
     } catch (error) {
       console.error("Failed to fetch Klaviyo images:", error);
       normalizeApiError(error, "Failed to fetch Klaviyo images");
+      return { results: [], count: 0, page: 1, page_size: 0 }; // Unreachable but satisfies TypeScript
     }
   },
 
@@ -331,6 +369,7 @@ export const klaviyoImageApi = {
     } catch (error) {
       console.error("Failed to import Klaviyo image from URL:", error);
       normalizeApiError(error, "Failed to import Klaviyo image from URL");
+      return {} as KlaviyoImageItem; // Unreachable but satisfies TypeScript
     }
   },
 };

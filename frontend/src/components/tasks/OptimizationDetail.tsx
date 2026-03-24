@@ -10,6 +10,7 @@ import {
 import { TaskAPI } from "@/lib/api/taskApi";
 import toast from "react-hot-toast";
 import Icon from "@/components/ui/Icon";
+import AutoResizeTextarea from "@/components/ui/AutoResizeTextarea";
 import { OptimizationForm } from "./OptimizationForm";
 
 // Platform configuration
@@ -36,6 +37,13 @@ const PRESET_METRICS = [
 // Window options for triggered metrics
 const WINDOW_OPTIONS = ["24h", "48h", "7d", "14d", "30d"] as const;
 
+const IMPLICIT_FIELD_BASE =
+  "rounded-md border border-transparent bg-transparent text-sm text-gray-900 shadow-none transition-colors hover:border-slate-200 hover:bg-white/60 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-0";
+const IMPLICIT_FIELD_CLASS = `w-full px-3 py-2 ${IMPLICIT_FIELD_BASE}`;
+const IMPLICIT_FIELD_MONO_CLASS = `${IMPLICIT_FIELD_CLASS} font-mono`;
+const IMPLICIT_FIELD_COMPACT_CLASS = `w-full px-2 py-1.5 ${IMPLICIT_FIELD_BASE}`;
+const IMPLICIT_FIELD_COMPACT_MONO_CLASS = `${IMPLICIT_FIELD_COMPACT_CLASS} font-mono`;
+
 // Types for metrics
 interface TriggeredMetricItem {
   id: string;
@@ -57,6 +65,27 @@ interface OptimizationDetailProps {
   taskId: number;
   loading: boolean;
   onRefresh?: () => void;
+}
+
+function PlatformLegend() {
+  return (
+    <div className="mb-4 space-y-2">
+      <p className="text-xs text-gray-500">Available platforms:</p>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2">
+        {PLATFORMS.map((platform) => (
+          <div
+            key={platform.code}
+            className="flex min-w-0 items-center gap-1.5 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs"
+          >
+            <Icon name={platform.icon} size="sm" className="shrink-0 text-gray-600" />
+            <span className="shrink-0 font-medium text-gray-700">{platform.code}</span>
+            <span className="shrink-0 text-gray-500">-</span>
+            <span className="truncate text-gray-600">{platform.name}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export default function OptimizationDetail({
@@ -264,7 +293,7 @@ export default function OptimizationDetail({
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="border-t border-slate-200 pt-5">
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
           <span className="ml-2 text-gray-600">Loading optimization...</span>
@@ -276,7 +305,7 @@ export default function OptimizationDetail({
   // Show create form if no optimization exists
   if (!optimization) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="border-t border-slate-200 pt-5">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">
           Create Optimization
         </h3>
@@ -306,7 +335,7 @@ export default function OptimizationDetail({
   return (
     <div className="space-y-6">
       {/* Optimization Overview */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="border-t border-slate-200 pt-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900">
             Optimization Details
@@ -332,33 +361,20 @@ export default function OptimizationDetail({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-6">
           <div className="space-y-4">
             {/* Affected Entity IDs */}
             <div className="border border-gray-200 rounded-md p-4">
               <h4 className="text-sm font-semibold text-gray-900 mb-3">
                 Affected Entities
               </h4>
-              <div className="flex items-center gap-2 mb-4 flex-wrap">
-                <span className="text-xs text-gray-500 mr-2">Available platforms:</span>
-                {PLATFORMS.map((platform) => (
-                  <div
-                    key={platform.code}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-md text-xs"
-                  >
-                    <Icon name={platform.icon} size="sm" className="text-gray-600" />
-                    <span className="text-gray-700 font-medium">{platform.code}</span>
-                    <span className="text-gray-500">-</span>
-                    <span className="text-gray-600">{platform.name}</span>
-                  </div>
-                ))}
-              </div>
+              <PlatformLegend />
               <div className="space-y-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Campaign IDs (format: platform:id, one per line)
                   </label>
-                  <textarea
+                  <AutoResizeTextarea
                     value={formatIdList(localAffectedEntityIds?.campaign_ids)}
                     onChange={(e) => {
                       const updated = {
@@ -379,15 +395,15 @@ export default function OptimizationDetail({
                     }}
                     disabled={savingField === "Affected Entity IDs"}
                     rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className={IMPLICIT_FIELD_MONO_CLASS}
                     placeholder="fb:123456&#10;tt:789012"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Ad Set IDs (format: platform:id, one per line)
                   </label>
-                  <textarea
+                  <AutoResizeTextarea
                     value={formatIdList(localAffectedEntityIds?.ad_set_ids)}
                     onChange={(e) => {
                       const updated = {
@@ -408,7 +424,7 @@ export default function OptimizationDetail({
                     }}
                     disabled={savingField === "Affected Entity IDs"}
                     rows={2}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className={IMPLICIT_FIELD_MONO_CLASS}
                     placeholder="fb:789"
                   />
                 </div>
@@ -444,10 +460,10 @@ export default function OptimizationDetail({
                     key={metric.id}
                     className="flex items-start gap-3 p-3 bg-gray-50 rounded-md border border-gray-200"
                   >
-                    <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="flex-1 grid grid-cols-1 gap-3">
                       {/* Metric Name */}
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                           Metric Name
                         </label>
                         {metric.isCustom ? (
@@ -469,7 +485,7 @@ export default function OptimizationDetail({
                             }}
                             disabled={savingField === "Triggered Metrics"}
                             placeholder="Custom metric"
-                            className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                            className={IMPLICIT_FIELD_COMPACT_CLASS}
                           />
                         ) : (
                           <select
@@ -495,7 +511,7 @@ export default function OptimizationDetail({
                               }
                             }}
                             disabled={savingField === "Triggered Metrics"}
-                            className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                            className={IMPLICIT_FIELD_COMPACT_CLASS}
                           >
                             <option value="">Select metric</option>
                             {PRESET_METRICS.map((m) => (
@@ -510,7 +526,7 @@ export default function OptimizationDetail({
 
                       {/* Delta % */}
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                           Delta %
                         </label>
                         <input
@@ -540,13 +556,13 @@ export default function OptimizationDetail({
                           }}
                           disabled={savingField === "Triggered Metrics"}
                           placeholder="35"
-                          className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                          className={IMPLICIT_FIELD_COMPACT_CLASS}
                         />
                       </div>
 
                       {/* Window */}
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                           Window
                         </label>
                         <div className="flex gap-2">
@@ -566,7 +582,7 @@ export default function OptimizationDetail({
                               }
                             }}
                             disabled={savingField === "Triggered Metrics"}
-                            className="flex-1 px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                            className={`flex-1 ${IMPLICIT_FIELD_COMPACT_CLASS.replace("w-full ", "")}`}
                           >
                             {WINDOW_OPTIONS.map((w) => (
                               <option key={w} value={w}>
@@ -632,10 +648,10 @@ export default function OptimizationDetail({
                     key={metric.id}
                     className="flex items-start gap-3 p-3 bg-gray-50 rounded-md border border-gray-200"
                   >
-                    <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="flex-1 grid grid-cols-1 gap-3">
                       {/* Metric Name */}
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                           Metric Name
                         </label>
                         {metric.isCustom ? (
@@ -657,7 +673,7 @@ export default function OptimizationDetail({
                             }}
                             disabled={savingField === "Baseline Metrics"}
                             placeholder="Custom metric"
-                            className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                            className={IMPLICIT_FIELD_COMPACT_CLASS}
                           />
                         ) : (
                           <select
@@ -683,7 +699,7 @@ export default function OptimizationDetail({
                               }
                             }}
                             disabled={savingField === "Baseline Metrics"}
-                            className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                            className={IMPLICIT_FIELD_COMPACT_CLASS}
                           >
                             <option value="">Select metric</option>
                             {PRESET_METRICS.map((m) => (
@@ -698,7 +714,7 @@ export default function OptimizationDetail({
 
                       {/* Value */}
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                           Value
                         </label>
                         <div className="flex gap-2">
@@ -729,7 +745,7 @@ export default function OptimizationDetail({
                             }}
                             disabled={savingField === "Baseline Metrics"}
                             placeholder="12.3"
-                            className="flex-1 px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                            className={`flex-1 ${IMPLICIT_FIELD_COMPACT_CLASS.replace("w-full ", "")}`}
                           />
                           {localBaselineMetrics.length > 1 && (
                             <button
@@ -765,7 +781,7 @@ export default function OptimizationDetail({
           <div className="space-y-4">
             {/* Action Type */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Action Type
               </label>
               <select
@@ -781,7 +797,7 @@ export default function OptimizationDetail({
                   }
                 }}
                 disabled={savingField === "Action Type"}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={IMPLICIT_FIELD_CLASS}
               >
                 <option value="pause">Pause</option>
                 <option value="scale">Scale</option>
@@ -792,10 +808,10 @@ export default function OptimizationDetail({
 
             {/* Planned Action */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Planned Action
               </label>
-              <textarea
+              <AutoResizeTextarea
                 value={localPlannedAction}
                 onChange={(e) => setLocalPlannedAction(e.target.value)}
                 onBlur={() => {
@@ -807,14 +823,14 @@ export default function OptimizationDetail({
                 }}
                 disabled={savingField === "Planned Action"}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={IMPLICIT_FIELD_CLASS}
                 placeholder="Describe what action will be taken..."
               />
             </div>
 
             {/* Execution Status */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Execution Status
               </label>
               <select
@@ -838,7 +854,7 @@ export default function OptimizationDetail({
                   }
                 }}
                 disabled={savingField === "Execution Status"}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={IMPLICIT_FIELD_CLASS}
               >
                 <option value="detected">Detected</option>
                 <option value="planned">Planned</option>
@@ -851,7 +867,7 @@ export default function OptimizationDetail({
 
             {/* Executed At */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Executed At
               </label>
               <input
@@ -875,13 +891,13 @@ export default function OptimizationDetail({
                   }
                 }}
                 disabled={savingField === "Executed At"}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={IMPLICIT_FIELD_CLASS}
               />
             </div>
 
             {/* Monitored At */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Monitored At
               </label>
               <input
@@ -905,16 +921,16 @@ export default function OptimizationDetail({
                   }
                 }}
                 disabled={savingField === "Monitored At"}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={IMPLICIT_FIELD_CLASS}
               />
             </div>
 
             {/* Outcome Notes */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Outcome Notes
               </label>
-              <textarea
+              <AutoResizeTextarea
                 value={localOutcomeNotes}
                 onChange={(e) => setLocalOutcomeNotes(e.target.value)}
                 onBlur={() => {
@@ -926,7 +942,7 @@ export default function OptimizationDetail({
                 }}
                 disabled={savingField === "Outcome Notes"}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className={IMPLICIT_FIELD_CLASS}
                 placeholder="Notes about outcome and performance changes..."
               />
             </div>
@@ -935,10 +951,10 @@ export default function OptimizationDetail({
             {(localExecutionStatus === "monitoring" ||
               localExecutionStatus === "completed") && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Observed Metrics (JSON)
                 </label>
-                <textarea
+                <AutoResizeTextarea
                   value={formatJSONField(localObservedMetrics)}
                   onChange={(e) => {
                     const parsed = parseJSONField(e.target.value);
@@ -956,7 +972,7 @@ export default function OptimizationDetail({
                   }}
                   disabled={savingField === "Observed Metrics"}
                   rows={4}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className={IMPLICIT_FIELD_MONO_CLASS}
                   placeholder='{"CPA": 10.5, "CTR": 1.2}'
                 />
               </div>
@@ -967,4 +983,3 @@ export default function OptimizationDetail({
     </div>
   );
 }
-

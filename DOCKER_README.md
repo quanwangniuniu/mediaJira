@@ -80,7 +80,7 @@ find * -type f -name "Dockerfile*" | xargs dos2unix
 find * -type f -name "entrypoint" | xargs dos2unix
 find * -type f -name "entrypoint-dev" | xargs dos2unix
 find * -type f -name "crontab.txt*" | xargs dos2unix
-find * -type f -name "init-sonar" | xargs dos2unix
+# find * -type f -name "init-sonar" | xargs dos2unix
 
 # Start development environment
 docker compose -f docker-compose.dev.yml --env-file .env up --build -d

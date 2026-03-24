@@ -41,9 +41,10 @@ urlpatterns = [
     path('api/retrospective/', include('retrospective.urls')),
     path('api/core/', include('core.urls')),
     path('api/alerting/', include('alerting.urls')),
+    path('api/report/', include('report.urls')),
     path('api/', include('task.urls')),
+    path('api/policy/', include('policy.urls')),
     path('api/dashboard/', include('dashboard.urls')),
-    path('api/reports/', include('reports.urls')),
     path('api/optimization/', include('optimization.urls')),
     path('api/notion/', include('notion_editor.urls')),
     path('api/tiktok/', include('tiktok.urls')),
@@ -68,6 +69,8 @@ urlpatterns = [
     path('api/', include('ad_variations.urls')),
     path('api/', include('campaign.urls')),
     path('api/slack/', include('slack_integration.urls')),
+    path('api/agent/', include('agent.urls')),
+    path('api/v1/', include('meetings.urls')),
     path("", include("django_prometheus.urls")),
 ]
 

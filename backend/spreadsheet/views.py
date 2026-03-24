@@ -2,29 +2,69 @@
 API views for spreadsheet operations
 Handles CRUD operations for spreadsheets, sheets, rows, columns, and cells
 """
+import logging
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import ValidationError, NotFound, PermissionDenied
 from django.shortcuts import get_object_or_404
+from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.paginator import Paginator
 
-from .models import Spreadsheet, Sheet, SheetRow, SheetColumn, WorkflowPattern
+from .models import (
+    Spreadsheet,
+    Sheet,
+    SheetRow,
+    SheetColumn,
+    WorkflowPattern,
+    PatternJob,
+    PatternJobStatus,
+    SpreadsheetHighlight,
+    SpreadsheetCellFormat,
+    SpreadsheetHighlightScope,
+    PivotConfig,
+    SheetKind,
+)
 from .serializers import (
-    SpreadsheetSerializer, SpreadsheetCreateSerializer, SpreadsheetUpdateSerializer,
-    SheetSerializer, SheetCreateSerializer, SheetUpdateSerializer,
-    SheetRowSerializer, SheetColumnSerializer,
-    SheetResizeSerializer, SheetResizeResponseSerializer,
-    CellRangeReadSerializer, CellRangeResponseSerializer, CellSerializer,
-    SheetInsertSerializer, SheetDeleteSerializer,
-    CellBatchUpdateSerializer, CellBatchUpdateResponseSerializer,
-    WorkflowPatternCreateSerializer, WorkflowPatternListSerializer, WorkflowPatternDetailSerializer
+    SpreadsheetSerializer,
+    SpreadsheetCreateSerializer,
+    SpreadsheetUpdateSerializer,
+    SheetSerializer,
+    SheetCreateSerializer,
+    SheetUpdateSerializer,
+    SheetRowSerializer,
+    SheetColumnSerializer,
+    SheetResizeSerializer,
+    SheetResizeResponseSerializer,
+    CellRangeReadSerializer,
+    CellRangeResponseSerializer,
+    CellSerializer,
+    SheetInsertSerializer,
+    SheetDeleteSerializer,
+    CellBatchUpdateSerializer,
+    CellBatchUpdateResponseSerializer,
+    SheetSortSerializer,
+    SheetReorderSerializer,
+    WorkflowPatternCreateSerializer,
+    WorkflowPatternListSerializer,
+    WorkflowPatternDetailSerializer,
+    PatternApplySerializer,
+    PatternJobStatusSerializer,
+    SpreadsheetHighlightSerializer,
+    SpreadsheetHighlightBatchSerializer,
+    SpreadsheetCellFormatSerializer,
+    SpreadsheetCellFormatBatchSerializer,
+    PivotConfigSerializer,
+    PivotConfigCreateUpdateSerializer,
 )
 from .services import SpreadsheetService, SheetService, CellService
 from .models import SheetStructureOperation
 from core.models import Project
+from .tasks import apply_pattern_job
+
+logger = logging.getLogger(__name__)
 
 
 class SpreadsheetListView(APIView):
@@ -187,6 +227,60 @@ class WorkflowPatternDetailView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class WorkflowPatternApplyView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, id):
+        pattern = get_object_or_404(WorkflowPattern, id=id, owner=request.user, is_archived=False)
+        serializer = PatternApplySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        spreadsheet_id = serializer.validated_data['spreadsheet_id']
+        sheet_id = serializer.validated_data['sheet_id']
+
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+
+        job = PatternJob.objects.create(
+            pattern=pattern,
+            spreadsheet=spreadsheet,
+            sheet=sheet,
+            status=PatternJobStatus.QUEUED,
+            progress=0,
+            created_by=request.user
+        )
+        try:
+            apply_pattern_job.delay(str(job.id))
+            logger.info(
+                "Enqueued pattern apply job %s via broker %s",
+                job.id,
+                settings.CELERY_BROKER_URL
+            )
+        except Exception:
+            logger.exception(
+                "Failed to enqueue pattern apply job %s via broker %s",
+                job.id,
+                settings.CELERY_BROKER_URL
+            )
+            return Response(
+                {'error': 'Failed to enqueue pattern apply job'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        return Response(
+            {'job_id': str(job.id), 'status': job.status},
+            status=status.HTTP_202_ACCEPTED
+        )
+
+
+class PatternJobStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, job_id):
+        job = get_object_or_404(PatternJob, id=job_id, created_by=request.user)
+        serializer = PatternJobStatusSerializer(job)
+        return Response(serializer.data)
+
+
 class SheetListView(APIView):
     """List and create sheets"""
     permission_classes = [IsAuthenticated]
@@ -279,13 +373,16 @@ class SheetDetailView(APIView):
             is_deleted=False
         )
         
-        serializer = SheetUpdateSerializer(data=request.data)
+        serializer = SheetUpdateSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
         
         try:
             updated_sheet = SheetService.update_sheet(
                 sheet=sheet,
-                name=serializer.validated_data['name']
+                name=data.get('name', sheet.name),
+                frozen_row_count=data.get('frozen_row_count'),
+                frozen_column_count=data.get('frozen_column_count'),
             )
         except DjangoValidationError as e:
             raise ValidationError({'error': str(e)})
@@ -359,6 +456,50 @@ class SheetResizeView(APIView):
         
         response_serializer = SheetResizeResponseSerializer(result)
         return Response(response_serializer.data)
+
+
+class SheetSortView(APIView):
+    """Sort rows by column (updates SheetRow.position only, no cell rewrite)"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+
+        serializer = SheetSortSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            result = SheetService.sort_rows(
+                sheet=sheet,
+                column_position=serializer.validated_data['column_position'],
+                direction=serializer.validated_data['direction'],
+                has_header=serializer.validated_data['has_header'],
+                previous_sort_columns=serializer.validated_data.get('previous_sort_columns') or [],
+            )
+        except DjangoValidationError as e:
+            raise ValidationError({'error': str(e)})
+
+        return Response(result)
+
+
+class SheetReorderView(APIView):
+    """Reorder rows by position mapping (for undo/redo)"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+
+        serializer = SheetReorderSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            SheetService.reorder_rows(sheet=sheet, order=serializer.validated_data['order'])
+        except DjangoValidationError as e:
+            raise ValidationError({'error': str(e)})
+
+        return Response({'status': 'ok'})
 
 
 class SheetRowListView(APIView):
@@ -702,7 +843,9 @@ class CellRangeReadView(APIView):
         return Response({
             'cells': cell_serializer.data,
             'row_count': result['row_count'],
-            'column_count': result['column_count']
+            'column_count': result['column_count'],
+            'sheet_row_count': result.get('sheet_row_count'),
+            'sheet_column_count': result.get('sheet_column_count'),
         })
 
 
@@ -721,25 +864,283 @@ class CellBatchUpdateView(APIView):
         serializer = CellBatchUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
+        import_id = serializer.validated_data.get('import_id')
+        chunk_index = serializer.validated_data.get('chunk_index')
+        import_mode = serializer.validated_data.get('import_mode', False)
+        if import_id is not None or chunk_index is not None:
+            logger.info(
+                "Cell batch import chunk sheet_id=%s import_id=%s chunk_index=%s",
+                sheet_id, import_id, chunk_index
+            )
+        
         try:
             result = CellService.batch_update_cells(
                 sheet=sheet,
                 operations=serializer.validated_data['operations'],
-                auto_expand=serializer.validated_data.get('auto_expand', True)
+                auto_expand=serializer.validated_data.get('auto_expand', True),
+                import_mode=import_mode
             )
         except DjangoValidationError as e:
-            # Handle ValidationError with INVALID_ARGUMENT format
-            # The service already returns the correct format, so just re-raise as DRF ValidationError
-            if isinstance(e.detail, dict) and 'code' in e.detail:
-                # Already in the correct format from service
-                raise ValidationError(e.detail)
+            # Django's ValidationError has message_dict / messages / str(); it does NOT have .detail
+            # (that attribute is on rest_framework.exceptions.ValidationError only).
+            logger.warning(
+                "Cell batch update validation failed: %s",
+                getattr(e, 'message_dict', None) or getattr(e, 'messages', None) or str(e),
+                exc_info=True,
+            )
+            # Build a JSON-serializable detail for 400 response.
+            # Service raises ValidationError({'code': 'INVALID_ARGUMENT', 'details': [list of {index, row, column, field, message}]}).
+            # Django stores that as message_dict; do not double-wrap (details must be that list, not message_dict).
+            if hasattr(e, 'message_dict') and e.message_dict and 'code' in e.message_dict and 'details' in e.message_dict:
+                code_val = e.message_dict['code']
+                details_val = e.message_dict['details']
+                code = code_val[0] if isinstance(code_val, list) else code_val
+                details = details_val  # already the list of {index, row, column, field, message}
+                detail = {'code': code, 'details': details}
+            elif hasattr(e, 'message_dict') and e.message_dict:
+                detail = {'code': 'INVALID_ARGUMENT', 'details': e.message_dict}
+            elif hasattr(e, 'messages') and e.messages:
+                detail = {'code': 'INVALID_ARGUMENT', 'details': list(e.messages)}
             else:
-                # Fallback: convert to expected format
-                raise ValidationError({
+                detail = {
                     'code': 'INVALID_ARGUMENT',
-                    'details': [{'index': 0, 'row': None, 'column': None, 'field': 'general', 'message': str(e)}]
-                })
-        
+                    'details': [{'field': 'general', 'message': str(e)}],
+                }
+            raise ValidationError(detail)
+
         response_serializer = CellBatchUpdateResponseSerializer(result)
         return Response(response_serializer.data)
+
+
+class ImportFinalizeView(APIView):
+    """Finalize import: recompute formulas and update sheet meta after all batch chunks."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+        import_id = request.data.get('import_id')
+        if import_id:
+            logger.info("Import finalize sheet_id=%s import_id=%s", sheet_id, import_id)
+        try:
+            CellService.recalculate_sheet_formulas(sheet)
+        except Exception as e:
+            logger.exception("Import finalize recalc failed: %s", e)
+            raise ValidationError({'detail': 'Formula recalculation failed'})
+        return Response({'status': 'ok'})
+
+
+class PivotConfigView(APIView):
+    """
+    Create/update and read pivot configuration for a pivot sheet.
+    POST: upsert config only (metadata).
+    GET:  return current config (or 404 if none).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+        try:
+            config = sheet.pivot_config
+        except PivotConfig.DoesNotExist:
+            raise NotFound({'error': 'Pivot config not found'})
+        serializer = PivotConfigSerializer(config)
+        return Response(serializer.data)
+
+    def post(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+
+        serializer = PivotConfigCreateUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        source_sheet = get_object_or_404(
+            Sheet,
+            id=data['source_sheet_id'],
+            spreadsheet=spreadsheet,
+            is_deleted=False,
+        )
+
+        config, _created = PivotConfig.objects.update_or_create(
+            pivot_sheet=sheet,
+            defaults={
+                'source_sheet': source_sheet,
+                'rows_config': data.get('rows_config') or [],
+                'columns_config': data.get('columns_config') or [],
+                'values_config': data.get('values_config') or [],
+                'filters_config': data.get('filters_config') or {},
+                'show_grand_total_row': data.get('show_grand_total_row', True),
+                'show_grand_total_column': data.get('show_grand_total_column', True),
+            },
+        )
+
+        if sheet.kind != SheetKind.PIVOT:
+            sheet.kind = SheetKind.PIVOT
+            sheet.save(update_fields=['kind', 'updated_at'])
+
+        response_serializer = PivotConfigSerializer(config)
+        return Response(response_serializer.data)
+
+
+class PivotRecomputeView(APIView):
+    """
+    Trigger pivot recomputation for a pivot sheet based on persisted config.
+    Used as a fire-and-forget endpoint from the frontend; may be slow.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+        try:
+            config = sheet.pivot_config
+        except PivotConfig.DoesNotExist:
+            raise NotFound({'error': 'Pivot config not found'})
+
+        from .pivot_service import recompute_pivot
+
+        try:
+            recompute_pivot(config)
+        except Exception as e:
+            logger.exception(
+                "Pivot recompute failed via API for sheet_id=%s config_id=%s: %s",
+                sheet.id,
+                config.id,
+                e,
+            )
+            # Return 202 even on failure; frontend treats this as best-effort background recompute.
+            return Response({'status': 'error', 'detail': 'pivot recompute failed'}, status=status.HTTP_202_ACCEPTED)
+
+        return Response({'status': 'ok'}, status=status.HTTP_202_ACCEPTED)
+
+
+class SpreadsheetHighlightListView(APIView):
+    """List highlights for a sheet"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+
+        highlights = SpreadsheetHighlight.objects.filter(sheet=sheet).order_by('id')
+        serializer = SpreadsheetHighlightSerializer(highlights, many=True)
+        return Response({'highlights': serializer.data})
+
+
+class SpreadsheetHighlightBatchView(APIView):
+    """Batch set/clear highlights"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+
+        serializer = SpreadsheetHighlightBatchSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        updated = 0
+        deleted = 0
+        for op in serializer.validated_data['ops']:
+            scope = op['scope']
+            operation = op['operation']
+            row_index = op.get('row')
+            col_index = op.get('col')
+
+            # Normalize storage so ROW and COLUMN highlights are consistent with pattern engine:
+            # - CELL: row_index=row, col_index=col
+            # - ROW:  row_index=row, col_index=0
+            # - COLUMN: row_index=0, col_index=col
+            if scope == SpreadsheetHighlightScope.CELL:
+                norm_row = row_index
+                norm_col = col_index
+            elif scope == SpreadsheetHighlightScope.ROW:
+                norm_row = row_index
+                norm_col = 0
+            elif scope == SpreadsheetHighlightScope.COLUMN:
+                norm_row = 0
+                norm_col = col_index
+            else:
+                # Fallback: keep as-is (should not normally happen)
+                norm_row = row_index
+                norm_col = col_index
+
+            if operation == 'SET':
+                color = op['color']
+                SpreadsheetHighlight.objects.update_or_create(
+                    sheet=sheet,
+                    scope=scope,
+                    row_index=norm_row,
+                    col_index=norm_col,
+                    defaults={
+                        'spreadsheet': spreadsheet,
+                        'color': color,
+                    },
+                )
+                updated += 1
+            else:
+                # CLEAR: delete any matching highlight records for this logical target.
+                qs = SpreadsheetHighlight.objects.filter(sheet=sheet, scope=scope)
+                if scope == SpreadsheetHighlightScope.CELL:
+                    qs = qs.filter(row_index=norm_row, col_index=norm_col)
+                elif scope == SpreadsheetHighlightScope.ROW:
+                    qs = qs.filter(row_index=norm_row)
+                elif scope == SpreadsheetHighlightScope.COLUMN:
+                    qs = qs.filter(col_index=norm_col)
+                deleted += qs.delete()[0]
+
+        return Response({'updated': updated, 'deleted': deleted})
+
+
+class SpreadsheetCellFormatListView(APIView):
+    """List cell formats for a sheet"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+
+        formats = SpreadsheetCellFormat.objects.filter(sheet=sheet, is_deleted=False).order_by('row_index', 'column_index')
+        serializer = SpreadsheetCellFormatSerializer(formats, many=True)
+        return Response({'formats': serializer.data})
+
+
+class SpreadsheetCellFormatBatchView(APIView):
+    """Batch update cell formats"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, spreadsheet_id, sheet_id):
+        spreadsheet = get_object_or_404(Spreadsheet, id=spreadsheet_id, is_deleted=False)
+        sheet = get_object_or_404(Sheet, id=sheet_id, spreadsheet=spreadsheet, is_deleted=False)
+
+        serializer = SpreadsheetCellFormatBatchSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        updated = 0
+        for op in serializer.validated_data['ops']:
+            row_index = op['row']
+            column_index = op['column']
+            defaults = {
+                'bold': op.get('bold', False),
+                'italic': op.get('italic', False),
+                'strikethrough': op.get('strikethrough', False),
+                'text_color': op.get('text_color') or None,
+                'is_deleted': False,
+            }
+            if 'font_family' in op:
+                defaults['font_family'] = op['font_family'] or None
+            if 'font_size' in op:
+                defaults['font_size'] = op['font_size']
+            if 'number_format' in op:
+                defaults['number_format'] = op['number_format']
+            SpreadsheetCellFormat.objects.update_or_create(
+                sheet=sheet,
+                row_index=row_index,
+                column_index=column_index,
+                defaults=defaults,
+            )
+            updated += 1
+
+        return Response({'updated': updated})
 

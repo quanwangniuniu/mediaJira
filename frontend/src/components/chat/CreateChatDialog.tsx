@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useAuthStore } from '@/lib/authStore';
 import { useChatData } from '@/hooks/useChatData';
-import { useChatStore } from '@/lib/chatStore';
 import { findPrivateChat } from '@/lib/api/chatApi';
 import type { CreateChatDialogProps, ChatType } from '@/types/chat';
 import ParticipantSelector from './ParticipantSelector';
@@ -51,7 +50,7 @@ export default function CreateChatDialog({
 
   // Handle create
   const handleCreate = async () => {
-    if (!isValid() || !user) return;
+    if (!isValid() || !user || isCreating) return;
 
     try {
       setIsCreating(true);
@@ -76,10 +75,8 @@ export default function CreateChatDialog({
         name: chatType === 'group' ? groupName.trim() : undefined,
       });
 
-      if (newChat) {
-        resetForm();
-        onChatCreated(newChat.id);
-      }
+      resetForm();
+      onChatCreated(newChat.id);
     } catch (error: any) {
       console.error('Error creating chat:', error);
       console.error('Error response:', error?.response?.data);
@@ -92,6 +89,8 @@ export default function CreateChatDialog({
         errorMsg = errorData;
       } else if (errorData?.detail) {
         errorMsg = errorData.detail;
+      } else if (errorData?.error) {
+        errorMsg = errorData.error;
       } else if (errorData?.non_field_errors) {
         errorMsg = Array.isArray(errorData.non_field_errors) 
           ? errorData.non_field_errors[0] 
@@ -249,4 +248,3 @@ export default function CreateChatDialog({
     </Dialog>
   );
 }
-

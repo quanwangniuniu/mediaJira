@@ -1,15 +1,15 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { CheckCircle2, FileText, PencilLine } from 'lucide-react';
+import { CheckCircle2, FileText, Link2, PencilLine, X } from 'lucide-react';
 import type { DecisionGraphEdge, DecisionGraphNode } from '@/types/decision';
 
 interface DecisionTreeProps {
   nodes: DecisionGraphNode[];
   edges: DecisionGraphEdge[];
   projectId?: number | null;
-  mode?: 'viewer' | 'selector';
+  mode?: 'viewer' | 'selector' | 'link-editor';
   onAddDecision?: (decision: DecisionGraphNode) => void;
   selectedSeqs?: Set<number> | number[];
   focusSeq?: number | null;
@@ -18,6 +18,17 @@ interface DecisionTreeProps {
   autoFocusToday?: boolean;
   focusDateKey?: string | null;
   canReview?: boolean;
+  removedSeqs?: Set<number> | number[];
+  onToggleLink?: (decision: DecisionGraphNode) => void;
+  onEditLinks?: (decision: DecisionGraphNode) => void;
+  onDelete?: (decision: DecisionGraphNode) => void;
+  canDelete?: boolean;
+  /** When true, show link handles and clickable edges; drag to connect, click edge to unlink */
+  linkingEnabled?: boolean;
+  /** When true, disable link handles and edge unlink (e.g. while saving) */
+  linkingDisabled?: boolean;
+  onCreateLink?: (fromId: number, toId: number) => void;
+  onRemoveLink?: (fromId: number, toId: number) => void;
 }
 
 type PositionedNode = DecisionGraphNode & { x: number; y: number; dateKey: string };
@@ -37,6 +48,9 @@ const ZOOM_MIN = BASE_ZOOM * 0.5;
 const ZOOM_MAX = BASE_ZOOM * 2.0;
 const DEFAULT_ZOOM = BASE_ZOOM;
 const ZOOM_STEP = BASE_ZOOM * 0.1;
+const EDGE_END_GAP = 6;
+const EDGE_STROKE_NORMAL = '#cbd5f5';
+const EDGE_STROKE_HOVER = '#94a3b8';
 
 const formatDateKey = (value?: string) => {
   if (!value) return 'Unknown';
@@ -198,6 +212,15 @@ const DecisionTree = ({
   autoFocusToday = false,
   focusDateKey,
   canReview = false,
+  removedSeqs,
+  onToggleLink,
+  onEditLinks,
+  onDelete,
+  canDelete = false,
+  linkingEnabled = false,
+  linkingDisabled = false,
+  onCreateLink,
+  onRemoveLink,
 }: DecisionTreeProps) => {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -221,11 +244,22 @@ const DecisionTree = ({
     y: number;
     count: number;
   } | null>(null);
+  const [linkDragFrom, setLinkDragFrom] = useState<{
+    nodeId: number;
+    node: PositionedNode;
+  } | null>(null);
+  const [linkDragPointer, setLinkDragPointer] = useState<{ x: number; y: number } | null>(null);
+  const [hoveredEdgeIdx, setHoveredEdgeIdx] = useState<number | null>(null);
 
   const selectedSeqSet = useMemo(() => {
     if (!selectedSeqs) return new Set<number>();
     return selectedSeqs instanceof Set ? selectedSeqs : new Set(selectedSeqs);
   }, [selectedSeqs]);
+
+  const removedSeqSet = useMemo(() => {
+    if (!removedSeqs) return new Set<number>();
+    return removedSeqs instanceof Set ? removedSeqs : new Set(removedSeqs);
+  }, [removedSeqs]);
 
   const todayKey = useMemo(() => formatLocalDateKey(new Date()), []);
 
@@ -355,6 +389,66 @@ const DecisionTree = ({
     }, {});
   }, [positionedNodes]);
 
+  const clientToCanvas = useMemo(() => {
+    return (clientX: number, clientY: number) => {
+      const content = contentRef.current;
+      if (!content) return null;
+      const rect = content.getBoundingClientRect();
+      return {
+        x: (clientX - rect.left) / scale,
+        y: (clientY - rect.top) / scale,
+      };
+    };
+  }, [scale]);
+
+  const findNodeAtCanvas = useCallback(
+    (canvasX: number, canvasY: number) => {
+      return positionedNodes.find(
+        (n) =>
+          canvasX >= n.x &&
+          canvasX <= n.x + NODE_WIDTH &&
+          canvasY >= n.y &&
+          canvasY <= n.y + NODE_HEIGHT
+      ) ?? null;
+    },
+    [positionedNodes]
+  );
+
+  const handleLinkHandlePointerDown = useCallback(
+    (e: React.PointerEvent, node: PositionedNode) => {
+      e.stopPropagation();
+      e.preventDefault();
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      setLinkDragFrom({ nodeId: node.id, node });
+      setLinkDragPointer(null);
+    },
+    []
+  );
+
+  const handleLinkHandlePointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      const pt = clientToCanvas(e.clientX, e.clientY);
+      if (pt) setLinkDragPointer(pt);
+    },
+    [clientToCanvas]
+  );
+
+  const handleLinkHandlePointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      const pt = clientToCanvas(e.clientX, e.clientY);
+      const from = linkDragFrom;
+      setLinkDragFrom(null);
+      setLinkDragPointer(null);
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      if (!from || !pt || !onCreateLink) return;
+      const target = findNodeAtCanvas(pt.x, pt.y);
+      if (target && target.id !== from.nodeId) {
+        onCreateLink(from.nodeId, target.id);
+      }
+    },
+    [linkDragFrom, clientToCanvas, findNodeAtCanvas, onCreateLink]
+  );
+
   const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
     const viewport = viewportRef.current;
     if (!viewport) return;
@@ -391,6 +485,7 @@ const DecisionTree = ({
   };
 
   const handleMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest?.('[data-decision-link-handle]')) return;
     const viewport = viewportRef.current;
     if (!viewport) return;
     dragState.current = {
@@ -423,6 +518,10 @@ const DecisionTree = ({
 
   const handleNodeClick = (node: DecisionGraphNode, event: React.MouseEvent<HTMLButtonElement>) => {
     if (dragState.current.dragging || dragState.current.moved) return;
+    if (mode === 'link-editor') {
+      onToggleLink?.(node);
+      return;
+    }
     const rect = event.currentTarget.getBoundingClientRect();
     setPopover({
       node,
@@ -441,6 +540,12 @@ const DecisionTree = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (mode === 'link-editor') {
+      setPopover(null);
+    }
+  }, [mode]);
 
   useEffect(() => {
     if (!focusSeq) return;
@@ -549,7 +654,7 @@ const DecisionTree = ({
         >
           <svg
             className="absolute inset-0 h-full w-full"
-            style={{ pointerEvents: 'none' }}
+            style={{ pointerEvents: linkingEnabled && !linkingDisabled ? 'auto' : 'none' }}
           >
             <defs>
               <marker
@@ -557,55 +662,134 @@ const DecisionTree = ({
                 viewBox="0 0 10 10"
                 refX="9"
                 refY="5"
-                markerWidth="6"
-                markerHeight="6"
+                markerWidth="5"
+                markerHeight="5"
                 orient="auto"
               >
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="#cbd5f5" />
+                <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill={EDGE_STROKE_NORMAL} />
               </marker>
+              <marker
+                id="decision-arrow-hover"
+                viewBox="0 0 10 10"
+                refX="9"
+                refY="5"
+                markerWidth="5"
+                markerHeight="5"
+                orient="auto"
+              >
+                <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill={EDGE_STROKE_HOVER} />
+              </marker>
+              <filter id="edge-glow" x="-50%" y="-50%" width="200%" height="200%">
+                <feDropShadow dx="0" dy="0" stdDeviation="2" floodColor="#94a3b8" floodOpacity="0.4" />
+              </filter>
             </defs>
-            {dateColumns.map((column) => (
-              <rect
-                key={`band-${column.dateKey}`}
-                x={column.x - COLUMN_PADDING_X}
-                y={BAND_TOP_PADDING}
-                width={NODE_WIDTH + COLUMN_PADDING_X * 2}
-                height={contentSize.height - BAND_TOP_PADDING}
-                rx={16}
-                fill="rgba(148, 163, 184, 0.08)"
-              />
-            ))}
-            {edges.map((edge, idx) => {
-              const fromNode = nodeMap[edge.from];
-              const toNode = nodeMap[edge.to];
-              if (!fromNode || !toNode) return null;
-              const sameColumn = fromNode.x === toNode.x;
-              const startX = fromNode.x + NODE_WIDTH;
-              const startY = fromNode.y + NODE_HEIGHT / 2;
-              const endX = sameColumn ? toNode.x + NODE_WIDTH : toNode.x;
-              const endY = toNode.y + NODE_HEIGHT / 2;
-              const curve = Math.max(40, (endX - startX) / 2);
-              const loopOffset = 36;
-              const path = sameColumn
-                ? `M ${startX} ${startY} C ${startX + loopOffset} ${startY}, ${
-                    startX + loopOffset
-                  } ${endY}, ${endX} ${endY}`
-                : `M ${startX} ${startY} C ${startX + curve} ${startY}, ${
-                    endX - curve
-                  } ${endY}, ${endX} ${endY}`;
-              return (
+            <g style={{ pointerEvents: 'none' }}>
+              {dateColumns.map((column) => (
+                <rect
+                  key={`band-${column.dateKey}`}
+                  x={column.x - COLUMN_PADDING_X}
+                  y={BAND_TOP_PADDING}
+                  width={NODE_WIDTH + COLUMN_PADDING_X * 2}
+                  height={contentSize.height - BAND_TOP_PADDING}
+                  rx={16}
+                  fill="rgba(148, 163, 184, 0.08)"
+                />
+              ))}
+              {edges.map((edge, idx) => {
+                const fromNode = nodeMap[edge.from];
+                const toNode = nodeMap[edge.to];
+                if (!fromNode || !toNode) return null;
+                const sameColumn = fromNode.x === toNode.x;
+                const startX = fromNode.x + NODE_WIDTH;
+                const startY = fromNode.y + NODE_HEIGHT / 2;
+                const endX = sameColumn
+                  ? toNode.x + NODE_WIDTH - EDGE_END_GAP
+                  : toNode.x - EDGE_END_GAP;
+                const endY = toNode.y + NODE_HEIGHT / 2;
+                const curve = Math.max(40, (endX - startX) / 2);
+                const loopOffset = 36;
+                const path = sameColumn
+                  ? `M ${startX} ${startY} C ${startX + loopOffset} ${startY}, ${
+                      startX + loopOffset
+                    } ${endY}, ${endX} ${endY}`
+                  : `M ${startX} ${startY} C ${startX + curve} ${startY}, ${
+                      endX - curve
+                    } ${endY}, ${endX} ${endY}`;
+                const hovered = linkingEnabled && !linkingDisabled && hoveredEdgeIdx === idx;
+                return (
+                  <path
+                    key={`edge-${idx}`}
+                    d={path}
+                    stroke={hovered ? EDGE_STROKE_HOVER : EDGE_STROKE_NORMAL}
+                    strokeWidth={hovered ? 3 : 2}
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    markerEnd={hovered ? 'url(#decision-arrow-hover)' : 'url(#decision-arrow)'}
+                    filter={hovered ? 'url(#edge-glow)' : undefined}
+                  />
+                );
+              })}
+              {linkDragFrom && (
                 <path
-                  key={`edge-${idx}`}
-                  d={path}
-                  stroke="#cbd5f5"
+                  d={(() => {
+                    const startX = linkDragFrom.node.x + NODE_WIDTH;
+                    const startY = linkDragFrom.node.y + NODE_HEIGHT / 2;
+                    const endX = linkDragPointer?.x ?? startX;
+                    const endY = linkDragPointer?.y ?? startY;
+                    const curve = Math.max(40, (endX - startX) / 2);
+                    return `M ${startX} ${startY} C ${startX + curve} ${startY}, ${endX - curve} ${endY}, ${endX} ${endY}`;
+                  })()}
+                  stroke={EDGE_STROKE_NORMAL}
                   strokeWidth="2"
                   fill="none"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   markerEnd="url(#decision-arrow)"
                 />
-              );
-            })}
+              )}
+            </g>
+            {linkingEnabled && !linkingDisabled && onRemoveLink && (
+              <g style={{ pointerEvents: 'auto' }}>
+                {edges.map((edge, idx) => {
+                  const fromNode = nodeMap[edge.from];
+                  const toNode = nodeMap[edge.to];
+                  if (!fromNode || !toNode) return null;
+                  const sameColumn = fromNode.x === toNode.x;
+                  const startX = fromNode.x + NODE_WIDTH;
+                  const startY = fromNode.y + NODE_HEIGHT / 2;
+                  const endX = sameColumn
+                    ? toNode.x + NODE_WIDTH - EDGE_END_GAP
+                    : toNode.x - EDGE_END_GAP;
+                  const endY = toNode.y + NODE_HEIGHT / 2;
+                  const curve = Math.max(40, (endX - startX) / 2);
+                  const loopOffset = 36;
+                  const path = sameColumn
+                    ? `M ${startX} ${startY} C ${startX + loopOffset} ${startY}, ${
+                        startX + loopOffset
+                      } ${endY}, ${endX} ${endY}`
+                    : `M ${startX} ${startY} C ${startX + curve} ${startY}, ${
+                        endX - curve
+                      } ${endY}, ${endX} ${endY}`;
+                  return (
+                    <path
+                      key={`edge-hit-${idx}`}
+                      d={path}
+                      fill="none"
+                      stroke="transparent"
+                      strokeWidth={16}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      cursor="pointer"
+                      onMouseEnter={() => setHoveredEdgeIdx(idx)}
+                      onMouseLeave={() => setHoveredEdgeIdx(null)}
+                      onClick={() => onRemoveLink(edge.from, edge.to)}
+                      aria-label={`Remove link between decisions`}
+                    />
+                  );
+                })}
+              </g>
+            )}
           </svg>
 
           <div className="pointer-events-none absolute inset-0">
@@ -695,20 +879,9 @@ const DecisionTree = ({
           ) : null}
 
           {positionedNodes.map((node) => (
-            <button
+            <div
               key={node.id}
-              type="button"
-              data-decision-node
-              onClick={(event) => handleNodeClick(node, event)}
-              className={`absolute rounded-xl border bg-white px-3 py-2 text-left shadow-sm transition ${
-                node.projectSeq && selectedSeqSet.has(node.projectSeq)
-                  ? 'border-emerald-300 ring-2 ring-emerald-200'
-                  : 'border-gray-200 hover:border-blue-300 hover:shadow'
-              } ${
-                focusSeq && node.projectSeq === focusSeq
-                  ? 'ring-2 ring-blue-300'
-                  : ''
-              }`}
+              className="group absolute"
               style={{
                 width: NODE_WIDTH,
                 height: NODE_HEIGHT,
@@ -716,31 +889,77 @@ const DecisionTree = ({
                 top: node.y,
               }}
             >
-              <div className="flex items-center justify-between gap-2">
-                <div className="truncate text-[13px] font-semibold text-gray-900">
-                  {node.title || 'Untitled'}
+              {linkingEnabled && !linkingDisabled && (
+                <div
+                  data-decision-link-handle
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Drag to link decision ${node.title || node.id}`}
+                  className="absolute right-1 top-1/2 z-10 h-3 w-3 -translate-y-1/2 cursor-crosshair rounded-full border-2 border-blue-500 bg-white shadow-sm hover:bg-blue-50"
+                  style={{ right: 4 }}
+                  onPointerDown={(e) => handleLinkHandlePointerDown(e, node)}
+                  onPointerMove={handleLinkHandlePointerMove}
+                  onPointerUp={handleLinkHandlePointerUp}
+                  onPointerCancel={handleLinkHandlePointerUp}
+                />
+              )}
+              <button
+                type="button"
+                data-decision-node
+                onClick={(event) => handleNodeClick(node, event)}
+                className={`w-full h-full rounded-xl border bg-white px-3 py-2 text-left shadow-sm transition ${
+                  mode === 'link-editor' && node.projectSeq && removedSeqSet.has(node.projectSeq)
+                    ? 'border-red-300 ring-2 ring-red-200'
+                    : mode === 'link-editor' && node.projectSeq && selectedSeqSet.has(node.projectSeq)
+                      ? 'border-emerald-300 ring-2 ring-emerald-200'
+                      : mode === 'selector' && node.projectSeq && selectedSeqSet.has(node.projectSeq)
+                        ? 'border-emerald-300 ring-2 ring-emerald-200'
+                        : 'border-gray-200 hover:border-blue-300 hover:shadow'
+                } ${
+                  focusSeq && node.projectSeq === focusSeq
+                    ? 'ring-2 ring-blue-300'
+                    : ''
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="truncate text-[13px] font-semibold text-gray-900">
+                    {node.title || 'Untitled'}
+                  </div>
+                  {node.projectSeq ? (
+                    <span className="shrink-0 rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-semibold text-white">
+                      #{node.projectSeq}
+                    </span>
+                  ) : null}
                 </div>
-                {node.projectSeq ? (
-                  <span className="shrink-0 rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-semibold text-white">
-                    #{node.projectSeq}
+                <div className="mt-2 flex items-center gap-2">
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusColor(
+                      node.status
+                    )}`}
+                  >
+                    {node.status}
                   </span>
-                ) : null}
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusColor(
-                    node.status
-                  )}`}
+                  {node.riskLevel ? (
+                    <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                      {node.riskLevel}
+                    </span>
+                  ) : null}
+                </div>
+              </button>
+              {canDelete && onDelete && mode === 'viewer' ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(node);
+                  }}
+                  className="absolute -right-2 -top-2 z-10 flex h-5 w-5 items-center justify-center rounded-full border border-red-200 bg-red-50 text-red-600 opacity-0 shadow-sm transition-opacity hover:bg-red-100 group-hover:opacity-100"
+                  aria-label="Delete decision"
                 >
-                  {node.status}
-                </span>
-                {node.riskLevel ? (
-                  <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                    {node.riskLevel}
-                  </span>
-                ) : null}
-              </div>
-            </button>
+                  <X className="h-3 w-3" />
+                </button>
+              ) : null}
+            </div>
           ))}
         </div>
       </div>
@@ -751,8 +970,29 @@ const DecisionTree = ({
           className="fixed z-50 w-64 rounded-xl border border-gray-200 bg-white p-4 shadow-lg"
           style={{ left: popover.x, top: popover.y }}
         >
-          <div className="text-sm font-semibold text-gray-900">
-            {popover.node.title || 'Untitled'}
+          <div className="flex items-start justify-between gap-2">
+            <div className="text-sm font-semibold text-gray-900">
+              {popover.node.title || 'Untitled'}
+            </div>
+            {onEditLinks ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setPopover(null);
+                  onEditLinks(popover.node);
+                }}
+                disabled={!popover.node.projectSeq}
+                title="Edit Links"
+                aria-label="Edit Links"
+                className={`inline-flex h-6 w-6 items-center justify-center rounded-md border text-xs ${
+                  popover.node.projectSeq
+                    ? 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                    : 'cursor-not-allowed border-gray-100 text-gray-300'
+                }`}
+              >
+                <Link2 className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
           </div>
           <div className="mt-2 flex items-center gap-2">
             <span

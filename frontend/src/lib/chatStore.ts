@@ -4,6 +4,24 @@ import { persist } from 'zustand/middleware';
 import type { ChatState, Chat, Message } from '@/types/chat';
 import { getUnreadCount } from './api/chatApi';
 
+const resolveChatProjectId = (chat: Chat): number | null => {
+  const rawProjectId = chat.project_id ?? chat.project;
+  const parsed = Number(rawProjectId);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
+const normalizeChatProject = (chat: Chat, fallbackProjectId?: number): Chat => {
+  const projectId = resolveChatProjectId(chat) ?? fallbackProjectId;
+  if (!projectId) {
+    return chat;
+  }
+  return {
+    ...chat,
+    project_id: projectId,
+    project: chat.project ?? projectId,
+  };
+};
+
 export const useChatStore = create<ChatState>()(
   persist(
     (set, get) => ({
@@ -28,15 +46,16 @@ export const useChatStore = create<ChatState>()(
         // Use set() with callback to get CURRENT state at the moment of update
         // This prevents race conditions where state changes between read and write
         set(state => {
+          const normalizedChats = chats.map(chat => normalizeChatProject(chat, projectId));
           const currentUnreadCounts = state.unreadCounts;
           const currentChatId = state.currentChatId;
-          
+
           // Build new unread counts, but preserve local values in certain cases:
           // 1. If user is currently viewing a chat (currentChatId), keep its unread as 0
           // 2. If local unread is 0 but backend says non-zero, the user likely just read it
           //    (keep 0 to avoid "unread" reappearing after viewing)
           const newUnreadCounts: Record<number, number> = { ...currentUnreadCounts };
-          chats.forEach(chat => {
+          normalizedChats.forEach(chat => {
             const backendCount = chat.unread_count ?? 0;
             const localCount = currentUnreadCounts[chat.id];
             
@@ -61,11 +80,11 @@ export const useChatStore = create<ChatState>()(
           });
           
           // Update chats with synced unread_count values
-          const updatedChats = chats.map(chat => ({
+          const updatedChats = normalizedChats.map(chat => ({
             ...chat,
             unread_count: newUnreadCounts[chat.id] ?? chat.unread_count ?? 0,
           }));
-          
+
           return { 
             chatsByProject: {
               ...state.chatsByProject,
@@ -83,18 +102,54 @@ export const useChatStore = create<ChatState>()(
 
       addChat: (chat: Chat) => {
         set(state => {
-          const projectId = chat.project_id;
+          const projectId = resolveChatProjectId(chat);
+          if (!projectId) {
+            console.warn('[ChatStore] Unable to add chat without project id:', chat);
+            return state;
+          }
+          const normalizedChat = normalizeChatProject(chat, projectId);
           const existingChats = state.chatsByProject[projectId] || [];
-          
+          const dedupedChats = existingChats.filter(existing => existing.id !== normalizedChat.id);
+
           return {
             chatsByProject: {
               ...state.chatsByProject,
-              [projectId]: [chat, ...existingChats],
+              [projectId]: [normalizedChat, ...dedupedChats],
             },
             unreadCounts: {
               ...state.unreadCounts,
-              [chat.id]: chat.unread_count || 0,
+              [normalizedChat.id]: normalizedChat.unread_count || 0,
             },
+          };
+        });
+      },
+
+      removeChat: (chatId: number) => {
+        set(state => {
+          const newChatsByProject: Record<number, Chat[]> = {};
+          Object.entries(state.chatsByProject).forEach(([projectId, chats]) => {
+            newChatsByProject[Number(projectId)] = chats.filter(chat => chat.id !== chatId);
+          });
+
+          const newMessages = { ...state.messages };
+          delete newMessages[chatId];
+
+          const newUnreadCounts = { ...state.unreadCounts };
+          delete newUnreadCounts[chatId];
+
+          const clearCurrentChat = state.currentChatId === chatId;
+          const clearWidgetChat = state.widgetChatId === chatId;
+          const removedUnread = state.unreadCounts[chatId] || 0;
+
+          return {
+            chatsByProject: newChatsByProject,
+            messages: newMessages,
+            unreadCounts: newUnreadCounts,
+            globalUnreadCount: Math.max(0, state.globalUnreadCount - removedUnread),
+            currentChatId: clearCurrentChat ? null : state.currentChatId,
+            currentView: clearCurrentChat ? 'list' : state.currentView,
+            widgetChatId: clearWidgetChat ? null : state.widgetChatId,
+            widgetView: clearWidgetChat ? 'list' : state.widgetView,
           };
         });
       },
@@ -388,4 +443,3 @@ export const useChatStore = create<ChatState>()(
     }
   )
 );
-

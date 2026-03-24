@@ -11,6 +11,7 @@ export default function ChatList({
   currentChatId,
   onSelectChat,
   onCreateChat,
+  roleByUserId,
 }: ChatListProps) {
   return (
     <div className="flex flex-col h-full">
@@ -26,6 +27,7 @@ export default function ChatList({
                 chat={chat}
                 isActive={chat.id === currentChatId}
                 onClick={() => onSelectChat(chat.id)}
+                roleByUserId={roleByUserId}
               />
             ))}
           </div>
@@ -45,6 +47,5 @@ export default function ChatList({
     </div>
   );
 }
-
 
 

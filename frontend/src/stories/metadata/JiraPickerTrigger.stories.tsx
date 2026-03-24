@@ -1,8 +1,8 @@
 import React from 'react';
 import JiraPickerTrigger from '../../metadata/JiraPickerTrigger';
-import { JiraLabelData } from '../../metadata/JiraLabel';
+import { LabelData } from '../../metadata/JiraLabel';
 
-const mockLabels: JiraLabelData[] = [
+const mockLabels: LabelData[] = [
   { id: '1', name: 'Bug' },
   { id: '2', name: 'Feature' },
   { id: '3', name: 'Documentation' },

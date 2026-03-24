@@ -13,8 +13,14 @@ from .models import (
     SheetColumn,
     Cell,
     CellValueType,
+    PivotConfig,
     WorkflowPattern,
     WorkflowPatternStep,
+    PatternJob,
+    SpreadsheetHighlight,
+    SpreadsheetHighlightScope,
+    SpreadsheetCellFormat,
+    SheetKind,
 )
 from .services import SheetService
 
@@ -63,16 +69,58 @@ class SpreadsheetUpdateSerializer(serializers.ModelSerializer):
         return value.strip()
 
 
+class PivotConfigSerializer(serializers.ModelSerializer):
+    """Read-only serializer for pivot config nested in sheet response."""
+    source_sheet_id = serializers.IntegerField(source='source_sheet.id', read_only=True)
+
+    class Meta:
+        model = PivotConfig
+        fields = [
+            'id',
+            'source_sheet_id',
+            'rows_config',
+            'columns_config',
+            'values_config',
+            'filters_config',
+            'show_grand_total_row',
+            'show_grand_total_column',
+        ]
+        read_only_fields = fields
+
+
 class SheetSerializer(serializers.ModelSerializer):
     """Serializer for Sheet model (read operations)"""
     spreadsheet = serializers.IntegerField(source='spreadsheet.id', read_only=True)
-    
+    pivot_config = serializers.SerializerMethodField()
+
     class Meta:
         model = Sheet
         fields = [
-            'id', 'spreadsheet', 'name', 'position', 'created_at', 'updated_at', 'is_deleted'
+            'id', 'spreadsheet', 'name', 'position', 'kind',
+            'frozen_row_count', 'frozen_column_count',
+            'pivot_config',
+            'created_at', 'updated_at', 'is_deleted'
         ]
-        read_only_fields = ['id', 'spreadsheet', 'position', 'created_at', 'updated_at', 'is_deleted']
+        read_only_fields = ['id', 'spreadsheet', 'position', 'kind', 'created_at', 'updated_at', 'is_deleted']
+
+    def get_pivot_config(self, obj):
+        try:
+            return PivotConfigSerializer(obj.pivot_config).data
+        except PivotConfig.DoesNotExist:
+            return None
+
+
+class PivotConfigCreateUpdateSerializer(serializers.Serializer):
+    """Serializer for creating/updating pivot config via API."""
+    source_sheet_id = serializers.IntegerField()
+    # Keep shapes flexible; frontend uses arrays of strings/objects.
+    rows_config = serializers.JSONField(default=list)
+    columns_config = serializers.JSONField(default=list)
+    values_config = serializers.JSONField(default=list)
+    filters_config = serializers.JSONField(required=False, default=dict)
+    show_grand_total_row = serializers.BooleanField(default=True)
+    show_grand_total_column = serializers.BooleanField(default=True)
+
 
 class SheetCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating Sheet instances - position is auto-assigned by server"""
@@ -103,7 +151,7 @@ class SheetUpdateSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Sheet
-        fields = ['name']
+        fields = ['name', 'frozen_row_count', 'frozen_column_count']
     
     def validate(self, data):
         """Validate that position is not provided (it's read-only)"""
@@ -112,6 +160,16 @@ class SheetUpdateSerializer(serializers.ModelSerializer):
                 'position': 'position is read-only'
             })
         return data
+    
+    def validate_frozen_row_count(self, value):
+        if value is not None and (value < 0 or value > 1000):
+            raise serializers.ValidationError("frozen_row_count must be between 0 and 1000")
+        return value
+    
+    def validate_frozen_column_count(self, value):
+        if value is not None and (value < 0 or value > 100):
+            raise serializers.ValidationError("frozen_column_count must be between 0 and 100")
+        return value
     
     def validate_name(self, value):
         """Validate sheet name"""
@@ -313,7 +371,10 @@ class CellBatchUpdateSerializer(serializers.Serializer):
     """Serializer for batch cell update"""
     operations = CellOperationSerializer(many=True, min_length=1, max_length=1000)
     auto_expand = serializers.BooleanField(default=True)
-    
+    import_id = serializers.UUIDField(required=False, allow_null=True)
+    chunk_index = serializers.IntegerField(required=False, allow_null=True, min_value=0)
+    import_mode = serializers.BooleanField(default=False)
+
     def validate_operations(self, value):
         """Validate operations array"""
         if not value or len(value) == 0:
@@ -332,11 +393,146 @@ class CellBatchUpdateResponseSerializer(serializers.Serializer):
     cells = CellSerializer(many=True, required=False)
 
 
+class SheetSortSerializer(serializers.Serializer):
+    """Serializer for sheet sort request"""
+    column_position = serializers.IntegerField(min_value=0)
+    direction = serializers.ChoiceField(choices=['asc', 'desc'])
+    has_header = serializers.BooleanField(default=True)
+    previous_sort_columns = serializers.ListField(
+        required=False,
+        default=list
+    )
+
+    def validate_previous_sort_columns(self, value):
+        """
+        Accept backward-compatible `number[]` and new history entries:
+        [{column_position: number, direction: 'asc' | 'desc'}].
+        """
+        normalized = []
+        for item in value:
+            if isinstance(item, int):
+                if item < 0:
+                    raise serializers.ValidationError("Column positions must be >= 0")
+                normalized.append(item)
+                continue
+
+            if not isinstance(item, dict):
+                raise serializers.ValidationError(
+                    "Each previous sort entry must be an integer column position or an object"
+                )
+
+            col = item.get('column_position')
+            direction = item.get('direction')
+            if not isinstance(col, int) or col < 0:
+                raise serializers.ValidationError("column_position must be an integer >= 0")
+            if direction not in ('asc', 'desc'):
+                raise serializers.ValidationError("direction must be 'asc' or 'desc'")
+
+            normalized.append({'column_position': col, 'direction': direction})
+
+        return normalized
+
+
+class SheetReorderSerializer(serializers.Serializer):
+    """Serializer for row reorder (undo/redo)"""
+    order = serializers.ListField(min_length=1)
+
+    def validate_order(self, value):
+        for item in value:
+            if not isinstance(item, dict) or 'row_id' not in item or 'position' not in item:
+                raise serializers.ValidationError("Each item must have row_id and position")
+        return value
+
+
 class WorkflowPatternStepSerializer(serializers.ModelSerializer):
     class Meta:
         model = WorkflowPatternStep
         fields = ['id', 'seq', 'type', 'params', 'disabled', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class SpreadsheetHighlightSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SpreadsheetHighlight
+        fields = ['id', 'scope', 'row_index', 'col_index', 'color', 'created_at', 'updated_at']
+
+
+class SpreadsheetHighlightOpSerializer(serializers.Serializer):
+    scope = serializers.ChoiceField(choices=SpreadsheetHighlightScope.choices)
+    operation = serializers.ChoiceField(choices=['SET', 'CLEAR'])
+    row = serializers.IntegerField(min_value=0, required=False)
+    col = serializers.IntegerField(min_value=0, required=False)
+    color = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, data):
+        scope = data.get('scope')
+        operation = data.get('operation')
+        row = data.get('row')
+        col = data.get('col')
+        color = data.get('color')
+
+        if scope == SpreadsheetHighlightScope.CELL:
+            if row is None or col is None:
+                raise serializers.ValidationError("row and col are required for CELL scope")
+        elif scope == SpreadsheetHighlightScope.ROW:
+            if row is None:
+                raise serializers.ValidationError("row is required for ROW scope")
+        elif scope == SpreadsheetHighlightScope.COLUMN:
+            if col is None:
+                raise serializers.ValidationError("col is required for COLUMN scope")
+
+        if operation == 'SET' and (color is None or color == ''):
+            raise serializers.ValidationError("color is required for SET operation")
+
+        return data
+
+
+class SpreadsheetHighlightBatchSerializer(serializers.Serializer):
+    ops = SpreadsheetHighlightOpSerializer(many=True, min_length=1, max_length=2000)
+
+
+class SpreadsheetCellFormatSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SpreadsheetCellFormat
+        fields = [
+            'id', 'row_index', 'column_index', 'bold', 'italic', 'strikethrough', 'text_color',
+            'font_family', 'font_size', 'number_format', 'created_at', 'updated_at',
+        ]
+
+
+class NumberFormatSerializer(serializers.Serializer):
+    """Nested structure for number display format."""
+    type = serializers.ChoiceField(
+        choices=['GENERAL', 'NUMBER', 'CURRENCY', 'PERCENT'],
+        required=False,
+        default='GENERAL'
+    )
+    currency_code = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=10)
+    decimal_places = serializers.IntegerField(required=False, allow_null=True, min_value=0, max_value=10)
+
+
+class SpreadsheetCellFormatOpSerializer(serializers.Serializer):
+    row = serializers.IntegerField(min_value=0)
+    column = serializers.IntegerField(min_value=0)
+    bold = serializers.BooleanField(default=False)
+    italic = serializers.BooleanField(default=False)
+    strikethrough = serializers.BooleanField(default=False)
+    text_color = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=20)
+    font_family = serializers.CharField(required=False, allow_null=True, allow_blank=True, max_length=100)
+    font_size = serializers.IntegerField(required=False, allow_null=True, min_value=6, max_value=72)
+    number_format = NumberFormatSerializer(required=False, allow_null=True)
+
+    def validate_number_format(self, value):
+        if value is None:
+            return None
+        result = dict(value)
+        if result.get('type') == 'CURRENCY' and not result.get('currency_code'):
+            result['currency_code'] = 'USD'
+        return result
+
+
+class SpreadsheetCellFormatBatchSerializer(serializers.Serializer):
+    ops = SpreadsheetCellFormatOpSerializer(many=True, min_length=1, max_length=2000)
 
 
 class WorkflowPatternListSerializer(serializers.ModelSerializer):
@@ -418,4 +614,30 @@ class WorkflowPatternCreateSerializer(serializers.Serializer):
                 [WorkflowPatternStep(pattern=pattern, **step) for step in steps]
             )
         return pattern
+
+
+class PatternApplySerializer(serializers.Serializer):
+    spreadsheet_id = serializers.IntegerField()
+    sheet_id = serializers.IntegerField()
+
+
+class PatternJobStatusSerializer(serializers.ModelSerializer):
+    current_step = serializers.IntegerField(source='step_cursor', allow_null=True)
+    createdAt = serializers.DateTimeField(source='created_at', read_only=True)
+    startedAt = serializers.DateTimeField(source='started_at', read_only=True)
+    finishedAt = serializers.DateTimeField(source='finished_at', read_only=True)
+
+    class Meta:
+        model = PatternJob
+        fields = [
+            'id',
+            'status',
+            'progress',
+            'current_step',
+            'error_code',
+            'error_message',
+            'createdAt',
+            'startedAt',
+            'finishedAt',
+        ]
 

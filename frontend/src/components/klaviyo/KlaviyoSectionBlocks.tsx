@@ -89,8 +89,8 @@ const KlaviyoSectionBlocks: React.FC<KlaviyoSectionBlocksProps> = ({
         key={`dropzone-${section}-${index}`}
         className={`drop-zone transition-[height,background-color,border-color] duration-200 ease-out ${
           isActive
-            ? "h-8 bg-emerald-500 border-2 border-emerald-600"
-            : "h-0 bg-transparent hover:h-4 hover:bg-emerald-100 border-2 border-transparent"
+            ? "h-8 bg-blue-500 border-2 border-blue-600"
+            : "h-0 bg-transparent hover:h-4 hover:bg-blue-100 border-2 border-transparent"
         } -mx-4`}
         onDragOver={(e) => handleDragOverDropZone(e, section, index)}
         onDragLeave={(e) => handleDragLeaveDropZone(e)}
@@ -104,7 +104,7 @@ const KlaviyoSectionBlocks: React.FC<KlaviyoSectionBlocksProps> = ({
       <div
         className={`flex-1 flex justify-center drop-zone py-8 text-center text-sm transition-[background-color,border-color,color] duration-200 ease-out ${
           dragOverIndex?.section === section && dragOverIndex?.index === 0
-            ? "bg-emerald-100 text-emerald-700 border-2 border-dashed border-emerald-500 rounded"
+            ? "bg-blue-100 text-blue-700 border-2 border-dashed border-blue-500 rounded"
             : "text-gray-400"
         }`}
         onDragOver={(e) => handleDragOverDropZone(e, section, 0)}
@@ -146,8 +146,8 @@ const KlaviyoSectionBlocks: React.FC<KlaviyoSectionBlocksProps> = ({
             className={`relative border transition-all ${
               selectedBlock?.section === section &&
               selectedBlock?.id === block.id
-                ? "border-emerald-700"
-                : "border-transparent hover:border-emerald-700"
+                ? "border-blue-700"
+                : "border-transparent hover:border-blue-700"
             } ${handleBlockDragStart ? "cursor-move" : ""}`}
             onClick={(e) => {
               if ((e.target as HTMLElement).closest(".layout-resize-handle")) {
@@ -166,7 +166,7 @@ const KlaviyoSectionBlocks: React.FC<KlaviyoSectionBlocksProps> = ({
           >
             {/* label badge */}
             <div
-              className={`absolute left-0 top-0 text-[10px] px-2 py-0.5 rounded-br bg-emerald-700 text-white transition-opacity pointer-events-none ${
+              className={`absolute left-0 top-0 text-[10px] px-2 py-0.5 rounded-br bg-blue-700 text-white transition-opacity pointer-events-none ${
                 (selectedBlock?.section === section &&
                   selectedBlock?.id === block.id) ||
                 (hoveredBlock?.section === section &&

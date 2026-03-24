@@ -54,6 +54,7 @@ const getTrendConfig = (percentageChange: string | null) => {
       icon: Minus,
       color: 'text-gray-600',
       bgColor: 'bg-gray-100',
+      borderColor: 'border-gray-200',
       label: 'Stable',
     };
   }
@@ -63,6 +64,7 @@ const getTrendConfig = (percentageChange: string | null) => {
       icon: ArrowUp,
       color: 'text-green-600',
       bgColor: 'bg-green-100',
+      borderColor: 'border-green-200',
       label: `+${change.toFixed(1)}%`,
     };
   } else if (change < 0) {
@@ -70,6 +72,7 @@ const getTrendConfig = (percentageChange: string | null) => {
       icon: ArrowDown,
       color: 'text-red-600',
       bgColor: 'bg-red-100',
+      borderColor: 'border-red-200',
       label: `${change.toFixed(1)}%`,
     };
   } else {
@@ -77,6 +80,7 @@ const getTrendConfig = (percentageChange: string | null) => {
       icon: Minus,
       color: 'text-gray-600',
       bgColor: 'bg-gray-100',
+      borderColor: 'border-gray-200',
       label: 'Stable',
     };
   }
@@ -267,7 +271,7 @@ export default function CampaignSnapshots({ campaignId, onEdit, onDelete, onCrea
                           <div className="flex items-center gap-1">
                             <Badge
                               variant="outline"
-                              className={`${trendConfig.bgColor} ${trendConfig.color} ${trendConfig.borderColor || 'border-gray-200'} flex items-center gap-1`}
+                              className={`${trendConfig.bgColor} ${trendConfig.color} ${trendConfig.borderColor} flex items-center gap-1`}
                             >
                               <TrendIcon className={`h-3 w-3 ${trendConfig.color}`} />
                               {trendConfig.label}

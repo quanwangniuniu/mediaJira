@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import Layout from "@/components/layout/Layout";
 import useAuth from "@/hooks/useAuth";
 import { useTaskData } from "@/hooks/useTaskData";
@@ -12,16 +12,16 @@ import { AssetAPI } from "@/lib/api/assetApi";
 import toast from "react-hot-toast";
 import { TaskAPI } from "@/lib/api/taskApi";
 import { BudgetAPI } from "@/lib/api/budgetApi";
-import { ReportAPI } from "@/lib/api/reportApi";
 import { RetrospectiveAPI } from "@/lib/api/retrospectiveApi";
 import { ClientCommunicationAPI } from "@/lib/api/clientCommunicationApi";
 import { DashboardAPI } from "@/lib/api/dashboardApi";
 import Modal from "@/components/ui/Modal";
 import NewTaskForm from "@/components/tasks/NewTaskForm";
+import TaskCreatePanel from "@/components/tasks/TaskCreatePanel";
+import TasksWorkspaceSkeleton from "@/components/tasks/TasksWorkspaceSkeleton";
 import NewBudgetRequestForm from "@/components/tasks/NewBudgetRequestForm";
 import NewAssetForm from "@/components/tasks/NewAssetForm";
 import NewRetrospectiveForm from "@/components/tasks/NewRetrospectiveForm";
-import NewReportForm from "@/components/tasks/NewReportForm";
 import { ScalingPlanForm } from "@/components/tasks/ScalingPlanForm";
 import NewClientCommunicationForm from "@/components/tasks/NewClientCommunicationForm";
 import AlertTaskForm from "@/components/tasks/AlertTaskForm";
@@ -31,27 +31,158 @@ import { ExperimentAPI } from "@/lib/api/experimentApi";
 import { AlertingAPI } from "@/lib/api/alertingApi";
 import { OptimizationAPI } from "@/lib/api/optimizationApi";
 import { OptimizationForm } from "@/components/tasks/OptimizationForm";
-import TaskCard from "@/components/tasks/TaskCard";
-import TaskListView from "@/components/tasks/TaskListView";
-import TimelineView from "@/components/tasks/timeline/TimelineView";
+import { ReportForm } from "@/components/tasks/ReportForm";
+import { ReportAPI } from "@/lib/api/reportApi";
+import NewPlatformPolicyUpdateForm from "@/components/tasks/NewPlatformPolicyUpdateForm";
+import { PolicyAPI } from "@/lib/api/policyApi";
 import NewBudgetPool from "@/components/budget/NewBudgetPool";
 import BudgetPoolList from "@/components/budget/BudgetPoolList";
+// import { mockTasks } from "../../mock/mockTasks";
 import { ProjectAPI } from "@/lib/api/projectApi";
-import ProjectSummaryPanel from "@/components/dashboard/ProjectSummaryPanel";
-import StatusOverviewChart from "@/components/dashboard/StatusOverviewChart";
-import PriorityBreakdownChart from "@/components/dashboard/PriorityBreakdownChart";
-import TypesOfWorkChart from "@/components/dashboard/TypesOfWorkChart";
-import RecentActivityFeed from "@/components/dashboard/RecentActivityFeed";
-import TimeMetricsCards from "@/components/dashboard/TimeMetricsCards";
 import JiraBoardView from "@/components/jira-ticket/JiraBoardView";
+import JiraSummaryView from "@/components/jira-ticket/JiraSummaryView";
+import JiraTasksView from "@/components/jira-ticket/JiraTasksView";
+import TimelineViewComponent from "@/components/tasks/timeline/TimelineView";
+import {
+  TASK_TYPE_CONFIG_STATIC,
+  defaultReportContext,
+} from "@/lib/taskTypeConfigRegistry";
+import { useTaskFilterParams } from "@/hooks/useTaskFilterParams";
+import { TaskFilterPanel } from "@/components/tasks/TaskFilterPanel";
+
+const BOARD_TYPE_ORDER = [
+  "task",
+  "budget",
+  "asset",
+  "retrospective",
+  "report",
+  "scaling",
+  "alert",
+  "experiment",
+  "optimization",
+  "communication",
+  "platform_policy_update",
+];
+
+const BOARD_TYPE_META = {
+  task: {
+    title: "Tasks",
+    empty: "No tasks",
+    icon: "task",
+  },
+  budget: {
+    title: "Budget Requests",
+    empty: "No budget requests",
+    icon: "task",
+  },
+  asset: {
+    title: "Assets",
+    empty: "No asset tasks",
+    icon: "task",
+  },
+  retrospective: {
+    title: "Retrospectives",
+    empty: "No retrospectives",
+    icon: "story",
+  },
+  report: {
+    title: "Reports",
+    empty: "No report tasks",
+    icon: "task",
+  },
+  scaling: {
+    title: "Scaling",
+    empty: "No scaling tasks",
+    icon: "story",
+  },
+  alert: {
+    title: "Alerts",
+    empty: "No alert tasks",
+    icon: "bug",
+  },
+  experiment: {
+    title: "Experiments",
+    empty: "No experiment tasks",
+    icon: "story",
+  },
+  optimization: {
+    title: "Optimizations",
+    empty: "No optimization tasks",
+    icon: "story",
+  },
+  communication: {
+    title: "Communications",
+    empty: "No communication tasks",
+    icon: "task",
+  },
+  platform_policy_update: {
+    title: "Platform Policy Update",
+    empty: "No platform policy update tasks",
+    icon: "task",
+  },
+};
+
+/** Types that support create-modal prefill from a board column — mirrors TASK_TYPE_CONFIG_STATIC. */
+const VALID_BOARD_WORK_TYPES = Object.keys(TASK_TYPE_CONFIG_STATIC);
+
+const normalizeBoardTypeKey = (value) => {
+  if (typeof value !== "string") return "task";
+  const normalized = value.trim().toLowerCase();
+  return normalized || "task";
+};
+
+const formatBoardTypeLabel = (value) => {
+  const normalized = normalizeBoardTypeKey(value);
+  return normalized
+    .replace(/[_-]+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
+    .join(" ");
+};
+
+const getBoardColumnMeta = (typeKey) => {
+  const normalized = normalizeBoardTypeKey(typeKey);
+  const known = BOARD_TYPE_META[normalized];
+  if (known) {
+    return {
+      key: normalized,
+      title: known.title,
+      empty: known.empty,
+    };
+  }
+  const label = formatBoardTypeLabel(normalized);
+  return {
+    key: normalized,
+    title: label,
+    empty: `No ${label.toLowerCase()} tasks`,
+  };
+};
 
 function TasksPageContent() {
   const { user, loading: userLoading, logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   // Get project_id from search params
   const searchParams = useSearchParams();
   const projectIdParam = searchParams.get("project_id");
   const projectId = projectIdParam ? Number(projectIdParam) : null;
+
+  // URL-backed filters (including project_id, status, priority, dates, etc.)
+  const [filters, setFilters, clearFilters] = useTaskFilterParams();
+  const [taskTypeOptions, setTaskTypeOptions] = useState([]);
+
+  useEffect(() => {
+    const loadTypes = async () => {
+      try {
+        const types = await TaskAPI.getTaskTypes();
+        setTaskTypeOptions(Array.isArray(types) ? types : []);
+      } catch {
+        setTaskTypeOptions([]);
+      }
+    };
+    loadTypes();
+  }, []);
 
   // Task data management
   const {
@@ -76,6 +207,8 @@ function TasksPageContent() {
   const [budgetPoolRefreshTrigger, setBudgetPoolRefreshTrigger] = useState(0);
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createModalExpanded, setCreateModalExpanded] = useState(false);
+  const [draftEditingTaskId, setDraftEditingTaskId] = useState(null);
   const [createBudgetPoolModalOpen, setCreateBudgetPoolModalOpen] =
     useState(false);
   const [manageBudgetPoolsModalOpen, setManageBudgetPoolsModalOpen] =
@@ -139,25 +272,14 @@ function TasksPageContent() {
     affected_entities: [],
     assigned_to: "",
     acknowledged_by: "",
-    investigation_assumption: "",
     investigation_notes: "",
-    resolution_actions: [],
-    resolution_notes: "",
+    resolution_steps: "",
     related_references: [],
     postmortem_root_cause: "",
     postmortem_prevention: "",
   });
   const [experimentData, setExperimentData] = useState({});
   const [optimizationData, setOptimizationData] = useState({});
-
-  const [reportData, setReportData] = useState({
-    title: "",
-    owner_id: "",
-    report_template_id: "",
-    slice_config: {
-      csv_file_path: "",
-    },
-  });
 
   const [communicationData, setCommunicationData] = useState({
     communication_type: "",
@@ -166,6 +288,16 @@ function TasksPageContent() {
     required_actions: "",
     client_deadline: null,
     notes: "",
+  });
+  const [policyData, setPolicyData] = useState({});
+
+  const [reportData, setReportData] = useState({
+    audience_type: "client",
+    audience_details: "",
+    context: defaultReportContext,
+    outcome_summary: "",
+    narrative_explanation: "",
+    key_actions: [],
   });
 
   const loadProjectOptions = useCallback(async () => {
@@ -194,7 +326,9 @@ function TasksPageContent() {
       }
       return next;
     });
-    router.push(`/tasks?project_id=${selectedProjectId}`);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("project_id", String(selectedProjectId));
+    router.push(`${pathname}?${params.toString()}`);
   };
 
   const filteredProjects = useMemo(() => {
@@ -212,11 +346,9 @@ function TasksPageContent() {
     const byId = new Map(
       filteredProjects
         .filter((project) => project?.id)
-        .map((project) => [project.id, project])
+        .map((project) => [project.id, project]),
     );
-    return pinnedProjectIds
-      .map((id) => byId.get(id))
-      .filter(Boolean);
+    return pinnedProjectIds.map((id) => byId.get(id)).filter(Boolean);
   }, [filteredProjects, pinnedProjectIds]);
 
   const recentProjects = useMemo(() => {
@@ -224,7 +356,7 @@ function TasksPageContent() {
     const byId = new Map(
       filteredProjects
         .filter((project) => project?.id)
-        .map((project) => [project.id, project])
+        .map((project) => [project.id, project]),
     );
     return recentProjectIds
       .map((id) => byId.get(id))
@@ -235,24 +367,27 @@ function TasksPageContent() {
     const recentSet = new Set(recentProjectIds);
     const pinnedSet = new Set(pinnedProjectIds);
     return filteredProjects.filter(
-      (project) =>
-        !recentSet.has(project?.id) && !pinnedSet.has(project?.id)
+      (project) => !recentSet.has(project?.id) && !pinnedSet.has(project?.id),
     );
   }, [filteredProjects, recentProjectIds, pinnedProjectIds]);
 
-  // Use tasks from backend
+  // Toggle this to switch between mock and real backend
+  const USE_MOCK_FALLBACK = false; // false = no fallback for testing
+
+  // Smart fallback logic - use mock data for demo if enabled
   const tasksWithFallback = projectId
-    ? Array.isArray(tasks)
+    ? USE_MOCK_FALLBACK
+      ? Array.isArray(tasks) && tasks.length > 0
+        ? tasks
+        : []
+      : Array.isArray(tasks)
       ? tasks
       : []
     : [];
 
-  // Filter out subtasks - only show parent tasks in the listing
-  // This is a double-check in case backend filtering doesn't work
   const parentTasksOnly = useMemo(() => {
     return tasksWithFallback.filter((task) => {
       // Exclude tasks that are subtasks (check is_subtask field)
-      // is_subtask is a persistent field that remains True even after parent deletion
       return !task.is_subtask;
     });
   }, [tasksWithFallback]);
@@ -301,8 +436,8 @@ function TasksPageContent() {
     }
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", viewMode);
-    router.replace(`?${params.toString()}`);
-  }, [viewMode, router, searchParams]);
+    router.replace(`${pathname}?${params.toString()}`);
+  }, [viewMode, router, searchParams, pathname]);
 
   // When the project_id in the URL changes, fetch the tasks list according to it
   useEffect(() => {
@@ -357,14 +492,14 @@ function TasksPageContent() {
     const loadTasks = async () => {
       try {
         console.log("[TasksPage] Fetching tasks for project:", projectId);
-        await fetchTasks({ project_id: projectId });
+        await fetchTasks({ ...filters, project_id: projectId });
       } catch (error) {
         console.error("[TasksPage] Failed to fetch tasks:", error);
       }
     };
 
     loadTasks();
-  }, [projectId, fetchTasks]);
+  }, [projectId, fetchTasks, filters]);
 
   const selectedProject = useMemo(() => {
     if (!projectId) return null;
@@ -415,246 +550,10 @@ function TasksPageContent() {
     }));
   }, [projectId]);
 
-  // Task type configuration - defines how each task type should be handled
-  const taskTypeConfig = {
-    budget: {
-      contentType: "budgetrequest",
-      formData: budgetData,
-      setFormData: setBudgetData,
-      validation: null, // Will be set below
-      api: BudgetAPI.createBudgetRequest,
-      formComponent: NewBudgetRequestForm,
-      requiredFields: ["amount", "currency", "ad_channel", "budget_pool"],
-      getPayload: (createdTask) => {
-        // Ensure current_approver is provided
-        if (!taskData.current_approver_id) {
-          throw new Error("Approver is required for budget request");
-        }
-        // Ensure budget_pool is provided
-        if (!budgetData.budget_pool) {
-          throw new Error("Budget pool is required for budget request");
-        }
-        return {
-          task: createdTask.id,
-          amount: budgetData.amount,
-          currency: budgetData.currency,
-          ad_channel: budgetData.ad_channel,
-          budget_pool_id: budgetData.budget_pool,
-          notes: budgetData.notes || "",
-          current_approver: taskData.current_approver_id,
-        };
-      },
-    },
-    asset: {
-      contentType: "asset",
-      formData: assetData,
-      setFormData: setAssetData,
-      validation: null, // Will be set below
-      api: AssetAPI.createAsset,
-      formComponent: NewAssetForm,
-      requiredFields: ["tags"], // Tags are required
-      getPayload: (createdTask) => {
-        const tagsArray = (assetData.tags || "")
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean);
-        const payload = {
-          task: createdTask.id,
-          tags: tagsArray,
-        };
-        if (assetData.team) {
-          const teamNum = Number(assetData.team);
-          if (!Number.isNaN(teamNum)) {
-            payload.team = teamNum;
-          }
-        }
-        return payload;
-      },
-    },
-    retrospective: {
-      contentType: "retrospectivetask",
-      formData: retrospectiveData,
-      setFormData: setRetrospectiveData,
-      validation: null, // Will be set below
-      api: RetrospectiveAPI.createRetrospective,
-      formComponent: NewRetrospectiveForm,
-      requiredFields: ["campaign"],
-      getPayload: (createdTask) => ({
-        campaign: retrospectiveData.campaign || taskData.project_id?.toString(),
-        scheduled_at:
-          retrospectiveData.scheduled_at || new Date().toISOString(),
-        status: retrospectiveData.status || "scheduled",
-      }),
-    },
-    report: {
-      contentType: "report",
-      formData: reportData,
-      setFormData: setReportData,
-      validation: null, // will be set below
-      api: ReportAPI.createReport,
-      formComponent: NewReportForm,
-      requiredFields: ["title", "owner_id", "slice_config.csv_file_path"],
-      getPayload: (createdTask) => {
-        return {
-          task: createdTask.id,
-          title: reportData.title,
-          owner_id: reportData.owner_id,
-          report_template_id: reportData.report_template_id,
-          slice_config: {
-            csv_file_path: reportData.slice_config?.csv_file_path || "",
-          },
-        };
-      },
-    },
-    scaling: {
-      contentType: "scalingplan",
-      formData: scalingPlanData,
-      setFormData: setScalingPlanData,
-      validation: null,
-      api: OptimizationScalingAPI.createScalingPlan,
-      formComponent: ScalingPlanForm,
-      requiredFields: ["strategy"],
-      getPayload: (createdTask) => {
-        if (!createdTask?.id) {
-          throw new Error("Task ID is required to create scaling plan");
-        }
-        return {
-          task: createdTask.id,
-          strategy: scalingPlanData.strategy || "horizontal",
-          scaling_target: scalingPlanData.scaling_target || "",
-          risk_considerations: scalingPlanData.risk_considerations || "",
-          max_scaling_limit: scalingPlanData.max_scaling_limit || "",
-          stop_conditions: scalingPlanData.stop_conditions || "",
-          expected_outcomes: scalingPlanData.expected_outcomes || "",
-          affected_entities: scalingPlanData.affected_entities || null,
-        };
-      },
-    },
-    alert: {
-      contentType: "alerttask",
-      formData: alertData,
-      setFormData: setAlertData,
-      validation: null,
-      api: AlertingAPI.createAlertTask,
-      formComponent: AlertTaskForm,
-      requiredFields: ["alert_type", "severity"],
-      getPayload: (createdTask) => {
-        if (!createdTask?.id) {
-          throw new Error("Task ID is required to create alert details");
-        }
-        const rawMetricValue = alertData.change_value
-          ? Number(alertData.change_value)
-          : null;
-        const rawCurrentValue = alertData.current_value
-          ? Number(alertData.current_value)
-          : null;
-        const rawPreviousValue = alertData.previous_value
-          ? Number(alertData.previous_value)
-          : null;
-        const metricValue = Number.isNaN(rawMetricValue) ? null : rawMetricValue;
-        const currentValue = Number.isNaN(rawCurrentValue)
-          ? null
-          : rawCurrentValue;
-        const previousValue = Number.isNaN(rawPreviousValue)
-          ? null
-          : rawPreviousValue;
-        const investigationNotes = [
-          alertData.investigation_assumption
-            ? `Assumption: ${alertData.investigation_assumption}`
-            : null,
-          alertData.investigation_notes || null,
-        ]
-          .filter(Boolean)
-          .join(" | ");
-        const resolutionSteps = [
-          ...(alertData.resolution_actions || []),
-          alertData.resolution_notes || null,
-        ]
-          .filter(Boolean)
-          .join(" | ");
-        return {
-          task: createdTask.id,
-          alert_type: alertData.alert_type || "spend_spike",
-          severity: alertData.severity || "medium",
-          status: alertData.status || "open",
-          affected_entities: alertData.affected_entities || [],
-          initial_metrics: {
-            metric_key: alertData.metric_key || "spend",
-            change_type: alertData.change_type || "percent",
-            change_value: metricValue,
-            change_window: alertData.change_window || "daily",
-            current_value: currentValue,
-            previous_value: previousValue,
-          },
-          assigned_to: alertData.assigned_to
-            ? Number(alertData.assigned_to)
-            : null,
-          acknowledged_by: alertData.acknowledged_by
-            ? Number(alertData.acknowledged_by)
-            : null,
-          investigation_notes: investigationNotes,
-          resolution_steps: resolutionSteps,
-          related_references: alertData.related_references || [],
-          postmortem_root_cause: alertData.postmortem_root_cause || "",
-          postmortem_prevention: alertData.postmortem_prevention || "",
-        };
-      },
-    },
-    communication: {
-      contentType: "clientcommunication",
-      formData: communicationData,
-      setFormData: setCommunicationData,
-      validation: null, // will be set below
-      api: ClientCommunicationAPI.create,
-      formComponent: NewClientCommunicationForm,
-      requiredFields: ["communication_type", "required_actions", "impacted_areas"],
-      getPayload: (createdTask) => {
-        if (!createdTask?.id) {
-          throw new Error("Task ID is required to create client communication");
-        }
-        // Validate impacted_areas is not empty
-        if (!communicationData.impacted_areas || communicationData.impacted_areas.length === 0) {
-          throw new Error("At least one impacted area is required");
-        }
-        // Validate required fields
-        if (!communicationData.communication_type) {
-          throw new Error("Communication type is required");
-        }
-        if (!communicationData.required_actions || communicationData.required_actions.trim() === "") {
-          throw new Error("Required actions is required");
-        }
-        return {
-          task: createdTask.id,
-          communication_type: communicationData.communication_type,
-          stakeholders: communicationData.stakeholders || "",
-          impacted_areas: communicationData.impacted_areas,
-          required_actions: communicationData.required_actions,
-          client_deadline: communicationData.client_deadline && communicationData.client_deadline.trim() !== "" 
-            ? communicationData.client_deadline 
-            : null,
-          notes: communicationData.notes || "",
-        };
-      },
-    },
-    optimization: {
-      contentType: "optimization",
-      formData: optimizationData,
-      setFormData: setOptimizationData,
-      validation: null,
-      api: OptimizationAPI.createOptimization,
-      formComponent: OptimizationForm,
-      requiredFields: [],
-      getPayload: (createdTask) => ({
-        task: createdTask.id,
-        ...optimizationData,
-      }),
-    },
-  };
-
   // Form validation rules
   const taskValidationRules = {
     project_id: (value) => (!value || value == 0 ? "Project is required" : ""),
-    type: (value) => (!value ? "Task type is required" : ""),
+    type: (value) => (!value ? "Work type is required" : ""),
     summary: (value) => (!value ? "Task summary is required" : ""),
     // Only require approver when type is 'budget'
     current_approver_id: (value) =>
@@ -714,6 +613,26 @@ function TasksPageContent() {
         return "Campaign (Project) is required";
       return "";
     },
+    decision: (value) => {
+      if (!value || value.toString().trim() === "")
+        return "Decision is required";
+      return "";
+    },
+    confidence_level: (value) => {
+      if (value === undefined || value === null || value === "") {
+        return "Confidence level is required";
+      }
+      const numericValue = Number(value);
+      if (![1, 2, 3, 4, 5].includes(numericValue)) {
+        return "Confidence level must be between 1 and 5";
+      }
+      return "";
+    },
+    primary_assumption: (value) => {
+      if (!value || value.toString().trim() === "")
+        return "Primary assumption is required";
+      return "";
+    },
   };
 
   const alertValidationRules = {
@@ -721,18 +640,11 @@ function TasksPageContent() {
     severity: (value) => (!value ? "Severity is required" : ""),
   };
 
-  const reportValidationRules = {
-    title: (value) => {
-      if (!value || value.trim() === "") return "Title is required";
-      return "";
-    },
-    owner_id: (value) => {
-      if (!value || value.trim() === "") return "Owner ID is required";
-      return "";
-    },
-    "slice_config.csv_file_path": (value) => {
-      // Temporarily make CSV file optional until upload endpoint is fixed
-      // if (!value || value.trim() === '') return 'CSV file must be uploaded';
+  const experimentValidationRules = {
+    hypothesis: (value) => {
+      if (!value || value.trim() === "") {
+        return "Hypothesis is required";
+      }
       return "";
     },
   };
@@ -758,27 +670,109 @@ function TasksPageContent() {
     },
   };
 
+  const policyValidationRules = {
+    platform: (value) =>
+      !value || value.trim() === "" ? "Platform is required" : "",
+    policy_change_type: (value) =>
+      !value || value.trim() === "" ? "Policy change type is required" : "",
+    policy_description: (value) =>
+      !value || value.trim() === "" ? "Policy description is required" : "",
+    immediate_actions_required: (value) =>
+      !value || value.trim() === ""
+        ? "Immediate actions required is required"
+        : "",
+  };
+
   // Initialize validation hooks
   const taskValidation = useFormValidation(taskValidationRules);
   const budgetValidation = useFormValidation(budgetValidationRules);
   const budgetPoolValidation = useFormValidation(budgetPoolValidationRules);
   const assetValidation = useFormValidation(assetValidationRules);
   const retrospectiveValidation = useFormValidation(
-    retrospectiveValidationRules
+    retrospectiveValidationRules,
   );
   const alertValidation = useFormValidation(alertValidationRules);
-  const reportValidation = useFormValidation(reportValidationRules);
+  const experimentValidation = useFormValidation(experimentValidationRules);
   const communicationValidation = useFormValidation(
-    communicationValidationRules
+    communicationValidationRules,
   );
+  const policyValidation = useFormValidation(policyValidationRules);
 
-  // Assign validation hooks to config
-  taskTypeConfig.budget.validation = budgetValidation;
-  taskTypeConfig.asset.validation = assetValidation;
-  taskTypeConfig.retrospective.validation = retrospectiveValidation;
-  taskTypeConfig.alert.validation = alertValidation;
-  taskTypeConfig.report.validation = reportValidation;
-  taskTypeConfig.communication.validation = communicationValidation;
+  // Task type configuration from shared registry; pages wire in local form state and validation
+  const taskTypeConfig = useMemo(() => {
+    const formStateByType = {
+      budget: { formData: budgetData, setFormData: setBudgetData, validation: budgetValidation },
+      asset: { formData: assetData, setFormData: setAssetData, validation: assetValidation },
+      retrospective: {
+        formData: retrospectiveData,
+        setFormData: setRetrospectiveData,
+        validation: retrospectiveValidation,
+      },
+      scaling: {
+        formData: scalingPlanData,
+        setFormData: setScalingPlanData,
+        validation: null,
+      },
+      alert: { formData: alertData, setFormData: setAlertData, validation: alertValidation },
+      communication: {
+        formData: communicationData,
+        setFormData: setCommunicationData,
+        validation: communicationValidation,
+      },
+      experiment: {
+        formData: experimentData,
+        setFormData: setExperimentData,
+        validation: experimentValidation,
+      },
+      optimization: {
+        formData: optimizationData,
+        setFormData: setOptimizationData,
+        validation: null,
+      },
+      report: {
+        formData: reportData,
+        setFormData: setReportData,
+        validation: null,
+      },
+      platform_policy_update: {
+        formData: policyData,
+        setFormData: setPolicyData,
+        validation: policyValidation,
+      },
+    };
+    const config = {};
+    for (const [key, staticConfig] of Object.entries(TASK_TYPE_CONFIG_STATIC)) {
+      const { formData, setFormData, validation } = formStateByType[key] || {};
+      config[key] = {
+        ...staticConfig,
+        formData,
+        setFormData,
+        validation: validation ?? null,
+        getPayload: (createdTask) =>
+          staticConfig.getPayload(formData, taskData, createdTask),
+      };
+    }
+    return config;
+  }, [
+    budgetData,
+    assetData,
+    retrospectiveData,
+    scalingPlanData,
+    alertData,
+    communicationData,
+    experimentData,
+    optimizationData,
+    reportData,
+    policyData,
+    taskData,
+    budgetValidation,
+    assetValidation,
+    retrospectiveValidation,
+    alertValidation,
+    experimentValidation,
+    communicationValidation,
+    policyValidation,
+  ]);
 
   // Filter tasks by search query
   const filteredTasks = useMemo(() => {
@@ -793,81 +787,230 @@ function TasksPageContent() {
         task.owner?.username?.toLowerCase().includes(query) ||
         task.project?.name?.toLowerCase().includes(query) ||
         task.status?.toLowerCase().includes(query) ||
-        task.type?.toLowerCase().includes(query)
+        task.type?.toLowerCase().includes(query),
     );
   }, [parentTasksOnly, searchQuery]);
 
-  const tasksByType = useMemo(() => {
-    const grouped = {
-      budget: [],
-      asset: [],
-      retrospective: [],
-      report: [],
-      scaling: [],
-      alert: [],
-      experiment: [],
-      optimization: [],
-      communication: [],
-    };
+  // Timeline gets tasks with backendStatus so Draft badge can show (status may be missing in some paths)
+  const tasksForTimeline = useMemo(
+    () =>
+      (filteredTasks || []).map((task) => ({
+        ...task,
+        backendStatus: task.status,
+      })),
+    [filteredTasks],
+  );
 
-    if (!filteredTasks) return grouped;
+  const configuredBoardTypeKeys = Object.keys(taskTypeConfig).map(
+    normalizeBoardTypeKey,
+  );
 
-    filteredTasks.forEach((task) => {
-      if (grouped[task.type]) {
-        grouped[task.type].push(task);
+  const boardTypeKeys = useMemo(() => {
+    const allKeys = new Set(configuredBoardTypeKeys);
+
+    (filteredTasks || []).forEach((task) => {
+      allKeys.add(normalizeBoardTypeKey(task?.type));
+    });
+
+    const ordered = [];
+    BOARD_TYPE_ORDER.forEach((typeKey) => {
+      if (allKeys.has(typeKey)) {
+        ordered.push(typeKey);
+        allKeys.delete(typeKey);
       }
     });
 
+    const remaining = Array.from(allKeys).sort((a, b) =>
+      formatBoardTypeLabel(a).localeCompare(formatBoardTypeLabel(b)),
+    );
+
+    return [...ordered, ...remaining];
+  }, [configuredBoardTypeKeys, filteredTasks]);
+
+  const tasksByType = useMemo(() => {
+    const grouped = boardTypeKeys.reduce((acc, typeKey) => {
+      acc[typeKey] = [];
+      return acc;
+    }, {});
+
+    (filteredTasks || []).forEach((task) => {
+      const columnKey = normalizeBoardTypeKey(task?.type);
+      if (!grouped[columnKey]) {
+        grouped[columnKey] = [];
+      }
+      grouped[columnKey].push(task);
+    });
+
     return grouped;
-  }, [filteredTasks]);
+  }, [boardTypeKeys, filteredTasks]);
+
+  function mapTaskDataToJiraTaskItem(task) {
+    const statusMap = {
+      DRAFT: "TODO",
+      SUBMITTED: "SUBMITTED",
+      UNDER_REVIEW: "IN_REVIEW",
+      APPROVED: "DONE",
+      REJECTED: "TODO",
+      LOCKED: "TODO",
+      CANCELLED: "TODO",
+    };
+
+    const dueDate = task.due_date
+      ? new Date(task.due_date).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })
+      : undefined;
+
+    const projectName = task.project?.name || "TASK";
+    const projectKey = projectName
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .slice(0, 4)
+      .toUpperCase();
+    const issueKey = `${projectKey || "TASK"}-${task.id}`;
+
+    const jiraTaskItem = {
+      id: task.id,
+      summary: task.summary,
+      type: task.type || "task",
+      status: statusMap[task.status] || "TODO",
+      statusRaw: task.status,
+      backendStatus: task.status,
+      owner: task.owner?.username,
+      ownerId: task.owner?.id,
+      approver: task.current_approver?.username || task.current_approver_id,
+      approverId: task.current_approver?.id,
+      dueDate: dueDate,
+      dueDateRaw: task.due_date,
+      project: task.project?.name,
+      projectId: task.project?.id,
+      description: task.description,
+      issueKey,
+      content_type: task.content_type,
+      object_id: task.object_id,
+    };
+
+    return jiraTaskItem;
+  }
+
+  const jiraTasks = useMemo(() => {
+    if (!parentTasksOnly) return [];
+    return parentTasksOnly.map(mapTaskDataToJiraTaskItem);
+  }, [parentTasksOnly]);
+
+  const filteredJiraTasks = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    const base = !query
+      ? jiraTasks
+      : jiraTasks.filter((task) => {
+          const searchable = [
+            task.id ? String(task.id) : "",
+            task.summary || "",
+            task.description || "",
+            task.type || "",
+            task.status || "",
+            task.owner || "",
+            task.approver || "",
+            task.project || "",
+            task.issueKey || "",
+          ]
+            .join(" ")
+            .toLowerCase();
+          return searchable.includes(query);
+        });
+
+    // List-only pinning: drafts first, then newest first.
+    return [...base].sort((a, b) => {
+      const aDraft = a.backendStatus === "DRAFT";
+      const bDraft = b.backendStatus === "DRAFT";
+      if (aDraft !== bDraft) return aDraft ? -1 : 1;
+      const aId = typeof a.id === "number" ? a.id : Number(a.id) || 0;
+      const bId = typeof b.id === "number" ? b.id : Number(b.id) || 0;
+      return bId - aId;
+    });
+  }, [jiraTasks, searchQuery]);
+
+  const summaryMetrics = useMemo(() => {
+    const metrics = boardData?.time_metrics;
+    return [
+      {
+        key: "completed",
+        label: "completed",
+        value: metrics?.completed_last_7_days ?? 0,
+        subtitle: "in the last 7 days",
+        tone: "success",
+      },
+      {
+        key: "updated",
+        label: "updated",
+        value: metrics?.updated_last_7_days ?? 0,
+        subtitle: "in the last 7 days",
+        tone: "info",
+      },
+      {
+        key: "created",
+        label: "created",
+        value: metrics?.created_last_7_days ?? 0,
+        subtitle: "in the last 7 days",
+        tone: "info",
+      },
+      {
+        key: "due-soon",
+        label: "due soon",
+        value: metrics?.due_soon ?? 0,
+        subtitle: "in the next 7 days",
+        tone: "warning",
+      },
+    ];
+  }, [boardData]);
+
+  const statusOverview = useMemo(() => {
+    const palette = ["#3b82f6", "#22c55e", "#a855f7", "#f97316", "#64748b"];
+    const typeBreakdown = boardData?.types_of_work || [];
+    const totalFromTypes = typeBreakdown.reduce(
+      (sum, item) => sum + (item.count || 0),
+      0,
+    );
+    const fallbackTotal = boardData?.status_overview?.total_work_items || 0;
+    return {
+      total: totalFromTypes || fallbackTotal,
+      breakdown: typeBreakdown.map((item, index) => ({
+        label: item.display_name || item.type,
+        count: item.count || 0,
+        color: palette[index % palette.length],
+      })),
+    };
+  }, [boardData]);
+
+  const workTypes = useMemo(() => {
+    const palette = ["#3b82f6", "#a855f7", "#22c55e", "#64748b"];
+    const list = boardData?.types_of_work || [];
+    return list.map((item, index) => ({
+      label: item.display_name || item.type,
+      percentage: item.percentage || 0,
+      color: palette[index % palette.length],
+    }));
+  }, [boardData]);
 
   const boardColumns = useMemo(
-    () => [
-      { key: "budget", title: "To Do", empty: "No budget tasks found" },
-      { key: "asset", title: "In Progress", empty: "No asset tasks found" },
-      {
-        key: "retrospective",
-        title: "In Review",
-        empty: "No retrospective tasks found",
-      },
-      { key: "report", title: "Done", empty: "No report tasks found" },
-      { key: "scaling", title: "Scaling", empty: "No scaling tasks found" },
-      {
-        key: "communication",
-        title: "Communication",
-        empty: "No communication tasks found",
-      },
-      {
-        key: "experiment",
-        title: "Experiment",
-        empty: "No experiment tasks found",
-      },
-      {
-        key: "optimization",
-        title: "Optimization",
-        empty: "No optimization tasks found",
-      },
-      { key: "alert", title: "Alert", empty: "No alert tasks found" },
-    ],
-    []
+    () => boardTypeKeys.map((typeKey) => getBoardColumnMeta(typeKey)),
+    [boardTypeKeys],
   );
 
   const getTicketKey = (task) => {
     if (!task?.id) return "TASK-NEW";
-    const prefix = (task.type || "TASK").toUpperCase().slice(0, 4);
-    return `${prefix}-${task.id}`;
+    const projectName = task.project?.name || "TASK";
+    const prefix = projectName
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .slice(0, 4)
+      .toUpperCase();
+    return `${prefix || "TASK"}-${task.id}`;
   };
 
   const getBoardTypeIcon = (type) => {
-    switch (type) {
-      case "alert":
-        return "bug";
-      case "experiment":
-      case "optimization":
-        return "story";
-      default:
-        return "task";
-    }
+    const normalized = normalizeBoardTypeKey(type);
+    return BOARD_TYPE_META[normalized]?.icon || "custom";
   };
 
   const formatBoardDate = (dateString) => {
@@ -890,7 +1033,7 @@ function TasksPageContent() {
     const todayDay = new Date(
       today.getFullYear(),
       today.getMonth(),
-      today.getDate()
+      today.getDate(),
     );
     if (dueDay < todayDay) return "danger";
     return "warning";
@@ -914,6 +1057,13 @@ function TasksPageContent() {
   };
 
   const handleTaskDataChange = (newTaskData) => {
+    if (
+      draftEditingTaskId &&
+      newTaskData.type &&
+      newTaskData.type !== taskData.type
+    ) {
+      return;
+    }
     setTaskData((prev) => ({ ...prev, ...newTaskData }));
 
     // If task type is changed, update the task type
@@ -942,15 +1092,15 @@ function TasksPageContent() {
     setBudgetPoolData((prev) => ({ ...prev, ...newBudgetPoolData }));
   };
 
-  const handleReportDataChange = (newReportData) => {
-    setReportData((prev) => ({ ...prev, ...newReportData }));
-  };
-
   const handleCommunicationDataChange = (newCommunicationData) => {
     setCommunicationData((prev) => ({
       ...prev,
       ...newCommunicationData,
     }));
+  };
+
+  const handlePolicyDataChange = (newPolicyData) => {
+    setPolicyData((prev) => ({ ...prev, ...newPolicyData }));
   };
 
   // Handle task card click
@@ -991,7 +1141,7 @@ function TasksPageContent() {
             errorData.campaign.includes("already exists"))
         ) {
           console.warn(
-            "Retrospective already exists, attempting to find existing one..."
+            "Retrospective already exists, attempting to find existing one...",
           );
 
           // Try to find existing retrospective for this campaign
@@ -1007,7 +1157,7 @@ function TasksPageContent() {
             ) {
               console.log(
                 "Found existing retrospective:",
-                retrospectivesResponse.data[0]
+                retrospectivesResponse.data[0],
               );
               return retrospectivesResponse.data[0];
             }
@@ -1021,13 +1171,23 @@ function TasksPageContent() {
     }
   };
 
-  // Generic function to reset form data
-  const resetFormData = () => {
+  // Generic function to reset form data. initialWorkType: when opening from a board column, pre-fill Work Type.
+  const resetFormData = (
+    projectOverride = projectId ?? null,
+    initialWorkType = "",
+    initialSummary = "",
+  ) => {
     const defaultDates = getDefaultTaskDates();
+    const workType =
+      initialWorkType && VALID_BOARD_WORK_TYPES.includes(initialWorkType)
+        ? initialWorkType
+        : "";
+    const summary =
+      typeof initialSummary === "string" ? initialSummary : "";
     setTaskData({
-      project_id: projectId ?? null,
-      type: "",
-      summary: "",
+      project_id: projectOverride,
+      type: workType,
+      summary,
       description: "",
       current_approver_id: null,
       start_date: defaultDates.start_date,
@@ -1067,24 +1227,14 @@ function TasksPageContent() {
       affected_entities: [],
       assigned_to: "",
       acknowledged_by: "",
-      investigation_assumption: "",
       investigation_notes: "",
-      resolution_actions: [],
-      resolution_notes: "",
+      resolution_steps: "",
       related_references: [],
       postmortem_root_cause: "",
       postmortem_prevention: "",
     });
     setExperimentData({});
     setOptimizationData({});
-    setReportData({
-      title: "",
-      owner_id: "",
-      report_template_id: "",
-      slice_config: {
-        csv_file_path: "",
-      },
-    });
     setCommunicationData({
       communication_type: "",
       stakeholders: "",
@@ -1093,7 +1243,16 @@ function TasksPageContent() {
       client_deadline: null,
       notes: "",
     });
-    setTaskType("");
+    setTaskType(workType);
+    setReportData({
+      audience_type: "client",
+      audience_details: "",
+      context: defaultReportContext,
+      outcome_summary: "",
+      narrative_explanation: "",
+      key_actions: [],
+    });
+    setPolicyData({});
     setContentType("");
   };
 
@@ -1105,13 +1264,309 @@ function TasksPageContent() {
     assetValidation.clearErrors();
     retrospectiveValidation.clearErrors();
     alertValidation.clearErrors();
+    policyValidation.clearErrors();
+    experimentValidation.clearErrors();
   };
 
-  // Open create task modal with fresh form state
-  const handleOpenCreateTaskModal = () => {
-    resetFormData();
+  // Open create task modal with fresh form state.
+  // When opening from a board column: (sectionKey, summaryPrefill?) — sectionKey is the column work type.
+  // When opening from timeline/elsewhere: (projectIdOverride?) — optional project id.
+  const handleOpenCreateTaskModal = (
+    projectIdOverrideOrSectionKey,
+    sectionKeyOrSummaryPrefill,
+    summaryWhenProjectIdFirst,
+  ) => {
+    setDraftEditingTaskId(null);
+    const isSectionKeyOnly =
+      typeof projectIdOverrideOrSectionKey === "string" &&
+      projectIdOverrideOrSectionKey.length > 0;
+    const resolvedProjectId = isSectionKeyOnly
+      ? projectId ?? null
+      : typeof projectIdOverrideOrSectionKey === "number"
+      ? projectIdOverrideOrSectionKey
+      : projectId ?? null;
+    const initialWorkType = isSectionKeyOnly
+      ? projectIdOverrideOrSectionKey
+      : sectionKeyOrSummaryPrefill ?? "";
+    const initialSummary = isSectionKeyOnly
+      ? typeof sectionKeyOrSummaryPrefill === "string"
+        ? sectionKeyOrSummaryPrefill
+        : ""
+      : typeof summaryWhenProjectIdFirst === "string"
+      ? summaryWhenProjectIdFirst
+      : "";
+    resetFormData(resolvedProjectId, initialWorkType, initialSummary);
     clearAllValidationErrors();
     setCreateModalOpen(true);
+    setCreateModalExpanded(false);
+  };
+
+  const closeCreatePanel = () => {
+    setCreateModalOpen(false);
+    setCreateModalExpanded(false);
+    setDraftEditingTaskId(null);
+  };
+
+  const buildDraftPayload = useCallback(() => {
+    return {
+      version: 1,
+      taskData: {
+        ...taskData,
+        current_approver_id: taskData.current_approver_id ?? null,
+      },
+      forms: {
+        budgetData,
+        budgetPoolData,
+        assetData: { ...assetData, file: null },
+        retrospectiveData,
+        scalingPlanData,
+        alertData,
+        experimentData,
+        optimizationData,
+        communicationData,
+        reportData,
+        policyData,
+      },
+      updatedAt: Date.now(),
+    };
+  }, [
+    alertData,
+    assetData,
+    budgetData,
+    budgetPoolData,
+    communicationData,
+    experimentData,
+    optimizationData,
+    policyData,
+    reportData,
+    retrospectiveData,
+    scalingPlanData,
+    taskData,
+  ]);
+
+  const applyDraftPayload = useCallback(
+    (payload) => {
+      if (!payload || typeof payload !== "object") return;
+      const draftTaskData = payload.taskData || {};
+      const forms = payload.forms || {};
+
+      setTaskData((prev) => ({
+        ...prev,
+        ...draftTaskData,
+        current_approver_id: draftTaskData.current_approver_id ?? null,
+      }));
+      if (draftTaskData.type) {
+        setTaskType(draftTaskData.type);
+      }
+
+      if (forms.budgetData) setBudgetData(forms.budgetData);
+      if (forms.budgetPoolData) setBudgetPoolData(forms.budgetPoolData);
+      if (forms.assetData) setAssetData({ ...forms.assetData, file: null });
+      if (forms.retrospectiveData) setRetrospectiveData(forms.retrospectiveData);
+      if (forms.scalingPlanData) setScalingPlanData(forms.scalingPlanData);
+      if (forms.alertData) setAlertData(forms.alertData);
+      if (forms.experimentData) setExperimentData(forms.experimentData);
+      if (forms.optimizationData) setOptimizationData(forms.optimizationData);
+      if (forms.communicationData) setCommunicationData(forms.communicationData);
+      if (forms.reportData) setReportData(forms.reportData);
+      if (forms.policyData) setPolicyData(forms.policyData);
+    },
+    [
+      setAlertData,
+      setAssetData,
+      setBudgetData,
+      setBudgetPoolData,
+      setCommunicationData,
+      setExperimentData,
+      setOptimizationData,
+      setPolicyData,
+      setReportData,
+      setRetrospectiveData,
+      setScalingPlanData,
+      setTaskData,
+    ],
+  );
+
+  const openDraftForEdit = useCallback(
+    async (taskId) => {
+      if (!taskId) return;
+      try {
+        const resp = await TaskAPI.getTask(Number(taskId));
+        const serverTask = resp?.data;
+        const payload = serverTask?.draft_payload;
+
+        setDraftEditingTaskId(Number(taskId));
+
+        const resolvedProjectId =
+          payload?.taskData?.project_id ?? serverTask?.project?.id ?? null;
+        const resolvedWorkType = payload?.taskData?.type ?? serverTask?.type ?? "";
+        resetFormData(resolvedProjectId, resolvedWorkType);
+
+        if (payload) {
+          applyDraftPayload(payload);
+        } else {
+          // Fallback: at least restore core task fields.
+          setTaskData((prev) => ({
+            ...prev,
+            project_id: serverTask?.project?.id ?? prev.project_id ?? null,
+            type: serverTask?.type ?? prev.type ?? "",
+            summary: serverTask?.summary ?? prev.summary ?? "",
+            description: serverTask?.description ?? prev.description ?? "",
+            current_approver_id:
+              serverTask?.current_approver?.id ??
+              serverTask?.current_approver_id ??
+              null,
+            start_date: serverTask?.start_date ?? prev.start_date ?? null,
+            due_date: serverTask?.due_date ?? prev.due_date ?? null,
+          }));
+          if (serverTask?.type) setTaskType(serverTask.type);
+        }
+
+        clearAllValidationErrors();
+        setCreateModalOpen(true);
+        setCreateModalExpanded(false);
+      } catch (error) {
+        console.error("Failed to open draft task:", error);
+        toast.error("Failed to open draft. Please try again.");
+      }
+    },
+    [applyDraftPayload, clearAllValidationErrors, resetFormData],
+  );
+
+  const handleCreateAsDraft = async () => {
+    if (isSubmitting) return;
+
+    const requiredDraftFields = ["project_id", "type", "summary"];
+    if (!taskValidation.validateForm(taskData, requiredDraftFields)) {
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const draftPayload = buildDraftPayload();
+      const taskPayload = {
+        project_id: taskData.project_id,
+        type: taskData.type,
+        summary: taskData.summary,
+        description: taskData.description || "",
+        current_approver_id: taskData.current_approver_id || null,
+        start_date: taskData.start_date || null,
+        due_date: taskData.due_date || null,
+        create_as_draft: true,
+        draft_payload: draftPayload,
+      };
+
+      await createTask(taskPayload);
+
+      resetFormData();
+      closeCreatePanel();
+      clearAllValidationErrors();
+      await reloadTasks();
+      toast.success("Draft created.");
+    } catch (error) {
+      console.error("Error creating draft task:", error);
+      toast.error("Failed to create draft.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSaveDraft = async () => {
+    if (!draftEditingTaskId || isSubmitting) return;
+
+    const requiredDraftFields = ["project_id", "type", "summary"];
+    if (!taskValidation.validateForm(taskData, requiredDraftFields)) {
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const draftPayload = buildDraftPayload();
+      await TaskAPI.updateTask(draftEditingTaskId, {
+        summary: taskData.summary,
+        description: taskData.description || "",
+        current_approver_id: taskData.current_approver_id || null,
+        start_date: taskData.start_date || null,
+        due_date: taskData.due_date || null,
+        draft_payload: draftPayload,
+      });
+      await reloadTasks();
+      toast.success("Draft saved.");
+    } catch (error) {
+      console.error("Error saving draft:", error);
+      toast.error("Failed to save draft.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSubmitDraft = async () => {
+    if (!draftEditingTaskId || isSubmitting) return;
+
+    const requiredTaskFields =
+      taskData.type === "budget"
+        ? ["project_id", "type", "summary", "current_approver_id"]
+        : ["project_id", "type", "summary"];
+    if (!taskValidation.validateForm(taskData, requiredTaskFields)) {
+      return;
+    }
+
+    const config = taskTypeConfig[taskData.type];
+    if (config && config.validation && config.requiredFields.length > 0) {
+      if (!config.validation.validateForm(config.formData, config.requiredFields)) {
+        return;
+      }
+    }
+
+    try {
+      setIsSubmitting(true);
+
+      // Persist latest draft state before creating type-specific objects.
+      const draftPayload = buildDraftPayload();
+      await TaskAPI.updateTask(draftEditingTaskId, {
+        summary: taskData.summary,
+        description: taskData.description || "",
+        current_approver_id: taskData.current_approver_id || null,
+        start_date: taskData.start_date || null,
+        due_date: taskData.due_date || null,
+        draft_payload: draftPayload,
+      });
+
+      const existingTask = { id: draftEditingTaskId };
+      setContentType(config?.contentType || "");
+
+      const createdObject = await createTaskTypeObject(taskData.type, existingTask);
+
+      if (createdObject && config?.contentType) {
+        await TaskAPI.linkTask(
+          existingTask.id,
+          config.contentType,
+          createdObject.id.toString(),
+        );
+      }
+
+      await TaskAPI.submitTask(draftEditingTaskId);
+      await TaskAPI.updateTask(draftEditingTaskId, { draft_payload: null });
+
+      resetFormData();
+      closeCreatePanel();
+      clearAllValidationErrors();
+      await reloadTasks();
+      toast.success("Draft submitted.");
+    } catch (error) {
+      console.error("Error submitting draft:", error);
+      toast.error("Failed to submit draft.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleJiraTaskClick = (task) => {
+    if (task?.backendStatus === "DRAFT") {
+      openDraftForEdit(task.id);
+      return;
+    }
+    router.push(`/tasks/${task.id}`);
   };
 
   // Submit method to create task and related objects
@@ -1119,7 +1574,7 @@ function TasksPageContent() {
     console.log(
       "Submitting task creation form with data11:",
       isSubmitting,
-      taskData
+      taskData,
     );
     if (isSubmitting) return;
 
@@ -1163,11 +1618,11 @@ function TasksPageContent() {
       console.log("Creating task with payload:", taskPayload);
       console.log(
         "taskData.current_approver_id:",
-        taskData.current_approver_id
+        taskData.current_approver_id,
       );
       console.log(
         "taskData.current_approver_id type:",
-        typeof taskData.current_approver_id
+        typeof taskData.current_approver_id,
       );
       const createdTask = await createTask(taskPayload);
       console.log("Task created:", createdTask);
@@ -1177,7 +1632,7 @@ function TasksPageContent() {
 
       const createdObject = await createTaskTypeObject(
         taskData.type,
-        createdTask
+        createdTask,
       );
 
       // Step 3: Link the task to the specific type object
@@ -1195,7 +1650,7 @@ function TasksPageContent() {
           const linkResponse = await TaskAPI.linkTask(
             createdTask.id,
             config.contentType,
-            createdObject.id.toString()
+            createdObject.id.toString(),
           );
 
           console.log("Link task response:", linkResponse);
@@ -1227,7 +1682,8 @@ function TasksPageContent() {
             linkError.response?.data?.message ||
             linkError.message ||
             "Unknown error";
-          toast.error(`Asset created, but failed to link to task: ${errorMsg}`);
+          const typeLabel = BOARD_TYPE_META[taskData.type]?.title || taskData.type;
+          toast.error(`${typeLabel} created, but failed to link to task: ${errorMsg}`);
         }
       } else {
         console.warn("Cannot link task: missing createdObject or contentType", {
@@ -1241,7 +1697,7 @@ function TasksPageContent() {
         try {
           console.log(
             "Uploading initial version file for asset:",
-            createdObject.id
+            createdObject.id,
           );
           await AssetAPI.createAssetVersion(String(createdObject.id), {
             file: assetData.file,
@@ -1252,14 +1708,14 @@ function TasksPageContent() {
           // Don't fail the entire task creation if file upload fails
           // User can upload the file later
           toast.error(
-            "Asset created, but failed to upload initial version file. You can upload it later."
+            "Asset created, but failed to upload initial version file. You can upload it later.",
           );
         }
       }
 
       // Reset form and close modal
       resetFormData();
-      setCreateModalOpen(false);
+      closeCreatePanel();
 
       // Clear validation errors
       clearAllValidationErrors();
@@ -1282,13 +1738,16 @@ function TasksPageContent() {
       if (error.response?.data) {
         // Handle validation errors - check for common fields first
         const errorData = error.response.data;
-        
+
         // Collect all error messages
         const errorMessages = [];
-        
+
         // Check for specific field errors
         const fieldMappings = {
           campaign: "Campaign",
+          decision: "Decision",
+          confidence_level: "Confidence level",
+          primary_assumption: "Primary assumption",
           scheduled_at: "Scheduled at",
           status: "Status",
           project_id: "Project",
@@ -1299,7 +1758,7 @@ function TasksPageContent() {
           communication_type: "Communication type",
           required_actions: "Required actions",
         };
-        
+
         for (const [field, label] of Object.entries(fieldMappings)) {
           if (errorData[field]) {
             const fieldError = Array.isArray(errorData[field])
@@ -1308,7 +1767,7 @@ function TasksPageContent() {
             errorMessages.push(`${label}: ${fieldError}`);
           }
         }
-        
+
         // Handle non_field_errors if present
         if (errorData.non_field_errors) {
           const nonFieldErrors = Array.isArray(errorData.non_field_errors)
@@ -1316,14 +1775,14 @@ function TasksPageContent() {
             : [errorData.non_field_errors];
           errorMessages.push(...nonFieldErrors);
         }
-        
+
         // Handle generic error/message fields
         if (errorData.error) {
           errorMessages.push(errorData.error);
         } else if (errorData.message) {
           errorMessages.push(errorData.message);
         }
-        
+
         // If no specific errors found, try to extract from object
         if (errorMessages.length === 0 && typeof errorData === "object") {
           const firstError = Object.values(errorData)[0];
@@ -1332,15 +1791,18 @@ function TasksPageContent() {
           } else if (typeof firstError === "string") {
             errorMessages.push(firstError);
           } else if (typeof firstError === "object") {
-            errorMessages.push("Validation error: " + JSON.stringify(firstError));
+            errorMessages.push(
+              "Validation error: " + JSON.stringify(firstError),
+            );
           } else {
             errorMessages.push(String(firstError) || "Validation error");
           }
         }
-        
-        errorMessage = errorMessages.length > 0 
-          ? errorMessages.join(". ") 
-          : "Validation error occurred";
+
+        errorMessage =
+          errorMessages.length > 0
+            ? errorMessages.join(". ")
+            : "Validation error occurred";
       } else if (error.message) {
         errorMessage = error.message;
       }
@@ -1394,6 +1856,7 @@ function TasksPageContent() {
       // Close budget pool modal and return to task creation modal
       setCreateBudgetPoolModalOpen(false);
       setCreateModalOpen(true);
+      setCreateModalExpanded(true);
 
       // Reset budget pool form data
       setBudgetPoolData({
@@ -1428,14 +1891,14 @@ function TasksPageContent() {
       currency: budgetData.currency || "",
     });
     setCreateBudgetPoolModalOpen(true);
-    setCreateModalOpen(false);
     setManageBudgetPoolsModalOpen(false);
+    closeCreatePanel();
   };
 
   const handleManageBudgetPools = () => {
     setManageBudgetPoolsModalOpen(true);
-    setCreateModalOpen(false);
     setCreateBudgetPoolModalOpen(false);
+    closeCreatePanel();
   };
 
   const layoutUser = user
@@ -1447,8 +1910,12 @@ function TasksPageContent() {
     : undefined;
 
   return (
-    <Layout user={layoutUser} onUserAction={handleUserAction}>
-      <div className="min-h-screen bg-gray-50">
+    <Layout
+      user={layoutUser}
+      onUserAction={handleUserAction}
+      mainScrollMode="page"
+    >
+      <div className="min-h-full bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Page Header */}
           <div className="mb-8">
@@ -1458,7 +1925,7 @@ function TasksPageContent() {
                   ? `${selectedProject?.name || "Project"} - Tasks`
                   : "Select a project to enter tasks"}
               </h1>
-              {projectId && (
+              {projectId && activeTab !== "board" && (
                 <button
                   onClick={handleOpenCreateTaskModal}
                   className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700"
@@ -1470,8 +1937,9 @@ function TasksPageContent() {
 
             {projectId && (
               <div className="mb-4 border-b border-gray-200">
-                <nav className="flex space-x-8">
+                <nav data-testid="workspace-tab-nav" className="flex space-x-8">
                   <button
+                    data-testid="tab-summary"
                     onClick={() => setActiveTab("summary")}
                     className={`py-2 px-1 border-b-2 font-medium text-sm ${
                       activeTab === "summary"
@@ -1482,6 +1950,7 @@ function TasksPageContent() {
                     Summary
                   </button>
                   <button
+                    data-testid="tab-tasks"
                     onClick={() => setActiveTab("tasks")}
                     className={`py-2 px-1 border-b-2 font-medium text-sm ${
                       activeTab === "tasks"
@@ -1492,6 +1961,7 @@ function TasksPageContent() {
                     Tasks
                   </button>
                   <button
+                    data-testid="tab-board"
                     onClick={() => setActiveTab("board")}
                     className={`py-2 px-1 border-b-2 font-medium text-sm ${
                       activeTab === "board"
@@ -1517,8 +1987,9 @@ function TasksPageContent() {
                     </p>
                     <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700">
                       {`Current project: #${projectId} ${
-                        projectOptions.find((project) => project.id === projectId)
-                          ?.name || "Unknown"
+                        projectOptions.find(
+                          (project) => project.id === projectId,
+                        )?.name || "Unknown"
                       }`}
                     </div>
                   </div>
@@ -1531,83 +2002,16 @@ function TasksPageContent() {
                       Switch project
                     </button>
                     {projectOptionsError && (
-                      <p className="mt-2 text-sm text-red-600">{projectOptionsError}</p>
+                      <p className="mt-2 text-sm text-red-600">
+                        {projectOptionsError}
+                      </p>
                     )}
                   </div>
                 </div>
               </div>
             )}
 
-            {projectId ? (
-              activeTab === "tasks" ? (
-                <>
-                  {/* Search Bar and View Toggle */}
-                  <div className="flex flex-row gap-4 items-center">
-                  {/* Search Bar */}
-                  <div className="flex-1 max-w-md">
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg
-                          className="h-5 w-5 text-gray-400"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                          />
-                        </svg>
-                      </div>
-                      <input
-                        type="text"
-                        placeholder="Search tasks..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  {/* View Toggle */}
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setViewMode("broad")}
-                      className={`px-4 py-2 rounded-md text-sm font-medium ${
-                        viewMode === "broad"
-                          ? "bg-indigo-600 text-white"
-                          : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                      }`}
-                    >
-                      Broad View
-                    </button>
-                    <button
-                      onClick={() => setViewMode("list")}
-                      className={`px-4 py-2 rounded-md text-sm font-medium ${
-                        viewMode === "list"
-                          ? "bg-indigo-600 text-white"
-                          : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                      }`}
-                    >
-                      List View
-                    </button>
-                    <button
-                      onClick={() => setViewMode("timeline")}
-                      className={`px-4 py-2 rounded-md text-sm font-medium ${
-                        viewMode === "timeline"
-                          ? "bg-indigo-600 text-white"
-                          : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
-                      }`}
-                    >
-                      Timeline View
-                    </button>
-                  </div>
-                </div>
-                </>
-              ) : null
-            ) : (
+            {!projectId && (
               <div className="relative overflow-hidden rounded-[28px] border border-slate-100 bg-white shadow-[0_25px_80px_rgba(15,23,42,0.12)]">
                 <div className="pointer-events-none absolute inset-0">
                   <div className="absolute -right-24 -top-20 h-64 w-64 rounded-full bg-sky-100/70 blur-[90px]" />
@@ -1731,7 +2135,10 @@ function TasksPageContent() {
                                 tabIndex={0}
                                 aria-label="Unpin project"
                                 onKeyDown={(event) => {
-                                  if (event.key === "Enter" || event.key === " ") {
+                                  if (
+                                    event.key === "Enter" ||
+                                    event.key === " "
+                                  ) {
                                     event.preventDefault();
                                     togglePinProject(project.id);
                                   }
@@ -1815,7 +2222,10 @@ function TasksPageContent() {
                                 tabIndex={0}
                                 aria-label="Pin project"
                                 onKeyDown={(event) => {
-                                  if (event.key === "Enter" || event.key === " ") {
+                                  if (
+                                    event.key === "Enter" ||
+                                    event.key === " "
+                                  ) {
                                     event.preventDefault();
                                     togglePinProject(project.id);
                                   }
@@ -1901,7 +2311,10 @@ function TasksPageContent() {
                                 tabIndex={0}
                                 aria-label="Pin project"
                                 onKeyDown={(event) => {
-                                  if (event.key === "Enter" || event.key === " ") {
+                                  if (
+                                    event.key === "Enter" ||
+                                    event.key === " "
+                                  ) {
                                     event.preventDefault();
                                     togglePinProject(project.id);
                                   }
@@ -1939,10 +2352,10 @@ function TasksPageContent() {
                               </div>
                               <div className="text-xs text-slate-500">
                                 <span className="sm:hidden">Lead: </span>
-                          {project.owner?.name ||
-                            project.owner?.username ||
-                            project.owner?.email ||
-                            "Unassigned"}
+                                {project.owner?.name ||
+                                  project.owner?.username ||
+                                  project.owner?.email ||
+                                  "Unassigned"}
                               </div>
                               <div className="text-xs">
                                 <span className="sm:hidden">Status: </span>
@@ -1967,19 +2380,8 @@ function TasksPageContent() {
           </div>
 
           {projectId && activeTab === "summary" && (
-            <div className="mt-6 space-y-6">
-              <ProjectSummaryPanel
-                projectId={projectId}
-                projectName={selectedProject?.name}
-                showViewAllLink={false}
-              />
-
-              {boardLoading && (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
-                  <p className="mt-2 text-gray-600">Loading board...</p>
-                </div>
-              )}
+            <div data-testid="tab-content-summary" className="mt-6 space-y-6">
+              {boardLoading && <TasksWorkspaceSkeleton mode="summary" />}
 
               {!boardLoading && boardError && (
                 <div className="text-center py-8">
@@ -1993,89 +2395,19 @@ function TasksPageContent() {
                 </div>
               )}
 
-              {!boardLoading && !boardError && boardData && (
-                <>
-                  <TimeMetricsCards metrics={boardData.time_metrics} />
-
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-[320px] flex flex-col">
-                      <div className="mb-3">
-                        <h3 className="text-base font-semibold text-gray-900">
-                          Status overview
-                        </h3>
-                        <p className="text-xs text-gray-600 mt-1">
-                          Get a snapshot of the status of your work items.
-                        </p>
-                      </div>
-                      <div className="flex-1 overflow-hidden">
-                        <StatusOverviewChart data={boardData.status_overview} />
-                      </div>
-                    </div>
-
-                    <div
-                      className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex flex-col ${
-                        isBoardRecentExpanded ? "h-[480px]" : "h-[320px]"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-3">
-                        <div>
-                          <h3 className="text-base font-semibold text-gray-900">
-                            Recent activity
-                          </h3>
-                          <p className="text-xs text-gray-600 mt-1">
-                            Stay up to date with what&apos;s happening.
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setIsBoardRecentExpanded((prev) => !prev)
-                          }
-                          className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
-                        >
-                          {isBoardRecentExpanded ? "Show less" : "Show more"}
-                        </button>
-                      </div>
-                      <div className="flex-1 overflow-hidden">
-                        <RecentActivityFeed
-                          activities={boardData.recent_activity}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-[320px] flex flex-col">
-                      <div className="mb-3">
-                        <h3 className="text-base font-semibold text-gray-900">
-                          Priority breakdown
-                        </h3>
-                        <p className="text-xs text-gray-600 mt-1">
-                          See how priorities stack up for this project.
-                        </p>
-                      </div>
-                      <div className="flex-1 overflow-hidden">
-                        <PriorityBreakdownChart
-                          data={boardData.priority_breakdown}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-[320px] flex flex-col">
-                      <div className="mb-3">
-                        <h3 className="text-base font-semibold text-gray-900">
-                          Types of work
-                        </h3>
-                        <p className="text-xs text-gray-600 mt-1">
-                          Track how work types are distributed.
-                        </p>
-                      </div>
-                      <div className="flex-1 overflow-hidden">
-                        <TypesOfWorkChart data={boardData.types_of_work} />
-                      </div>
-                    </div>
-                  </div>
-                </>
+              {!boardLoading && !boardError && (
+                <JiraSummaryView
+                  metrics={summaryMetrics}
+                  statusOverview={statusOverview}
+                  workTypes={workTypes}
+                  onViewWorkItems={() => {
+                    setActiveTab("tasks");
+                    setViewMode("list");
+                  }}
+                  onViewItems={() => {
+                    setActiveTab("board");
+                  }}
+                />
               )}
             </div>
           )}
@@ -2097,15 +2429,17 @@ function TasksPageContent() {
                 startBoardEdit={startBoardEdit}
                 cancelBoardEdit={cancelBoardEdit}
                 saveBoardEdit={saveBoardEdit}
+                currentUser={user || undefined}
+                externalFilters={
+                  <TaskFilterPanel
+                    filters={filters}
+                    onChange={setFilters}
+                    onClearAll={clearFilters}
+                    projectOptions={projectOptions}
+                    typeOptions={taskTypeOptions}
+                  />
+                }
               />
-            </div>
-          )}
-
-          {/* Loading State */}
-          {projectId && activeTab === "tasks" && tasksLoading && (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
-              <p className="mt-2 text-gray-600">Loading tasks...</p>
             </div>
           )}
 
@@ -2118,9 +2452,9 @@ function TasksPageContent() {
               <button
                 onClick={() => {
                   if (projectId) {
-                    fetchTasks({ project_id: projectId });
+                    fetchTasks({ ...filters, project_id: projectId });
                   } else {
-                    fetchTasks();
+                    fetchTasks(filters);
                   }
                 }}
                 className="mt-2 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
@@ -2131,452 +2465,190 @@ function TasksPageContent() {
           )}
 
           {/* Tasks Display */}
-          {!tasksLoading &&
-            !tasksError &&
-            projectId &&
-            activeTab === "tasks" && (
-            <>
-              {viewMode === "list" ? (
-                /* List View */
-                <TaskListView
-                  tasks={parentTasksOnly}
-                  onTaskClick={handleTaskClick}
-                  onTaskUpdate={async () => {
-                    if (projectId) {
-                      await fetchTasks({ project_id: projectId });
-                    } else {
-                      await reloadTasks();
-                    }
-                  }}
-                  searchQuery={searchQuery}
+          {!tasksError && projectId && activeTab === "tasks" && (
+            <div className="min-h-screen bg-[#f8f9fb] px-6 py-6">
+              <div className="mx-auto max-w-6xl space-y-4">
+                <JiraTasksView
+                  tasks={filteredJiraTasks}
+                  viewMode={viewMode}
+                  onViewModeChange={setViewMode}
+                  searchValue={searchQuery}
+                  onSearchChange={setSearchQuery}
+                  searchPlaceholder="Search tasks..."
+                  rightOfSearch={
+                    <TaskFilterPanel
+                      filters={filters}
+                      onChange={setFilters}
+                      onClearAll={clearFilters}
+                      projectOptions={projectOptions}
+                      typeOptions={taskTypeOptions}
+                    />
+                  }
+                  onTaskClick={handleJiraTaskClick}
+                  onTaskUpdate={reloadTasks}
+                  renderTimeline={() => (
+                    <TimelineViewComponent
+                      tasks={tasksForTimeline}
+                      onTaskClick={handleTaskClick}
+                      reloadTasks={reloadTasks}
+                      onCreateTask={(projectIdOverride) =>
+                        handleOpenCreateTaskModal(projectIdOverride)
+                      }
+                      currentUser={user || undefined}
+                    />
+                  )}
                 />
-              ) : viewMode === "timeline" ? (
-                <TimelineView
-                  tasks={parentTasksOnly}
-                  onTaskClick={handleTaskClick}
-                  reloadTasks={async () => {
-                    if (projectId) {
-                      await fetchTasks({ project_id: projectId });
-                    } else {
-                      await reloadTasks();
-                    }
-                  }}
-                  onCreateTask={(projectIdOverride) => {
-                    if (projectIdOverride) {
-                      setTaskData((prev) => ({
-                        ...prev,
-                        project_id: projectIdOverride,
-                      }));
-                    }
-                    handleOpenCreateTaskModal();
-                  }}
-                />
-              ) : (
-                /* Broad View */
-                <div className="flex flex-col gap-6">
-                  {/* Row 1: Budget / Asset / Retrospective */}
-                  <div className="flex flex-row gap-6">
-                    {/* Budget Tasks */}
-                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Budget Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">
-                          {tasksByType.budget.length}
-                        </span>
-                      </div>
-                      <div className="space-y-3">
-                        {tasksByType.budget.length === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No budget tasks found
-                          </p>
-                        ) : (
-                          tasksByType.budget.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Asset Tasks */}
-                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Asset Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-indigo-100 text-indigo-800 text-xs font-medium rounded-full">
-                          {tasksByType.asset.length}
-                        </span>
-                      </div>
-                      <div className="space-y-3">
-                        {tasksByType.asset.length === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No asset tasks found
-                          </p>
-                        ) : (
-                          tasksByType.asset.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                              onDelete={async (taskId) => {
-                                if (projectId) {
-                                  await fetchTasks({ project_id: projectId });
-                                } else {
-                                  await reloadTasks();
-                                }
-                              }}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Retrospective Tasks */}
-                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Retrospective Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs font-medium rounded-full">
-                          {tasksByType.retrospective.length}
-                        </span>
-                      </div>
-                      <div className="space-y-3">
-                        {tasksByType.retrospective.length === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No retrospective tasks found
-                          </p>
-                        ) : (
-                          tasksByType.retrospective.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                              onDelete={async (taskId) => {
-                                // After deletion, refresh the tasks list for the current project
-                                if (projectId) {
-                                  await fetchTasks({ project_id: projectId });
-                                } else {
-                                  await reloadTasks();
-                                }
-                              }}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Row 2: Report / Scaling / Communication Tasks */}
-                  <div className="flex flex-row gap-6">
-                    {/* Report Tasks */}
-                    <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Report Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
-                          {tasksByType.report?.length || 0}
-                        </span>
-                      </div>
-
-                      <div className="space-y-3">
-                        {(tasksByType.report?.length || 0) === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No report tasks found
-                          </p>
-                        ) : (
-                          tasksByType.report.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Scaling Tasks */}
-                    <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Scaling Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-teal-100 text-teal-800 text-xs font-medium rounded-full">
-                          {tasksByType.scaling?.length || 0}
-                        </span>
-                      </div>
-
-                      <div className="space-y-3">
-                        {(tasksByType.scaling?.length || 0) === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No scaling tasks found
-                          </p>
-                        ) : (
-                          tasksByType.scaling.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Communication Tasks */}
-                    <div className="w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Communication Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-pink-100 text-pink-800 text-xs font-medium rounded-full">
-                          {tasksByType.communication?.length || 0}
-                        </span>
-                      </div>
-
-                      <div className="space-y-3">
-                        {(tasksByType.communication?.length || 0) === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No communication tasks found
-                          </p>
-                        ) : (
-                          tasksByType.communication.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Row 3: Experiment / Optimization Tasks */}
-                  <div className="flex flex-row gap-6">
-                    {/* Experiment Tasks */}
-                    <div className="w-1/2 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Experiment Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-medium rounded-full">
-                          {tasksByType.experiment?.length || 0}
-                        </span>
-                      </div>
-
-                      <div className="space-y-3">
-                        {(tasksByType.experiment?.length || 0) === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No experiment tasks found
-                          </p>
-                        ) : (
-                          tasksByType.experiment.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Optimization Tasks */}
-                    <div className="w-1/2 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Optimization Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-cyan-100 text-cyan-800 text-xs font-medium rounded-full">
-                          {tasksByType.optimization?.length || 0}
-                        </span>
-                      </div>
-
-                      <div className="space-y-3">
-                        {(tasksByType.optimization?.length || 0) === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No optimization tasks found
-                          </p>
-                        ) : (
-                          tasksByType.optimization.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Row 4: Alert Tasks */}
-                  <div className="flex flex-row gap-6">
-                    <div className="flex-1 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Alert Tasks
-                        </h2>
-                        <span className="px-2 py-1 bg-red-100 text-red-800 text-xs font-medium rounded-full">
-                          {tasksByType.alert?.length || 0}
-                        </span>
-                      </div>
-
-                      <div className="space-y-3">
-                        {(tasksByType.alert?.length || 0) === 0 ? (
-                          <p className="text-gray-500 text-sm">
-                            No alert tasks found
-                          </p>
-                        ) : (
-                          tasksByType.alert.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onClick={handleTaskClick}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </>
+              </div>
+            </div>
           )}
         </div>
       </div>
 
       {/* Project picker now renders as full page when no project is selected */}
 
-      {/* Create Task Modal */}
-      <Modal isOpen={createModalOpen} onClose={() => {}}>
-        <div className="flex flex-col bg-white rounded-md max-h-[90vh] overflow-hidden">
-          {/* Header - Fixed */}
-          <div className="flex flex-col gap-2 px-8 pt-8 pb-4 border-b border-gray-200">
-            <h2 className="text-lg font-bold">New Task Form</h2>
-            <p className="text-sm text-gray-500">
-              Required fields are marked with an asterisk *
-            </p>
-          </div>
-
-          {/* Scrollable Content */}
-          <div className="flex-1 overflow-y-auto px-8 py-6 space-y-10">
-            {/* Task info */}
-            <NewTaskForm
-              onTaskDataChange={handleTaskDataChange}
-              taskData={taskData}
-              validation={taskValidation}
-              lockProject={Boolean(projectId)}
-              projectName={selectedProject?.name}
-            />
-
-            {/* Task Type specific forms - conditionally render based on chosen task type */}
-            {taskType === "budget" && (
-              <NewBudgetRequestForm
-                onBudgetDataChange={handleBudgetDataChange}
-                budgetData={budgetData}
-                taskData={taskData}
-                validation={budgetValidation}
-                onCreateBudgetPool={handleCreateBudgetPool}
-                onManageBudgetPools={handleManageBudgetPools}
-                refreshTrigger={budgetPoolRefreshTrigger}
-              />
-            )}
-            {taskType === "asset" && (
-              <NewAssetForm
-                onAssetDataChange={handleAssetDataChange}
-                assetData={assetData}
-                taskData={taskData}
-                validation={assetValidation}
-              />
-            )}
-            {taskType === "retrospective" && (
-              <NewRetrospectiveForm
-                onRetrospectiveDataChange={handleRetrospectiveDataChange}
-                retrospectiveData={retrospectiveData}
-                taskData={taskData}
-                validation={retrospectiveValidation}
-              />
-            )}
-
-            {taskType === "report" && (
-              <NewReportForm
-                onReportDataChange={handleReportDataChange}
-                reportData={reportData}
-                taskData={taskData}
-                validation={reportValidation}
-              />
-            )}
-
-            {taskType === "alert" && (
-              <AlertTaskForm
-                initialData={alertData}
-                onChange={handleAlertDataChange}
-                projectId={taskData.project_id}
-              />
-            )}
-
-            {taskType === "communication" && (
-              <NewClientCommunicationForm
-                communicationData={communicationData}
-                onCommunicationDataChange={handleCommunicationDataChange}
-                validation={communicationValidation}
-              />
-            )}
-
-            {taskType === "scaling" && (
-              <ScalingPlanForm
-                mode="create"
-                initialPlan={scalingPlanData}
-                onChange={setScalingPlanData}
-              />
-            )}
-
-            {taskType === "experiment" && (
-              <ExperimentForm
-                mode="create"
-                initialData={experimentData}
-                onChange={setExperimentData}
-              />
-            )}
-
-            {taskType === "optimization" && (
-              <OptimizationForm
-                mode="create"
-                initialData={optimizationData}
-                onChange={setOptimizationData}
-              />
-            )}
-          </div>
-
-          {/* Footer - Fixed */}
-          <div className="flex flex-row justify-center gap-4 px-8 py-6 border-t border-gray-200">
+      {/* Create Task Panel */}
+      <TaskCreatePanel
+        isOpen={createModalOpen}
+        isExpanded={createModalExpanded}
+        onClose={closeCreatePanel}
+        onExpand={() => setCreateModalExpanded(true)}
+        onCollapse={() => setCreateModalExpanded(false)}
+        title={draftEditingTaskId ? "Edit draft" : "Create Task"}
+        footer={
+          <>
             <button
-              onClick={() => setCreateModalOpen(false)}
-              className="px-3 py-1.5 rounded text-white bg-gray-500 hover:bg-gray-600"
+              onClick={closeCreatePanel}
+              className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
               disabled={isSubmitting}
             >
               Cancel
             </button>
             <button
-              onClick={handleSubmit}
-              className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400"
+              onClick={draftEditingTaskId ? handleSaveDraft : handleCreateAsDraft}
+              className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
               disabled={isSubmitting}
             >
-              {isSubmitting ? "Creating..." : "Submit"}
+              {isSubmitting
+                ? "Saving..."
+                : draftEditingTaskId
+                  ? "Save draft"
+                  : "Create as draft"}
             </button>
-          </div>
+            <button
+              onClick={draftEditingTaskId ? handleSubmitDraft : handleSubmit}
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-blue-400"
+              disabled={isSubmitting}
+            >
+              {isSubmitting
+                ? draftEditingTaskId
+                  ? "Submitting..."
+                  : "Creating..."
+                : draftEditingTaskId
+                  ? "Submit"
+                  : "Create"}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-8">
+          {/* Task info */}
+          <NewTaskForm
+            onTaskDataChange={handleTaskDataChange}
+            taskData={taskData}
+            validation={taskValidation}
+            lockProject={Boolean(projectId)}
+            projectName={selectedProject?.name}
+          />
+
+          {/* Task Type specific forms - conditionally render based on chosen task type */}
+          {taskType === "budget" && (
+            <NewBudgetRequestForm
+              onBudgetDataChange={handleBudgetDataChange}
+              budgetData={budgetData}
+              taskData={taskData}
+              validation={budgetValidation}
+              onCreateBudgetPool={handleCreateBudgetPool}
+              onManageBudgetPools={handleManageBudgetPools}
+              refreshTrigger={budgetPoolRefreshTrigger}
+            />
+          )}
+          {taskType === "asset" && (
+            <NewAssetForm
+              onAssetDataChange={handleAssetDataChange}
+              assetData={assetData}
+              taskData={taskData}
+              validation={assetValidation}
+            />
+          )}
+          {taskType === "retrospective" && (
+            <NewRetrospectiveForm
+              onRetrospectiveDataChange={handleRetrospectiveDataChange}
+              retrospectiveData={retrospectiveData}
+              taskData={taskData}
+              validation={retrospectiveValidation}
+            />
+          )}
+
+          {taskType === "alert" && (
+            <AlertTaskForm
+              initialData={alertData}
+              onChange={handleAlertDataChange}
+              projectId={taskData.project_id}
+            />
+          )}
+
+          {taskType === "communication" && (
+            <NewClientCommunicationForm
+              communicationData={communicationData}
+              onCommunicationDataChange={handleCommunicationDataChange}
+              validation={communicationValidation}
+            />
+          )}
+
+          {taskType === "scaling" && (
+            <ScalingPlanForm
+              mode="create"
+              initialPlan={scalingPlanData}
+              onChange={setScalingPlanData}
+            />
+          )}
+
+          {taskType === "experiment" && (
+            <ExperimentForm
+              mode="create"
+              initialData={experimentData}
+              onChange={setExperimentData}
+            />
+          )}
+
+          {taskType === "optimization" && (
+            <OptimizationForm
+              mode="create"
+              initialData={optimizationData}
+              onChange={setOptimizationData}
+            />
+          )}
+
+          {taskType === "report" && (
+            <ReportForm
+              mode="create"
+              initialData={reportData}
+              onChange={(data) =>
+                setReportData((prev) => ({ ...prev, ...data }))
+              }
+            />
+          )}
+
+          {taskType === "platform_policy_update" && (
+            <NewPlatformPolicyUpdateForm
+              onPolicyDataChange={handlePolicyDataChange}
+              policyData={policyData}
+              taskData={taskData}
+              validation={policyValidation}
+            />
+          )}
         </div>
-      </Modal>
+      </TaskCreatePanel>
 
       {/* Manage Budget Pools Modal */}
       <Modal
@@ -2584,6 +2656,7 @@ function TasksPageContent() {
         onClose={() => {
           setManageBudgetPoolsModalOpen(false);
           setCreateModalOpen(true);
+          setCreateModalExpanded(true);
         }}
       >
         <div className="flex flex-col justify-center items-center p-8 gap-6 bg-white rounded-md min-w-[600px]">
@@ -2610,6 +2683,7 @@ function TasksPageContent() {
               onClick={() => {
                 setManageBudgetPoolsModalOpen(false);
                 setCreateModalOpen(true);
+                setCreateModalExpanded(true);
               }}
               className="px-3 py-1.5 rounded text-white bg-gray-500 hover:bg-gray-600"
             >
@@ -2661,7 +2735,7 @@ function TasksPageContent() {
                       <li key={field}>
                         {field}: {error}
                       </li>
-                    ) : null
+                    ) : null,
                 )}
               </ul>
             </div>
@@ -2708,7 +2782,7 @@ function TasksPageContent() {
                     ad_channel:
                       budgetPoolData.ad_channel ||
                       Number(
-                        form.querySelector('[name="ad_channel"]')?.value
+                        form.querySelector('[name="ad_channel"]')?.value,
                       ) ||
                       null,
                     total_amount:

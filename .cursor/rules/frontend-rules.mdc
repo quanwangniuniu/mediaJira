@@ -1,0 +1,48 @@
+---
+description: Frontend standards for Next.js, React, TypeScript (components, API layer, imports, state, styling, quality).
+globs: frontend/**/*.ts, frontend/**/*.tsx
+alwaysApply: false
+---
+
+# Frontend rules (Next.js / React / TypeScript)
+
+## Components: keep them small and composable
+
+- **Avoid big components**: if a component is growing past ~200–300 lines, **split it**:
+  - Extract presentational pieces into `frontend/src/components/<feature>/...`
+  - Extract data/state into `frontend/src/hooks/...` or feature-level helpers
+- **Pages are composition only**: `frontend/src/app/**/page.tsx` should mostly:
+  - Read params
+  - Call APIs/hooks/stores
+  - Compose feature components
+  - Handle route-level loading/error UI
+- **Common components first**:
+  - If you copy/paste UI twice, extract it into `frontend/src/components/common` or `frontend/src/components/ui`.
+  - Feature-specific UI stays in `frontend/src/components/<feature>/...`.
+
+## Data access: never scatter API calls
+
+- **All HTTP calls live in** `frontend/src/lib/api/*`.
+- **Do not call `axios` directly from components/pages** (except inside the API layer).
+- **Types are required**: API functions should return typed results; prefer shared types in `frontend/src/types`.
+
+## Imports
+
+- **Prefer absolute imports** using the `@/` alias (configured in `frontend/tsconfig.json`).
+- **Avoid deep relative paths** like `../../../../...` unless you are staying inside a tiny feature folder.
+
+## State management
+
+- **Local first**: prefer React local state for local UI.
+- **Global only when shared**: use Zustand stores in `frontend/src/lib/*Store.ts` when multiple routes/features need the state.
+- **No "mega stores"**: keep stores domain-scoped (auth, chat, spreadsheet, …).
+
+## Styling / UI
+
+- **Tailwind only**: follow existing Tailwind + Radix patterns in this repo.
+- **Reuse layout primitives**: prefer `frontend/src/components/layout/*` instead of re-creating headers/sidebars/footers in pages.
+
+## Quality checks (frontend)
+
+- Run `npm run lint` before requesting review.
+- Add/adjust tests when behavior changes (`npm run test`, Storybook stories when useful).

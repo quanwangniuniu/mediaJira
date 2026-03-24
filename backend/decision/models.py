@@ -43,6 +43,8 @@ class Decision(TimeStampedModel):
     committed_at = models.DateTimeField(null=True, blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)
     is_reference_case = models.BooleanField(default=False)
+    created_by_agent = models.BooleanField(default=False)
+    agent_session_id = models.UUIDField(null=True, blank=True)
     project = models.ForeignKey(
         Project,
         on_delete=models.CASCADE,

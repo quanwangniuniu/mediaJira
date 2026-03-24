@@ -12,20 +12,50 @@ import { AlertCircle, ArrowLeft, FileSpreadsheet, Loader2, Plus, X } from 'lucid
 import CreateSheetModal from '@/components/spreadsheets/CreateSheetModal';
 import SpreadsheetGrid, { SpreadsheetGridHandle } from '@/components/spreadsheets/SpreadsheetGrid';
 import PatternAgentPanel from '@/components/spreadsheets/PatternAgentPanel';
+import { PivotEditorPanel } from '@/components/spreadsheets/PivotEditorPanel';
+import {
+  PivotConfig,
+  SourceColumn,
+  SourceRow,
+  buildPivotTable,
+  pivotResultToCellOperations,
+  generateClearOperationsForStaleCells,
+  generatePivotSheetName,
+  createEmptyPivotConfig,
+  isPivotConfigValid,
+} from '@/lib/spreadsheet/pivot';
 import toast from 'react-hot-toast';
 import Modal from '@/components/ui/Modal';
 import { PatternAPI } from '@/lib/api/patternApi';
 import { rowColToA1 } from '@/lib/spreadsheets/a1';
 import {
+  HEADER_ROW_INDEX,
+  RENAME_DEDUP_WINDOW_MS,
+  recordRenameColumnStep,
+  shouldRecordHeaderRename,
+  RenameDedupState,
+} from '@/lib/spreadsheets/patternRecorder';
+import {
   CreatePatternPayload,
+  ApplyHighlightParams,
+  FillSeriesParams,
   InsertColumnParams,
   InsertRowParams,
   DeleteColumnParams,
   PatternStep,
+  TimelineItem,
+  flattenTimelineItems,
   WorkflowPatternDetail,
   WorkflowPatternStepRecord,
   WorkflowPatternSummary,
+  PatternJobStatus,
 } from '@/types/patterns';
+import {
+  deleteTimelineItemById,
+  moveStepOutOfGroup,
+  timelineItemsToCreateSteps,
+  updateTimelineItemById,
+} from '@/lib/spreadsheets/timelineItems';
 
 export default function SpreadsheetDetailPage() {
   const params = useParams();
@@ -57,22 +87,115 @@ export default function SpreadsheetDetailPage() {
   const [applyError, setApplyError] = useState<string | null>(null);
   const [applyFailedIndex, setApplyFailedIndex] = useState<number | null>(null);
   const [isApplying, setIsApplying] = useState(false);
+  const [patternJobId, setPatternJobId] = useState<string | null>(null);
+  const [patternJobStatus, setPatternJobStatus] = useState<PatternJobStatus | null>(null);
+  const [patternJobProgress, setPatternJobProgress] = useState(0);
+  const [patternJobStep, setPatternJobStep] = useState<number | null>(null);
+  const [patternJobError, setPatternJobError] = useState<string | null>(null);
+  const [sheetHydrationReady, setSheetHydrationReady] = useState(true);
+  const [pivotConfigsBySheet, setPivotConfigsBySheet] = useState<Record<number, PivotConfig>>({});
+  const [pivotSourceDataBySheet, setPivotSourceDataBySheet] = useState<Record<number, {
+    cells: Map<string, { rawInput: string; computedString?: string | null }>;
+    rowCount: number;
+    colCount: number;
+    sourceSheetId: number;
+    sourceSheetName: string;
+  }>>({});
+  const [pivotDimensionsBySheet, setPivotDimensionsBySheet] = useState<Record<number, { rowCount: number; colCount: number }>>({});
+  const [showPivotEditor, setShowPivotEditor] = useState(false);
   const gridRef = useRef<SpreadsheetGridHandle | null>(null);
-  const [agentStepsBySheet, setAgentStepsBySheet] = useState<Record<number, PatternStep[]>>({});
+  const patternJobStartRef = useRef<number | null>(null);
+  const renameDedupRef = useRef<Record<number, RenameDedupState>>({});
+  const activeJobIdRef = useRef<string | null>(null);
+  const applyStepsRef = useRef<
+    Array<WorkflowPatternStepRecord & { status: 'pending' | 'success' | 'error'; errorMessage?: string }>
+  >([]);
+  const applyHighlightStepsRef = useRef<(steps: WorkflowPatternStepRecord[]) => void>(() => {});
+  const isReplayingRef = useRef(false);
+  const [agentStepsBySheet, setAgentStepsBySheet] = useState<Record<number, TimelineItem[]>>({});
 
   useEffect(() => {
     if (activeSheetId == null) return;
     setHighlightCell(null);
-  }, [activeSheetId]);
+    const activeSheet = sheets.find((s) => s.id === activeSheetId);
+    const isPivot = !!activeSheet && activeSheet.kind === 'pivot';
+    setShowPivotEditor(isPivot);
+  }, [activeSheetId, sheets]);
+
+  // When a pivot sheet becomes active and we don't yet have its source metadata in memory,
+  // hydrate pivotSourceDataBySheet by reading the source sheet from the backend.
+  useEffect(() => {
+    const hydratePivotSource = async () => {
+      if (!spreadsheetId || !activeSheetId) return;
+      const activeSheet = sheets.find((s) => s.id === activeSheetId);
+      if (!activeSheet || activeSheet.kind !== 'pivot') return;
+      if (pivotSourceDataBySheet[activeSheetId]) return;
+
+      // Prefer in-memory config; fall back to sheet.pivot_config from API payload.
+      const config = pivotConfigsBySheet[activeSheetId];
+      const sourceSheetId =
+        config?.sourceSheetId ?? activeSheet.pivot_config?.source_sheet_id ?? null;
+      if (!sourceSheetId) return;
+
+      const sourceSheet = sheets.find((s) => s.id === sourceSheetId);
+      const sourceSheetName = sourceSheet?.name ?? 'Unknown';
+
+      try {
+        const sourceSheetData = await SpreadsheetAPI.readCellRange(
+          Number(spreadsheetId),
+          sourceSheetId,
+          0,
+          999,
+          0,
+          50
+        );
+
+        const sourceRowCount =
+          sourceSheetData.sheet_row_count ?? sourceSheetData.row_count;
+        const sourceColCount =
+          sourceSheetData.sheet_column_count ?? sourceSheetData.column_count;
+
+        const getCellKey = (row: number, col: number) => `${row}:${col}`;
+
+        const cells = new Map<string, { rawInput: string; computedString?: string | null }>();
+        for (const cell of sourceSheetData.cells) {
+          const key = getCellKey(cell.row_position, cell.column_position);
+          cells.set(key, {
+            rawInput: cell.raw_input ?? '',
+            computedString: cell.computed_string ?? null,
+          });
+        }
+
+        setPivotSourceDataBySheet((prev) => {
+          // If another concurrent hydrate already populated it, keep existing.
+          if (prev[activeSheetId]) return prev;
+          return {
+            ...prev,
+            [activeSheetId]: {
+              cells,
+              rowCount: sourceRowCount,
+              colCount: sourceColCount,
+              sourceSheetId,
+              sourceSheetName,
+            },
+          };
+        });
+      } catch (err) {
+        console.error('Failed to hydrate pivot source data:', err);
+      }
+    };
+
+    hydratePivotSource();
+  }, [activeSheetId, spreadsheetId, sheets, pivotConfigsBySheet, pivotSourceDataBySheet]);
 
   const agentSteps = activeSheetId != null ? agentStepsBySheet[activeSheetId] ?? [] : [];
 
   const updateAgentSteps = useCallback(
-    (updater: PatternStep[] | ((prev: PatternStep[]) => PatternStep[])) => {
+    (updater: TimelineItem[] | ((prev: TimelineItem[]) => TimelineItem[])) => {
       if (activeSheetId == null) return;
       setAgentStepsBySheet((prev) => {
         const current = prev[activeSheetId] ?? [];
-        const next = typeof updater === 'function' ? (updater as (items: PatternStep[]) => PatternStep[])(current) : updater;
+        const next = typeof updater === 'function' ? updater(current) : updater;
         if (next === current) return prev;
         return {
           ...prev,
@@ -88,39 +211,6 @@ export default function SpreadsheetDetailPage() {
       ? crypto.randomUUID()
       : `step_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 
-  const createTimelineStepFromPatternStep = (step: WorkflowPatternStepRecord): PatternStep | null => {
-    if (step.type === 'INSERT_ROW') {
-      return {
-        id: createStepId(),
-        type: 'INSERT_ROW',
-        params: step.params as InsertRowParams,
-        disabled: false,
-        createdAt: new Date().toISOString(),
-      };
-    }
-
-    if (step.type === 'INSERT_COLUMN') {
-      return {
-        id: createStepId(),
-        type: 'INSERT_COLUMN',
-        params: step.params as InsertColumnParams,
-        disabled: false,
-        createdAt: new Date().toISOString(),
-      };
-    }
-
-    if (step.type === 'DELETE_COLUMN') {
-      return {
-        id: createStepId(),
-        type: 'DELETE_COLUMN',
-        params: step.params as DeleteColumnParams,
-        disabled: false,
-        createdAt: new Date().toISOString(),
-      };
-    }
-
-    return null;
-  };
 
   const getNextSheetName = (existingSheets: SheetData[]) => {
     const sheetNumberRegex = /^sheet(\d+)$/i;
@@ -189,7 +279,22 @@ export default function SpreadsheetDetailPage() {
         } else {
           setSheets(sheetsList);
           setCreateSheetDefaultName(getNextSheetName(sheetsList));
-          
+
+          // Hydrate pivot configs from backend metadata
+          const hydratedPivotConfigs: Record<number, PivotConfig> = {};
+          sheetsList.forEach((sheet) => {
+            if (sheet.kind === 'pivot' && sheet.pivot_config) {
+              const cfg = sheet.pivot_config;
+              hydratedPivotConfigs[sheet.id] = {
+                sourceSheetId: cfg.source_sheet_id,
+                rows: cfg.rows_config || [],
+                columns: cfg.columns_config || [],
+                values: cfg.values_config || [],
+                showGrandTotalRow: cfg.show_grand_total_row,
+              };
+            }
+          });
+          setPivotConfigsBySheet(hydratedPivotConfigs);
           // Set first sheet as active if available
           if (sheetsList.length > 0 && !activeSheetId) {
             setActiveSheetId(sheetsList[0].id);
@@ -267,128 +372,196 @@ export default function SpreadsheetDetailPage() {
     [selectedPattern]
   );
 
-  const executePatternStep = useCallback(
-    async (step: WorkflowPatternStepRecord) => {
-      if (!spreadsheetId || !activeSheetId) {
-        throw new Error('No active sheet selected');
+
+
+
+
+  const applyHighlightSteps = useCallback((steps: WorkflowPatternStepRecord[]) => {
+    steps.forEach((step) => {
+      if (step.type !== 'APPLY_HIGHLIGHT' || step.disabled) return;
+      gridRef.current?.applyHighlightOperation(step.params as ApplyHighlightParams);
+    });
+  }, []);
+
+  useEffect(() => {
+    applyStepsRef.current = applySteps;
+    applyHighlightStepsRef.current = applyHighlightSteps;
+  }, [applySteps, applyHighlightSteps]);
+
+  const applyPatternSteps = useCallback(async () => {
+    if (!selectedPattern || !spreadsheetId || !activeSheetId) return;
+    isReplayingRef.current = true;
+    setIsApplying(true);
+    setApplyError(null);
+    setApplyFailedIndex(null);
+    setPatternJobError(null);
+    setPatternJobProgress(0);
+    setPatternJobStep(null);
+    setPatternJobId(null);
+    setPatternJobStatus(null);
+    setApplySteps((prev) => prev.map((step) => ({ ...step, status: 'pending', errorMessage: undefined })));
+
+    try {
+      const applyUrl = `/api/spreadsheet/patterns/${selectedPattern.id}/apply/`;
+      if (process.env.NODE_ENV !== 'production') {
+        console.info('[PatternApply] POST', applyUrl, {
+          spreadsheet_id: Number(spreadsheetId),
+          sheet_id: activeSheetId,
+        });
       }
-      const gridApi = gridRef.current;
-      if (!gridApi) {
-        throw new Error('Grid is not ready');
+      const response = await PatternAPI.applyPattern(selectedPattern.id, {
+        spreadsheet_id: Number(spreadsheetId),
+        sheet_id: activeSheetId,
+      });
+      if (process.env.NODE_ENV !== 'production') {
+        console.info('[PatternApply] job_id', response.job_id, 'status', response.status);
       }
+      patternJobStartRef.current = Date.now();
+      setPatternJobId(response.job_id);
+      setPatternJobStatus(response.status);
+    } catch (err: any) {
+      isReplayingRef.current = false;
+      const message =
+        err?.response?.data?.error ||
+        err?.response?.data?.detail ||
+        err?.message ||
+        'Failed to apply pattern';
+      setApplyError(message);
+      setIsApplying(false);
+      toast.error(message);
+    }
+  }, [selectedPattern, spreadsheetId, activeSheetId]);
 
-      if (step.type === 'APPLY_FORMULA') {
-        const target = (step.params as any)?.target;
-        const formula = (step.params as any)?.formula;
-        if (!target || target.row == null || target.col == null) {
-          throw new Error('Missing target cell');
-        }
-        if (!formula || typeof formula !== 'string') {
-          throw new Error('Missing formula');
-        }
-        const row = Number(target.row) - 1;
-        const col = Number(target.col) - 1;
-        if (row < 0 || col < 0) {
-          throw new Error('Invalid target cell');
-        }
-        await gridApi.applyFormula(row, col, formula);
-        return;
+  useEffect(() => {
+    if (!patternJobId) return;
+    if (activeJobIdRef.current === patternJobId) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.info('[PatternPoll] skip duplicate poll start', { jobId: patternJobId });
       }
+      return;
+    }
+    activeJobIdRef.current = patternJobId;
+    let cancelled = false;
+    let timer: NodeJS.Timeout | null = null;
 
-      if (step.type === 'INSERT_ROW') {
-        const params = step.params as InsertRowParams;
-        if (!params?.index) {
-          throw new Error('Missing row index');
-        }
-        const position = params.position === 'above' ? params.index - 1 : params.index;
-        if (position < 0) {
-          throw new Error('Invalid row index');
-        }
-        await gridApi.insertRow(position, 1);
-        return;
-      }
+    const isTerminal = (job: { status: string; finishedAt?: string | null }) =>
+      job.status === 'succeeded' ||
+      job.status === 'failed' ||
+      job.status === 'canceled' ||
+      job.finishedAt != null;
 
-      if (step.type === 'INSERT_COLUMN') {
-        const params = step.params as InsertColumnParams;
-        if (!params?.index) {
-          throw new Error('Missing column index');
-        }
-        const position = params.position === 'left' ? params.index - 1 : params.index;
-        if (position < 0) {
-          throw new Error('Invalid column index');
-        }
-        await gridApi.insertColumn(position, 1);
-        return;
-      }
+    if (process.env.NODE_ENV !== 'production') {
+      console.info('[PatternPoll] start', { jobId: patternJobId });
+    }
 
-      if (step.type === 'DELETE_COLUMN') {
-        const params = step.params as DeleteColumnParams;
-        if (!params?.index) {
-          throw new Error('Missing column index');
-        }
-        const position = params.index - 1;
-        if (position < 0) {
-          throw new Error('Invalid column index');
-        }
-        await gridApi.deleteColumn(position, 1);
-        return;
-      }
+    const poll = async () => {
+      try {
+        const job = await PatternAPI.getPatternJob(patternJobId);
+        if (cancelled) return;
 
-      throw new Error(`Unsupported step type ${step.type}`);
-    },
-    [activeSheetId, spreadsheetId]
-  );
+        setPatternJobStatus(job.status);
+        setPatternJobProgress(job.progress ?? 0);
+        setPatternJobStep(job.current_step ?? null);
+        setPatternJobError(job.error_message ?? null);
 
-  const applyPatternSteps = useCallback(
-    async (startIndex: number = 0) => {
-      if (!selectedPattern || applySteps.length === 0) return;
-      setIsApplying(true);
-      setApplyError(null);
-      setApplyFailedIndex(null);
+        setApplySteps((prev) =>
+          prev.map((step) => {
+            if (job.status === 'succeeded') {
+              return { ...step, status: 'success', errorMessage: undefined };
+            }
+            if (job.status === 'failed' && job.current_step === step.seq) {
+              return { ...step, status: 'error', errorMessage: job.error_message ?? 'Failed to apply step' };
+            }
+            if (job.current_step != null && step.seq < job.current_step) {
+              return { ...step, status: 'success', errorMessage: undefined };
+            }
+            return { ...step, status: 'pending', errorMessage: undefined };
+          })
+        );
 
-      setApplySteps((prev) =>
-        prev.map((step, index) =>
-          index >= startIndex ? { ...step, status: 'pending', errorMessage: undefined } : step
-        )
-      );
-
-      for (let i = startIndex; i < applySteps.length; i += 1) {
-        const step = applySteps[i];
-        if (step.disabled) {
-          setApplySteps((prev) =>
-            prev.map((item, index) => (index === i ? { ...item, status: 'success' } : item))
-          );
-          continue;
-        }
-        try {
-          await executePatternStep(step);
-          const timelineStep = createTimelineStepFromPatternStep(step);
-          if (timelineStep) {
-            updateAgentSteps((prev) => [...prev, timelineStep]);
+        if (isTerminal(job)) {
+          activeJobIdRef.current = null;
+          isReplayingRef.current = false;
+          if (process.env.NODE_ENV !== 'production') {
+            console.info('[PatternPoll] stop', { jobId: patternJobId, status: job.status, finishedAt: job.finishedAt });
           }
-          setApplySteps((prev) =>
-            prev.map((item, index) => (index === i ? { ...item, status: 'success' } : item))
-          );
-        } catch (err: any) {
-          const message = err?.message || 'Failed to apply step';
-          setApplySteps((prev) =>
-            prev.map((item, index) =>
-              index === i ? { ...item, status: 'error', errorMessage: message } : item
-            )
-          );
-          setApplyError(message);
-          setApplyFailedIndex(i);
+        }
+
+        if (job.status === 'succeeded') {
           setIsApplying(false);
+          patternJobStartRef.current = null;
+          gridRef.current?.refresh();
+          const steps = applyStepsRef.current;
+          applyHighlightStepsRef.current(steps);
           return;
         }
+
+        if (job.status === 'failed') {
+          setIsApplying(false);
+          setApplyError(job.error_message ?? 'Failed to apply pattern');
+          setApplyFailedIndex(
+            job.current_step != null ? Math.max(0, job.current_step - 1) : null
+          );
+          patternJobStartRef.current = null;
+          return;
+        }
+
+        if (job.status === 'canceled') {
+          setIsApplying(false);
+          patternJobStartRef.current = null;
+          return;
+        }
+
+        if (job.status === 'queued') {
+          const startedAt = patternJobStartRef.current;
+          if (startedAt && Date.now() - startedAt > 60000) {
+            activeJobIdRef.current = null;
+            isReplayingRef.current = false;
+            const message = 'Pattern job is still queued after 60s. Worker may not be consuming tasks.';
+            setIsApplying(false);
+            setApplyError(message);
+            setPatternJobError(message);
+            return;
+          }
+        }
+      } catch (err: any) {
+        if (cancelled) return;
+        activeJobIdRef.current = null;
+        isReplayingRef.current = false;
+        const message =
+          err?.response?.data?.error ||
+          err?.response?.data?.detail ||
+          err?.message ||
+          'Failed to fetch job status';
+        setApplyError(message);
+        setIsApplying(false);
+        if (process.env.NODE_ENV !== 'production') {
+          console.info('[PatternPoll] stop (error)', { jobId: patternJobId });
+        }
+        return;
       }
 
-      setIsApplying(false);
-    },
-    [applySteps, executePatternStep, selectedPattern, createTimelineStepFromPatternStep, updateAgentSteps]
-  );
+      timer = setTimeout(poll, 1500);
+    };
+
+    poll();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      if (activeJobIdRef.current === patternJobId) {
+        activeJobIdRef.current = null;
+      }
+    };
+  }, [patternJobId]);
 
   const handleFormulaCommit = useCallback((data: { row: number; col: number; formula: string }) => {
+    if (isReplayingRef.current) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.info('[PatternRecorder] skip formula (replaying)');
+      }
+      return;
+    }
     const targetRow = data.row + 1;
     const targetCol = data.col + 1;
     const a1 = rowColToA1(targetRow, targetCol) ?? 'A1';
@@ -407,6 +580,62 @@ export default function SpreadsheetDetailPage() {
       },
     ]);
   }, [updateAgentSteps]);
+
+  const handleHeaderRenameCommit = useCallback(
+    (payload: { rowIndex: number; colIndex: number; newValue: string; oldValue: string }) => {
+      if (isReplayingRef.current) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.info('[PatternRecorder] skip header rename (replaying)');
+        }
+        return;
+      }
+      if (!shouldRecordHeaderRename(payload.rowIndex)) return;
+      if (activeSheetId == null) return;
+      updateAgentSteps((prev) => {
+        const sheetState = renameDedupRef.current[activeSheetId] ?? {};
+        const flat = flattenTimelineItems(prev);
+        const result = recordRenameColumnStep(
+          flat,
+          {
+            columnIndex: payload.colIndex,
+            newName: payload.newValue,
+            oldName: payload.oldValue,
+            headerRowIndex: HEADER_ROW_INDEX,
+          },
+          sheetState,
+          createStepId,
+          Date.now(),
+          RENAME_DEDUP_WINDOW_MS
+        );
+        renameDedupRef.current[activeSheetId] = result.state;
+        return result.steps;
+      });
+    },
+    [activeSheetId, updateAgentSteps]
+  );
+
+  const handleHighlightCommit = useCallback(
+    (payload: ApplyHighlightParams) => {
+      if (isReplayingRef.current) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.info('[PatternRecorder] skip highlight (replaying)');
+        }
+        return;
+      }
+      if (activeSheetId == null) return;
+      updateAgentSteps((prev) => [
+        ...prev,
+        {
+          id: createStepId(),
+          type: 'APPLY_HIGHLIGHT',
+          params: payload,
+          disabled: false,
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+    },
+    [activeSheetId, updateAgentSteps]
+  );
 
   const buildPatternStepPayload = (step: PatternStep, index: number) => {
     const seq = index + 1;
@@ -443,6 +672,27 @@ export default function SpreadsheetDetailPage() {
           disabled: step.disabled,
           params: step.params,
         };
+      case 'FILL_SERIES':
+        return {
+          seq,
+          type: step.type,
+          disabled: step.disabled,
+          params: step.params,
+        };
+      case 'SET_COLUMN_NAME':
+        return {
+          seq,
+          type: step.type,
+          disabled: step.disabled,
+          params: step.params,
+        };
+      case 'APPLY_HIGHLIGHT':
+        return {
+          seq,
+          type: step.type,
+          disabled: step.disabled,
+          params: step.params,
+        };
       default: {
         const _exhaustive: never = step;
         return _exhaustive;
@@ -460,6 +710,12 @@ export default function SpreadsheetDetailPage() {
         return { ...step, ...(updates as Partial<typeof step>) };
       case 'DELETE_COLUMN':
         return { ...step, ...(updates as Partial<typeof step>) };
+      case 'FILL_SERIES':
+        return { ...step, ...(updates as Partial<typeof step>) };
+      case 'SET_COLUMN_NAME':
+        return { ...step, ...(updates as Partial<typeof step>) };
+      case 'APPLY_HIGHLIGHT':
+        return { ...step, ...(updates as Partial<typeof step>) };
       default: {
         const _exhaustive: never = step;
         return _exhaustive;
@@ -468,8 +724,8 @@ export default function SpreadsheetDetailPage() {
   };
 
   const handleExportPattern = useCallback(
-    async (name: string, selectedSteps: PatternStep[]) => {
-      if (!spreadsheetId || selectedSteps.length === 0) return false;
+    async (name: string, selectedItems: TimelineItem[]) => {
+      if (!spreadsheetId || selectedItems.length === 0) return false;
       const payload: CreatePatternPayload = {
         name,
         description: '',
@@ -477,7 +733,7 @@ export default function SpreadsheetDetailPage() {
           spreadsheet_id: Number(spreadsheetId),
           sheet_id: activeSheetId ?? undefined,
         },
-        steps: selectedSteps.map(buildPatternStepPayload),
+        steps: timelineItemsToCreateSteps(selectedItems),
       };
 
       setExportingPattern(true);
@@ -538,13 +794,233 @@ export default function SpreadsheetDetailPage() {
     }
   };
 
+  const handleCreatePivotSheet = useCallback(async (sourceData: {
+    cells: Map<string, { rawInput: string; computedString?: string | null }>;
+    rowCount: number;
+    colCount: number;
+  }) => {
+    if (!spreadsheetId || !activeSheetId) {
+      toast.error('Cannot create pivot table');
+      return;
+    }
+
+    const sourceSheet = sheets.find((s) => s.id === activeSheetId);
+    if (!sourceSheet) return;
+
+    try {
+      const sheetName = generatePivotSheetName(sheets.map((s) => s.name));
+      const newSheet = await SpreadsheetAPI.createSheet(Number(spreadsheetId), { name: sheetName });
+
+      await SpreadsheetAPI.resizeSheet(Number(spreadsheetId), newSheet.id, 100, 26);
+
+      // Persist initial pivot config on backend (empty definition with source sheet linkage).
+      const initialConfig = createEmptyPivotConfig(activeSheetId);
+      await SpreadsheetAPI.upsertPivotConfig(Number(spreadsheetId), newSheet.id, {
+        sourceSheetId: activeSheetId,
+        rows: initialConfig.rows,
+        columns: initialConfig.columns,
+        values: initialConfig.values,
+        showGrandTotalRow: initialConfig.showGrandTotalRow,
+      });
+
+      const sheetsResponse = await SpreadsheetAPI.listSheets(Number(spreadsheetId));
+      const sheetsList = sheetsResponse.results || [];
+      setSheets(sheetsList);
+      setCreateSheetDefaultName(getNextSheetName(sheetsList));
+
+      setPivotSourceDataBySheet((prev) => ({
+        ...prev,
+        [newSheet.id]: {
+          ...sourceData,
+          sourceSheetId: activeSheetId,
+          sourceSheetName: sourceSheet.name,
+        },
+      }));
+
+      setActiveSheetId(newSheet.id);
+      setShowPivotEditor(true);
+
+      toast.success(`Created pivot sheet: ${sheetName}`);
+    } catch (err: any) {
+      console.error('Failed to create pivot sheet:', err);
+      toast.error(err?.message || 'Failed to create pivot sheet');
+    }
+  }, [spreadsheetId, activeSheetId, sheets]);
+
+  const handlePivotConfigChange = useCallback(
+    async (newConfig: PivotConfig) => {
+      if (!activeSheetId || !spreadsheetId) return;
+
+      // 1) Update local config immediately so UI reflects changes.
+      setPivotConfigsBySheet((prev) => ({
+        ...prev,
+        [activeSheetId]: newConfig,
+      }));
+
+      const pivotMeta = pivotSourceDataBySheet[activeSheetId];
+      const sourceSheetId = pivotMeta?.sourceSheetId ?? newConfig.sourceSheetId;
+      if (!sourceSheetId || !isPivotConfigValid(newConfig)) return;
+
+      // 2) Instant preview: recompute pivot in the browser using already-loaded source data.
+      try {
+        // If we don't yet have source cells cached, fetch them once.
+        let sourceData = pivotSourceDataBySheet[activeSheetId];
+        if (!sourceData) {
+          const sourceSheetResponse = await SpreadsheetAPI.readCellRange(
+            Number(spreadsheetId),
+            sourceSheetId,
+            0,
+            999,
+            0,
+            50
+          );
+
+          const sourceRowCount =
+            sourceSheetResponse.sheet_row_count ?? sourceSheetResponse.row_count;
+          const sourceColCount =
+            sourceSheetResponse.sheet_column_count ?? sourceSheetResponse.column_count;
+
+          const getCellKey = (row: number, col: number) => `${row}:${col}`;
+          const cells = new Map<string, { rawInput: string; computedString?: string | null }>();
+          for (const cell of sourceSheetResponse.cells) {
+            const key = getCellKey(cell.row_position, cell.column_position);
+            cells.set(key, {
+              rawInput: cell.raw_input ?? '',
+              computedString: cell.computed_string ?? null,
+            });
+          }
+
+          const sourceSheet = sheets.find((s) => s.id === sourceSheetId);
+          sourceData = {
+            cells,
+            rowCount: sourceRowCount,
+            colCount: sourceColCount,
+            sourceSheetId,
+            sourceSheetName: sourceSheet?.name ?? 'Unknown',
+          };
+          setPivotSourceDataBySheet((prev) => ({
+            ...prev,
+            [activeSheetId]: sourceData!,
+          }));
+        }
+
+        const getCellKey = (row: number, col: number) => `${row}:${col}`;
+
+        const columns: SourceColumn[] = [];
+        for (let col = 0; col < sourceData.colCount; col++) {
+          const cellData = sourceData.cells.get(getCellKey(0, col));
+          const header = (cellData?.rawInput ?? '').trim();
+          if (header) {
+            columns.push({ index: col, header });
+          }
+        }
+
+        const sourceRows: SourceRow[] = [];
+        for (let row = 1; row < sourceData.rowCount; row++) {
+          const rowRecord: SourceRow = {};
+          let hasData = false;
+          for (let col = 0; col < sourceData.colCount; col++) {
+            const cellData = sourceData.cells.get(getCellKey(row, col));
+            const value = cellData?.computedString ?? cellData?.rawInput ?? '';
+            rowRecord[col] = value;
+            if (value.trim()) hasData = true;
+          }
+          if (hasData) {
+            sourceRows.push(rowRecord);
+          }
+        }
+
+        const pivotResult = buildPivotTable(sourceRows, columns, newConfig);
+        const previousDimensions = pivotDimensionsBySheet[activeSheetId] ?? {
+          rowCount: 0,
+          colCount: 0,
+        };
+
+        const setOperations = pivotResultToCellOperations(pivotResult);
+        const clearOperations = generateClearOperationsForStaleCells(
+          previousDimensions.rowCount,
+          previousDimensions.colCount,
+          pivotResult.rowCount,
+          pivotResult.colCount
+        );
+
+        const allOperations: Array<{
+          operation: 'set' | 'clear';
+          row: number;
+          column: number;
+          raw_input?: string;
+        }> = [...setOperations, ...clearOperations];
+
+        await SpreadsheetAPI.resizeSheet(
+          Number(spreadsheetId),
+          activeSheetId,
+          Math.max(pivotResult.rowCount + 10, previousDimensions.rowCount + 10, 100),
+          Math.max(pivotResult.colCount + 5, previousDimensions.colCount + 5, 26)
+        );
+
+        await SpreadsheetAPI.batchUpdateCells(
+          Number(spreadsheetId),
+          activeSheetId,
+          allOperations,
+          false
+        );
+
+        setPivotDimensionsBySheet((prev) => ({
+          ...prev,
+          [activeSheetId]: {
+            rowCount: pivotResult.rowCount,
+            colCount: pivotResult.colCount,
+          },
+        }));
+
+        // 3) Update the grid view immediately.
+        gridRef.current?.refresh();
+      } catch (err: any) {
+        console.error('Failed to update pivot preview:', err);
+        toast.error('Failed to update pivot preview');
+      }
+
+      // 4) Fire-and-forget: persist config and trigger backend recompute for durability.
+      (async () => {
+        try {
+          await SpreadsheetAPI.upsertPivotConfig(Number(spreadsheetId), activeSheetId, {
+            sourceSheetId,
+            rows: newConfig.rows,
+            columns: newConfig.columns,
+            values: newConfig.values,
+            showGrandTotalRow: newConfig.showGrandTotalRow,
+          });
+          await SpreadsheetAPI.recomputePivot(Number(spreadsheetId), activeSheetId);
+        } catch (err) {
+          // Best-effort; log but don't surface noisy errors to the user.
+          console.error('Background pivot persistence/recompute failed:', err);
+        }
+      })();
+    },
+    [activeSheetId, spreadsheetId, pivotSourceDataBySheet, pivotDimensionsBySheet, sheets]
+  );
+
+  const handleRefreshPivot = useCallback(() => {
+    if (!activeSheetId) return;
+    const config = pivotConfigsBySheet[activeSheetId];
+    if (config) {
+      handlePivotConfigChange(config);
+    }
+  }, [activeSheetId, pivotConfigsBySheet, handlePivotConfigChange]);
+
+  const isPivotSheet = (() => {
+    if (!activeSheetId) return false;
+    const sheet = sheets.find((s) => s.id === activeSheetId);
+    return !!sheet && sheet.kind === 'pivot';
+  })();
+
   const handleRenameSheet = async (sheetId: number, data: UpdateSheetRequest) => {
     if (!spreadsheetId) {
       toast.error('Spreadsheet ID is required');
       return;
     }
 
-    const trimmedName = data.name.trim();
+    const trimmedName = (data.name ?? '').trim();
     if (!trimmedName) {
       toast.error('Sheet name is required');
       return;
@@ -591,45 +1067,48 @@ export default function SpreadsheetDetailPage() {
     setRenameValue('');
   };
 
-  const handleDeleteSheet = async (sheet: SheetData) => {
-    if (!spreadsheetId || !projectId) {
-      toast.error('Project or Spreadsheet ID is required');
-      return;
-    }
-
-    setDeletingSheet(true);
-    try {
-      await SpreadsheetAPI.deleteSheet(Number(projectId), Number(spreadsheetId), sheet.id);
-      toast.success('Sheet deleted');
-
-      const sheetsResponse = await SpreadsheetAPI.listSheets(Number(spreadsheetId));
-      const sheetsList = sheetsResponse.results || [];
-      setSheets(sheetsList);
-
-      if (!sheetsList.length) {
-        setActiveSheetId(null);
-      } else if (activeSheetId === sheet.id) {
-        const deletedIndex = sheets.findIndex((s) => s.id === sheet.id);
-        const nextSheet =
-          sheetsList[deletedIndex] ||
-          sheetsList[deletedIndex - 1] ||
-          sheetsList[0];
-        setActiveSheetId(nextSheet.id);
+  const handleDeleteSheet = useCallback(
+    async (sheet: SheetData) => {
+      if (!spreadsheetId || !projectId) {
+        toast.error('Project or Spreadsheet ID is required');
+        return;
       }
-    } catch (err: any) {
-      console.error('Failed to delete sheet:', err);
-      const errorMessage =
-        err?.response?.data?.error ||
-        err?.response?.data?.detail ||
-        err?.message ||
-        'Failed to delete sheet';
-      toast.error(errorMessage);
-    } finally {
-      setDeletingSheet(false);
-      setDeleteConfirmSheet(null);
-      setSheetMenuOpenId(null);
-    }
-  };
+
+      setDeletingSheet(true);
+      try {
+        await SpreadsheetAPI.deleteSheet(Number(projectId), Number(spreadsheetId), sheet.id);
+        toast.success('Sheet deleted');
+
+        const sheetsResponse = await SpreadsheetAPI.listSheets(Number(spreadsheetId));
+        const sheetsList = sheetsResponse.results || [];
+        setSheets(sheetsList);
+
+        if (!sheetsList.length) {
+          setActiveSheetId(null);
+        } else if (activeSheetId === sheet.id) {
+          const deletedIndex = sheets.findIndex((s) => s.id === sheet.id);
+          const nextSheet =
+            sheetsList[deletedIndex] ||
+            sheetsList[deletedIndex - 1] ||
+            sheetsList[0];
+          setActiveSheetId(nextSheet.id);
+        }
+      } catch (err: any) {
+        console.error('Failed to delete sheet:', err);
+        const errorMessage =
+          err?.response?.data?.error ||
+          err?.response?.data?.detail ||
+          err?.message ||
+          'Delete failed.';
+        toast.error(errorMessage);
+      } finally {
+        setDeletingSheet(false);
+        setDeleteConfirmSheet(null);
+        setSheetMenuOpenId(null);
+      }
+    },
+    [spreadsheetId, projectId, activeSheetId, sheets]
+  );
 
   useEffect(() => {
     if (sheetMenuOpenId === null) return;
@@ -755,11 +1234,12 @@ export default function SpreadsheetDetailPage() {
 
   return (
     <ProtectedRoute>
-      <Layout>
-        <div className="min-h-screen bg-white flex flex-col">
+      <Layout mainScrollMode="container">
+        {/* Full viewport height, no page scroll: only the grid container scrolls. */}
+        <div className="h-full min-h-0 overflow-hidden bg-white flex flex-col">
           {/* Header */}
           <div className="border-b border-gray-200 bg-white">
-            <div className="mx-auto max-w-7xl px-4 py-3">
+            <div className="max-w-7xl px-4 py-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <button
@@ -783,7 +1263,7 @@ export default function SpreadsheetDetailPage() {
 
           {/* Sheet Tabs */}
           <div className="border-b border-gray-200 bg-white">
-            <div className="mx-auto max-w-7xl px-4">
+            <div className="max-w-7xl">
               <div className="flex items-center gap-1 overflow-x-auto">
                 {sheets.map((sheet) => {
                   const isRenaming = renamingSheetId === sheet.id;
@@ -880,6 +1360,8 @@ export default function SpreadsheetDetailPage() {
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      e.preventDefault();
+                                      setSheetMenuOpenId(null);
                                       setDeleteConfirmSheet(sheet);
                                     }}
                                     className="w-full px-3 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50"
@@ -911,18 +1393,31 @@ export default function SpreadsheetDetailPage() {
             </div>
           </div>
 
-          {/* Spreadsheet Content Area */}
-          <div className="flex-1 overflow-hidden bg-gray-50 flex flex-col">
+          {/* Spreadsheet Content Area: flex-1 + min-h-0 so it gets bounded height and grid scrolls inside. */}
+          <div className="flex-1 min-h-0 overflow-hidden bg-gray-50 flex flex-col">
             {activeSheet ? (
-              <div className="flex-1 flex h-full overflow-hidden">
-                <div className="flex-1 overflow-hidden">
+              <div className="flex-1 min-h-0 min-w-0 flex h-full overflow-hidden">
+                {/* Center column: grid container. min-w-0 is critical to prevent it from forcing the flex row wider than the viewport. */}
+                <div className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
                   <SpreadsheetGrid
                     ref={gridRef}
                     spreadsheetId={Number(spreadsheetId)}
                     sheetId={activeSheet.id}
                     spreadsheetName={spreadsheet.name}
                     sheetName={activeSheet.name}
+                    frozenRowCount={activeSheet.frozen_row_count ?? 0}
+                    onFreezeHeaderChange={(val) => {
+                      setSheets((prev) =>
+                        prev.map((s) =>
+                          s.id === activeSheet.id
+                            ? { ...s, frozen_row_count: val }
+                            : s
+                        )
+                      );
+                    }}
                     onFormulaCommit={handleFormulaCommit}
+                    onHeaderRenameCommit={handleHeaderRenameCommit}
+                    onHighlightCommit={handleHighlightCommit}
                     onInsertRowCommit={(payload: InsertRowParams) => {
                       updateAgentSteps((prev) => [
                         ...prev,
@@ -965,39 +1460,99 @@ export default function SpreadsheetDetailPage() {
                         },
                       ]);
                     }}
+                    onFillCommit={(payload: FillSeriesParams) => {
+                      updateAgentSteps((prev) => [
+                        ...prev,
+                        {
+                          id: typeof crypto !== 'undefined' && 'randomUUID' in crypto
+                            ? crypto.randomUUID()
+                            : `step_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+                          type: 'FILL_SERIES',
+                          params: payload,
+                          disabled: false,
+                          createdAt: new Date().toISOString(),
+                        },
+                      ]);
+                    }}
                     highlightCell={highlightCell}
+                    onHydrationStatusChange={status => setSheetHydrationReady(status === 'ready')}
+                    onOpenPivotBuilder={handleCreatePivotSheet}
                   />
                 </div>
-                <PatternAgentPanel
-                  steps={agentSteps}
-                  patterns={patterns}
-                  selectedPatternId={selectedPattern?.id ?? null}
-                  applySteps={applySteps}
-                  applyError={applyError}
-                  applyFailedIndex={applyFailedIndex}
-                  isApplying={isApplying}
-                  exporting={exportingPattern}
-                  onReorder={updateAgentSteps}
-                  onUpdateStep={(id, updates) =>
-                    updateAgentSteps((prev) =>
-                      prev.map((step) => (step.id === id ? applyPatternStepUpdates(step, updates) : step))
-                    )
-                  }
-                  onDeleteStep={(id) => updateAgentSteps((prev) => prev.filter((step) => step.id !== id))}
-                  onHoverStep={(step) => {
-                    if (step.type === 'APPLY_FORMULA') {
-                      setHighlightCell({ row: step.target.row - 1, col: step.target.col - 1 });
+                {/* Right column: Show Pivot Editor for pivot sheets, Pattern panel for regular sheets */}
+                {isPivotSheet && showPivotEditor ? (
+                  <PivotEditorPanel
+                    config={pivotConfigsBySheet[activeSheet.id] || createEmptyPivotConfig(pivotSourceDataBySheet[activeSheet.id]?.sourceSheetId || 0)}
+                    sourceSheetName={pivotSourceDataBySheet[activeSheet.id]?.sourceSheetName || 'Unknown'}
+                    sourceColumns={(() => {
+                      const sourceData = pivotSourceDataBySheet[activeSheet.id];
+                      if (!sourceData) return [];
+                      const cols: SourceColumn[] = [];
+                      for (let col = 0; col < sourceData.colCount; col++) {
+                        const cellData = sourceData.cells.get(`0:${col}`);
+                        const header = (cellData?.rawInput ?? '').trim();
+                        if (header) {
+                          cols.push({ index: col, header });
+                        }
+                      }
+                      return cols;
+                    })()}
+                    sourceRowCount={(() => {
+                      const sourceData = pivotSourceDataBySheet[activeSheet.id];
+                      if (!sourceData) return 0;
+                      let count = 0;
+                      for (let row = 1; row < sourceData.rowCount; row++) {
+                        for (let col = 0; col < sourceData.colCount; col++) {
+                          const cellData = sourceData.cells.get(`${row}:${col}`);
+                          if ((cellData?.rawInput ?? '').trim()) {
+                            count++;
+                            break;
+                          }
+                        }
+                      }
+                      return count;
+                    })()}
+                    onConfigChange={handlePivotConfigChange}
+                    onClose={() => setShowPivotEditor(false)}
+                    onRefresh={handleRefreshPivot}
+                  />
+                ) : (
+                  <PatternAgentPanel
+                    items={agentSteps}
+                    patterns={patterns}
+                    selectedPatternId={selectedPattern?.id ?? null}
+                    applySteps={applySteps}
+                    applyError={applyError}
+                    applyFailedIndex={applyFailedIndex}
+                    isApplying={isApplying}
+                    exporting={exportingPattern}
+                    onReorder={updateAgentSteps}
+                    onUpdateStep={(id, updates) =>
+                      updateAgentSteps((prev) => updateTimelineItemById(prev, id, updates))
                     }
-                  }}
-                  onClearHover={() => setHighlightCell(null)}
-                  onExportPattern={handleExportPattern}
-                  onSelectPattern={loadPatternDetail}
-                  onDeletePattern={handleDeletePattern}
-                  onApplyPattern={() => applyPatternSteps(0)}
-                  onRetryApply={() =>
-                    applyPatternSteps(applyFailedIndex != null ? applyFailedIndex : 0)
-                  }
-                />
+                    onDeleteStep={(id) =>
+                      updateAgentSteps((prev) => deleteTimelineItemById(prev, id))
+                    }
+                    onMoveStepOutOfGroup={(groupId, step) =>
+                      updateAgentSteps((prev) => moveStepOutOfGroup(prev, groupId, step))
+                    }
+                    onHoverStep={(step) => {
+                      if (step.type === 'APPLY_FORMULA') {
+                        setHighlightCell({ row: step.target.row - 1, col: step.target.col - 1 });
+                      }
+                    }}
+                    onClearHover={() => setHighlightCell(null)}
+                    onExportPattern={handleExportPattern}
+                    onSelectPattern={loadPatternDetail}
+                    onDeletePattern={handleDeletePattern}
+                    onApplyPattern={applyPatternSteps}
+                    onRetryApply={applyPatternSteps}
+                    disableApplyPattern={!sheetHydrationReady}
+                    applyJobStatus={patternJobStatus}
+                    applyJobProgress={patternJobProgress}
+                    applyJobError={patternJobError}
+                  />
+                )}
               </div>
             ) : sheets.length === 0 ? (
               <div className="flex items-center justify-center flex-1">
@@ -1034,34 +1589,30 @@ export default function SpreadsheetDetailPage() {
           onClose={() => {
             if (!deletingSheet) {
               setDeleteConfirmSheet(null);
-              setSheetMenuOpenId(null);
             }
           }}
         >
           <div className="w-[min(420px,calc(100vw-2rem))]">
             <div className="rounded-2xl bg-white shadow-2xl ring-1 ring-gray-100">
               <div className="px-6 pt-6 pb-4 border-b border-gray-100">
-                <h2 className="text-lg font-semibold text-gray-900">Delete Sheet</h2>
-                <p className="text-sm text-gray-600">
-                  Delete "{deleteConfirmSheet.name}"? This action can be undone only by restoring it later.
+                <h2 className="text-lg font-semibold text-gray-900">Delete sheet</h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  Delete &quot;{deleteConfirmSheet.name}&quot;? This action cannot be undone.
                 </p>
               </div>
               <div className="p-6 flex items-center justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    setDeleteConfirmSheet(null);
-                    setSheetMenuOpenId(null);
-                  }}
-                  className="rounded border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                  onClick={() => setDeleteConfirmSheet(null)}
+                  className="rounded border border-gray-200 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                   disabled={deletingSheet}
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleDeleteSheet(deleteConfirmSheet)}
-                  className="rounded bg-red-600 px-3 py-1 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+                  onClick={() => deleteConfirmSheet && void handleDeleteSheet(deleteConfirmSheet)}
+                  className="rounded bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"
                   disabled={deletingSheet}
                 >
                   {deletingSheet ? 'Deleting...' : 'Delete'}

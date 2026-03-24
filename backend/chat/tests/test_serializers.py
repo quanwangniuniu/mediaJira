@@ -356,6 +356,7 @@ class MessageCreateWithAttachmentsSerializerTest(TestCase):
         
         self.assertEqual(message.attachments.count(), 1)
         self.assertEqual(self.unlinked_attachment.message, message)
+        self.assertTrue(message.has_attachments)
     
     def test_require_content_or_attachments(self):
         """Test that either content or attachments is required"""
@@ -394,4 +395,3 @@ class MessageCreateWithAttachmentsSerializerTest(TestCase):
         
         self.assertFalse(serializer.is_valid())
         self.assertIn('chat', serializer.errors)
-

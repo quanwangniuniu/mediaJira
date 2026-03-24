@@ -1,17 +1,17 @@
 'use client';
-import { useEffect, useState } from "react";
 
-import { X, Check } from "lucide-react";
+import { useState } from "react";
+import { Check, ChevronDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 
-
-/**
- * RemovablePicker
- * A simple single-select picker with a dropdown and an inline clear (X) to remove the selection.
- */
 export type PickerOption = { value: string; label: string };
 
 export interface RemovablePickerProps {
@@ -20,7 +20,7 @@ export interface RemovablePickerProps {
   onChange?: (value: string | null) => void;
   placeholder?: string;
   disabled?: boolean;
-  loading?: boolean; // any loading state passed from the parent component
+  loading?: boolean;
   className?: string;
 }
 
@@ -28,30 +28,26 @@ export function RemovablePicker({
   options,
   value = null,
   onChange,
-  placeholder = "Select…",
+  placeholder = "Select option",
   disabled,
   loading = false,
   className,
 }: RemovablePickerProps) {
-
   const [open, setOpen] = useState(false);
+  const selected = options.find((option) => option.value === value) || null;
 
-
-
-  const selected = options.find((o) => o.value === value) || null;
-
-  const handleSelect = (val: string) => {
-    if (val === value) {
+  const handleSelect = (nextValue: string) => {
+    if (nextValue === value) {
       onChange?.(null);
     } else {
-      onChange?.(val);
+      onChange?.(nextValue);
     }
     setOpen(false);
   };
 
-  const handleClear: React.MouseEventHandler<HTMLButtonElement> = (e) => {
-    e.stopPropagation();
-    e.preventDefault();
+  const handleClear: React.MouseEventHandler<HTMLButtonElement> = (event) => {
+    event.stopPropagation();
+    event.preventDefault();
     if (!disabled) onChange?.(null);
   };
 
@@ -61,39 +57,31 @@ export function RemovablePicker({
         <PopoverTrigger asChild>
           <button
             type="button"
-            role="combobox"
             aria-expanded={open}
             disabled={disabled || loading}
             className={cn(
-              "w-full justify-between gap-2 pr-8 flex items-center px-3 py-2 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100 disabled:cursor-not-allowed",
-              !selected && "text-muted-foreground"
+              "flex h-9 w-full items-center rounded-md border border-slate-300 bg-white px-3 pr-14 text-left text-sm text-slate-900",
+              "hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[#0c66e4]/20 focus:border-[#0c66e4]",
+              "disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500",
+              !selected && "text-slate-400"
             )}
           >
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              {loading ? (
-                <div className="flex items-center gap-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
-                  <span className="text-gray-500">Loading...</span>
-                </div>
-              ) : selected ? (
-                <Badge className="truncate max-w-[13rem] bg-gray-100 text-gray-800 hover:bg-gray-100">
-                  {selected.label}
-                </Badge>
-              ) : (
-                <span className="truncate">{placeholder}</span>
-              )}
-            </div>
+            {loading ? (
+              <span className="truncate text-slate-500">Loading...</span>
+            ) : (
+              <span className="truncate">{selected?.label || placeholder}</span>
+            )}
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-64 p-0" align="start">
+        <PopoverContent
+          className="w-[var(--radix-popover-trigger-width)] min-w-[220px] p-0"
+          align="start"
+        >
           <Command>
             <CommandList>
               {loading ? (
-                <div className="flex items-center justify-center py-6">
-                  <div className="flex items-center gap-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
-                    <span className="text-sm text-gray-500">Loading options...</span>
-                  </div>
+                <div className="py-6 text-center text-sm text-slate-500">
+                  Loading options...
                 </div>
               ) : options.length === 0 ? (
                 <CommandEmpty>No options available</CommandEmpty>
@@ -101,16 +89,16 @@ export function RemovablePicker({
                 <>
                   <CommandEmpty>No results.</CommandEmpty>
                   <CommandGroup>
-                    {options.map((opt) => {
-                      const isSelected = opt.value === value;
+                    {options.map((option) => {
+                      const isSelected = option.value === value;
                       return (
                         <CommandItem
-                          key={opt.value}
-                          onSelect={() => handleSelect(opt.value)}
+                          key={option.value}
+                          onSelect={() => handleSelect(option.value)}
                           className="flex items-center justify-between"
                         >
-                          <span className="truncate">{opt.label}</span>
-                          {isSelected && <Check className="h-4 w-4" />}
+                          <span className="truncate">{option.label}</span>
+                          {isSelected ? <Check className="h-4 w-4 text-[#0c66e4]" /> : null}
                         </CommandItem>
                       );
                     })}
@@ -122,18 +110,22 @@ export function RemovablePicker({
         </PopoverContent>
       </Popover>
 
-      {selected && (
+      <ChevronDown
+        className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+        aria-hidden="true"
+      />
+
+      {selected ? (
         <button
           type="button"
           onClick={handleClear}
-          onMouseDown={(e) => e.preventDefault()} // keep popover closed
-          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-muted"
+          onMouseDown={(event) => event.preventDefault()}
+          className="absolute right-7 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
           aria-label="Clear selection"
         >
-          <X className="h-4 w-4 opacity-70 hover:opacity-100" />
+          <X className="h-3.5 w-3.5" />
         </button>
-      )}
+      ) : null}
     </div>
   );
 }
-

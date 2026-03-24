@@ -422,6 +422,27 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+    delete:
+      tags:
+      - DecisionAdmin
+      summary: Soft-delete a decision
+      description: 'Soft-deletes a decision by setting is_deleted=True. The decision will be hidden from default queries but remains in the database for audit purposes.
+
+        Allowed for any status (DRAFT, AWAITING_APPROVAL, COMMITTED, REVIEWED, ARCHIVED).
+
+        '
+      operationId: deleteDecision
+      parameters:
+      - $ref: '#/components/parameters/DecisionId'
+      responses:
+        '204':
+          description: Decision deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /decisions/{decisionId}/reviews:
     get:
       tags:

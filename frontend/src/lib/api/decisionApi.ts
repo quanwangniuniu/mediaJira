@@ -121,7 +121,7 @@ export const DecisionAPI = {
           pageSize: 100,
           pageToken,
         },
-      });
+      }) as { data: DecisionListResponse };
       const data = response.data;
       if (data?.items?.length) {
         accumulated.push(...data.items);
@@ -199,5 +199,8 @@ export const DecisionAPI = {
       withProject(projectId)
     );
     return response.data;
+  },
+  deleteDecision: async (decisionId: number, projectId?: number | null) => {
+    await api.delete(`/api/decisions/${decisionId}/`, withProject(projectId));
   },
 };

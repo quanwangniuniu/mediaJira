@@ -20,7 +20,7 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db import models
 from django.utils import timezone
 
-from core.models import TimeStampedModel, Organization
+from core.models import TimeStampedModel, Organization, Project
 
 User = get_user_model()
 
@@ -81,9 +81,20 @@ class Calendar(TimeStampedModel):
 
     owner = models.ForeignKey(
         User,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         related_name="owned_calendars",
         help_text="Calendar owner",
+        null=True,
+        blank=True,
+    )
+
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.SET_NULL,
+        related_name="calendars",
+        null=True,
+        blank=True,
+        help_text="Optional project binding for project-scoped calendars.",
     )
 
     name = models.CharField(max_length=255)
@@ -103,22 +114,29 @@ class Calendar(TimeStampedModel):
             models.Index(fields=["organization", "owner", "is_deleted"]),
             models.Index(fields=["organization", "owner", "is_primary"]),
             models.Index(fields=["organization", "visibility"]),
+            models.Index(fields=["organization", "project", "is_deleted"], name="calendars_c_organiz_87e5ba_idx"),
         ]
         constraints = [
             models.UniqueConstraint(
                 fields=["organization", "owner", "name"],
-                condition=models.Q(is_deleted=False),
+                condition=models.Q(is_deleted=False) & models.Q(owner__isnull=False),
                 name="unique_calendar_name_per_owner_per_org",
             ),
             models.UniqueConstraint(
                 fields=["organization", "owner"],
-                condition=models.Q(is_primary=True) & models.Q(is_deleted=False),
+                condition=models.Q(is_primary=True) & models.Q(is_deleted=False) & models.Q(owner__isnull=False),
                 name="unique_primary_calendar_per_owner_per_org",
+            ),
+            models.UniqueConstraint(
+                fields=["project"],
+                condition=models.Q(is_deleted=False) & models.Q(project__isnull=False),
+                name="unique_project_calendar",
             ),
         ]
 
     def __str__(self):
-        return f"{getattr(self.owner, 'email', self.owner_id)} - {self.name}"
+        owner_label = getattr(self.owner, "email", self.owner_id) or "no-owner"
+        return f"{owner_label} - {self.name}"
 
     def clean(self):
         super().clean()
@@ -127,6 +145,12 @@ class Calendar(TimeStampedModel):
         owner_org_id = _user_org_id(self.owner)
         if owner_org_id and self.organization_id and owner_org_id != self.organization_id:
             raise ValidationError({"organization": "Calendar.organization must match owner.organization"})
+
+        if self.project_id:
+            if self.project.organization_id != self.organization_id:
+                raise ValidationError({"project": "Calendar.project must match Calendar.organization"})
+            if self.project.owner_id and self.owner_id != self.project.owner_id:
+                raise ValidationError({"owner": "Calendar.owner must match project.owner"})
 
 
     def save(self, *args, validate: bool = True, **kwargs):
@@ -555,7 +579,13 @@ class Event(TimeStampedModel):
         # created_by org must match (if set)
         if self.created_by_id:
             creator_org_id = _user_org_id(self.created_by)
-            if creator_org_id and self.organization_id and creator_org_id != self.organization_id:
+            calendar_project_id = self.calendar.project_id if self.calendar_id else None
+            if (
+                creator_org_id
+                and self.organization_id
+                and creator_org_id != self.organization_id
+                and not calendar_project_id
+            ):
                 raise ValidationError({"created_by": "created_by.organization must match Event.organization"})
 
         # Recurrence integrity
@@ -771,7 +801,13 @@ class EventAttendee(TimeStampedModel):
 
         if self.user_id:
             user_org_id = _user_org_id(self.user)
-            if user_org_id and self.organization_id and user_org_id != self.organization_id:
+            event_project_id = self.event.calendar.project_id if self.event_id else None
+            if (
+                user_org_id
+                and self.organization_id
+                and user_org_id != self.organization_id
+                and not event_project_id
+            ):
                 raise ValidationError({"user": "Attendee user.organization must match EventAttendee.organization"})
 
         # Email required either directly or via user
@@ -870,7 +906,13 @@ class EventReminder(TimeStampedModel):
 
         if self.user_id:
             user_org_id = _user_org_id(self.user)
-            if user_org_id and self.organization_id and user_org_id != self.organization_id:
+            event_project_id = self.event.calendar.project_id if self.event_id else None
+            if (
+                user_org_id
+                and self.organization_id
+                and user_org_id != self.organization_id
+                and not event_project_id
+            ):
                 raise ValidationError({"user": "Reminder user.organization must match EventReminder.organization"})
 
         # Must be able to compute minutes_before
