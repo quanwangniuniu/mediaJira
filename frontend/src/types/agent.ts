@@ -52,6 +52,9 @@ export interface AgentMessageData {
   original_filename?: string;
   row_count?: number;
   column_count?: number;
+  step_order?: number;
+  step_name?: string;
+  total_steps?: number;
 }
 
 // ==================== SSE Stream Types ====================
@@ -63,6 +66,7 @@ export type SSEEventType =
   | 'decision_draft'
   | 'task_created'
   | 'file_uploaded'
+  | 'step_progress'
   | 'done'
   | 'error';
 
@@ -81,6 +85,7 @@ export interface AgentChatRequest {
   spreadsheet_id?: number;
   csv_filename?: string;
   action?: AgentAction;
+  workflow_id?: string;
 }
 
 // ==================== Analysis Types ====================
@@ -149,4 +154,72 @@ export interface RecommendedTask {
   type: string;
   summary: string;
   priority: 'HIGH' | 'MEDIUM' | 'LOW';
+}
+
+// ==================== Workflow Types ====================
+
+export type WorkflowStepType =
+  | 'analyze_data'
+  | 'call_dify'
+  | 'call_llm'
+  | 'create_decision'
+  | 'create_tasks'
+  | 'custom_api'
+  | 'await_confirmation';
+
+export interface AgentWorkflowStep {
+  id: string;
+  name: string;
+  step_type: WorkflowStepType;
+  order: number;
+  config: Record<string, unknown>;
+  description?: string;
+  created_at?: string;
+}
+
+export interface AgentWorkflowDefinition {
+  id: string;
+  name: string;
+  description: string;
+  is_default: boolean;
+  is_system: boolean;
+  status: 'active' | 'draft' | 'archived';
+  step_count?: number;
+  steps?: AgentWorkflowStep[];
+  created_at: string;
+  updated_at?: string;
+}
+
+export type StepExecutionStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'skipped'
+  | 'awaiting';
+
+export interface AgentStepExecution {
+  id: string;
+  step_order: number;
+  step_name: string;
+  status: StepExecutionStatus;
+  input_data?: Record<string, unknown>;
+  output_data?: Record<string, unknown>;
+  error_message?: string;
+  started_at?: string;
+  completed_at?: string;
+}
+
+export interface AgentWorkflowRun {
+  id: string;
+  session: string;
+  workflow_definition?: string;
+  status: string;
+  current_step_order?: number;
+  analysis_result?: Record<string, unknown>;
+  created_tasks?: unknown[];
+  error_message?: string;
+  step_executions?: AgentStepExecution[];
+  created_at: string;
+  updated_at: string;
 }
