@@ -121,6 +121,7 @@ class ChatView(EnglishResponseMixin, APIView):
         csv_filename = serializer.validated_data.get('csv_filename')
         file_id = serializer.validated_data.get('file_id')
         action = serializer.validated_data.get('action')
+        workflow_id = serializer.validated_data.get('workflow_id')
 
         # Auto-generate title from first message
         if not session.title and message_text:
@@ -156,6 +157,7 @@ class ChatView(EnglishResponseMixin, APIView):
                 csv_filename=csv_filename,
                 action=action,
                 file_id=file_id,
+                workflow_id=workflow_id,
             ):
                 chunk_type = chunk.get('type', 'text')
                 content = chunk.get('content', '')
