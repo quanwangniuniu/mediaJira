@@ -5,6 +5,7 @@ import { AlertTriangle, AlertCircle, X } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { DecorativeGlow } from "@/components/ui/decorative-glow"
 import { AGENT_MESSAGES } from "@/lib/agentMessages"
 
 interface Alert {
@@ -144,14 +145,15 @@ export function AnomalyAlerts({ anomalies, loading, compact = false }: AnomalyAl
   if (compact) return content
 
   return (
-    <Card className="bg-card border-border">
-      <CardHeader className="pb-3">
+    <Card className="relative overflow-hidden bg-card border-border">
+      <DecorativeGlow variant="subtle" />
+      <CardHeader className="relative pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium text-card-foreground">Anomaly Alerts</CardTitle>
           <span className="text-xs text-muted-foreground">{alerts.length} active</span>
         </div>
       </CardHeader>
-      <CardContent>{content}</CardContent>
+      <CardContent className="relative">{content}</CardContent>
     </Card>
   )
 }

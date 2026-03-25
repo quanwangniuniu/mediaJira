@@ -22,6 +22,7 @@ import {
 import CreateProjectModal from './CreateProjectModal';
 import ProjectMembersModal from './ProjectMembersModal';
 import Modal from '@/components/ui/Modal';
+import { DecorativeGlow } from '@/components/ui/decorative-glow';
 
 type ProjectWithStatus = ProjectData & {
   derivedStatus: DerivedProjectStatus;
@@ -99,8 +100,9 @@ const ProjectCard = ({
   deleting: boolean;
 }) => {
   return (
-    <div className="flex h-full flex-col rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
+    <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <DecorativeGlow variant="subtle" />
+      <div className="relative flex items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
             <FolderOpen className="h-5 w-5" />

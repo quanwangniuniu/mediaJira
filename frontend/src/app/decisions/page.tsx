@@ -2,16 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import toast from 'react-hot-toast';
 import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  ArrowLeft,
   FilePenLine,
-  FileText,
-  PencilLine,
-  CheckCircle2,
   Trash2,
 } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
@@ -73,14 +70,8 @@ const ROLE_LEVELS: Record<string, number> = {
 
 const APPROVAL_REVIEW_MAX_LEVEL = 8;
 const EDIT_MAX_LEVEL = 13;
-const DEFAULT_PAGE_SIZE = 12;
-const DEFAULT_VIEW_MODE = 'cards' as const;
 const DEFAULT_SORT_MODE = 'SEQ' as const;
-const PAGE_SIZE_BY_VIEW: Record<'cards' | 'grid' | 'compact', number> = {
-  cards: DEFAULT_PAGE_SIZE,
-  grid: DEFAULT_PAGE_SIZE,
-  compact: 24,
-};
+const COMPACT_PAGE_SIZE = 24;
 
 const DecisionsPage = () => {
   const router = useRouter();
@@ -105,9 +96,6 @@ const DecisionsPage = () => {
   const [paginationByProject, setPaginationByProject] = useState<
     Record<number, { pageIndex: number; pageSize: number }>
   >({});
-  const [viewModeByProject, setViewModeByProject] = useState<
-    Record<number, 'cards' | 'grid' | 'compact'>
-  >({});
   const [sortByProject, setSortByProject] = useState<
     Record<number, 'UPDATED' | 'STATUS' | 'RISK' | 'SEQ'>
   >({});
@@ -117,6 +105,10 @@ const DecisionsPage = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [selectedDecisionId, setSelectedDecisionId] = useState<number | null>(null);
+  const [selectedDecision, setSelectedDecision] = useState<any>(null);
+  const [selectedSignals, setSelectedSignals] = useState<any[]>([]);
+  const [loadingDetail, setLoadingDetail] = useState(false);
   const fallbackProjectId = useMemo(() => projects[0]?.id ?? null, [projects]);
 
   const handleCreateDecision = async (project: ProjectData) => {
@@ -285,8 +277,7 @@ const DecisionsPage = () => {
     const nextPagination: Record<number, { pageIndex: number; pageSize: number }> = {};
     projects.forEach((project) => {
       const items = decisionsByProject[project.id] || [];
-      const viewMode = viewModeByProject[project.id] || DEFAULT_VIEW_MODE;
-      const pageSize = PAGE_SIZE_BY_VIEW[viewMode];
+      const pageSize = COMPACT_PAGE_SIZE;
       const paging = paginationByProject[project.id] || {
         pageIndex: 0,
         pageSize,
@@ -310,7 +301,46 @@ const DecisionsPage = () => {
         ...nextPagination,
       }));
     }
-  }, [loading, projects, decisionsByProject, paginationByProject, viewModeByProject]);
+  }, [loading, projects, decisionsByProject, paginationByProject]);
+
+  useEffect(() => {
+    if (selectedDecisionId == null) {
+      setSelectedDecision(null);
+      setSelectedSignals([]);
+      return;
+    }
+    let cancelled = false;
+    const projectId = projects[0]?.id ?? null;
+    setLoadingDetail(true);
+    const fetchDetail = async () => {
+      try {
+        let decision: any;
+        try {
+          decision = await DecisionAPI.getDecision(selectedDecisionId, projectId);
+        } catch {
+          decision = await DecisionAPI.getDraft(selectedDecisionId, projectId);
+        }
+        if (cancelled) return;
+        setSelectedDecision(decision);
+        try {
+          const signalsResponse = await DecisionAPI.listSignals(selectedDecisionId, projectId);
+          if (!cancelled) setSelectedSignals(signalsResponse.items || []);
+        } catch {
+          if (!cancelled) setSelectedSignals([]);
+        }
+      } catch {
+        if (!cancelled) {
+          setSelectedDecision(null);
+          setSelectedSignals([]);
+          toast.error('Failed to load decision details.');
+        }
+      } finally {
+        if (!cancelled) setLoadingDetail(false);
+      }
+    };
+    fetchDetail();
+    return () => { cancelled = true; };
+  }, [selectedDecisionId, projects]);
 
   const seqByDecisionId = useMemo(() => {
     const map = new Map<number, number>();
@@ -401,10 +431,10 @@ const DecisionsPage = () => {
                   }
                   className="rounded-md border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-600 hover:border-gray-300"
                 >
-                  {isTreeCollapsed ? 'Expand' : 'Collapse'}
+                  {isTreeCollapsed ? '▼' : '▲'}
                 </button>
               </div>
-              {!isTreeCollapsed ? (
+              {!isTreeCollapsed && (
                 <DecisionLinkEditor
                   variant="inline"
                   projectId={project.id}
@@ -414,59 +444,20 @@ const DecisionsPage = () => {
                   }
                   onEditDecision={(node) => handleOpenEditModal(node.id, project.id)}
                   onCreateDecision={() => handleCreateDecisionModal(project)}
+                  selectedNodeId={selectedDecisionId}
+                  onSelectNode={(id) => setSelectedDecisionId(id)}
                   onDelete={(node) => handleDeleteFromTree(node, project.id)}
                   canReview={canReview}
                   canDelete={canDelete}
                   autoFocusToday
                 />
-              ) : (
-                <div className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-3 text-sm text-gray-500">
-                  Decision tree collapsed.
-                </div>
               )}
 
               <div className="h-px bg-gray-200" />
 
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <h3 className="text-sm font-semibold text-gray-900">Decision List</h3>
-                  <div className="flex items-center gap-2 text-xs font-semibold text-gray-600">
-                    <span className="text-gray-500">View</span>
-                    <div className="inline-flex rounded-md border border-gray-200 bg-white p-0.5">
-                      {(['cards', 'grid', 'compact'] as const).map((mode) => {
-                        const isActive =
-                          (viewModeByProject[project.id] || DEFAULT_VIEW_MODE) === mode;
-                        return (
-                          <button
-                            key={mode}
-                            type="button"
-                            onClick={() => {
-                              const pageSize = PAGE_SIZE_BY_VIEW[mode];
-                              setViewModeByProject((prev) => ({
-                                ...prev,
-                                [project.id]: mode,
-                              }));
-                              setPaginationByProject((prev) => ({
-                                ...prev,
-                                [project.id]: { pageIndex: 0, pageSize },
-                              }));
-                            }}
-                            className={`rounded-md px-2 py-1 text-xs font-semibold ${
-                              isActive
-                                ? 'bg-gray-900 text-white'
-                                : 'text-gray-600 hover:text-gray-900'
-                            }`}
-                          >
-                            {mode === 'cards'
-                              ? 'Cards'
-                              : mode === 'grid'
-                                ? 'Grid'
-                                : 'Compact'}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+                  <h3 className="text-sm font-semibold text-gray-900">Decisions</h3>
                 </div>
                 <div className="flex items-center gap-2">
                     <div className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-600">
@@ -525,6 +516,121 @@ const DecisionsPage = () => {
               </div>
 
               {!isListCollapsed ? (
+                selectedDecisionId != null ? (
+                  <div className="space-y-4">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDecisionId(null)}
+                      className="inline-flex items-center gap-1.5 text-sm font-semibold text-gray-600 hover:text-gray-900"
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                      Back to list
+                    </button>
+                    {loadingDetail ? (
+                      <div className="text-sm text-gray-500">Loading decision details...</div>
+                    ) : selectedDecision ? (
+                      <div className="space-y-5 rounded-xl border border-gray-200 bg-white p-5">
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            {selectedDecision.projectSeq ? `#${selectedDecision.projectSeq} ` : ''}
+                            {selectedDecision.title || 'Untitled'}
+                          </h3>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
+                            <span className={`rounded-full px-2 py-0.5 font-semibold ${statusColor(selectedDecision.status)}`}>
+                              {selectedDecision.status}
+                            </span>
+                            {selectedDecision.riskLevel ? (
+                              <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 font-semibold text-slate-600">
+                                {selectedDecision.riskLevel}
+                              </span>
+                            ) : null}
+                            <span className="text-gray-500">
+                              Created {formatDate(selectedDecision.createdAt)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {selectedSignals.length > 0 ? (
+                          <div>
+                            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Signals</h4>
+                            <div className="space-y-2">
+                              {selectedSignals.map((signal: any) => (
+                                <div key={signal.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-700">
+                                  <div className="font-semibold">{signal.metric} &middot; {signal.movement?.replace(/_/g, ' ').toLowerCase()} &middot; {signal.period?.replace(/_/g, ' ').toLowerCase()}</div>
+                                  {signal.scopeValue ? (
+                                    <div className="mt-0.5 text-gray-500">{signal.scopeType}: {signal.scopeValue}</div>
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {selectedDecision.contextSummary ? (
+                          <div>
+                            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Context Summary</h4>
+                            <p className="whitespace-pre-wrap text-sm text-gray-700">{selectedDecision.contextSummary}</p>
+                          </div>
+                        ) : null}
+
+                        {selectedDecision.options && selectedDecision.options.length > 0 ? (
+                          <div>
+                            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Options</h4>
+                            <ol className="list-decimal space-y-1.5 pl-5 text-sm text-gray-700">
+                              {selectedDecision.options.map((opt: any, idx: number) => (
+                                <li key={opt.id ?? idx}>
+                                  {opt.text || '(empty)'}
+                                  {opt.isSelected ? (
+                                    <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Selected</span>
+                                  ) : null}
+                                </li>
+                              ))}
+                            </ol>
+                          </div>
+                        ) : null}
+
+                        {selectedDecision.reasoning ? (
+                          <div>
+                            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Reasoning</h4>
+                            <p className="whitespace-pre-wrap text-sm text-gray-700">{selectedDecision.reasoning}</p>
+                          </div>
+                        ) : null}
+
+                        <div className="flex flex-wrap items-center gap-4 text-sm text-gray-700">
+                          {selectedDecision.riskLevel ? (
+                            <span>Risk Level: <span className="font-semibold">{selectedDecision.riskLevel}</span></span>
+                          ) : null}
+                          {selectedDecision.confidenceScore != null ? (
+                            <span>Confidence: <span className="font-semibold">{selectedDecision.confidenceScore}</span></span>
+                          ) : null}
+                        </div>
+
+                        <div className="flex items-center gap-2 border-t border-gray-100 pt-4">
+                          <button
+                            type="button"
+                            onClick={() => router.push(`/decisions/${selectedDecisionId}${project.id ? `?project_id=${project.id}` : ''}`)}
+                            className="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const listItem = decisions.find((d) => d.id === selectedDecisionId);
+                              if (listItem) handleDeleteDecision(listItem, project.id);
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:border-red-300"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-500">Decision not found.</div>
+                    )}
+                  </div>
+                ) : (
                 <>
                   {decisions.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-3 text-sm text-gray-500">
@@ -536,7 +642,6 @@ const DecisionsPage = () => {
                     const sortDir =
                       sortDirByProject[project.id] ||
                       (sortMode === 'UPDATED' || sortMode === 'SEQ' ? 'desc' : 'asc');
-                    // Create a map from decision ID to projectSeq from the graph nodes
                     const seqByDecisionId = new Map<number, number>();
                     graph.nodes.forEach((node) => {
                       if (node.id && node.projectSeq !== undefined && node.projectSeq !== null) {
@@ -600,8 +705,7 @@ const DecisionsPage = () => {
                       ).getTime();
                       return bTime - aTime;
                     });
-                    const viewMode = viewModeByProject[project.id] || DEFAULT_VIEW_MODE;
-                    const pageSize = PAGE_SIZE_BY_VIEW[viewMode];
+                    const pageSize = COMPACT_PAGE_SIZE;
                     const paging =
                       paginationByProject[project.id] || {
                         pageIndex: 0,
@@ -624,325 +728,49 @@ const DecisionsPage = () => {
 
                     return (
                       <>
-                        {viewMode === 'cards' ? (
-                          visible.map((decision) => {
-                            const seq = decision.projectSeq ?? seqByDecisionId.get(decision.id);
-                            return (
-                            <div
-                              key={decision.id}
-                              className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
-                            >
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2">
-                                  {typeof seq === 'number' ? (
-                                    <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-semibold text-white">
-                                      #{seq}
-                                    </span>
-                                  ) : null}
+                        <div className="overflow-hidden rounded-xl border border-gray-200">
+                          <div className="grid grid-cols-[70px_minmax(220px,1fr)_105px_105px] gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                            <div>#Seq</div>
+                            <div>Title</div>
+                            <div className="flex justify-center">Status</div>
+                            <div className="flex justify-center">Risk</div>
+                          </div>
+                          <div className="divide-y divide-gray-200 bg-white">
+                            {visible.map((decision) => {
+                              const seq = decision.projectSeq ?? seqByDecisionId.get(decision.id);
+                              return (
+                              <div
+                                key={decision.id}
+                                onClick={() => setSelectedDecisionId(decision.id)}
+                                className={`grid cursor-pointer grid-cols-[70px_minmax(220px,1fr)_105px_105px] items-center gap-2 px-4 py-2 text-xs text-gray-700 hover:bg-blue-50 ${
+                                  selectedDecisionId === decision.id ? 'border-l-2 border-blue-500 bg-blue-50' : ''
+                                }`}
+                              >
+                                <div className="text-[11px] font-semibold text-gray-500">
+                                  {typeof seq === 'number' ? `#${seq}` : '—'}
+                                </div>
+                                <div className="truncate font-semibold text-gray-900">
+                                  {decision.title || 'Untitled'}
+                                </div>
+                                <div className="flex justify-center">
                                   <span
-                                    className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusColor(
+                                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusColor(
                                       decision.status
                                     )}`}
                                   >
                                     {decision.status}
                                   </span>
-                                  {'riskLevel' in decision && (decision as any).riskLevel ? (
-                                    <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                                      {(decision as any).riskLevel}
-                                    </span>
-                                  ) : null}
-                                  <h3 className="truncate text-sm font-semibold text-gray-900">
-                                    {decision.title || 'Untitled'}
-                                  </h3>
                                 </div>
-                                <p className="mt-1 text-xs text-gray-500">
-                                  Last update:{' '}
-                                  {formatDate(
-                                    decision.updatedAt ||
-                                      decision.committedAt ||
-                                      decision.createdAt
-                                  )}
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                {decision.status === 'COMMITTED' && canReview ? (
-                                  <Link
-                                    href={`/decisions/${decision.id}/review${
-                                      (decision.projectId ?? fallbackProjectId)
-                                        ? `?project_id=${decision.projectId ?? fallbackProjectId}`
-                                        : ''
-                                    }`}
-                            className="inline-flex w-[80px] items-center justify-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:border-blue-300"
-                          >
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            Review
-                          </Link>
-                        ) : null}
-                        {decision.status === 'DRAFT' ? (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      handleOpenEditModal(
-                                        decision.id,
-                                        decision.projectId ?? fallbackProjectId
-                                      )
-                                    }
-                            className="inline-flex w-[80px] items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:border-amber-300"
-                          >
-                            <PencilLine className="h-3.5 w-3.5" />
-                            Edit
-                          </button>
-                                ) : null}
-                                <Link
-                                  href={`/decisions/${decision.id}${
-                                    (decision.projectId ?? fallbackProjectId)
-                                      ? `?project_id=${decision.projectId ?? fallbackProjectId}`
-                                      : ''
-                                  }`}
-                                  className="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-2 text-xs font-semibold text-white"
-                                >
-                                  <FileText className="h-3.5 w-3.5" />
-                                  Details
-                                </Link>
-                                {canDelete ? (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      handleDeleteDecision(
-                                        decision,
-                                        decision.projectId ?? fallbackProjectId ?? project.id
-                                      )
-                                    }
-                                    className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:border-red-300"
-                                    title="Delete decision"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
-                                ) : null}
-                              </div>
-                            </div>
-                            );
-                          })
-                        ) : viewMode === 'grid' ? (
-                          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                            {visible.map((decision) => (
-                              <div
-                                key={decision.id}
-                                className="flex h-full flex-col justify-between rounded-xl border border-gray-200 bg-gray-50 p-4"
-                              >
-                                <div className="space-y-3">
-                                  <div className="flex items-center justify-between gap-2">
-                                    {(() => {
-                                      const seq =
-                                        decision.projectSeq ?? seqByDecisionId.get(decision.id);
-                                      return typeof seq === 'number' ? (
-                                      <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-semibold text-white">
-                                        #{seq}
-                                      </span>
-                                      ) : (
-                                      <span className="text-[10px] font-semibold text-gray-400">
-                                        —
-                                      </span>
-                                      );
-                                    })()}
-                                    <div className="flex items-center gap-2">
-                                      <span
-                                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusColor(
-                                          decision.status
-                                        )}`}
-                                      >
-                                        {decision.status}
-                                      </span>
-                                      {'riskLevel' in decision && (decision as any).riskLevel ? (
-                                        <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                                          {(decision as any).riskLevel}
-                                        </span>
-                                      ) : null}
-                                    </div>
-                                  </div>
-                                  <h3 className="line-clamp-2 text-sm font-semibold text-gray-900">
-                                    {decision.title || 'Untitled'}
-                                  </h3>
-                                  <p className="text-xs text-gray-500">
-                                    Updated:{' '}
-                                    {formatDate(
-                                      decision.updatedAt ||
-                                        decision.committedAt ||
-                                        decision.createdAt
-                                    )}
-                                  </p>
-                                </div>
-                                <div className="mt-4 flex items-center gap-2">
-                                  {decision.status === 'COMMITTED' && canReview ? (
-                                    <Link
-                                      href={`/decisions/${decision.id}/review${
-                                        (decision.projectId ?? fallbackProjectId)
-                                          ? `?project_id=${decision.projectId ?? fallbackProjectId}`
-                                          : ''
-                                      }`}
-                                      className="inline-flex w-[80px] items-center justify-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:border-blue-300"
-                                    >
-                                      <CheckCircle2 className="h-3.5 w-3.5" />
-                                      Review
-                                    </Link>
-                                  ) : null}
-                                  {decision.status === 'DRAFT' ? (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        handleOpenEditModal(
-                                          decision.id,
-                                          decision.projectId ?? fallbackProjectId
-                                        )
-                                      }
-                                      className="inline-flex w-[80px] items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 hover:border-amber-300"
-                                    >
-                                      <PencilLine className="h-3.5 w-3.5" />
-                                      Edit
-                                    </button>
-                                  ) : null}
-                                  <Link
-                                    href={`/decisions/${decision.id}${
-                                      (decision.projectId ?? fallbackProjectId)
-                                        ? `?project_id=${decision.projectId ?? fallbackProjectId}`
-                                        : ''
-                                    }`}
-                                    className="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-2 text-xs font-semibold text-white"
-                                  >
-                                    <FileText className="h-3.5 w-3.5" />
-                                    Details
-                                  </Link>
-                                  {canDelete ? (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        handleDeleteDecision(
-                                          decision,
-                                          decision.projectId ?? fallbackProjectId ?? project.id
-                                        )
-                                      }
-                                      className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:border-red-300"
-                                      title="Delete decision"
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    </button>
-                                  ) : null}
+                                <div className="text-center text-[11px] font-semibold text-slate-600">
+                                  {'riskLevel' in decision && (decision as any).riskLevel
+                                    ? (decision as any).riskLevel
+                                    : '—'}
                                 </div>
                               </div>
-                            ))}
+                              );
+                            })}
                           </div>
-                        ) : (
-                          <div className="overflow-hidden rounded-xl border border-gray-200">
-                            <div className="grid grid-cols-[70px_minmax(220px,1fr)_105px_105px_130px_150px] gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                              <div>#Seq</div>
-                              <div>Title</div>
-                              <div className="flex justify-center">Status</div>
-                              <div className="flex justify-center">Risk</div>
-                              <div className="flex justify-center">Updated</div>
-                              <div className="flex justify-center">Actions</div>
-                            </div>
-                            <div className="divide-y divide-gray-200 bg-white">
-                              {visible.map((decision) => {
-                                const seq = decision.projectSeq ?? seqByDecisionId.get(decision.id);
-                                return (
-                                <div
-                                  key={decision.id}
-                                  className="grid grid-cols-[70px_minmax(220px,1fr)_105px_105px_130px_150px] items-center gap-2 px-4 py-2 text-xs text-gray-700"
-                                >
-                                  <div className="text-[11px] font-semibold text-gray-500">
-                                    {typeof seq === 'number' ? `#${seq}` : '—'}
-                                  </div>
-                                  <Link
-                                    href={`/decisions/${decision.id}${
-                                      (decision.projectId ?? fallbackProjectId)
-                                        ? `?project_id=${decision.projectId ?? fallbackProjectId}`
-                                        : ''
-                                    }`}
-                                    className="truncate font-semibold text-gray-900 hover:text-blue-600"
-                                  >
-                                    {decision.title || 'Untitled'}
-                                  </Link>
-                                  <div className="flex justify-center">
-                                    <span
-                                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusColor(
-                                        decision.status
-                                      )}`}
-                                    >
-                                      {decision.status}
-                                    </span>
-                                  </div>
-                                  <div className="text-center text-[11px] font-semibold text-slate-600">
-                                    {'riskLevel' in decision && (decision as any).riskLevel
-                                      ? (decision as any).riskLevel
-                                      : '—'}
-                                  </div>
-                                  <div className="text-[11px] text-gray-500 text-center">
-                                    {formatDate(
-                                      decision.updatedAt ||
-                                        decision.committedAt ||
-                                        decision.createdAt
-                                    )}
-                                  </div>
-                                  <div className="flex items-center justify-center gap-2">
-                                    {decision.status === 'COMMITTED' && canReview ? (
-                                      <Link
-                                        href={`/decisions/${decision.id}/review${
-                                          (decision.projectId ?? fallbackProjectId)
-                                            ? `?project_id=${decision.projectId ?? fallbackProjectId}`
-                                            : ''
-                                        }`}
-                                        className="inline-flex w-[80px] items-center justify-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 hover:border-blue-300"
-                                      >
-                                        <CheckCircle2 className="h-3.5 w-3.5" />
-                                        Review
-                                      </Link>
-                                    ) : null}
-                                    {decision.status === 'DRAFT' ? (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          handleOpenEditModal(
-                                            decision.id,
-                                            decision.projectId ?? fallbackProjectId
-                                          )
-                                        }
-                                        className="inline-flex w-[80px] items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 hover:border-amber-300"
-                                      >
-                                        <PencilLine className="h-3 w-3" />
-                                        Edit
-                                      </button>
-                                    ) : null}
-                                    {decision.status !== 'COMMITTED' && decision.status !== 'DRAFT' ? (
-                                      <span className="inline-flex w-[80px] items-center justify-center rounded-md border border-transparent px-2.5 py-1 text-[11px] font-semibold text-gray-300">
-                                        —
-                                      </span>
-                                    ) : decision.status === 'COMMITTED' && !canReview ? (
-                                      <span className="inline-flex w-[80px] items-center justify-center rounded-md border border-transparent px-2.5 py-1 text-[11px] font-semibold text-gray-300">
-                                        —
-                                      </span>
-                                    ) : null}
-                                    {canDelete ? (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          handleDeleteDecision(
-                                            decision,
-                                            decision.projectId ?? fallbackProjectId ?? project.id
-                                          )
-                                        }
-                                        className="inline-flex items-center justify-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-700 hover:border-red-300"
-                                        title="Delete decision"
-                                      >
-                                        <Trash2 className="h-3 w-3" />
-                                      </button>
-                                    ) : null}
-                                  </div>
-                                </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
+                        </div>
                         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-xs text-gray-600">
                           <button
                             type="button"
@@ -1008,6 +836,7 @@ const DecisionsPage = () => {
                     );
                   })()}
                 </>
+                )
               ) : (
                 <div className="text-sm text-gray-500">
                   {decisions.length} decision{decisions.length === 1 ? '' : 's'} hidden.
@@ -1031,9 +860,12 @@ const DecisionsPage = () => {
     graphsByProject,
     seqByDecisionId,
     paginationByProject,
-    viewModeByProject,
     sortByProject,
     sortDirByProject,
+    selectedDecisionId,
+    selectedDecision,
+    selectedSignals,
+    loadingDetail,
   ]);
 
   return (

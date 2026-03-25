@@ -14,6 +14,7 @@ import { User } from '@/people/UserPicker';
 import Button from '@/components/button/Button';
 import { Calendar, User as UserIcon, FolderOpen, Settings, Save } from 'lucide-react';
 import { ProjectAPI } from '@/lib/api/projectApi';
+import { DecorativeGlow } from '@/components/ui/decorative-glow';
 
 interface CampaignHeaderProps {
   campaign: CampaignData;
@@ -243,7 +244,8 @@ export default function CampaignHeader({ campaign, onUpdate, loading, onChangeSt
   const isArchived = campaign.status === 'ARCHIVED';
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
+    <div className="relative overflow-hidden bg-white rounded-lg border border-gray-200 p-6 mb-6">
+      <DecorativeGlow variant="subtle" />
       {/* Campaign Name with Inline Editing */}
       <div className="mb-4">
         {isArchived ? (

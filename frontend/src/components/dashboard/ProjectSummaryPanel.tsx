@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { DashboardAPI } from "@/lib/api/dashboardApi";
+import { DecorativeGlow } from "@/components/ui/decorative-glow";
 import type { ActivityEvent, DashboardSummary } from "@/types/dashboard";
 
 type ProjectSummaryPanelProps = {
@@ -131,13 +132,7 @@ export default function ProjectSummaryPanel({
 
   return (
     <section className="relative overflow-hidden rounded-[22px] border border-slate-200 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -right-20 -top-24 h-44 w-44 rounded-full bg-indigo-100/70 blur-[60px]" />
-        <div className="absolute -left-12 -bottom-20 h-36 w-36 rounded-full bg-sky-100/70 blur-[60px]" />
-        <div className="absolute right-24 top-8 h-12 w-12 rounded-full bg-amber-100/80 blur-xl" />
-        <div className="absolute left-10 top-16 h-6 w-6 rounded-full bg-emerald-100/90 blur-lg" />
-        <div className="absolute left-1/2 bottom-10 h-8 w-8 rounded-full bg-rose-100/80 blur-lg" />
-      </div>
+      <DecorativeGlow variant="rich" />
       <div className="relative flex items-start justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 shadow-sm">
