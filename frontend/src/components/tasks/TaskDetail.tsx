@@ -1593,7 +1593,7 @@ export default function TaskDetail({
   const jiraDetailLabelClass =
     "pt-2 text-sm font-normal tracking-normal text-[#44546f]";
   const jiraDetailControlClass =
-    "mt-0 block h-9 w-full min-w-0 rounded-[3px] border border-[#d0d4db] bg-white px-2.5 py-1.5 text-sm text-[#172b4d] transition-colors hover:border-[#8590a2] focus:border-[#0c66e4] focus:outline-none focus:ring-0 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400";
+    "mt-0 block h-9 w-full min-w-0 rounded-md border border-[#d0d4db] bg-white px-2.5 pr-8 py-1.5 text-sm text-[#172b4d] transition-colors hover:border-[#8590a2] focus:border-[#0c66e4] focus:outline-none focus:ring-0 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400";
   const jiraDetailValueTextClass = "pt-2 text-sm text-[#172b4d] min-w-0";
   const jiraDetailTagClass =
     "inline-flex items-center rounded-[3px] border border-[#d0d4db] bg-slate-50 px-1.5 py-0.5 text-xs font-medium text-[#172b4d]";
@@ -2357,7 +2357,7 @@ export default function TaskDetail({
                   <div className={jiraDetailRowClass}>
                     <label className={jiraDetailLabelClass}>Status</label>
                     <div
-                      className={`rounded-[3px] border border-[#d0d4db] transition-colors hover:border-[#8590a2] focus-within:border-[#0c66e4] focus-within:shadow-[inset_0_0_0_1px_#0c66e4] ${
+                      className={`rounded-md pr-2 border border-[#d0d4db] transition-colors hover:border-[#8590a2] focus-within:border-[#0c66e4] focus-within:shadow-[inset_0_0_0_1px_#0c66e4] ${
                         savingStatus ? "opacity-50" : ""
                       } ${getStatusColor(task?.status)}`}
                     >
@@ -2368,7 +2368,7 @@ export default function TaskDetail({
                           savingStatus ||
                           (currentUser != null && !currentUser.is_staff)
                         }
-                        className="block h-9 w-full min-w-0 rounded-[3px] border-0 bg-transparent px-2.5 py-1.5 text-sm text-[#172b4d] focus:outline-none focus:ring-0 disabled:cursor-not-allowed"
+                        className="block h-9 w-full min-w-0 rounded-md border-0 bg-transparent px-2.5 pr-8 py-1.5 text-sm text-[#172b4d] focus:outline-none focus:ring-0 disabled:cursor-not-allowed"
                       >
                         <option value="DRAFT" disabled={!["SUBMITTED", "CANCELLED", "REJECTED"].includes(task?.status ?? "")}>Draft</option>
                         <option value="SUBMITTED" disabled={task?.status !== "DRAFT"}>Submitted</option>
@@ -2405,57 +2405,57 @@ export default function TaskDetail({
                   {/* Owner - editable dropdown */}
                   <div className={jiraDetailRowClass}>
                     <label className={jiraDetailLabelClass}>Owner</label>
-                    <select
-                      value={ownerId}
-                      onChange={(e) => handleOwnerChange(e.target.value)}
-                      disabled={savingOwner || loadingApprovers}
-                      className={`${jiraDetailControlClass} ${
-                        savingOwner || loadingApprovers ? "opacity-50" : ""
-                      }`}
-                    >
-                      <option value="">
-                        {approvers.length === 0 ? "No members" : "Unassigned"}
-                      </option>
-                      {approvers.map((member) => (
-                        <option key={member.id} value={member.id.toString()}>
-                          {member.username ||
-                            member.email ||
-                            `User #${member.id}`}
+                    <div className={`rounded-md border border-[#d0d4db] pr-2 transition-colors hover:border-[#8590a2] focus-within:border-[#0c66e4] focus-within:shadow-[inset_0_0_0_1px_#0c66e4] ${savingOwner || loadingApprovers ? "opacity-50" : ""}`}>
+                      <select
+                        value={ownerId}
+                        onChange={(e) => handleOwnerChange(e.target.value)}
+                        disabled={savingOwner || loadingApprovers}
+                        className="block h-9 w-full min-w-0 rounded-md border-0 bg-transparent px-2.5 py-1.5 text-sm text-[#172b4d] focus:outline-none focus:ring-0 disabled:cursor-not-allowed"
+                      >
+                        <option value="">
+                          {approvers.length === 0 ? "No members" : "Unassigned"}
                         </option>
-                      ))}
-                    </select>
+                        {approvers.map((member) => (
+                          <option key={member.id} value={member.id.toString()}>
+                            {member.username ||
+                              member.email ||
+                              `User #${member.id}`}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                   {/* Current Approver - editable dropdown */}
                   <div className={jiraDetailRowClass}>
                     <label className={jiraDetailLabelClass}>
                       Current Approver
                     </label>
-                    <select
-                      value={currentApproverId}
-                      onChange={(e) =>
-                        handleCurrentApproverChange(e.target.value)
-                      }
-                      disabled={loadingApprovers}
-                      className={`${jiraDetailControlClass} ${
-                        loadingApprovers ? "opacity-50" : ""
-                      }`}
-                    >
-                      <option value="">
-                        {approvers.length === 0
-                          ? "No approver assigned"
-                          : "Unassigned"}
-                      </option>
-                      {approvers.map((approver) => (
-                        <option
-                          key={approver.id}
-                          value={approver.id.toString()}
-                        >
-                          {approver.username ||
-                            approver.email ||
-                            `User #${approver.id}`}
+                    <div className={`rounded-md border border-[#d0d4db] pr-2 transition-colors hover:border-[#8590a2] focus-within:border-[#0c66e4] focus-within:shadow-[inset_0_0_0_1px_#0c66e4] ${loadingApprovers ? "opacity-50" : ""}`}>
+                      <select
+                        value={currentApproverId}
+                        onChange={(e) =>
+                          handleCurrentApproverChange(e.target.value)
+                        }
+                        disabled={loadingApprovers}
+                        className="block h-9 w-full min-w-0 rounded-md border-0 bg-transparent px-2.5 py-1.5 text-sm text-[#172b4d] focus:outline-none focus:ring-0 disabled:cursor-not-allowed"
+                      >
+                        <option value="">
+                          {approvers.length === 0
+                            ? "No approver assigned"
+                            : "Unassigned"}
                         </option>
-                      ))}
-                    </select>
+                        {approvers.map((approver) => (
+                          <option
+                            key={approver.id}
+                            value={approver.id.toString()}
+                          >
+                            {approver.username ||
+                              approver.email ||
+                              `User #${approver.id}`}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                   {/* Project - locked */}
                   <div className={jiraDetailRowClass}>
@@ -2464,17 +2464,25 @@ export default function TaskDetail({
                       {task?.project?.name || "Unknown Project"}
                     </p>
                   </div>
-                  {/* Start Date - locked */}
+                  {/* Start Date - editable */}
                   <div className={jiraDetailRowClass}>
                     <label className={jiraDetailLabelClass}>Start Date</label>
-                    <div className="pt-1.5 min-w-0">
-                      {startDateInput ? (
-                        <span className={jiraDetailValueTextClass}>
-                          {formatDate(startDateInput)}
-                        </span>
-                      ) : (
-                        <p className={jiraDetailValueTextClass}>None</p>
-                      )}
+                    <div className="min-w-0">
+                      <input
+                        type="date"
+                        value={startDateInput || ""}
+                        onChange={(e) => setStartDateInput(e.target.value)}
+                        onBlur={() => {
+                          const current = task.start_date ?? "";
+                          if (startDateInput !== current) {
+                            handleSaveDates();
+                          }
+                        }}
+                        disabled={savingDates}
+                        className={`${jiraDetailControlClass} ${
+                          savingDates ? "opacity-50" : ""
+                        }`}
+                      />
                     </div>
                   </div>
 
@@ -2482,15 +2490,13 @@ export default function TaskDetail({
                   <div className={jiraDetailRowClass}>
                     <label className={jiraDetailLabelClass}>Due Date</label>
                     <div className="min-w-0 space-y-1.5">
-                      {dueDateInput ? (
+                      {dueDateInput && (
                         <div className="pt-0.5">
                           <JiraDueDateBadge
                             label={formatDate(dueDateInput)}
                             tone={getDetailDueTone(dueDateInput)}
                           />
                         </div>
-                      ) : (
-                        <p className="pt-1.5 text-sm text-[#172b4d]">None</p>
                       )}
                       <input
                         type="date"
