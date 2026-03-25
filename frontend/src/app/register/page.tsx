@@ -6,7 +6,6 @@ import AuthFormWrapper from '../../components/auth/AuthFormWrapper';
 import AuthFeedback from '../../components/auth/AuthFeedback';
 import AuthFields from '../../components/auth/AuthFields';
 import AuthSubmit from '../../components/auth/AuthSubmit';
-import RegisterSuccessMessage from '../../components/auth/RegisterSuccessMessage';
 import useAuth from '../../hooks/useAuth';
 import { validateRegistrationForm, hasValidationErrors } from '../../utils/validation';
 import { RegisterRequest, FormValidation } from '../../types/auth';
@@ -27,8 +26,6 @@ export default function RegisterPage() {
   });
   const [errors, setErrors] = useState<FormValidation>({});
   const [loading, setLoading] = useState<boolean>(false);
-  const [registrationSuccess, setRegistrationSuccess] = useState<boolean>(false);
-  const [registrationMessage, setRegistrationMessage] = useState<string>('');
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -75,10 +72,7 @@ export default function RegisterPage() {
     const result = await register(requestData);
     setLoading(false);
     
-    if (result.success) {
-      setRegistrationSuccess(true);
-      setRegistrationMessage(result.data?.message || 'Registration successful! Your account is ready to use.');
-    } else {
+    if (!result.success) {
       setErrors({ general: result.error });
     }
   };
@@ -110,27 +104,6 @@ export default function RegisterPage() {
 
   // Disable submit button if form has validation errors (excluding general errors)
   const formHasValidationErrors = hasValidationErrors(errors);
-
-  // Show success message if registration was successful
-  if (registrationSuccess) {
-    return (
-      <AuthFormWrapper title="Check Your Email">
-        <RegisterSuccessMessage
-          message={registrationMessage}
-          onRegisterAnother={() => {
-            setRegistrationSuccess(false);
-            setFormData({
-              username: '',
-              email: '',
-              password: '',
-              confirmPassword: '',
-            });
-            setErrors({});
-          }}
-        />
-      </AuthFormWrapper>
-    );
-  }
 
   return (
     <AuthFormWrapper title="Create Account">
