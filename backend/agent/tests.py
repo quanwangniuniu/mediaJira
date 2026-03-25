@@ -789,6 +789,7 @@ class CalendarAgentTests(TestCase):
     # handle_message routing                                              #
     # ------------------------------------------------------------------ #
 
+    @patch.dict('os.environ', {'DIFY_CALENDAR_API_KEY': 'test-key'})
     @patch('agent.services.requests.post')
     def test_handle_message_routes_to_calendar_when_context_provided(self, mock_post):
         """handle_message with calendar_context skips general chat and calls Dify calendar."""
@@ -872,6 +873,7 @@ class CalendarAgentTests(TestCase):
     # answer_calendar_question — Dify response handling                  #
     # ------------------------------------------------------------------ #
 
+    @patch.dict('os.environ', {'DIFY_CALENDAR_API_KEY': 'test-key'})
     @patch('agent.services.requests.post')
     def test_answer_calendar_question_yields_text_chunk(self, mock_post):
         """A successful Dify response yields a text chunk with the answer."""
@@ -887,6 +889,7 @@ class CalendarAgentTests(TestCase):
         text_chunks = [c for c in chunks if c['type'] == 'text' and 'events this week' in c.get('content', '')]
         self.assertTrue(len(text_chunks) > 0)
 
+    @patch.dict('os.environ', {'DIFY_CALENDAR_API_KEY': 'test-key'})
     @patch('agent.services.requests.post')
     def test_answer_calendar_question_creates_event_from_dify(self, mock_post):
         """When Dify returns create_events, the events are created in the DB."""
