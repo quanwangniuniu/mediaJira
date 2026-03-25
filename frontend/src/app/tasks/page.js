@@ -2047,12 +2047,6 @@ function TasksPageContent() {
                   </div>
                 </div>
 
-                <div className="mt-4 flex items-center gap-4 border-b border-gray-200 pb-2">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-amber-600">Pinned</span>
-                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Recent</span>
-                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">All projects</span>
-                </div>
-
                 <div className="mt-4">
                   {projectOptionsLoading && (
                     <div className="py-8 text-center text-sm text-gray-500">

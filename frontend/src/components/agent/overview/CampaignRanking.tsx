@@ -46,6 +46,7 @@ export function CampaignRanking({ topCampaigns = [] }: CampaignRankingProps) {
 
   const topData = topCampaigns.map((c) => ({
     name: truncateName(c.name),
+    fullName: c.name,
     roas: c.roas,
   }))
 
@@ -67,8 +68,23 @@ export function CampaignRanking({ topCampaigns = [] }: CampaignRankingProps) {
                 <XAxis type="number" hide />
                 <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
-                  formatter={(value) => [`${Number(value).toFixed(2)}x`, "ROAS"]}
+                  content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null
+                    const data = payload[0].payload
+                    return (
+                      <div style={{
+                        backgroundColor: "hsl(var(--card))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: 8,
+                        padding: "8px 12px",
+                        fontSize: 12,
+                        maxWidth: 320,
+                      }}>
+                        <p style={{ fontWeight: 600, marginBottom: 4 }}>{data.fullName}</p>
+                        <p>ROAS: {Number(data.roas).toFixed(2)}x</p>
+                      </div>
+                    )
+                  }}
                 />
                 <Bar dataKey="roas" radius={[0, 4, 4, 0]} maxBarSize={20}>
                   {topData.map((_, i) => (
