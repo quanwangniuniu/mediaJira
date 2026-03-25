@@ -16,6 +16,7 @@ import { RetrospectiveAPI } from "@/lib/api/retrospectiveApi";
 import { ClientCommunicationAPI } from "@/lib/api/clientCommunicationApi";
 import { DashboardAPI } from "@/lib/api/dashboardApi";
 import Modal from "@/components/ui/Modal";
+import { DecorativeGlow } from "@/components/ui/decorative-glow";
 import NewTaskForm from "@/components/tasks/NewTaskForm";
 import TaskCreatePanel from "@/components/tasks/TaskCreatePanel";
 import TasksWorkspaceSkeleton from "@/components/tasks/TasksWorkspaceSkeleton";
@@ -1920,11 +1921,11 @@ function TasksPageContent() {
           {/* Page Header */}
           <div className="mb-8">
             <div className="flex flex-row gap-4 items-center mb-4">
-              <h1 className="text-3xl font-bold text-gray-900">
-                {projectId
-                  ? `${selectedProject?.name || "Project"} - Tasks`
-                  : "Select a project to enter tasks"}
-              </h1>
+              {projectId && (
+                <h1 className="text-3xl font-bold text-gray-900">
+                  {`${selectedProject?.name || "Project"} - Tasks`}
+                </h1>
+              )}
               {projectId && activeTab !== "board" && (
                 <button
                   onClick={handleOpenCreateTaskModal}
@@ -1976,7 +1977,7 @@ function TasksPageContent() {
             )}
 
             {projectId && (
-              <div className="mb-6 rounded-xl border border-gray-200 bg-gradient-to-r from-white via-white to-indigo-50/60 p-6 shadow-sm">
+              <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="space-y-2">
                     <div className="text-sm font-semibold text-gray-900">
@@ -1997,7 +1998,7 @@ function TasksPageContent() {
                     <button
                       type="button"
                       onClick={() => router.push("/tasks")}
-                      className="flex w-full items-center justify-center rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm font-medium text-indigo-700 shadow-sm transition hover:border-indigo-300 hover:bg-indigo-50/40"
+                      className="flex w-full items-center justify-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:border-gray-300 hover:bg-gray-50"
                     >
                       Switch project
                     </button>
@@ -2012,47 +2013,14 @@ function TasksPageContent() {
             )}
 
             {!projectId && (
-              <div className="relative overflow-hidden rounded-[28px] border border-slate-100 bg-white shadow-[0_25px_80px_rgba(15,23,42,0.12)]">
-                <div className="pointer-events-none absolute inset-0">
-                  <div className="absolute -right-24 -top-20 h-64 w-64 rounded-full bg-sky-100/70 blur-[90px]" />
-                  <div className="absolute -left-20 bottom-0 h-56 w-56 rounded-full bg-indigo-100/70 blur-[90px]" />
-                </div>
-                <div className="relative border-b border-slate-100 px-6 py-6">
-                  <div className="absolute inset-0 bg-gradient-to-r from-indigo-50 via-white to-sky-50" />
-                  <div className="absolute -left-10 -top-14 h-32 w-32 rounded-full bg-indigo-100/70 blur-2xl" />
-                  <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-indigo-100 bg-white text-indigo-600 shadow-sm">
-                        <svg
-                          className="h-5 w-5"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M4 6h16M4 12h16M4 18h7"
-                          />
-                        </svg>
-                      </div>
-                      <div>
-                        <h2 className="text-xl font-semibold text-gray-900">
-                          Select project
-                        </h2>
-                        <p className="text-sm text-gray-500">
-                          Choose a project to load its tasks.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2" />
-                  </div>
-                </div>
+              <div className="mx-auto max-w-5xl">
+                <h2 className="text-xl font-semibold text-gray-900">
+                  Select project
+                </h2>
 
-                <div className="border-b border-slate-100 px-6 py-4">
+                <div className="mt-4">
                   <div className="relative">
-                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-indigo-300">
+                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
                       <svg
                         className="h-4 w-4"
                         fill="none"
@@ -2074,12 +2042,12 @@ function TasksPageContent() {
                         setProjectSearchQuery(event.target.value)
                       }
                       placeholder="Search by project name or ID..."
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50/80 py-3 pl-9 pr-3 text-sm text-gray-900 shadow-sm transition focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+                      className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-9 pr-3 text-sm text-gray-900 shadow-sm transition focus:border-gray-300 focus:bg-white focus:ring-1 focus:ring-gray-200"
                     />
                   </div>
                 </div>
 
-                <div className="max-h-[65vh] overflow-y-auto px-6 py-4">
+                <div className="mt-4">
                   {projectOptionsLoading && (
                     <div className="py-8 text-center text-sm text-gray-500">
                       Loading projects...
@@ -2100,7 +2068,7 @@ function TasksPageContent() {
                   {!projectOptionsLoading &&
                     !projectOptionsError &&
                     filteredProjects.length > 0 && (
-                      <div className="mb-3 hidden grid-cols-[24px,minmax(0,2fr),minmax(0,1fr),minmax(0,1fr),minmax(0,0.9fr)] items-center gap-3 border-b border-slate-200 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400 sm:grid">
+                      <div className="mb-3 hidden grid-cols-[24px,minmax(0,2fr),minmax(0,1fr),minmax(0,1fr),minmax(0,0.9fr)] items-center gap-3 border-b border-gray-200 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 sm:grid">
                         <span />
                         <span>Name</span>
                         <span>Key</span>
@@ -2111,18 +2079,12 @@ function TasksPageContent() {
                   {!projectOptionsLoading &&
                     !projectOptionsError &&
                     pinnedProjects.length > 0 && (
-                      <div className="mb-4">
-                        <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-600">
-                          Pinned
-                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                            top
-                          </span>
-                        </div>
+                      <div>
                         {pinnedProjects.map((project) => (
                           <button
                             key={`pinned-${project.id}`}
                             onClick={() => handlePickProject(project.id)}
-                            className="group mb-3 w-full rounded-2xl border border-amber-200 bg-amber-50/40 px-4 py-3 text-left transition hover:-translate-y-[1px] hover:border-amber-300 hover:bg-amber-50/60 hover:shadow-md"
+                            className="group w-full border-b border-gray-200 bg-amber-50/40 py-3 text-left transition hover:bg-amber-50/60"
                           >
                             <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[24px,minmax(0,2fr),minmax(0,1fr),minmax(0,1fr),minmax(0,0.9fr)] sm:items-center sm:gap-3">
                               <div
@@ -2154,24 +2116,24 @@ function TasksPageContent() {
                               </div>
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <span className="truncate text-sm font-semibold text-slate-900">
+                                  <span className="truncate text-sm font-semibold text-gray-900">
                                     {project.name || "Untitled Project"}
                                   </span>
                                   <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
                                     Pinned
                                   </span>
                                 </div>
-                                <div className="mt-1 truncate text-xs text-slate-500">
+                                <div className="mt-1 truncate text-xs text-gray-500">
                                   {project.description || "No description"}
                                 </div>
                               </div>
-                              <div className="text-xs text-slate-500">
+                              <div className="text-xs text-gray-500">
                                 <span className="sm:hidden">Key: </span>
-                                <span className="font-medium text-slate-700">
+                                <span className="font-medium text-gray-700">
                                   P-{project.id}
                                 </span>
                               </div>
-                              <div className="text-xs text-slate-500">
+                              <div className="text-xs text-gray-500">
                                 <span className="sm:hidden">Lead: </span>
                                 {project.owner?.name ||
                                   project.owner?.username ||
@@ -2184,7 +2146,7 @@ function TasksPageContent() {
                                   className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
                                     project.is_active
                                       ? "bg-emerald-50 text-emerald-700"
-                                      : "bg-slate-100 text-slate-600"
+                                      : "bg-gray-100 text-gray-600"
                                   }`}
                                 >
                                   {project.is_active ? "Active" : "Inactive"}
@@ -2198,22 +2160,16 @@ function TasksPageContent() {
                   {!projectOptionsLoading &&
                     !projectOptionsError &&
                     recentProjects.length > 0 && (
-                      <div className="mb-4">
-                        <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                          Recent
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                            last opened
-                          </span>
-                        </div>
+                      <div>
                         {recentProjects.map((project) => (
                           <button
                             key={`recent-${project.id}`}
                             onClick={() => handlePickProject(project.id)}
-                            className="group mb-3 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:-translate-y-[1px] hover:border-indigo-200 hover:bg-indigo-50/40 hover:shadow-md"
+                            className="group w-full border-b border-gray-200 py-3 text-left transition hover:bg-gray-50"
                           >
                             <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[24px,minmax(0,2fr),minmax(0,1fr),minmax(0,1fr),minmax(0,0.9fr)] sm:items-center sm:gap-3">
                               <div
-                                className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500"
+                                className="flex h-6 w-6 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500"
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   togglePinProject(project.id);
@@ -2247,21 +2203,21 @@ function TasksPageContent() {
                               </div>
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <span className="truncate text-sm font-semibold text-slate-900">
+                                  <span className="truncate text-sm font-semibold text-gray-900">
                                     {project.name || "Untitled Project"}
                                   </span>
                                 </div>
-                                <div className="mt-1 truncate text-xs text-slate-500">
+                                <div className="mt-1 truncate text-xs text-gray-500">
                                   {project.description || "No description"}
                                 </div>
                               </div>
-                              <div className="text-xs text-slate-500">
+                              <div className="text-xs text-gray-500">
                                 <span className="sm:hidden">Key: </span>
-                                <span className="font-medium text-slate-700">
+                                <span className="font-medium text-gray-700">
                                   P-{project.id}
                                 </span>
                               </div>
-                              <div className="text-xs text-slate-500">
+                              <div className="text-xs text-gray-500">
                                 <span className="sm:hidden">Lead: </span>
                                 {project.owner?.name ||
                                   project.owner?.username ||
@@ -2274,7 +2230,7 @@ function TasksPageContent() {
                                   className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
                                     project.is_active
                                       ? "bg-emerald-50 text-emerald-700"
-                                      : "bg-slate-100 text-slate-600"
+                                      : "bg-gray-100 text-gray-600"
                                   }`}
                                 >
                                   {project.is_active ? "Active" : "Inactive"}
@@ -2289,20 +2245,15 @@ function TasksPageContent() {
                     !projectOptionsError &&
                     otherProjects.length > 0 && (
                       <div>
-                        {recentProjects.length > 0 && (
-                          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                            All projects
-                          </div>
-                        )}
                         {otherProjects.map((project) => (
                           <button
                             key={project.id}
                             onClick={() => handlePickProject(project.id)}
-                            className="group mb-3 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:-translate-y-[1px] hover:border-indigo-200 hover:bg-indigo-50/40 hover:shadow-md"
+                            className="group w-full border-b border-gray-200 py-3 text-left transition hover:bg-gray-50"
                           >
                             <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[24px,minmax(0,2fr),minmax(0,1fr),minmax(0,1fr),minmax(0,0.9fr)] sm:items-center sm:gap-3">
                               <div
-                                className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500"
+                                className="flex h-6 w-6 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500"
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   togglePinProject(project.id);
@@ -2336,21 +2287,21 @@ function TasksPageContent() {
                               </div>
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <span className="truncate text-sm font-semibold text-slate-900">
+                                  <span className="truncate text-sm font-semibold text-gray-900">
                                     {project.name || "Untitled Project"}
                                   </span>
                                 </div>
-                                <div className="mt-1 truncate text-xs text-slate-500">
+                                <div className="mt-1 truncate text-xs text-gray-500">
                                   {project.description || "No description"}
                                 </div>
                               </div>
-                              <div className="text-xs text-slate-500">
+                              <div className="text-xs text-gray-500">
                                 <span className="sm:hidden">Key: </span>
-                                <span className="font-medium text-slate-700">
+                                <span className="font-medium text-gray-700">
                                   P-{project.id}
                                 </span>
                               </div>
-                              <div className="text-xs text-slate-500">
+                              <div className="text-xs text-gray-500">
                                 <span className="sm:hidden">Lead: </span>
                                 {project.owner?.name ||
                                   project.owner?.username ||
@@ -2363,7 +2314,7 @@ function TasksPageContent() {
                                   className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
                                     project.is_active
                                       ? "bg-emerald-50 text-emerald-700"
-                                      : "bg-slate-100 text-slate-600"
+                                      : "bg-gray-100 text-gray-600"
                                   }`}
                                 >
                                   {project.is_active ? "Active" : "Inactive"}

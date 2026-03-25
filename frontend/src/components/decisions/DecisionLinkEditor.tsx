@@ -21,6 +21,8 @@ export interface DecisionLinkEditorProps {
   onDelete?: (node: DecisionGraphNode) => void;
   canReview?: boolean;
   canDelete?: boolean;
+  selectedNodeId?: number | null;
+  onSelectNode?: (id: number) => void;
   autoFocusToday?: boolean;
   focusDateKey?: string | null;
   variant?: 'card' | 'inline';
@@ -69,6 +71,8 @@ const DecisionLinkEditor = ({
   onDelete,
   canReview,
   canDelete,
+  selectedNodeId,
+  onSelectNode,
   autoFocusToday,
   focusDateKey,
   variant = 'card',
@@ -248,6 +252,8 @@ const DecisionLinkEditor = ({
           onDelete={onDelete}
           canReview={canReview}
           canDelete={canDelete}
+          selectedNodeId={selectedNodeId}
+          onSelectNode={onSelectNode}
           autoFocusToday={autoFocusToday}
           focusDateKey={focusDateKey ?? undefined}
         />

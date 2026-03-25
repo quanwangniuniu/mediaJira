@@ -9,8 +9,9 @@ import { AnomalyCard } from "./AnomalyCard"
 import { DecisionCard } from "./DecisionCard"
 import { TaskListCard } from "./TaskListCard"
 import type { AnomalyItem, SuggestedDecision, RecommendedTask } from "@/types/agent"
+import { StepProgress, type StepProgressItem } from "./StepProgress"
 
-export type ChatMessageType = "text" | "analysis" | "file_uploaded" | "decision_created" | "tasks_created" | "error" | "calendar_invite"
+export type ChatMessageType = "text" | "analysis" | "file_uploaded" | "decision_created" | "tasks_created" | "step_progress" | "error" | "calendar_invite"
 
 export interface ChatMessage {
   id: string
@@ -25,6 +26,7 @@ export interface ChatMessage {
   navigateTo?: string
   navigateLabel?: string
   decisionId?: number
+  stepProgress?: StepProgressItem[]
 }
 
 interface MessageListProps {
@@ -87,6 +89,11 @@ export function MessageList({ messages, onAction, onNavigate }: MessageListProps
               >
                 {message.content}
               </div>
+            )}
+
+            {/* Step progress */}
+            {message.stepProgress && message.stepProgress.length > 0 && (
+              <StepProgress steps={message.stepProgress} />
             )}
 
             {/* Navigation button */}

@@ -1,6 +1,7 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { DecorativeGlow } from "@/components/ui/decorative-glow"
 import { BarChart3 } from "lucide-react"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts"
 
@@ -24,14 +25,15 @@ export function CampaignRanking({ topCampaigns = [] }: CampaignRankingProps) {
 
   if (!hasData) {
     return (
-      <Card className="bg-card border-border">
-        <CardHeader className="pb-3">
+      <Card className="relative overflow-hidden bg-card border-border">
+        <DecorativeGlow variant="subtle" />
+        <CardHeader className="relative pb-3">
           <div className="flex items-center gap-2">
             <BarChart3 className="w-4 h-4 text-muted-foreground" />
             <CardTitle className="text-sm font-medium text-card-foreground">Campaign Performance</CardTitle>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="relative">
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <BarChart3 className="w-10 h-10 text-muted-foreground/40 mb-3" />
             <p className="text-sm text-muted-foreground">No campaign data</p>
@@ -44,18 +46,20 @@ export function CampaignRanking({ topCampaigns = [] }: CampaignRankingProps) {
 
   const topData = topCampaigns.map((c) => ({
     name: truncateName(c.name),
+    fullName: c.name,
     roas: c.roas,
   }))
 
   return (
-    <Card className="bg-card border-border">
-      <CardHeader className="pb-3">
+    <Card className="relative overflow-hidden bg-card border-border">
+      <DecorativeGlow variant="subtle" />
+      <CardHeader className="relative pb-3">
         <div className="flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-muted-foreground" />
           <CardTitle className="text-sm font-medium text-card-foreground">Campaign Performance</CardTitle>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="relative space-y-4">
         {topData.length > 0 && (
           <div>
             <p className="text-xs text-muted-foreground mb-2">Top 10 by ROAS</p>
@@ -64,8 +68,23 @@ export function CampaignRanking({ topCampaigns = [] }: CampaignRankingProps) {
                 <XAxis type="number" hide />
                 <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
-                  formatter={(value) => [`${Number(value).toFixed(2)}x`, "ROAS"]}
+                  content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null
+                    const data = payload[0].payload
+                    return (
+                      <div style={{
+                        backgroundColor: "hsl(var(--card))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: 8,
+                        padding: "8px 12px",
+                        fontSize: 12,
+                        maxWidth: 320,
+                      }}>
+                        <p style={{ fontWeight: 600, marginBottom: 4 }}>{data.fullName}</p>
+                        <p>ROAS: {Number(data.roas).toFixed(2)}x</p>
+                      </div>
+                    )
+                  }}
                 />
                 <Bar dataKey="roas" radius={[0, 4, 4, 0]} maxBarSize={20}>
                   {topData.map((_, i) => (

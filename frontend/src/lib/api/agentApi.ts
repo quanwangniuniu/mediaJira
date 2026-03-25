@@ -7,6 +7,9 @@ import {
   AgentChatRequest,
   AgentSpreadsheet,
   SSEEvent,
+  AgentWorkflowDefinition,
+  AgentWorkflowStep,
+  AgentWorkflowRun,
 } from '@/types/agent';
 
 /** Build auth headers for SSE fetch requests (mirrors Axios interceptor logic). */
@@ -296,6 +299,88 @@ export const AgentAPI = {
 
   fetchLatestAnomalies: async () => {
     const response = await api.get('/api/agent/anomalies/latest/');
+    return response.data;
+  },
+
+  // ==================== Workflows ====================
+
+  listWorkflows: async (): Promise<AgentWorkflowDefinition[]> => {
+    const response = await api.get('/api/agent/workflows/');
+    const data = response.data;
+    return Array.isArray(data) ? data : (data.results || []);
+  },
+
+  getWorkflow: async (workflowId: string): Promise<AgentWorkflowDefinition> => {
+    const response = await api.get<AgentWorkflowDefinition>(
+      `/api/agent/workflows/${workflowId}/`
+    );
+    return response.data;
+  },
+
+  createWorkflow: async (data: {
+    name: string;
+    description?: string;
+    status?: string;
+  }): Promise<AgentWorkflowDefinition> => {
+    const response = await api.post<AgentWorkflowDefinition>(
+      '/api/agent/workflows/',
+      data
+    );
+    return response.data;
+  },
+
+  updateWorkflow: async (
+    workflowId: string,
+    data: Partial<{ name: string; description: string; status: string; is_default: boolean }>
+  ): Promise<AgentWorkflowDefinition> => {
+    const response = await api.patch<AgentWorkflowDefinition>(
+      `/api/agent/workflows/${workflowId}/`,
+      data
+    );
+    return response.data;
+  },
+
+  deleteWorkflow: async (workflowId: string): Promise<void> => {
+    await api.delete(`/api/agent/workflows/${workflowId}/`);
+  },
+
+  listSteps: async (workflowId: string): Promise<AgentWorkflowStep[]> => {
+    const response = await api.get<AgentWorkflowStep[]>(
+      `/api/agent/workflows/${workflowId}/steps/`
+    );
+    return response.data;
+  },
+
+  createStep: async (
+    workflowId: string,
+    data: { name: string; step_type: string; order?: number; config?: Record<string, unknown>; description?: string }
+  ): Promise<AgentWorkflowStep> => {
+    const response = await api.post<AgentWorkflowStep>(
+      `/api/agent/workflows/${workflowId}/steps/`,
+      data
+    );
+    return response.data;
+  },
+
+  deleteStep: async (workflowId: string, stepId: string): Promise<void> => {
+    await api.delete(`/api/agent/workflows/${workflowId}/steps/?step_id=${stepId}`);
+  },
+
+  reorderSteps: async (
+    workflowId: string,
+    stepIds: string[]
+  ): Promise<AgentWorkflowStep[]> => {
+    const response = await api.post<AgentWorkflowStep[]>(
+      `/api/agent/workflows/${workflowId}/steps/reorder/`,
+      { step_ids: stepIds }
+    );
+    return response.data;
+  },
+
+  getWorkflowRun: async (runId: string): Promise<AgentWorkflowRun> => {
+    const response = await api.get<AgentWorkflowRun>(
+      `/api/agent/workflow-runs/${runId}/`
+    );
     return response.data;
   },
 };

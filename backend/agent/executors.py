@@ -1,0 +1,342 @@
+"""
+Step executors — strategy pattern for workflow step types.
+
+Each step_type maps to an Executor subclass that encapsulates
+the logic for that particular action.
+"""
+import logging
+import requests as http_requests
+
+logger = logging.getLogger(__name__)
+
+
+class StepResult:
+    """Unified return type for all executors."""
+
+    def __init__(self, success, output_data=None, error=None, sse_events=None):
+        self.success = success
+        self.output_data = output_data
+        self.error = error
+        self.sse_events = sse_events or []
+
+
+class BaseStepExecutor:
+    """Base class — subclasses implement execute()."""
+
+    def __init__(self, step, workflow_run, orchestrator):
+        self.step = step
+        self.workflow_run = workflow_run
+        self.orchestrator = orchestrator
+        self.config = step.config or {}
+
+    def execute(self, input_data: dict) -> StepResult:
+        raise NotImplementedError
+
+
+class AnalyzeDataExecutor(BaseStepExecutor):
+    """Runs the Dify->Claude analysis fallback chain via _run_analysis()."""
+
+    def execute(self, input_data):
+        from .services import _run_analysis
+
+        spreadsheet_data = input_data.get('spreadsheet_data')
+        if not spreadsheet_data:
+            return StepResult(success=False, error='No spreadsheet_data in input')
+
+        try:
+            user_id = str(self.orchestrator.user.id)
+            analysis = _run_analysis(spreadsheet_data, user_id=user_id)
+
+            self.workflow_run.analysis_result = analysis
+            self.workflow_run.save(update_fields=['analysis_result'])
+
+            anomalies = analysis.get('anomalies', [])
+            content = f"Found {len(anomalies)} anomalies in the data."
+
+            return StepResult(
+                success=True,
+                output_data={
+                    'analysis_result': analysis,
+                    'spreadsheet_data': spreadsheet_data,
+                },
+                sse_events=[{
+                    'type': 'analysis',
+                    'content': content,
+                    'data': analysis,
+                }],
+            )
+        except Exception as e:
+            logger.exception("AnalyzeDataExecutor failed")
+            return StepResult(success=False, error=str(e))
+
+
+class CallDifyExecutor(BaseStepExecutor):
+    """Calls Dify API, supports per-step config override."""
+
+    def execute(self, input_data):
+        from .services import _call_dify, _get_dify_config
+
+        spreadsheet_data = input_data.get('spreadsheet_data', input_data)
+        try:
+            user_id = str(self.orchestrator.user.id)
+
+            if not _get_dify_config():
+                return StepResult(success=False, error='No Dify API configured')
+
+            result = _call_dify(spreadsheet_data, user_id=user_id)
+
+            return StepResult(
+                success=True,
+                output_data={
+                    'analysis_result': result,
+                    'spreadsheet_data': spreadsheet_data,
+                },
+                sse_events=[{'type': 'text', 'content': 'Dify analysis completed.'}],
+            )
+        except Exception as e:
+            logger.exception("CallDifyExecutor failed")
+            return StepResult(success=False, error=str(e))
+
+
+class CallLLMExecutor(BaseStepExecutor):
+    """Calls Claude directly, supports per-step config override."""
+
+    def execute(self, input_data):
+        from .services import _call_llm, _get_llm_client
+
+        spreadsheet_data = input_data.get('spreadsheet_data', input_data)
+        try:
+            client = _get_llm_client()
+            if not client:
+                return StepResult(success=False, error='No LLM API key configured')
+
+            result = _call_llm(client, spreadsheet_data)
+
+            return StepResult(
+                success=True,
+                output_data={
+                    'analysis_result': result,
+                    'spreadsheet_data': spreadsheet_data,
+                },
+                sse_events=[{'type': 'text', 'content': 'LLM analysis completed.'}],
+            )
+        except Exception as e:
+            logger.exception("CallLLMExecutor failed")
+            return StepResult(success=False, error=str(e))
+
+
+class CreateDecisionExecutor(BaseStepExecutor):
+    """Creates Decision + Signals + Options from analysis_result.
+
+    Mirrors the logic in AgentOrchestrator.create_decision_draft().
+    """
+
+    def execute(self, input_data):
+        from django.db.models import Max
+        from decision.models import Decision, Signal, Option
+
+        analysis = input_data.get('analysis_result')
+        if not analysis:
+            return StepResult(success=False, error='No analysis_result in input')
+
+        try:
+            suggested = analysis.get('suggested_decision', {})
+            user = self.orchestrator.user
+            project = self.orchestrator.project
+
+            max_seq = Decision.objects.filter(
+                project=project
+            ).aggregate(max_seq=Max('project_seq'))['max_seq'] or 0
+
+            decision = Decision.objects.create(
+                title=suggested.get('title') or 'AI Agent Analysis',
+                context_summary=suggested.get('context_summary', ''),
+                reasoning=suggested.get('reasoning', ''),
+                risk_level=suggested.get('risk_level', 'MEDIUM'),
+                confidence=suggested.get('confidence', 3),
+                project=project,
+                project_seq=max_seq + 1,
+                author=user,
+                created_by_agent=True,
+                agent_session_id=self.orchestrator.session.id,
+            )
+
+            for anomaly in analysis.get('anomalies', []):
+                Signal.objects.create(
+                    decision=decision,
+                    author=user,
+                    metric=anomaly.get('metric', ''),
+                    movement=anomaly.get('movement', ''),
+                    period=anomaly.get('period', ''),
+                    scope_type=anomaly.get('scope_type', ''),
+                    scope_value=anomaly.get('scope_value', ''),
+                    delta_value=anomaly.get('delta_value'),
+                    delta_unit=anomaly.get('delta_unit', ''),
+                    display_text=anomaly.get('description', ''),
+                )
+
+            options = suggested.get('options', [])
+            for idx, opt in enumerate(options):
+                Option.objects.create(
+                    decision=decision,
+                    text=opt.get('text', ''),
+                    order=opt.get('order', idx),
+                    is_selected=(idx == 0),
+                )
+
+            self.workflow_run.decision = decision
+            self.workflow_run.save(update_fields=['decision'])
+
+            return StepResult(
+                success=True,
+                output_data={**input_data, 'decision_id': decision.id},
+                sse_events=[{
+                    'type': 'decision_draft',
+                    'content': f'Decision draft created: {decision.title}',
+                    'data': {'decision_id': decision.id},
+                }],
+            )
+        except Exception as e:
+            logger.exception("CreateDecisionExecutor failed")
+            return StepResult(success=False, error=str(e))
+
+
+class CreateTasksExecutor(BaseStepExecutor):
+    """Creates Tasks from analysis recommended_tasks.
+
+    Mirrors the logic in AgentOrchestrator.create_tasks_from_analysis().
+    """
+
+    def execute(self, input_data):
+        from django.contrib.contenttypes.models import ContentType
+        from decision.models import Decision
+        from task.models import Task
+
+        analysis = input_data.get('analysis_result')
+        if not analysis:
+            return StepResult(success=False, error='No analysis_result in input')
+
+        try:
+            tasks_data = analysis.get('recommended_tasks', [])
+            user = self.orchestrator.user
+            project = self.orchestrator.project
+            decision = self.workflow_run.decision
+
+            if decision:
+                decision_ct = ContentType.objects.get_for_model(Decision)
+                link_kwargs = {
+                    'content_type': decision_ct,
+                    'object_id': str(decision.id),
+                }
+                desc_suffix = f" (Decision: {decision.title})"
+            else:
+                link_kwargs = {}
+                desc_suffix = ""
+
+            created_ids = []
+            for task_data in tasks_data:
+                summary = task_data.get('summary', 'AI Agent Generated Task')[:255]
+                task = Task.objects.create(
+                    summary=summary,
+                    description=f"Auto-generated from AI analysis{desc_suffix}",
+                    type=task_data.get('type', 'optimization'),
+                    priority=task_data.get('priority', 'MEDIUM'),
+                    project=project,
+                    owner=user,
+                    **link_kwargs,
+                )
+                created_ids.append(task.id)
+
+            self.workflow_run.created_tasks = created_ids
+            self.workflow_run.status = 'completed'
+            self.workflow_run.save(update_fields=['created_tasks', 'status'])
+
+            return StepResult(
+                success=True,
+                output_data={**input_data, 'created_task_ids': created_ids},
+                sse_events=[{
+                    'type': 'task_created',
+                    'content': f'Created {len(created_ids)} tasks.',
+                    'data': {
+                        'task_ids': created_ids,
+                        'decision_id': decision.id if decision else None,
+                    },
+                }],
+            )
+        except Exception as e:
+            logger.exception("CreateTasksExecutor failed")
+            return StepResult(success=False, error=str(e))
+
+
+class AwaitConfirmationExecutor(BaseStepExecutor):
+    """Pauses workflow and sends a confirmation_request SSE event."""
+
+    def execute(self, input_data):
+        message = self.config.get('message', 'Please confirm to continue.')
+        return StepResult(
+            success=True,
+            output_data=input_data,
+            sse_events=[{
+                'type': 'confirmation_request',
+                'content': message,
+                'data': {'workflow_run_id': str(self.workflow_run.id)},
+            }],
+        )
+
+
+class CustomAPIExecutor(BaseStepExecutor):
+    """Configurable HTTP request to an external endpoint."""
+
+    def execute(self, input_data):
+        import json
+
+        method = self.config.get('method', 'POST').upper()
+        url = self.config.get('url')
+        headers = self.config.get('headers', {})
+        body_template = self.config.get('body_template')
+        timeout = self.config.get('timeout', 30)
+
+        if not url:
+            return StepResult(success=False, error='No URL configured for custom API step')
+
+        try:
+            body = None
+            if body_template:
+                body = json.dumps(input_data) if body_template == '__input__' else body_template
+
+            resp = http_requests.request(
+                method, url, headers=headers, data=body, timeout=timeout,
+            )
+            resp.raise_for_status()
+
+            return StepResult(
+                success=True,
+                output_data={**input_data, 'api_response': resp.json()},
+                sse_events=[{
+                    'type': 'text',
+                    'content': f'Custom API call completed ({resp.status_code}).',
+                }],
+            )
+        except Exception as e:
+            logger.exception("CustomAPIExecutor failed")
+            return StepResult(success=False, error=str(e))
+
+
+# Executor registry — maps step_type to executor class
+EXECUTOR_REGISTRY = {
+    'analyze_data': AnalyzeDataExecutor,
+    'call_dify': CallDifyExecutor,
+    'call_llm': CallLLMExecutor,
+    'create_decision': CreateDecisionExecutor,
+    'create_tasks': CreateTasksExecutor,
+    'await_confirmation': AwaitConfirmationExecutor,
+    'custom_api': CustomAPIExecutor,
+}
+
+
+def get_executor(step, workflow_run, orchestrator):
+    """Look up and instantiate the executor for a given step."""
+    executor_cls = EXECUTOR_REGISTRY.get(step.step_type)
+    if not executor_cls:
+        raise ValueError(f"Unknown step type: {step.step_type}")
+    return executor_cls(step, workflow_run, orchestrator)

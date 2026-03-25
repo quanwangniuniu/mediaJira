@@ -18,6 +18,7 @@ import {
   CartesianGrid,
 } from "recharts"
 import { AGENT_MESSAGES } from "@/lib/agentMessages"
+import { DecorativeGlow } from "@/components/ui/decorative-glow"
 
 interface TrendPoint {
   date: string
@@ -51,11 +52,12 @@ export function PerformanceChart() {
   }, [])
 
   return (
-    <Card className="bg-card border-border">
-      <CardHeader className="pb-2">
+    <Card className="relative overflow-hidden bg-card border-border">
+      <DecorativeGlow variant="subtle" />
+      <CardHeader className="relative pb-2">
         <CardTitle className="text-sm font-medium text-card-foreground">Performance Trend</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="relative">
         <div className="h-[280px]">
           {loading ? (
             <div className="h-full flex items-center justify-center text-muted-foreground text-sm">

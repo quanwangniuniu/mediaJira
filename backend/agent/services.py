@@ -2,8 +2,6 @@ import json
 import logging
 import os
 import requests
-from decimal import Decimal
-
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import Max
@@ -13,7 +11,10 @@ from django.utils import timezone as django_timezone
 from spreadsheet.models import Spreadsheet, Sheet, Cell
 from decision.models import Decision, Signal, Option
 from task.models import Task
-from .models import AgentSession, AgentMessage, AgentWorkflowRun, ImportedCSVFile
+from .models import (
+    AgentSession, AgentMessage, AgentWorkflowRun, ImportedCSVFile,
+    AgentWorkflowDefinition, AgentStepExecution,
+)
 from . import data_service
 from . import file_parser
 
@@ -526,111 +527,50 @@ class AgentOrchestrator:
         self.project = project
         self.session = session
 
-    def handle_message(self, message, spreadsheet_id=None, csv_filename=None, action=None, file_id=None, calendar_context=None):
-        """Main entry point. Yields SSE chunks as dicts."""
-        # file_id takes priority over csv_filename
-        if file_id:
-            yield from self.analyze_file(file_id)
-            yield {"type": "done"}
-            return
+    def handle_message(self, message, spreadsheet_id=None, csv_filename=None,
+                       action=None, file_id=None, calendar_context=None, workflow_id=None):
+        """Main entry point. Routes calendar context first, then workflow engine or legacy logic.
+
+        Yields SSE chunks as dicts.
+        """
+        # --- Calendar context takes priority over all other routing ---
         if calendar_context:
             yield from self.answer_calendar_question(message, calendar_context)
-        elif action == 'analyze' and csv_filename:
-            yield from self.analyze_csv(csv_filename)
-        elif action == 'analyze' and spreadsheet_id:
-            yield from self.analyze_spreadsheet(spreadsheet_id)
-        elif action == 'confirm_decision':
-            workflow_run = self.session.workflow_runs.filter(
-                status='awaiting_confirmation'
-            ).order_by('-created_at').first()
-            if workflow_run and workflow_run.analysis_result:
-                yield from self.create_decision_draft(
-                    workflow_run.analysis_result, workflow_run
-                )
-            else:
-                yield {"type": "error", "content": "No pending analysis to confirm."}
-        elif action == 'create_tasks':
-            workflow_run = self.session.workflow_runs.filter(
-                analysis_result__isnull=False
-            ).order_by('-created_at').first()
-            if workflow_run and workflow_run.analysis_result:
-                yield from self.create_tasks_from_analysis(workflow_run)
-            else:
-                yield {"type": "error", "content": "No analysis found to create tasks from."}
-        else:
-            # Check if there's a completed analysis awaiting follow-up
+            yield {"type": "done"}
+            return
+
+        # --- Resume a paused workflow ---
+        if action in ('confirm_decision', 'create_tasks'):
             latest_run = self.session.workflow_runs.filter(
-                status='awaiting_confirmation',
-                chat_followed_up=False,
+                is_deleted=False
             ).order_by('-created_at').first()
 
-            if latest_run:
-                yield {"type": "text", "content": "Thinking..."}
-                history = AgentMessage.objects.filter(
-                    session=self.session
-                ).order_by('created_at')
-                chat_context = "\n".join(
-                    f"[{m.role}]: {m.content}" for m in history
-                )
-                full_input = f"{chat_context}\n\n[user]: {message}"
-                try:
-                    from core.utils.bot_user import get_agent_bot_user
-
-                    bot = get_agent_bot_user()
-                    project_members = _serialize_project_members(
-                        self.project,
-                        excluded_users=[bot],
-                    )
-                    logger.info(
-                        "Running agent follow-up chat for project=%s session=%s workflow_run=%s user=%s project_members=%s",
-                        self.project.id,
-                        self.session.id,
-                        latest_run.id,
-                        self.user.id,
-                        len(project_members),
-                    )
-                    result = _call_dify_chat(
-                        full_input,
-                        user_id=self.user.id,
-                        analysis_result=latest_run.analysis_result,
-                        project_members=project_members,
-                    )
-                    follow_up_status = result.get("status", "completed")
-                    reply = result.get("text") or result.get("reply", "")
-                    forwards = result.get("forwards", [])
-                    logger.info(
-                        "Agent follow-up chat completed for workflow_run=%s status=%s forwards=%s close_follow_up=%s",
-                        latest_run.id,
-                        follow_up_status,
-                        len(forwards),
-                        follow_up_status == 'completed',
-                    )
-
-                    if follow_up_status == 'completed':
-                        latest_run.chat_followed_up = True
-                        latest_run.save(update_fields=['chat_followed_up'])
-                    yield {"type": "text", "content": reply}
-
-                    if forwards:
-                        fwd_results = _forward_to_users(forwards, self.user, self.project)
-                        sent = [r["username"] for r in fwd_results if r["status"] == "sent"]
-                        failed = [r["username"] for r in fwd_results if r["status"] != "sent"]
-                        if sent:
-                            yield {"type": "text", "content": f"Message forwarded to: {', '.join(sent)}"}
-                        if failed:
-                            yield {"type": "text", "content": f"Could not forward to: {', '.join(failed)}"}
-                except Exception as e:
-                    logger.error(f"Dify chat call failed: {e}")
-                    yield {"type": "error", "content": str(e)}
+            if latest_run and latest_run.workflow_definition:
+                yield from self._resume_workflow(latest_run)
+                yield {"type": "done"}
+                return
             else:
-                yield {
-                    "type": "text",
-                    "content": (
-                        "I can help you analyze spreadsheet data and create decisions. "
-                        "To get started, select a spreadsheet and use the 'analyze' action."
-                    ),
-                }
-        yield {"type": "done"}
+                yield from self._legacy_confirm(action, latest_run)
+                yield {"type": "done"}
+                return
+
+        # --- Start a new workflow ---
+        if file_id or spreadsheet_id or csv_filename or (action == 'analyze'):
+            workflow_def = self._resolve_workflow(workflow_id)
+            if workflow_def:
+                yield from self._start_workflow(
+                    workflow_def,
+                    file_id=file_id,
+                    spreadsheet_id=spreadsheet_id,
+                    csv_filename=csv_filename,
+                )
+                yield {"type": "done"}
+                return
+
+        # --- No workflow match → full legacy logic (includes follow-up chat) ---
+        yield from self._legacy_handle(
+            message, spreadsheet_id, csv_filename, action, file_id
+        )
 
     def _fetch_events_for_context(self, calendar_context):
         """Fetch calendar events for the given context.
@@ -1200,3 +1140,290 @@ class AgentOrchestrator:
             "content": f"Created {len(task_ids)} tasks.",
             "data": {"task_ids": task_ids, "decision_id": decision.id if decision else None},
         }
+
+    # ------------------------------------------------------------------
+    # Workflow engine methods (AGENT-9)
+    # ------------------------------------------------------------------
+
+    def _resolve_workflow(self, workflow_id=None):
+        """Find workflow definition: explicit ID > project default > system default."""
+        if workflow_id:
+            try:
+                return AgentWorkflowDefinition.objects.get(
+                    id=workflow_id, status='active', is_deleted=False,
+                )
+            except AgentWorkflowDefinition.DoesNotExist:
+                return None
+
+        # Project-level default
+        project_default = AgentWorkflowDefinition.objects.filter(
+            project=self.project, is_default=True,
+            status='active', is_deleted=False,
+        ).first()
+        if project_default:
+            return project_default
+
+        # System-level default
+        return AgentWorkflowDefinition.objects.filter(
+            project__isnull=True, is_system=True, is_default=True,
+            status='active', is_deleted=False,
+        ).first()
+
+    def _prepare_input_data(self, file_id=None, spreadsheet_id=None, csv_filename=None):
+        """Build spreadsheet_data dict by reusing existing file/csv/spreadsheet parsing."""
+        import os as _os
+
+        if file_id:
+            record = ImportedCSVFile.objects.get(
+                id=file_id, project=self.project, is_deleted=False,
+            )
+            csv_dir = data_service._get_csv_dir()
+            filepath = _os.path.join(csv_dir, _os.path.basename(record.filename))
+            return {
+                'spreadsheet_data': file_parser.parse_file_to_json(filepath, record.filename),
+            }
+
+        if spreadsheet_id:
+            spreadsheet = Spreadsheet.objects.get(
+                id=spreadsheet_id, project=self.project, is_deleted=False,
+            )
+            return {
+                'spreadsheet_data': _extract_spreadsheet_data(spreadsheet),
+                'spreadsheet': spreadsheet,
+            }
+
+        if csv_filename:
+            record = ImportedCSVFile.objects.get(
+                filename=csv_filename, project=self.project, is_deleted=False,
+            )
+            csv_dir = data_service._get_csv_dir()
+            filepath = _os.path.join(csv_dir, _os.path.basename(record.filename))
+            columns, rows = data_service._read_csv_file(filepath)
+            return {
+                'spreadsheet_data': {
+                    'name': record.original_filename,
+                    'sheets': [{'name': 'Sheet1', 'columns': columns, 'rows': rows}],
+                },
+            }
+
+        return {}
+
+    def _start_workflow(self, workflow_def, file_id=None, spreadsheet_id=None,
+                        csv_filename=None):
+        """Create a new WorkflowRun and execute steps."""
+        input_data = self._prepare_input_data(
+            file_id=file_id,
+            spreadsheet_id=spreadsheet_id,
+            csv_filename=csv_filename,
+        )
+
+        workflow_run = AgentWorkflowRun.objects.create(
+            session=self.session,
+            workflow_definition=workflow_def,
+            status='analyzing',
+            current_step_order=1,
+            spreadsheet=input_data.get('spreadsheet'),
+        )
+
+        yield from self._execute_steps(workflow_run, input_data)
+
+    def _execute_steps(self, workflow_run, input_data):
+        """Run steps in order. Pause on await_confirmation. Record AgentStepExecution."""
+        from .executors import get_executor
+        from django.utils import timezone as tz
+
+        steps = workflow_run.workflow_definition.steps.filter(
+            order__gte=workflow_run.current_step_order, is_deleted=False,
+        ).order_by('order')
+
+        total_steps = workflow_run.workflow_definition.steps.filter(
+            is_deleted=False
+        ).count()
+        current_data = input_data
+
+        for step in steps:
+            execution = AgentStepExecution.objects.create(
+                workflow_run=workflow_run,
+                step=step,
+                step_order=step.order,
+                step_name=step.name,
+                status='running',
+                input_data=current_data,
+                started_at=tz.now(),
+            )
+
+            yield {
+                'type': 'step_progress',
+                'data': {
+                    'step_order': step.order,
+                    'step_name': step.name,
+                    'step_type': step.step_type,
+                    'status': 'running',
+                    'total_steps': total_steps,
+                },
+            }
+
+            executor = get_executor(step, workflow_run, self)
+            result = executor.execute(current_data)
+
+            if result.success:
+                execution.status = 'completed'
+                execution.output_data = result.output_data
+                execution.completed_at = tz.now()
+                execution.save()
+
+                for event in result.sse_events:
+                    yield event
+
+                # Pause on await_confirmation
+                if step.step_type == 'await_confirmation':
+                    workflow_run.status = 'awaiting_confirmation'
+                    workflow_run.current_step_order = step.order + 1
+                    workflow_run.save()
+                    return
+
+                current_data = result.output_data or current_data
+            else:
+                execution.status = 'failed'
+                execution.error_message = result.error
+                execution.completed_at = tz.now()
+                execution.save()
+
+                workflow_run.status = 'failed'
+                workflow_run.error_message = result.error
+                workflow_run.save()
+
+                yield {'type': 'error', 'content': result.error}
+                return
+
+        workflow_run.status = 'completed'
+        workflow_run.save()
+
+    def _resume_workflow(self, workflow_run):
+        """Resume a paused workflow from the last completed step's output."""
+        last_execution = workflow_run.step_executions.filter(
+            status='completed'
+        ).order_by('-step_order').first()
+
+        input_data = last_execution.output_data if last_execution else {}
+        yield from self._execute_steps(workflow_run, input_data)
+
+    def _legacy_confirm(self, action, workflow_run):
+        """Backward compat: confirm_decision / create_tasks for legacy runs."""
+        if action == 'confirm_decision':
+            if workflow_run and workflow_run.analysis_result:
+                yield from self.create_decision_draft(
+                    workflow_run.analysis_result, workflow_run
+                )
+            else:
+                yield {"type": "error", "content": "No pending analysis to confirm."}
+        elif action == 'create_tasks':
+            if workflow_run and workflow_run.analysis_result:
+                yield from self.create_tasks_from_analysis(workflow_run)
+            else:
+                yield {"type": "error", "content": "No analysis found to create tasks from."}
+
+    def _legacy_handle(self, message, spreadsheet_id=None, csv_filename=None,
+                       action=None, file_id=None):
+        """Full legacy logic — preserves original handle_message behavior
+        including the follow-up chat path."""
+        if file_id:
+            yield from self.analyze_file(file_id)
+            yield {"type": "done"}
+            return
+        if action == 'analyze' and csv_filename:
+            yield from self.analyze_csv(csv_filename)
+        elif action == 'analyze' and spreadsheet_id:
+            yield from self.analyze_spreadsheet(spreadsheet_id)
+        elif action == 'confirm_decision':
+            workflow_run = self.session.workflow_runs.filter(
+                status='awaiting_confirmation'
+            ).order_by('-created_at').first()
+            if workflow_run and workflow_run.analysis_result:
+                yield from self.create_decision_draft(
+                    workflow_run.analysis_result, workflow_run
+                )
+            else:
+                yield {"type": "error", "content": "No pending analysis to confirm."}
+        elif action == 'create_tasks':
+            workflow_run = self.session.workflow_runs.filter(
+                analysis_result__isnull=False
+            ).order_by('-created_at').first()
+            if workflow_run and workflow_run.analysis_result:
+                yield from self.create_tasks_from_analysis(workflow_run)
+            else:
+                yield {"type": "error", "content": "No analysis found to create tasks from."}
+        else:
+            # Follow-up chat path
+            latest_run = self.session.workflow_runs.filter(
+                status='awaiting_confirmation',
+                chat_followed_up=False,
+            ).order_by('-created_at').first()
+
+            if latest_run:
+                yield {"type": "text", "content": "Thinking..."}
+                history = AgentMessage.objects.filter(
+                    session=self.session
+                ).order_by('created_at')
+                chat_context = "\n".join(
+                    f"[{m.role}]: {m.content}" for m in history
+                )
+                full_input = f"{chat_context}\n\n[user]: {message}"
+                try:
+                    from core.utils.bot_user import get_agent_bot_user
+
+                    bot = get_agent_bot_user()
+                    project_members = _serialize_project_members(
+                        self.project,
+                        excluded_users=[bot],
+                    )
+                    logger.info(
+                        "Running agent follow-up chat for project=%s session=%s workflow_run=%s user=%s project_members=%s",
+                        self.project.id,
+                        self.session.id,
+                        latest_run.id,
+                        self.user.id,
+                        len(project_members),
+                    )
+                    result = _call_dify_chat(
+                        full_input,
+                        user_id=self.user.id,
+                        analysis_result=latest_run.analysis_result,
+                        project_members=project_members,
+                    )
+                    follow_up_status = result.get("status", "completed")
+                    reply = result.get("text") or result.get("reply", "")
+                    forwards = result.get("forwards", [])
+                    logger.info(
+                        "Agent follow-up chat completed for workflow_run=%s status=%s forwards=%s close_follow_up=%s",
+                        latest_run.id,
+                        follow_up_status,
+                        len(forwards),
+                        follow_up_status == 'completed',
+                    )
+
+                    if follow_up_status == 'completed':
+                        latest_run.chat_followed_up = True
+                        latest_run.save(update_fields=['chat_followed_up'])
+                    yield {"type": "text", "content": reply}
+
+                    if forwards:
+                        fwd_results = _forward_to_users(forwards, self.user, self.project)
+                        sent = [r["username"] for r in fwd_results if r["status"] == "sent"]
+                        failed = [r["username"] for r in fwd_results if r["status"] != "sent"]
+                        if sent:
+                            yield {"type": "text", "content": f"Message forwarded to: {', '.join(sent)}"}
+                        if failed:
+                            yield {"type": "text", "content": f"Could not forward to: {', '.join(failed)}"}
+                except Exception as e:
+                    logger.error(f"Dify chat call failed: {e}")
+                    yield {"type": "error", "content": str(e)}
+            else:
+                yield {
+                    "type": "text",
+                    "content": (
+                        "I can help you analyze spreadsheet data and create decisions. "
+                        "To get started, select a spreadsheet and use the 'analyze' action."
+                    ),
+                }
+        yield {"type": "done"}
