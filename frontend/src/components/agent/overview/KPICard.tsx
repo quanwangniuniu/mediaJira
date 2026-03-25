@@ -2,6 +2,7 @@
 
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { DecorativeGlow } from "@/components/ui/decorative-glow"
 import { cn } from "@/lib/utils"
 
 interface KPICardProps {
@@ -38,8 +39,9 @@ const changeArrows = {
 
 export function KPICard({ title, value, change, changeType, icon: Icon }: KPICardProps) {
   return (
-    <Card className="bg-card border-border">
-      <CardContent className="p-4">
+    <Card className="relative overflow-hidden bg-card border-border">
+      <DecorativeGlow variant="subtle" />
+      <CardContent className="relative p-4">
         <div className="flex items-start gap-3">
           <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center shrink-0", iconBgStyles[changeType])}>
             <Icon className={cn("w-5 h-5", iconColorStyles[changeType])} />

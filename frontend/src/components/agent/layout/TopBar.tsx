@@ -11,6 +11,7 @@ const viewLabels: Record<AgentView, string> = {
   spreadsheets: "Spreadsheet Analysis",
   decisions: "Decision Editor",
   tasks: "Task Board",
+  workflows: "Workflow Manager",
 }
 
 export function TopBar() {

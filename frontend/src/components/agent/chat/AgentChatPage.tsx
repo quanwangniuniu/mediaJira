@@ -8,6 +8,8 @@ import { ChatInput } from "./ChatInput"
 import { AgentAPI } from "@/lib/api/agentApi"
 import type { SSEEvent, AgentAction, AgentMessage, AnalysisResult } from "@/types/agent"
 import { AGENT_MESSAGES } from "@/lib/agentMessages"
+import { WorkflowSelector } from "./WorkflowSelector"
+import type { StepProgressItem } from "./StepProgress"
 
 /** Broadcast anomalies from restored messages to RightPanel Alerts. */
 function broadcastRestoredAnomalies(messages: AgentMessage[]) {
@@ -62,6 +64,8 @@ export function AgentChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [hasStarted, setHasStarted] = useState(false)
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null)
+  const [stepProgress, setStepProgress] = useState<StepProgressItem[]>([])
   const abortRef = useRef<AbortController | null>(null)
   const latestMessage = messages[messages.length - 1]
   const isAwaitingFollowUp = Boolean(
@@ -268,13 +272,51 @@ export function AgentChatPage() {
     addMessage({ id: aiMsgId, role: "assistant", content: AGENT_MESSAGES.CHAT_THINKING, type: "text" })
 
     setIsStreaming(true)
+    setStepProgress([])
     let contentParts: string[] = []
 
     abortRef.current = AgentAPI.sendMessage(
       sid!,
-      { message: text },
+      { message: text, workflow_id: selectedWorkflowId || undefined },
       (event: SSEEvent) => {
         if (event.type === "done") return
+
+        if (event.type === "step_progress" && event.data) {
+          const { step_order, step_name, total_steps } = event.data
+          if (step_order != null && step_name && total_steps) {
+            setStepProgress((prev) => {
+              const updated = [...prev]
+              // Mark previous steps as completed
+              for (const s of updated) {
+                if (s.order < step_order && s.status === "running") {
+                  s.status = "completed"
+                }
+              }
+              // Add or update current step
+              const existing = updated.find((s) => s.order === step_order)
+              if (existing) {
+                existing.status = "running"
+                existing.name = step_name
+              } else {
+                // Fill pending steps up to total_steps
+                while (updated.length < total_steps) {
+                  const order = updated.length + 1
+                  updated.push({
+                    order,
+                    name: order === step_order ? step_name : `Step ${order}`,
+                    status: order < step_order ? "completed" : order === step_order ? "running" : "pending",
+                  })
+                }
+              }
+              return updated
+            })
+            updateMessage(aiMsgId, {
+              content: event.content || contentParts.join("\n") || `Running: ${step_name}...`,
+              stepProgress: undefined, // will be set on done
+            })
+          }
+          return
+        }
 
         if (event.content) {
           contentParts.push(event.content)
@@ -320,10 +362,22 @@ export function AgentChatPage() {
         setIsStreaming(false)
       },
       () => {
+        // Attach final step progress to the message
+        setStepProgress((prev) => {
+          if (prev.length > 0) {
+            const final = prev.map((s) => ({
+              ...s,
+              status: s.status === "running" ? "completed" as const : s.status,
+            }))
+            updateMessage(aiMsgId, { stepProgress: final })
+            return final
+          }
+          return prev
+        })
         setIsStreaming(false)
       }
     )
-  }, [sessionId, addMessage, updateMessage])
+  }, [sessionId, selectedWorkflowId, addMessage, updateMessage])
 
   /** Handle action buttons (Create Decision, Create Tasks) */
   const handleAction = useCallback(async (action: string) => {
@@ -401,6 +455,13 @@ export function AgentChatPage() {
           setPendingDecisionId(msg.decisionId)
         }
       }} />
+      <div className="flex items-center gap-2 px-4 pb-1">
+        <WorkflowSelector
+          selectedId={selectedWorkflowId}
+          onSelect={setSelectedWorkflowId}
+          disabled={isStreaming}
+        />
+      </div>
       <ChatInput
         onSend={handleSendMessage}
         onFileUpload={handleFileUpload}

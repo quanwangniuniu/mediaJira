@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react"
 
-export type AgentView = "overview" | "spreadsheets" | "decisions" | "tasks"
+export type AgentView = "overview" | "spreadsheets" | "decisions" | "tasks" | "workflows"
 export type AgentTheme = "light" | "dark" | "system"
 export type FloatingChatMode = "closed" | "floating" | "maximized"
 
@@ -66,7 +66,7 @@ export function AgentLayoutProvider({ children }: { children: ReactNode }) {
       // Migration: "agent" view no longer exists
       sessionStorage.setItem("agent-active-view", "overview")
       setActiveViewState("overview")
-    } else if (storedView && ["overview", "spreadsheets", "decisions", "tasks"].includes(storedView)) {
+    } else if (storedView && ["overview", "spreadsheets", "decisions", "tasks", "workflows"].includes(storedView)) {
       setActiveViewState(storedView as AgentView)
     }
     // Theme forced to light — MediaJira does not support dark mode yet

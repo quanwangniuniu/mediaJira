@@ -1,7 +1,7 @@
 import json
 import logging
 
-from django.db.models import Count
+from django.db.models import Count, Max, Q
 from django.http import StreamingHttpResponse
 from django.utils.translation import activate as activate_language
 from rest_framework import viewsets, status
@@ -27,11 +27,20 @@ class EventStreamRenderer(BaseRenderer):
 from core.models import Project, ProjectMember
 from decision.models import Decision
 from spreadsheet.models import Spreadsheet
-from .models import AgentSession, AgentMessage
+from .models import (
+    AgentSession, AgentMessage, AgentWorkflowDefinition,
+    AgentWorkflowStep, AgentWorkflowRun, AgentStepExecution,
+)
 from .serializers import (
     AgentSessionListSerializer,
     AgentSessionDetailSerializer,
     ChatInputSerializer,
+    AgentWorkflowDefinitionListSerializer,
+    AgentWorkflowDefinitionDetailSerializer,
+    AgentWorkflowStepSerializer,
+    AgentStepExecutionSerializer,
+    AgentWorkflowRunSerializer,
+    StepReorderSerializer,
 )
 from .services import AgentOrchestrator
 from . import data_service
@@ -121,6 +130,7 @@ class ChatView(EnglishResponseMixin, APIView):
         csv_filename = serializer.validated_data.get('csv_filename')
         file_id = serializer.validated_data.get('file_id')
         action = serializer.validated_data.get('action')
+        workflow_id = serializer.validated_data.get('workflow_id')
 
         # Auto-generate title from first message
         if not session.title and message_text:
@@ -156,6 +166,7 @@ class ChatView(EnglishResponseMixin, APIView):
                 csv_filename=csv_filename,
                 action=action,
                 file_id=file_id,
+                workflow_id=workflow_id,
             ):
                 chunk_type = chunk.get('type', 'text')
                 content = chunk.get('content', '')
@@ -518,3 +529,195 @@ class AnomalyLatestView(EnglishResponseMixin, APIView):
         if not msg or not msg.metadata.get('anomalies'):
             return Response([])
         return Response(msg.metadata['anomalies'])
+
+
+class AgentWorkflowDefinitionViewSet(EnglishResponseMixin, viewsets.ModelViewSet):
+    """CRUD for workflow definitions. Shows project-level + system-level workflows."""
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+    http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return AgentWorkflowDefinitionListSerializer
+        return AgentWorkflowDefinitionDetailSerializer
+
+    def get_queryset(self):
+        project = _get_user_project(self.request)
+        qs = AgentWorkflowDefinition.objects.filter(is_deleted=False)
+        if project:
+            qs = qs.filter(Q(project=project) | Q(is_system=True))
+        else:
+            qs = qs.filter(is_system=True)
+        return qs.order_by('-is_system', '-is_default', '-created_at')
+
+    def perform_create(self, serializer):
+        project = _get_user_project(self.request)
+        serializer.save(
+            project=project,
+            created_by=self.request.user,
+            is_system=False,
+        )
+
+    def perform_update(self, serializer):
+        if serializer.instance.is_system:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("System workflows cannot be modified.")
+        serializer.save()
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.is_system:
+            return Response(
+                {"detail": "System workflows cannot be deleted."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        instance.is_deleted = True
+        instance.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _get_workflow_or_404(request, workflow_id):
+    """Fetch workflow with project-level access check. Returns (workflow, error_response)."""
+    try:
+        workflow = AgentWorkflowDefinition.objects.get(
+            id=workflow_id, is_deleted=False,
+        )
+    except AgentWorkflowDefinition.DoesNotExist:
+        return None, Response(
+            {"detail": "Workflow not found."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    # System workflows are visible to all authenticated users
+    if not workflow.is_system:
+        project = _get_user_project(request)
+        if workflow.project != project:
+            return None, Response(
+                {"detail": "Workflow not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+    return workflow, None
+
+
+class WorkflowStepView(EnglishResponseMixin, APIView):
+    """GET list / POST add step for a workflow definition."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, workflow_id):
+        workflow, err = _get_workflow_or_404(request, workflow_id)
+        if err:
+            return err
+        steps = workflow.steps.filter(is_deleted=False).order_by('order')
+        serializer = AgentWorkflowStepSerializer(steps, many=True)
+        return Response(serializer.data)
+
+    def post(self, request, workflow_id):
+        workflow, err = _get_workflow_or_404(request, workflow_id)
+        if err:
+            return err
+        if workflow.is_system:
+            return Response(
+                {"detail": "Cannot modify system workflow steps."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        serializer = AgentWorkflowStepSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        # Auto-assign order if not provided
+        max_order = workflow.steps.filter(is_deleted=False).aggregate(
+            max_order=Max('order')
+        )['max_order'] or 0
+        serializer.save(
+            workflow=workflow,
+            order=serializer.validated_data.get('order', max_order + 1),
+        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def delete(self, request, workflow_id):
+        """Delete a step by step_id query param."""
+        workflow, err = _get_workflow_or_404(request, workflow_id)
+        if err:
+            return err
+        if workflow.is_system:
+            return Response(
+                {"detail": "Cannot modify system workflow steps."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        step_id = request.query_params.get('step_id')
+        if not step_id:
+            return Response(
+                {"detail": "step_id query parameter is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            step = workflow.steps.get(id=step_id, is_deleted=False)
+        except AgentWorkflowStep.DoesNotExist:
+            return Response(
+                {"detail": "Step not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        step.is_deleted = True
+        step.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class StepReorderView(EnglishResponseMixin, APIView):
+    """POST reorder steps within a workflow."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, workflow_id):
+        workflow, err = _get_workflow_or_404(request, workflow_id)
+        if err:
+            return err
+        if workflow.is_system:
+            return Response(
+                {"detail": "Cannot modify system workflow steps."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        serializer = StepReorderSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        step_ids = serializer.validated_data['step_ids']
+        steps = workflow.steps.filter(
+            id__in=step_ids, is_deleted=False,
+        )
+        if steps.count() != len(step_ids):
+            return Response(
+                {"detail": "Some step IDs are invalid."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from django.db import transaction
+        with transaction.atomic():
+            # Use negative values to avoid unique_together conflict
+            for idx, step_id in enumerate(step_ids):
+                AgentWorkflowStep.objects.filter(id=step_id).update(order=-(idx + 1))
+            for idx, step_id in enumerate(step_ids, start=1):
+                AgentWorkflowStep.objects.filter(id=step_id).update(order=idx)
+
+        updated_steps = workflow.steps.filter(is_deleted=False).order_by('order')
+        return Response(
+            AgentWorkflowStepSerializer(updated_steps, many=True).data,
+        )
+
+
+class WorkflowRunDetailView(EnglishResponseMixin, APIView):
+    """GET execution detail for a workflow run, including step executions."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, run_id):
+        try:
+            run = AgentWorkflowRun.objects.get(
+                id=run_id,
+                session__user=request.user,
+                is_deleted=False,
+            )
+        except AgentWorkflowRun.DoesNotExist:
+            return Response(
+                {"detail": "Workflow run not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        run_data = AgentWorkflowRunSerializer(run).data
+        executions = run.step_executions.order_by('step_order')
+        run_data['step_executions'] = AgentStepExecutionSerializer(
+            executions, many=True,
+        ).data
+        return Response(run_data)
