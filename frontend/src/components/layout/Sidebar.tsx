@@ -33,6 +33,7 @@ import {
   LayoutDashboard,
   Square,
   Bot,
+  Presentation,
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { usePathname } from "next/navigation";
@@ -83,6 +84,14 @@ const getNavigationItems = (
       href: "/campaigns",
       icon: BarChart3,
       description: t ? t("sidebar.campaign_management") : "Campaign management",
+    },
+    {
+      name: t ? t("sidebar.meetings") : "Meetings",
+      href: "/meetings",
+      icon: Presentation,
+      description: t
+        ? t("sidebar.meetings_description")
+        : "Meeting preparation and project meetings",
     },
     {
       name: "Ad Variations",
@@ -235,7 +244,16 @@ const Sidebar: FC<SidebarProps> = ({
 
   // Get current pathname using Next.js 13+ App Router hook
   const pathname = usePathname();
-  
+
+  /** Hub /meetings, or any /projects/:id/meetings/... — only Meetings nav should be active */
+  const pathnameIsMeetingsWorkspace = useMemo(
+    () =>
+      pathname === "/meetings" ||
+      pathname.startsWith("/meetings/") ||
+      /^\/projects\/[^/]+\/meetings(\/.*)?$/.test(pathname),
+    [pathname]
+  );
+
   // Get global unread count from chat store for Messages badge (across ALL projects)
   const globalUnreadCount = useChatStore(state => state.globalUnreadCount);
 
@@ -286,11 +304,18 @@ const Sidebar: FC<SidebarProps> = ({
 
   // Check if path matches
   const isActive = (href: string, exactMatch?: boolean) => {
+    if (href === "#") {
+      return false;
+    }
     if (href === "/") {
       return pathname === "/";
     }
     if (exactMatch) {
       return pathname === href;
+    }
+    // On any Meetings URL, highlight only Meetings (not Projects, etc.)
+    if (pathnameIsMeetingsWorkspace) {
+      return href === "/meetings";
     }
     // For exact match or sub-path match, but avoid partial matches
     // e.g., '/admin' should match '/admin' and '/admin/xxx', but not '/administrator'

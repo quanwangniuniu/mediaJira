@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Layout from "@/components/layout/Layout";
 import { miroApi, MiroBoard, BoardItem } from "@/lib/api/miroApi";
 import { useBoardViewport, Viewport } from "@/components/miro/hooks/useBoardViewport";
 import { useBoardItems } from "@/components/miro/hooks/useBoardItems";
-import { ToolType } from "@/components/miro/hooks/useToolDnD";
+import { LineVariant, ToolOptions, ToolType } from "@/components/miro/hooks/useToolDnD";
 import BoardCanvas from "@/components/miro/BoardCanvas";
 import BoardHeader from "@/components/miro/BoardHeader";
 import BoardToolbar from "@/components/miro/BoardToolbar";
@@ -27,12 +27,17 @@ export default function MiroBoardPage() {
   const [isSavingBoard, setIsSavingBoard] = useState(false);
   const [isSnapshotsModalOpen, setIsSnapshotsModalOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [lineVariant, setLineVariant] = useState<LineVariant>("straight_solid");
   const [brushSettings, setBrushSettings] = useState({
     strokeColor: "#000000",
     strokeWidth: 4,
   });
 
+  // IMPORTANT: keep container (sizing) and canvas (event/rect) refs separate.
+  // Reusing the same ref for two elements makes initial sizing unreliable and can
+  // "fix itself" only after DevTools triggers a reflow/resize.
   const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
   const autoFitDoneRef = useRef(false);
 
   // Initialize viewport from board data
@@ -107,21 +112,37 @@ export default function MiroBoardPage() {
     autoFitDoneRef.current = false;
   }, [boardId]);
 
-  // Update canvas size on resize
-  useEffect(() => {
+  // Update canvas size when the container lays out / resizes.
+  // useLayoutEffect ensures we measure as soon as layout is committed.
+  // Deferred re-measure handles 0x0 on first paint (e.g. before flex layout settles).
+  useLayoutEffect(() => {
     const updateCanvasSize = () => {
       if (canvasContainerRef.current) {
-        setCanvasSize({
-          width: canvasContainerRef.current.clientWidth,
-          height: canvasContainerRef.current.clientHeight,
+        const w = canvasContainerRef.current.clientWidth;
+        const h = canvasContainerRef.current.clientHeight;
+        setCanvasSize((prev) => {
+          const next = { width: w, height: h };
+          if (prev.width !== next.width || prev.height !== next.height) {
+            if (process.env.NODE_ENV === "development" && (w > 0 || h > 0)) {
+              console.debug("[Miro canvas] size:", next);
+            }
+            return next;
+          }
+          return prev;
         });
       }
     };
 
     updateCanvasSize();
 
-    // Track element size changes (not just window resize). This fixes cases where initial
-    // layout reports 0x0 until a reflow (e.g. opening DevTools) happens.
+    // If first measure was 0x0, re-measure after layout/paint (fixes race where
+    // flex layout or parent size isn't ready yet; avoids "works only with DevTools open").
+    const t1 = canvasContainerRef.current &&
+      (canvasContainerRef.current.clientWidth <= 0 || canvasContainerRef.current.clientHeight <= 0)
+      ? setTimeout(updateCanvasSize, 0)
+      : undefined;
+    const t2 = setTimeout(updateCanvasSize, 100);
+
     let ro: ResizeObserver | null = null;
     if (typeof ResizeObserver !== "undefined") {
       ro = new ResizeObserver(() => updateCanvasSize());
@@ -132,6 +153,8 @@ export default function MiroBoardPage() {
 
     window.addEventListener("resize", updateCanvasSize);
     return () => {
+      if (t1 !== undefined) clearTimeout(t1);
+      clearTimeout(t2);
       window.removeEventListener("resize", updateCanvasSize);
       ro?.disconnect();
     };
@@ -269,9 +292,33 @@ export default function MiroBoardPage() {
     }
   }, [selectedItemId, deleteItem, setSelectedItemId]);
 
+  const resolveToolCreateSpec = useCallback(
+    (toolType: ToolType, options?: ToolOptions) => {
+      const lv = options?.lineVariant ?? lineVariant;
+      if (toolType === "line") {
+        const strokeDasharray =
+          lv === "straight_dashed" || lv === "arrow_dashed"
+            ? "8,4"
+            : lv === "straight_dotted"
+              ? "2,4"
+              : undefined;
+        const resolvedType: BoardItem["type"] =
+          lv === "arrow_solid" || lv === "arrow_dashed" ? "connector" : "line";
+        return { resolvedType, style: { strokeColor: "#111827", strokeWidth: 4, strokeDasharray } };
+      }
+
+      if (toolType === "connector") {
+        return { resolvedType: toolType as BoardItem["type"], style: { strokeColor: "#111827", strokeWidth: 4 } };
+      }
+
+      return { resolvedType: toolType as BoardItem["type"], style: {} as Record<string, any> };
+    },
+    [lineVariant]
+  );
+
   // Handle item creation via drag-and-drop
   const handleItemCreate = useCallback(
-    async (toolType: ToolType, worldX: number, worldY: number) => {
+    async (toolType: ToolType, worldX: number, worldY: number, options?: ToolOptions) => {
       if (toolType === "select") return;
 
       const defaultSizes: Record<string, { width: number; height: number }> = {
@@ -284,20 +331,18 @@ export default function MiroBoardPage() {
         freehand: { width: 100, height: 100 },
       };
 
-      const size = defaultSizes[toolType] || { width: 100, height: 100 };
+      const { resolvedType, style } = resolveToolCreateSpec(toolType, options);
+      const size = defaultSizes[resolvedType] || { width: 100, height: 100 };
 
       try {
         await createItem({
-          type: toolType as BoardItem["type"],
+          type: resolvedType,
           x: worldX,
           y: worldY,
           width: size.width,
           height: size.height,
           content: toolType === "text" || toolType === "sticky_note" ? "" : "",
-          style: (toolType === "connector" || toolType === "line") ? {
-            strokeColor: "#111827",
-            strokeWidth: 4,
-          } : {},
+          style,
           z_index: 0,
         });
         // Keep tool selected for potential repeated use
@@ -305,7 +350,61 @@ export default function MiroBoardPage() {
         console.error("Failed to create item:", err);
       }
     },
-    [createItem]
+    [createItem, resolveToolCreateSpec]
+  );
+
+  const createAtViewportCenter = useCallback(
+    async (toolType: ToolType, options?: ToolOptions) => {
+      if (toolType === "select" || toolType === "freehand") return;
+
+      // Use live ref dimensions when state is still 0 (e.g. before first layout effect runs).
+      let w = canvasSize.width;
+      let h = canvasSize.height;
+      if (w <= 0 || h <= 0) {
+        if (canvasContainerRef.current) {
+          w = canvasContainerRef.current.clientWidth;
+          h = canvasContainerRef.current.clientHeight;
+          if (process.env.NODE_ENV === "development") {
+            console.debug("[Miro canvas] createAtViewportCenter used ref dimensions:", { w, h });
+          }
+        }
+        if (w <= 0 || h <= 0) return;
+      }
+
+      const defaultSizes: Record<string, { width: number; height: number }> = {
+        text: { width: 200, height: 50 },
+        shape: { width: 100, height: 100 },
+        sticky_note: { width: 150, height: 150 },
+        frame: { width: 300, height: 200 },
+        line: { width: 200, height: 20 },
+        connector: { width: 200, height: 20 },
+        freehand: { width: 100, height: 100 },
+      };
+
+      const { resolvedType, style } = resolveToolCreateSpec(toolType, options);
+      const size = defaultSizes[resolvedType] || { width: 100, height: 100 };
+      const centerWorld = screenToWorld(w / 2, h / 2);
+      const x = centerWorld.x - size.width / 2;
+      const y = centerWorld.y - size.height / 2;
+
+      try {
+        await createItem({
+          type: resolvedType,
+          x,
+          y,
+          width: size.width,
+          height: size.height,
+          content: toolType === "text" || toolType === "sticky_note" ? "" : "",
+          style,
+          z_index: 0,
+        });
+      } catch (err) {
+        console.error("Failed to create item:", err);
+      } finally {
+        setActiveTool("select");
+      }
+    },
+    [canvasSize.height, canvasSize.width, createItem, resolveToolCreateSpec, screenToWorld]
   );
 
   // Handle freehand creation
@@ -525,10 +624,16 @@ export default function MiroBoardPage() {
           onPreviewClick={handlePreviewClick}
         />
 
-        <div className="flex flex-1 overflow-hidden">
-          <BoardToolbar activeTool={activeTool} onToolChange={setActiveTool} />
+        <div className="flex flex-1 overflow-hidden min-h-0">
+          <BoardToolbar
+            activeTool={activeTool}
+            onToolChange={setActiveTool}
+            onToolPrimaryAction={createAtViewportCenter}
+            lineVariant={lineVariant}
+            onLineVariantChange={setLineVariant}
+          />
 
-          <div ref={canvasContainerRef} className="flex-1 relative">
+          <div ref={canvasContainerRef} className="flex-1 relative min-h-0">
             <BoardCanvas
               viewport={viewport}
               items={items}
@@ -546,7 +651,7 @@ export default function MiroBoardPage() {
               onFreehandCreate={handleFreehandCreate}
               width={canvasSize.width}
               height={canvasSize.height}
-              canvasRef={canvasContainerRef}
+              canvasRef={canvasRef}
               brushSettings={brushSettings}
             />
           </div>

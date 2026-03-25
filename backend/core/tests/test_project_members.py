@@ -374,6 +374,20 @@ class TestProjectMemberViewSet:
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
+    def test_invite_with_team_leader_role_succeeds(self, authenticated_client, project, user2):
+        """Team Leader must be valid without a matching RBAC Role row (SMP-484 / UI default)."""
+        url = reverse('project-member-list', kwargs={'project_id': project.id})
+        payload = {
+            "email": user2.email,
+            "role": "Team Leader",
+        }
+
+        response = authenticated_client.post(url, payload, format='json')
+
+        assert response.status_code == status.HTTP_201_CREATED
+        invitation = ProjectInvitation.objects.get(email=user2.email, project=project, accepted=False)
+        assert invitation.role == "Team Leader"
+
     def test_update_member_role(self, authenticated_client, project, user2):
         """Updating member role should work"""
         # Add user2 as member

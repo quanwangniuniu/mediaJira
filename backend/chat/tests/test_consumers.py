@@ -3,6 +3,8 @@ import json
 import pytest
 from channels.testing import WebsocketCommunicator
 from channels.routing import URLRouter
+from channels.layers import channel_layers
+from asgiref.sync import async_to_sync
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -15,6 +17,34 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
+TEST_CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+
+
+def _reset_channel_layers():
+    cache = getattr(channel_layers, "_layers", None)
+    if not isinstance(cache, dict):
+        return
+    for layer in list(cache.values()):
+        close_fn = getattr(layer, "close", None)
+        if callable(close_fn):
+            try:
+                async_to_sync(close_fn)()
+            except Exception:
+                try:
+                    close_fn()
+                except Exception:
+                    pass
+    cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def reset_channel_layer_cache(settings):
+    # For this pytest module, force an in-memory channel layer to avoid
+    # Redis/asyncio lock cross-event-loop issues.
+    settings.CHANNEL_LAYERS = TEST_CHANNEL_LAYERS
+    _reset_channel_layers()
+    yield
+    _reset_channel_layers()
 
 
 @pytest.mark.asyncio

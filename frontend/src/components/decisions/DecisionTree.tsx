@@ -23,6 +23,8 @@ interface DecisionTreeProps {
   onEditLinks?: (decision: DecisionGraphNode) => void;
   onDelete?: (decision: DecisionGraphNode) => void;
   canDelete?: boolean;
+  selectedNodeId?: number | null;
+  onSelectNode?: (id: number) => void;
   /** When true, show link handles and clickable edges; drag to connect, click edge to unlink */
   linkingEnabled?: boolean;
   /** When true, disable link handles and edge unlink (e.g. while saving) */
@@ -217,6 +219,8 @@ const DecisionTree = ({
   onEditLinks,
   onDelete,
   canDelete = false,
+  selectedNodeId,
+  onSelectNode,
   linkingEnabled = false,
   linkingDisabled = false,
   onCreateLink,
@@ -271,9 +275,6 @@ const DecisionTree = ({
       byDate.get(key)?.push(node);
     });
     const sortedDates = Array.from(byDate.keys());
-    if (!sortedDates.includes(todayKey)) {
-      sortedDates.push(todayKey);
-    }
     sortedDates.sort();
     const indexMap = new Map<number, number>();
     const columnIndexMap = new Map<string, number>();
@@ -332,7 +333,6 @@ const DecisionTree = ({
 
       ordered.forEach((node, rowIndex) => {
         indexMap.set(node.id, rowIndex);
-        const rowOffset = dateKey === todayKey ? 1 : 0;
         all.push({
           ...node,
           dateKey,
@@ -340,7 +340,7 @@ const DecisionTree = ({
           y:
             PADDING +
             HEADER_BAND_HEIGHT +
-            (rowIndex + rowOffset) * (NODE_HEIGHT + ROW_GAP),
+            rowIndex * (NODE_HEIGHT + ROW_GAP),
         });
       });
     });
@@ -358,7 +358,7 @@ const DecisionTree = ({
     }
 
     return { positionedNodes: all, dateColumns: columns };
-  }, [nodes, edges, todayKey]);
+  }, [nodes, edges]);
 
   const headerLayout = useMemo(() => {
     const preferredSpacing = NODE_WIDTH + COLUMN_GAP;
@@ -373,14 +373,31 @@ const DecisionTree = ({
     return { labelMode, densityEvery, fontSize, spacing };
   }, [scale]);
 
+  const nodeCountByColumn = useMemo(() => {
+    const map = new Map<string, number>();
+    dateColumns.forEach((col) => {
+      const count = positionedNodes.filter((n) => n.dateKey === col.dateKey).length;
+      map.set(col.dateKey, count);
+    });
+    return map;
+  }, [dateColumns, positionedNodes]);
+
   const contentSize = useMemo(() => {
     const maxX = Math.max(0, ...positionedNodes.map((node) => node.x + NODE_WIDTH));
     const maxY = Math.max(0, ...positionedNodes.map((node) => node.y + NODE_HEIGHT));
+    const createBarExtra = onCreateDecision ? NODE_HEIGHT + ROW_GAP : 0;
+    const createPanelWidth = onCreateDecision ? NODE_WIDTH + COLUMN_PADDING_X * 2 + COLUMN_GAP : 0;
+    const emptyMinWidth = onCreateDecision && positionedNodes.length === 0
+      ? PADDING + NODE_WIDTH + COLUMN_PADDING_X * 2 + PADDING
+      : 0;
+    const emptyMinHeight = onCreateDecision && positionedNodes.length === 0
+      ? PADDING + HEADER_BAND_HEIGHT + NODE_HEIGHT + PADDING
+      : 0;
     return {
-      width: maxX + PADDING + EXTRA_SCROLL,
-      height: maxY + PADDING + EXTRA_SCROLL,
+      width: Math.max(emptyMinWidth, maxX + createPanelWidth + PADDING + EXTRA_SCROLL),
+      height: Math.max(emptyMinHeight, maxY + createBarExtra + PADDING + EXTRA_SCROLL),
     };
-  }, [positionedNodes]);
+  }, [positionedNodes, onCreateDecision]);
 
   const nodeMap = useMemo(() => {
     return positionedNodes.reduce<Record<number, PositionedNode>>((acc, node) => {
@@ -522,6 +539,10 @@ const DecisionTree = ({
       onToggleLink?.(node);
       return;
     }
+    if (onSelectNode) {
+      onSelectNode(node.id);
+      return;
+    }
     const rect = event.currentTarget.getBoundingClientRect();
     setPopover({
       node,
@@ -652,9 +673,73 @@ const DecisionTree = ({
           }}
           className="relative"
         >
+          {dateColumns.map((column, colIdx) => {
+            const nodeCount = nodeCountByColumn.get(column.dateKey) ?? 0;
+            const isLastColumn = colIdx === dateColumns.length - 1;
+            const createSlot = isLastColumn && onCreateDecision ? 1 : 0;
+            const effectiveCount = Math.max(nodeCount + createSlot, 1);
+            const panelHeight = Math.max(160, HEADER_BAND_HEIGHT + effectiveCount * (NODE_HEIGHT + ROW_GAP) + ROW_GAP);
+            return (
+              <div
+                key={`panel-${column.dateKey}`}
+                className="absolute rounded-2xl border border-gray-200 bg-white shadow-sm"
+                style={{
+                  left: column.x - COLUMN_PADDING_X,
+                  top: BAND_TOP_PADDING,
+                  width: NODE_WIDTH + COLUMN_PADDING_X * 2,
+                  height: panelHeight,
+                  pointerEvents: 'none',
+                  zIndex: 0,
+                }}
+              />
+            );
+          })}
+
+          {dateColumns.length === 0 && onCreateDecision && (
+            <div
+              className="absolute rounded-2xl border border-gray-200 bg-white shadow-sm"
+              style={{
+                left: PADDING - COLUMN_PADDING_X,
+                top: BAND_TOP_PADDING,
+                width: NODE_WIDTH + COLUMN_PADDING_X * 2,
+                height: HEADER_BAND_HEIGHT + NODE_HEIGHT + ROW_GAP * 2,
+                pointerEvents: 'none',
+                zIndex: 0,
+              }}
+            />
+          )}
+
+          {onCreateDecision && (() => {
+            const lastCol = dateColumns[dateColumns.length - 1];
+            const createPanelX = lastCol
+              ? lastCol.x + NODE_WIDTH + COLUMN_PADDING_X + COLUMN_GAP - COLUMN_PADDING_X
+              : PADDING - COLUMN_PADDING_X;
+            return (
+              <div
+                className="absolute flex items-center justify-center rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50/50"
+                style={{
+                  left: createPanelX,
+                  top: BAND_TOP_PADDING,
+                  width: NODE_WIDTH + COLUMN_PADDING_X * 2,
+                  height: 160,
+                  zIndex: 25,
+                  pointerEvents: 'auto',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={onCreateDecision}
+                  className="text-sm font-semibold text-gray-500 hover:text-blue-600 cursor-pointer"
+                >
+                  + Create Decision
+                </button>
+              </div>
+            );
+          })()}
+
           <svg
             className="absolute inset-0 h-full w-full"
-            style={{ pointerEvents: linkingEnabled && !linkingDisabled ? 'auto' : 'none' }}
+            style={{ pointerEvents: linkingEnabled && !linkingDisabled ? 'auto' : 'none', zIndex: 10 }}
           >
             <defs>
               <marker
@@ -684,17 +769,6 @@ const DecisionTree = ({
               </filter>
             </defs>
             <g style={{ pointerEvents: 'none' }}>
-              {dateColumns.map((column) => (
-                <rect
-                  key={`band-${column.dateKey}`}
-                  x={column.x - COLUMN_PADDING_X}
-                  y={BAND_TOP_PADDING}
-                  width={NODE_WIDTH + COLUMN_PADDING_X * 2}
-                  height={contentSize.height - BAND_TOP_PADDING}
-                  rx={16}
-                  fill="rgba(148, 163, 184, 0.08)"
-                />
-              ))}
               {edges.map((edge, idx) => {
                 const fromNode = nodeMap[edge.from];
                 const toNode = nodeMap[edge.to];
@@ -792,7 +866,7 @@ const DecisionTree = ({
             )}
           </svg>
 
-          <div className="pointer-events-none absolute inset-0">
+          <div className="pointer-events-none absolute inset-0" style={{ zIndex: 20 }}>
             {dateColumns.map((column, index) => {
               const { labelMode, densityEvery, fontSize } = headerLayout;
               const showLabel = index % densityEvery === 0;
@@ -862,22 +936,6 @@ const DecisionTree = ({
             })}
           </div>
 
-          {todayColumn && onCreateDecision ? (
-            <button
-              type="button"
-              onClick={onCreateDecision}
-              className="absolute flex items-center justify-center gap-2 rounded-xl border border-dashed border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-500 hover:border-blue-300 hover:text-blue-600"
-              style={{
-                width: NODE_WIDTH,
-                height: NODE_HEIGHT,
-                left: todayColumn.x,
-                top: PADDING + HEADER_BAND_HEIGHT,
-              }}
-            >
-              + Create Decision
-            </button>
-          ) : null}
-
           {positionedNodes.map((node) => (
             <div
               key={node.id}
@@ -887,6 +945,7 @@ const DecisionTree = ({
                 height: NODE_HEIGHT,
                 left: node.x,
                 top: node.y,
+                zIndex: 20,
               }}
             >
               {linkingEnabled && !linkingDisabled && (
@@ -914,7 +973,9 @@ const DecisionTree = ({
                       ? 'border-emerald-300 ring-2 ring-emerald-200'
                       : mode === 'selector' && node.projectSeq && selectedSeqSet.has(node.projectSeq)
                         ? 'border-emerald-300 ring-2 ring-emerald-200'
-                        : 'border-gray-200 hover:border-blue-300 hover:shadow'
+                        : selectedNodeId != null && node.id === selectedNodeId
+                          ? 'border-blue-500 ring-2 ring-blue-200'
+                          : 'border-gray-200 hover:border-blue-300 hover:shadow'
                 } ${
                   focusSeq && node.projectSeq === focusSeq
                     ? 'ring-2 ring-blue-300'
@@ -961,6 +1022,36 @@ const DecisionTree = ({
               ) : null}
             </div>
           ))}
+
+          {onCreateDecision ? (() => {
+            const lastCol = dateColumns[dateColumns.length - 1];
+            const lastColNodeCount = lastCol ? (nodeCountByColumn.get(lastCol.dateKey) ?? 0) : 0;
+            const createLeft = lastCol ? lastCol.x : PADDING;
+            const createTop = lastCol
+              ? PADDING + HEADER_BAND_HEIGHT + lastColNodeCount * (NODE_HEIGHT + ROW_GAP)
+              : PADDING + HEADER_BAND_HEIGHT;
+            return (
+              <div
+                className="absolute"
+                style={{
+                  width: NODE_WIDTH,
+                  height: NODE_HEIGHT,
+                  left: createLeft,
+                  top: createTop,
+                  zIndex: 25,
+                  pointerEvents: 'auto',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={onCreateDecision}
+                  className="w-full h-full rounded-xl border-2 border-dashed border-gray-300 bg-white px-3 py-2 text-left shadow-sm transition hover:border-blue-400 hover:shadow cursor-pointer flex items-center justify-center"
+                >
+                  <span className="text-sm font-semibold text-gray-400">+ Create Decision</span>
+                </button>
+              </div>
+            );
+          })() : null}
         </div>
       </div>
 

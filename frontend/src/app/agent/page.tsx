@@ -5,6 +5,7 @@ import { OverviewDashboard } from "@/components/agent/overview/OverviewDashboard
 import { SpreadsheetView } from "@/components/agent/spreadsheet/SpreadsheetView"
 import { TaskBoard } from "@/components/agent/taskboard/TaskBoard"
 import { DecisionEditor } from "@/components/agent/decision/DecisionEditor"
+import { WorkflowList } from "@/components/agent/workflow/WorkflowList"
 
 export default function AgentPage() {
   const { activeView } = useAgentLayout()
@@ -15,6 +16,7 @@ export default function AgentPage() {
       {activeView === "spreadsheets" && <SpreadsheetView />}
       {activeView === "decisions" && <DecisionEditor />}
       {activeView === "tasks" && <TaskBoard />}
+      {activeView === "workflows" && <WorkflowList />}
     </div>
   )
 }

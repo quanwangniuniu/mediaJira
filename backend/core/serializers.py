@@ -165,8 +165,15 @@ class ProjectMemberInviteSerializer(serializers.Serializer):
     role = serializers.CharField(required=False, default='member')
 
     def validate_role(self, value):
+        """
+        Allow project roles for invites (excluding owner). RBAC names are merged from
+        Role rows scoped to the request user's organization when available; options
+        align with GET /api/core/projects/{id}/roles/.
+        """
+        if value == "owner":
+            raise serializers.ValidationError("Cannot invite users as project owner.")
+
         request = self.context.get("request")
-        # Invites cannot set the project owner role directly.
         allowed_roles = set(PROJECT_BASE_ROLES) - {"owner"}
 
         if request and getattr(request, "user", None) and request.user.is_authenticated:
@@ -181,7 +188,9 @@ class ProjectMemberInviteSerializer(serializers.Serializer):
                     organization__isnull=True,
                 ).values_list("name", flat=True)
         else:
-            rbac_roles = Role.objects.filter(is_deleted=False, organization__isnull=True).values_list("name", flat=True)
+            rbac_roles = Role.objects.filter(
+                is_deleted=False, organization__isnull=True
+            ).values_list("name", flat=True)
 
         allowed_roles.update(set(rbac_roles))
         if value not in allowed_roles:
