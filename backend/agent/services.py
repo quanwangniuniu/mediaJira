@@ -17,8 +17,31 @@ from .models import (
 )
 from . import data_service
 from . import file_parser
+from .dify_workflows import json_input, run_dify_workflow, serialize_agent_messages
 
 logger = logging.getLogger(__name__)
+
+
+def _create_agent_status_message(session, content, *, event_type, message_type='text', **metadata):
+    if not isinstance(session, AgentSession):
+        logger.debug(
+            "Skipping agent status message creation for non-model session=%s event_type=%s",
+            getattr(session, 'id', session),
+            event_type,
+        )
+        return None
+    logger.info(
+        "Creating agent status message for session=%s event_type=%s",
+        session.id,
+        event_type,
+    )
+    return AgentMessage.objects.create(
+        session=session,
+        role='assistant',
+        content=content,
+        message_type=message_type,
+        metadata={'event_type': event_type, **metadata},
+    )
 
 
 def _get_llm_client():
@@ -123,35 +146,19 @@ def _call_dify(spreadsheet_data, user_id=None):
     if not config:
         raise RuntimeError("Dify not configured (DIFY_API_URL / DIFY_API_KEY missing)")
 
-    api_url = config['url'].rstrip('/')
-    headers = {
-        'Authorization': f"Bearer {config['key']}",
-        'Content-Type': 'application/json',
-    }
-
-    payload = {
-        'inputs': {
-            'spreadsheet_data': json.dumps(spreadsheet_data, default=str),
-        },
-        'response_mode': 'blocking',
-        'user': str(user_id or 'agent'),
-    }
-
-    response = requests.post(
-        f"{api_url}/v1/workflows/run",
-        headers=headers,
-        json=payload,
-        timeout=120,
-    )
-
-    if response.status_code != 200:
-        logger.error(f"Dify API error: HTTP {response.status_code}")
-        raise RuntimeError(f"Dify API returned {response.status_code}")
-
-    result = response.json()
-
-    # Dify workflow output is in data.outputs
-    outputs = result.get('data', {}).get('outputs', {})
+    try:
+        outputs = run_dify_workflow(
+            api_url=config['url'],
+            api_key=config['key'],
+            inputs={
+                'spreadsheet_data': json_input(spreadsheet_data),
+            },
+            user_id=user_id,
+        )
+    except requests.HTTPError as e:
+        status_code = getattr(getattr(e, 'response', None), 'status_code', None)
+        logger.error(f"Dify API error: HTTP {status_code}")
+        raise RuntimeError(f"Dify API returned {status_code}") from e
 
     # The workflow should return our expected JSON structure.
     # It may be in a 'result' or 'text' key, or directly as structured data.
@@ -294,42 +301,35 @@ def _normalize_dify_chat_output(output):
     return None
 
 
-def _call_dify_chat(chat_messages, user_id=None, analysis_result=None, project_members=None):
+def _call_dify_chat(
+    chat_messages,
+    user_id=None,
+    analysis_result=None,
+    project_members=None,
+    current_username='',
+):
     """Call Dify chat workflow API with conversation context."""
     api_url = getattr(settings, 'DIFY_API_URL', '') or os.environ.get('DIFY_API_URL', '')
     api_key = getattr(settings, 'DIFY_CHAT_API_KEY', '') or os.environ.get('DIFY_CHAT_API_KEY', '')
     if not api_url or not api_key:
         raise RuntimeError("Dify chat not configured (DIFY_API_URL / DIFY_CHAT_API_KEY missing)")
 
-    api_url = api_url.rstrip('/')
-    headers = {
-        'Authorization': f"Bearer {api_key}",
-        'Content-Type': 'application/json',
-    }
-
-    payload = {
-        'inputs': {
-            'chat_messages': chat_messages,
-            'analysis_result': json.dumps(analysis_result, default=str) if analysis_result else '',
-            'project_members': json.dumps(project_members or [], default=str),
-        },
-        'response_mode': 'blocking',
-        'user': str(user_id or 'agent'),
-    }
-
-    response = requests.post(
-        f"{api_url}/v1/workflows/run",
-        headers=headers,
-        json=payload,
-        timeout=120,
-    )
-
-    if response.status_code != 200:
-        logger.error(f"Dify chat API error: HTTP {response.status_code}")
-        raise RuntimeError(f"Dify chat API returned {response.status_code}")
-
-    result = response.json()
-    outputs = result.get('data', {}).get('outputs', {})
+    try:
+        outputs = run_dify_workflow(
+            api_url=api_url,
+            api_key=api_key,
+            inputs={
+                'chat_messages': chat_messages,
+                'analysis_result': json_input(analysis_result) if analysis_result else '',
+                'project_members': json_input(project_members or []),
+                'current_username': current_username or '',
+            },
+            user_id=user_id,
+        )
+    except requests.HTTPError as e:
+        status_code = getattr(getattr(e, 'response', None), 'status_code', None)
+        logger.error(f"Dify chat API error: HTTP {status_code}")
+        raise RuntimeError(f"Dify chat API returned {status_code}") from e
 
     if isinstance(outputs, dict):
         candidates = [outputs]
@@ -407,6 +407,43 @@ def _call_dify_chat(chat_messages, user_id=None, analysis_result=None, project_m
     return {"reply": reply, "forwards": forwards}
 
 
+def _generate_miro_board_for_workflow_run(orchestrator, workflow_run):
+    """Generate and persist a Miro board from an existing workflow run."""
+    from .miro_board_service import create_board_from_snapshot
+    from .miro_generation import (
+        build_miro_generation_context_from_run,
+        call_dify_miro_generator,
+    )
+
+    context = build_miro_generation_context_from_run(
+        session=orchestrator.session,
+        workflow_run=workflow_run,
+    )
+    snapshot = call_dify_miro_generator(context, user_id=orchestrator.user.id)
+    board, persisted_snapshot = create_board_from_snapshot(
+        project=orchestrator.project,
+        session=orchestrator.session,
+        workflow_run=workflow_run,
+        snapshot=snapshot,
+    )
+
+    workflow_run.miro_snapshot = persisted_snapshot
+    workflow_run.miro_board = board
+    workflow_run.save(update_fields=['miro_snapshot', 'miro_board'])
+
+    return persisted_snapshot, board
+
+
+def _enqueue_miro_generation_for_workflow_run(orchestrator, workflow_run):
+    """Queue Miro generation so task creation can return immediately."""
+    from .tasks import generate_miro_board_for_workflow_run_task
+
+    logger.info(
+        "Queueing background Miro generation for workflow_run=%s session=%s",
+        workflow_run.id,
+        orchestrator.session.id,
+    )
+    generate_miro_board_for_workflow_run_task.delay(str(workflow_run.id))
 def _get_or_create_bot_private_chat(bot, target_user, project):
     """Find or create a private chat with exactly 2 participants: bot and target.
 
@@ -553,6 +590,14 @@ class AgentOrchestrator:
                 yield from self._legacy_confirm(action, latest_run)
                 yield {"type": "done"}
                 return
+
+        if action == 'generate_miro':
+            latest_run = self.session.workflow_runs.filter(
+                is_deleted=False
+            ).order_by('-created_at').first()
+            yield from self._legacy_confirm(action, latest_run)
+            yield {"type": "done"}
+            return
 
         # --- Start a new workflow ---
         if file_id or spreadsheet_id or csv_filename or (action == 'analyze'):
@@ -1098,6 +1143,19 @@ class AgentOrchestrator:
         """Create Tasks directly from analysis results, optionally linking to Decision if it exists."""
         yield {"type": "text", "content": "Creating tasks..."}
 
+        existing_task_ids = getattr(workflow_run, "created_tasks", []) or []
+        if existing_task_ids:
+            decision = workflow_run.decision
+            yield {
+                "type": "task_created",
+                "content": f"Tasks already created ({len(existing_task_ids)}).",
+                "data": {
+                    "task_ids": existing_task_ids,
+                    "decision_id": decision.id if decision else None,
+                },
+            }
+            return
+
         analysis = workflow_run.analysis_result or {}
         recommended_tasks = analysis.get("recommended_tasks", [])
         if not recommended_tasks:
@@ -1132,14 +1190,16 @@ class AgentOrchestrator:
             task_ids.append(task.id)
 
         workflow_run.created_tasks = task_ids
-        workflow_run.status = 'completed'
-        workflow_run.save()
+        workflow_run.save(update_fields=['created_tasks'])
 
         yield {
             "type": "task_created",
             "content": f"Created {len(task_ids)} tasks.",
             "data": {"task_ids": task_ids, "decision_id": decision.id if decision else None},
         }
+
+        workflow_run.status = 'completed'
+        workflow_run.save(update_fields=['status'])
 
     # ------------------------------------------------------------------
     # Workflow engine methods (AGENT-9)
@@ -1322,6 +1382,37 @@ class AgentOrchestrator:
                 yield from self.create_tasks_from_analysis(workflow_run)
             else:
                 yield {"type": "error", "content": "No analysis found to create tasks from."}
+        elif action == 'generate_miro':
+            if not workflow_run or not workflow_run.analysis_result:
+                yield {"type": "error", "content": "No analysis found to generate a Miro board from."}
+                return
+            if getattr(workflow_run, "miro_board_id", None):
+                logger.info(
+                    "Generate Miro requested but board already exists for workflow_run=%s board=%s",
+                    workflow_run.id,
+                    workflow_run.miro_board_id,
+                )
+                yield {
+                    "type": "text",
+                    "content": f"Miro board already exists: {workflow_run.miro_board.title}",
+                }
+                return
+            try:
+                _enqueue_miro_generation_for_workflow_run(self, workflow_run)
+                _create_agent_status_message(
+                    self.session,
+                    "Miro board generation started in background.",
+                    event_type="miro_generation_started",
+                    workflow_run_id=str(workflow_run.id),
+                )
+                yield {
+                    "type": "miro_status",
+                    "content": "Miro board generation started in background.",
+                    "data": {"workflow_run_id": str(workflow_run.id), "status": "running"},
+                }
+            except Exception as e:
+                logger.exception("Failed to enqueue legacy Miro generation for workflow_run=%s", workflow_run.id)
+                yield {"type": "error", "content": f"Failed to start Miro generation: {e}"}
 
     def _legacy_handle(self, message, spreadsheet_id=None, csv_filename=None,
                        action=None, file_id=None):
@@ -1365,9 +1456,7 @@ class AgentOrchestrator:
                 history = AgentMessage.objects.filter(
                     session=self.session
                 ).order_by('created_at')
-                chat_context = "\n".join(
-                    f"[{m.role}]: {m.content}" for m in history
-                )
+                chat_context = serialize_agent_messages(history)
                 full_input = f"{chat_context}\n\n[user]: {message}"
                 try:
                     from core.utils.bot_user import get_agent_bot_user
@@ -1390,19 +1479,21 @@ class AgentOrchestrator:
                         user_id=self.user.id,
                         analysis_result=latest_run.analysis_result,
                         project_members=project_members,
+                        current_username=self.user.username or '',
                     )
                     follow_up_status = result.get("status", "completed")
                     reply = result.get("text") or result.get("reply", "")
                     forwards = result.get("forwards", [])
+                    close_follow_up = follow_up_status == 'completed' or bool(forwards)
                     logger.info(
                         "Agent follow-up chat completed for workflow_run=%s status=%s forwards=%s close_follow_up=%s",
                         latest_run.id,
                         follow_up_status,
                         len(forwards),
-                        follow_up_status == 'completed',
+                        close_follow_up,
                     )
 
-                    if follow_up_status == 'completed':
+                    if close_follow_up:
                         latest_run.chat_followed_up = True
                         latest_run.save(update_fields=['chat_followed_up'])
                     yield {"type": "text", "content": reply}

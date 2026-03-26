@@ -11,6 +11,22 @@ import { AGENT_MESSAGES } from "@/lib/agentMessages"
 import { WorkflowSelector } from "./WorkflowSelector"
 import type { StepProgressItem } from "./StepProgress"
 
+function getPendingMiroWorkflowRunIds(messages: ChatMessage[]): string[] {
+  const completedOrFailed = new Set(
+    messages
+      .filter((message) =>
+        message.workflowRunId &&
+        (message.eventType === "miro_board_created" || message.eventType === "miro_generation_failed")
+      )
+      .map((message) => message.workflowRunId as string)
+  )
+
+  return messages
+    .filter((message) => message.eventType === "miro_generation_started" && message.workflowRunId)
+    .map((message) => message.workflowRunId as string)
+    .filter((workflowRunId) => !completedOrFailed.has(workflowRunId))
+}
+
 /** Broadcast anomalies from restored messages to RightPanel Alerts. */
 function broadcastRestoredAnomalies(messages: AgentMessage[]) {
   // Find the last message with anomalies and broadcast it
@@ -29,10 +45,26 @@ function restoreMessage(m: AgentMessage): ChatMessage {
   let type: ChatMessage["type"] = "text"
   let navigateTo: string | undefined
   let navigateLabel: string | undefined
+  let navigateDisabled = false
+  let navigateHref: string | undefined
   const isFollowUpPrompt = m.message_type === "confirmation_request"
+
+  const eventType = m.data?.event_type
 
   if (m.message_type === "calendar_invite") {
     type = "calendar_invite"
+  } else if (eventType === "miro_generation_started") {
+    type = "miro_status"
+    navigateTo = "miro"
+    navigateLabel = "Generating Miro..."
+    navigateDisabled = true
+  } else if (eventType === "miro_board_created" && m.data?.board_id) {
+    type = "miro_status"
+    navigateTo = "miro"
+    navigateLabel = "Open Miro"
+    navigateHref = `/miro/${m.data.board_id}`
+  } else if (eventType === "miro_generation_failed") {
+    type = "error"
   } else if (m.data?.anomalies) {
     type = "analysis"
   } else if (m.message_type === "decision_draft" || m.data?.decision_id) {
@@ -56,6 +88,10 @@ function restoreMessage(m: AgentMessage): ChatMessage {
     recommendedTasks: m.data?.recommended_tasks,
     navigateTo,
     navigateLabel,
+    navigateDisabled,
+    navigateHref,
+    eventType,
+    workflowRunId: m.data?.workflow_run_id,
     decisionId: m.data?.decision_id ? Number(m.data.decision_id) : undefined,
   }
 }
@@ -114,24 +150,26 @@ export function AgentChatPage() {
   }, [sessionCalendarContext])
 
   const handleSendMessageRef = useRef<typeof handleSendMessage | null>(null)
-  const latestMessage = messages[messages.length - 1]
-  const isAwaitingFollowUp = Boolean(
-    latestMessage &&
-    latestMessage.role === "assistant" &&
-    latestMessage.isFollowUpPrompt &&
-    !isStreaming
-  )
+  const lastFollowUpPromptIndex = [...messages].reduce((lastIndex, message, index) => {
+    if (message.role === "assistant" && message.isFollowUpPrompt) {
+      return index
+    }
+    return lastIndex
+  }, -1)
+  const hasRealUserReplyAfterFollowUpPrompt =
+    lastFollowUpPromptIndex >= 0 &&
+    messages.slice(lastFollowUpPromptIndex + 1).some((message) => {
+      if (message.role !== "user") return false
+      const normalized = message.content.trim()
+      return !["confirm_decision", "create_tasks", "generate_miro"].includes(normalized)
+    })
+  const isAwaitingFollowUp = lastFollowUpPromptIndex >= 0 && !hasRealUserReplyAfterFollowUpPrompt && !isStreaming
   const inputPlaceholder = isAwaitingFollowUp
     ? "Ask one follow-up question about the analysis, or include an exact username/email for forwarding..."
     : "Ask about your data or upload a file..."
   const inputHelperText = isAwaitingFollowUp
     ? "You can send one follow-up message now. Ask for an explanation, a short report, or forwarding to specific project members."
     : undefined
-
-  // Abort SSE on unmount
-  useEffect(() => {
-    return () => { abortRef.current?.abort() }
-  }, [])
 
   const setSessionId = useCallback((id: string | null) => {
     setSessionIdState(id)
@@ -142,13 +180,35 @@ export function AgentChatPage() {
     }
   }, [])
 
+  // Abort SSE on unmount
+  useEffect(() => {
+    return () => { abortRef.current?.abort() }
+  }, [])
+
+  useEffect(() => {
+    if (!sessionId) return
+    const pendingWorkflowRunIds = getPendingMiroWorkflowRunIds(messages)
+    if (pendingWorkflowRunIds.length === 0) return
+
+    const intervalId = window.setInterval(async () => {
+      try {
+        const session = await AgentAPI.getSession(sessionId)
+        setMessages(session.messages.map(restoreMessage))
+      } catch {
+        // ignore polling failures; next cycle can retry
+      }
+    }, 5000)
+
+    return () => window.clearInterval(intervalId)
+  }, [sessionId, messages])
+
   // Restore session on mount
   useEffect(() => {
     const storedId = sessionStorage.getItem("agent-session-id")
     if (storedId) {
       AgentAPI.getSession(storedId)
         .then((session) => {
-          setSessionIdState(String(session.id))
+          setSessionId(String(session.id))
           setHasStarted(true)
           setMessages(session.messages.map(restoreMessage))
           broadcastRestoredAnomalies(session.messages)
@@ -162,7 +222,7 @@ export function AgentChatPage() {
           sessionStorage.removeItem("agent-session-id")
         })
     }
-  }, [])
+  }, [setSessionId])
 
   // Listen for sidebar events
   useEffect(() => {
@@ -198,7 +258,7 @@ export function AgentChatPage() {
       window.removeEventListener("agent:new-chat", handleNewChat)
       window.removeEventListener("agent:load-session", handleLoadSession)
     }
-  }, [])
+  }, [setSessionId])
 
   /** Append a new message and return its id */
   const addMessage = useCallback((msg: ChatMessage) => {
@@ -294,7 +354,7 @@ export function AgentChatPage() {
         setIsStreaming(false)
       }
     )
-  }, [sessionId, addMessage, updateMessage])
+  }, [sessionId, addMessage, updateMessage, setSessionId])
 
   /** Handle text message send */
   const handleSendMessage = useCallback(async (text: string, calendarContext?: Record<string, unknown>) => {
@@ -408,7 +468,7 @@ export function AgentChatPage() {
           return
         }
 
-        if (event.content) {
+        if (event.content && event.type !== "miro_status") {
           contentParts.push(event.content)
           updateMessage(aiMsgId, { content: contentParts.join("\n") })
         }
@@ -446,6 +506,17 @@ export function AgentChatPage() {
             navigateLabel: "Go to Tasks",
           })
         }
+        if (event.type === "miro_status") {
+          updateMessage(aiMsgId, {
+            content: event.content || "Miro board generation started in background.",
+            type: "miro_status",
+            navigateTo: "miro",
+            navigateLabel: "Generating Miro...",
+            navigateDisabled: true,
+            eventType: "miro_generation_started",
+            workflowRunId: event.data?.workflow_run_id,
+          })
+        }
       },
       (error) => {
         updateMessage(aiMsgId, { content: `Error: ${error.message}`, type: "error" })
@@ -467,7 +538,7 @@ export function AgentChatPage() {
         setIsStreaming(false)
       }
     )
-  }, [sessionId, selectedWorkflowId, sessionCalendarContext, addMessage, updateMessage])
+  }, [sessionId, selectedWorkflowId, sessionCalendarContext, addMessage, updateMessage, setSessionId])
 
   // Keep ref always pointing to the latest handleSendMessage
   handleSendMessageRef.current = handleSendMessage
@@ -479,6 +550,7 @@ export function AgentChatPage() {
     const actionMap: Record<string, AgentAction> = {
       confirm_decision: "confirm_decision",
       create_tasks: "create_tasks",
+      generate_miro: "generate_miro",
     }
     const agentAction = actionMap[action]
     if (!agentAction) return
@@ -495,7 +567,7 @@ export function AgentChatPage() {
       (event: SSEEvent) => {
         if (event.type === "done") return
 
-        if (event.content) {
+        if (event.content && event.type !== "miro_status") {
           contentParts.push(event.content)
           updateMessage(aiMsgId, { content: contentParts.join("\n") })
         }
@@ -516,6 +588,17 @@ export function AgentChatPage() {
             type: "tasks_created",
             navigateTo: "tasks",
             navigateLabel: "Go to Tasks",
+          })
+        }
+        if (event.type === "miro_status") {
+          updateMessage(aiMsgId, {
+            content: event.content || "Miro board generation started in background.",
+            type: "miro_status",
+            navigateTo: "miro",
+            navigateLabel: "Generating Miro...",
+            navigateDisabled: true,
+            eventType: "miro_generation_started",
+            workflowRunId: event.data?.workflow_run_id,
           })
         }
       },
@@ -553,6 +636,10 @@ export function AgentChatPage() {
   return (
     <div className="flex h-full flex-col">
       <MessageList messages={messages} onAction={handleAction} onNavigate={(view, msg) => {
+        if (msg?.navigateHref && typeof window !== "undefined") {
+          window.location.href = msg.navigateHref
+          return
+        }
         setActiveView(view as AgentView)
         if (floatingChat.mode === "maximized") toggleMaximize()
         if (view === "decisions" && msg?.decisionId) {

@@ -390,7 +390,9 @@ class OrchestratorTests(TestCase):
 
         self.assertTrue(mock_call_dify_chat.called)
         project_members = mock_call_dify_chat.call_args.kwargs['project_members']
+        current_username = mock_call_dify_chat.call_args.kwargs['current_username']
         usernames = {member['username'] for member in project_members}
+        self.assertEqual(current_username, 'orchuser')
         self.assertIn('orchuser', usernames)
         self.assertIn('alice', usernames)
         self.assertNotIn('agent-bot', usernames)
@@ -414,6 +416,10 @@ class OrchestratorTests(TestCase):
         self.assertIn(
             {'type': 'text', 'content': 'Please provide the exact username.'},
             chunks,
+        )
+        self.assertEqual(
+            mock_call_dify_chat.call_args.kwargs['current_username'],
+            'orchuser',
         )
         workflow_run.refresh_from_db()
         self.assertFalse(workflow_run.chat_followed_up)
@@ -1033,11 +1039,12 @@ class WorkflowEngineTests(TestCase):
         self.assertEqual(found, other_wf)
 
     def test_executor_registry_complete(self):
-        """All 7 step types have a registered executor."""
+        """All workflow step types have a registered executor."""
         from .executors import EXECUTOR_REGISTRY
         expected = {
             'analyze_data', 'call_dify', 'call_llm',
             'create_decision', 'create_tasks',
+            'generate_miro_snapshot', 'create_miro_board',
             'await_confirmation', 'custom_api',
         }
         self.assertEqual(set(EXECUTOR_REGISTRY.keys()), expected)

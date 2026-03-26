@@ -28,11 +28,19 @@ class AgentSessionListSerializer(serializers.ModelSerializer):
 
 class AgentSessionDetailSerializer(serializers.ModelSerializer):
     messages = AgentMessageSerializer(many=True, read_only=True)
+    follow_up_available = serializers.SerializerMethodField()
 
     class Meta:
         model = AgentSession
-        fields = ['id', 'title', 'status', 'created_at', 'updated_at', 'messages']
+        fields = ['id', 'title', 'status', 'created_at', 'updated_at', 'messages', 'follow_up_available']
         read_only_fields = ['id', 'status', 'created_at', 'updated_at']
+
+    def get_follow_up_available(self, obj):
+        return obj.workflow_runs.filter(
+            status='awaiting_confirmation',
+            chat_followed_up=False,
+            is_deleted=False,
+        ).exists()
 
 
 class AgentWorkflowRunSerializer(serializers.ModelSerializer):
@@ -67,7 +75,7 @@ class ChatInputSerializer(serializers.Serializer):
     )
     file_id = serializers.UUIDField(required=False, allow_null=True)
     action = serializers.ChoiceField(
-        choices=['analyze', 'confirm_decision', 'create_tasks'],
+        choices=['analyze', 'confirm_decision', 'create_tasks', 'generate_miro'],
         required=False,
         allow_null=True,
     )

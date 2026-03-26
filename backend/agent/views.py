@@ -160,6 +160,7 @@ class ChatView(EnglishResponseMixin, APIView):
             assistant_content_parts = []
             assistant_metadata = {}
             last_message_type = 'text'
+            standalone_message_types = {'miro_status', 'miro_suggestion'}
 
             def _flush_message():
                 """Save accumulated content as an assistant message and reset state."""

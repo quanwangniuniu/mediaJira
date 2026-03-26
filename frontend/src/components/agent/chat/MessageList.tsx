@@ -7,11 +7,12 @@ import { cn } from "@/lib/utils"
 import { AGENT_MESSAGES } from "@/lib/agentMessages"
 import { AnomalyCard } from "./AnomalyCard"
 import { DecisionCard } from "./DecisionCard"
+import { MiroGenerateCard } from "./MiroGenerateCard"
 import { TaskListCard } from "./TaskListCard"
 import type { AnomalyItem, SuggestedDecision, RecommendedTask } from "@/types/agent"
 import { StepProgress, type StepProgressItem } from "./StepProgress"
 
-export type ChatMessageType = "text" | "analysis" | "file_uploaded" | "decision_created" | "tasks_created" | "step_progress" | "error" | "calendar_invite"
+export type ChatMessageType = "text" | "analysis" | "file_uploaded" | "decision_created" | "tasks_created" | "miro_status" | "step_progress" | "error" | "calendar_invite"
 
 export interface ChatMessage {
   id: string
@@ -25,6 +26,10 @@ export interface ChatMessage {
   fileName?: string
   navigateTo?: string
   navigateLabel?: string
+  navigateDisabled?: boolean
+  navigateHref?: string
+  eventType?: string
+  workflowRunId?: string
   decisionId?: number
   stepProgress?: StepProgressItem[]
 }
@@ -102,6 +107,7 @@ export function MessageList({ messages, onAction, onNavigate }: MessageListProps
                 size="sm"
                 variant="outline"
                 className="gap-2"
+                disabled={message.navigateDisabled}
                 onClick={() => onNavigate?.(message.navigateTo!, message)}
               >
                 {message.navigateLabel}
@@ -117,6 +123,7 @@ export function MessageList({ messages, onAction, onNavigate }: MessageListProps
               </div>
             )}
 
+
             {/* Analysis result cards */}
             {message.anomalies && message.anomalies.length > 0 && (
               <AnomalyCard anomalies={message.anomalies} />
@@ -131,10 +138,13 @@ export function MessageList({ messages, onAction, onNavigate }: MessageListProps
             )}
 
             {message.recommendedTasks && message.recommendedTasks.length > 0 && (
-              <TaskListCard
-                tasks={message.recommendedTasks}
-                onCreateAll={() => onAction?.("create_tasks")}
-              />
+              <>
+                <TaskListCard
+                  tasks={message.recommendedTasks}
+                  onCreateAll={() => onAction?.("create_tasks")}
+                />
+                <MiroGenerateCard onGenerate={() => onAction?.("generate_miro")} />
+              </>
             )}
           </div>
         </div>
