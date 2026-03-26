@@ -66,6 +66,8 @@ export type SSEEventType =
   | 'decision_draft'
   | 'task_created'
   | 'file_uploaded'
+  | 'calendar_invite'
+  | 'calendar_updated'
   | 'step_progress'
   | 'done'
   | 'error';
@@ -80,11 +82,26 @@ export interface SSEEvent {
 
 export type AgentAction = 'analyze' | 'confirm_decision' | 'create_tasks';
 
+export interface CalendarContextPayload {
+  type: 'calendar' | 'event';
+  eventId?: string;
+  eventTitle?: string;
+  calendarId?: string;
+  startDatetime?: string;
+  endDatetime?: string;
+  description?: string;
+  calendarIds?: string[];
+  currentView?: string;
+  currentDate?: string;
+  userTimezone?: string;
+}
+
 export interface AgentChatRequest {
   message: string;
   spreadsheet_id?: number;
   csv_filename?: string;
   action?: AgentAction;
+  calendar_context?: CalendarContextPayload;
   workflow_id?: string;
 }
 

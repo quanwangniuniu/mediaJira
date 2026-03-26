@@ -71,6 +71,7 @@ class ChatInputSerializer(serializers.Serializer):
         required=False,
         allow_null=True,
     )
+    calendar_context = serializers.JSONField(required=False, allow_null=True)
     workflow_id = serializers.UUIDField(required=False, allow_null=True)
 
 
