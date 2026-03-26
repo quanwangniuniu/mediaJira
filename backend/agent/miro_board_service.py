@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 from django.db import transaction
 from django.utils import timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from miro.serializers import (
     BoardCreateSerializer,
@@ -14,7 +15,17 @@ logger = logging.getLogger(__name__)
 
 
 def _build_board_title(session, workflow_run):
-    timestamp = timezone.localtime().strftime("%Y-%m-%d %H:%M")
+    user_timezone = getattr(getattr(session.user, "preferences", None), "timezone", None)
+    current_time = timezone.now()
+    if user_timezone:
+        try:
+            current_time = timezone.localtime(current_time, ZoneInfo(user_timezone))
+        except ZoneInfoNotFoundError:
+            current_time = timezone.localtime(current_time)
+    else:
+        current_time = timezone.localtime(current_time)
+
+    timestamp = current_time.strftime("%Y-%m-%d %H:%M")
     return f"Agent Miro Board {timestamp}"
 
 
