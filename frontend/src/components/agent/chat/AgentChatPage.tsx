@@ -47,7 +47,8 @@ function restoreMessage(m: AgentMessage): ChatMessage {
   let navigateLabel: string | undefined
   let navigateDisabled = false
   let navigateHref: string | undefined
-  const isFollowUpPrompt = m.message_type === "confirmation_request"
+  const isFollowUpPrompt = m.message_type === "follow_up_prompt"
+
 
   const eventType = m.data?.event_type
 
@@ -135,6 +136,8 @@ export function AgentChatPage() {
   const [hasStarted, setHasStarted] = useState(false)
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null)
   const [stepProgress, setStepProgress] = useState<StepProgressItem[]>([])
+  const [followUpAvailable, setFollowUpAvailable] = useState(false)
+  const [followUpStarted, setFollowUpStarted] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const [pendingCalendarPreload] = useState<CalendarPreload | null>(buildCalendarPreload)
   // Persist calendar context for the lifetime of this session so follow-up messages
@@ -150,26 +153,14 @@ export function AgentChatPage() {
   }, [sessionCalendarContext])
 
   const handleSendMessageRef = useRef<typeof handleSendMessage | null>(null)
-  const lastFollowUpPromptIndex = [...messages].reduce((lastIndex, message, index) => {
-    if (message.role === "assistant" && message.isFollowUpPrompt) {
-      return index
-    }
-    return lastIndex
-  }, -1)
-  const hasRealUserReplyAfterFollowUpPrompt =
-    lastFollowUpPromptIndex >= 0 &&
-    messages.slice(lastFollowUpPromptIndex + 1).some((message) => {
-      if (message.role !== "user") return false
-      const normalized = message.content.trim()
-      return !["confirm_decision", "create_tasks", "generate_miro"].includes(normalized)
-    })
-  const isAwaitingFollowUp = lastFollowUpPromptIndex >= 0 && !hasRealUserReplyAfterFollowUpPrompt && !isStreaming
+  const isAwaitingFollowUp = followUpStarted && !isStreaming
   const inputPlaceholder = isAwaitingFollowUp
     ? "Ask one follow-up question about the analysis, or include an exact username/email for forwarding..."
     : "Ask about your data or upload a file..."
   const inputHelperText = isAwaitingFollowUp
     ? "You can send one follow-up message now. Ask for an explanation, a short report, or forwarding to specific project members."
     : undefined
+  const latestAnalysisMessageId = [...messages].reverse().find((message) => message.type === "analysis")?.id ?? null
 
   const setSessionId = useCallback((id: string | null) => {
     setSessionIdState(id)
@@ -177,6 +168,25 @@ export function AgentChatPage() {
       sessionStorage.setItem("agent-session-id", id)
     } else {
       sessionStorage.removeItem("agent-session-id")
+    }
+  }, [])
+
+  const applySessionState = useCallback((session: Awaited<ReturnType<typeof AgentAPI.getSession>>) => {
+    setSessionId(String(session.id))
+    setHasStarted(true)
+    setMessages(session.messages.map(restoreMessage))
+    setFollowUpAvailable(Boolean(session.follow_up_available))
+    setFollowUpStarted(Boolean(session.follow_up_started))
+    broadcastRestoredAnomalies(session.messages)
+  }, [setSessionId])
+
+  const refreshFollowUpState = useCallback(async (id: string) => {
+    try {
+      const session = await AgentAPI.getSession(id)
+      setFollowUpAvailable(Boolean(session.follow_up_available))
+      setFollowUpStarted(Boolean(session.follow_up_started))
+    } catch {
+      // ignore refresh failures; next restore/poll can retry
     }
   }, [])
 
@@ -194,6 +204,8 @@ export function AgentChatPage() {
       try {
         const session = await AgentAPI.getSession(sessionId)
         setMessages(session.messages.map(restoreMessage))
+        setFollowUpAvailable(Boolean(session.follow_up_available))
+        setFollowUpStarted(Boolean(session.follow_up_started))
       } catch {
         // ignore polling failures; next cycle can retry
       }
@@ -207,22 +219,12 @@ export function AgentChatPage() {
     const storedId = sessionStorage.getItem("agent-session-id")
     if (storedId) {
       AgentAPI.getSession(storedId)
-        .then((session) => {
-          setSessionId(String(session.id))
-          setHasStarted(true)
-          setMessages(session.messages.map(restoreMessage))
-          broadcastRestoredAnomalies(session.messages)
-          // Restore calendar context for this session if available
-          const storedCtx = sessionStorage.getItem("agent-session-calendar-context")
-          if (storedCtx) {
-            try { setSessionCalendarContext(JSON.parse(storedCtx)) } catch {}
-          }
-        })
+        .then((session) => applySessionState(session))
         .catch(() => {
           sessionStorage.removeItem("agent-session-id")
         })
     }
-  }, [setSessionId])
+  }, [applySessionState])
 
   // Listen for sidebar events
   useEffect(() => {
@@ -234,6 +236,8 @@ export function AgentChatPage() {
       setSessionCalendarContext(null)
       setHasStarted(false)
       setIsStreaming(false)
+      setFollowUpAvailable(false)
+      setFollowUpStarted(false)
       abortRef.current?.abort()
     }
 
@@ -243,10 +247,7 @@ export function AgentChatPage() {
 
       try {
         const session = await AgentAPI.getSession(detail.sessionId)
-        setSessionId(String(session.id))
-        setHasStarted(true)
-        setMessages(session.messages.map(restoreMessage))
-        broadcastRestoredAnomalies(session.messages)
+        applySessionState(session)
       } catch {
         // Session not found — stay on welcome
       }
@@ -258,7 +259,7 @@ export function AgentChatPage() {
       window.removeEventListener("agent:new-chat", handleNewChat)
       window.removeEventListener("agent:load-session", handleLoadSession)
     }
-  }, [setSessionId])
+  }, [applySessionState])
 
   /** Append a new message and return its id */
   const addMessage = useCallback((msg: ChatMessage) => {
@@ -316,6 +317,8 @@ export function AgentChatPage() {
         } else if (event.type === "analysis") {
           contentParts.push(event.content || "")
           analysisData = (event.data as unknown as AnalysisResult) || null
+          setFollowUpAvailable(true)
+          setFollowUpStarted(false)
           updateMessage(aiMsgId, {
             content: contentParts.join("\n"),
             type: "analysis",
@@ -333,6 +336,13 @@ export function AgentChatPage() {
           contentParts.push(event.content || "")
           updateMessage(aiMsgId, {
             content: contentParts.join("\n"),
+          })
+        } else if (event.type === "follow_up_prompt") {
+          contentParts.push(event.content || "")
+          setFollowUpAvailable(false)
+          setFollowUpStarted(true)
+          updateMessage(aiMsgId, {
+            content: contentParts.join("\n"),
             isFollowUpPrompt: true,
           })
         } else if (event.type === "error") {
@@ -343,6 +353,7 @@ export function AgentChatPage() {
           if (sid) {
             setSessionId(sid)
             window.dispatchEvent(new CustomEvent("agent:sessions-changed"))
+            void refreshFollowUpState(sid)
           }
         }
       },
@@ -351,10 +362,13 @@ export function AgentChatPage() {
         setIsStreaming(false)
       },
       () => {
+        if (sessionId) {
+          void refreshFollowUpState(sessionId)
+        }
         setIsStreaming(false)
       }
     )
-  }, [sessionId, addMessage, updateMessage, setSessionId])
+  }, [sessionId, addMessage, updateMessage, setSessionId, refreshFollowUpState])
 
   /** Handle text message send */
   const handleSendMessage = useCallback(async (text: string, calendarContext?: Record<string, unknown>) => {
@@ -468,13 +482,15 @@ export function AgentChatPage() {
           return
         }
 
-        if (event.content && event.type !== "miro_status") {
+        if (event.content && event.type !== "miro_status" && event.type !== "follow_up_prompt") {
           contentParts.push(event.content)
           updateMessage(aiMsgId, { content: contentParts.join("\n") })
         }
 
         if (event.type === "analysis" && event.data) {
           const data = event.data as unknown as AnalysisResult
+          setFollowUpAvailable(true)
+          setFollowUpStarted(false)
           updateMessage(aiMsgId, {
             type: "analysis",
             anomalies: data.anomalies,
@@ -517,12 +533,24 @@ export function AgentChatPage() {
             workflowRunId: event.data?.workflow_run_id,
           })
         }
+        if (event.type === "follow_up_prompt") {
+          contentParts.push(event.content || "")
+          setFollowUpAvailable(false)
+          setFollowUpStarted(true)
+          updateMessage(aiMsgId, {
+            content: contentParts.join("\n"),
+            isFollowUpPrompt: true,
+          })
+        }
       },
       (error) => {
         updateMessage(aiMsgId, { content: `Error: ${error.message}`, type: "error" })
         setIsStreaming(false)
       },
       () => {
+        if (sid) {
+          void refreshFollowUpState(String(sid))
+        }
         // Attach final step progress to the message
         setStepProgress((prev) => {
           if (prev.length > 0) {
@@ -538,7 +566,7 @@ export function AgentChatPage() {
         setIsStreaming(false)
       }
     )
-  }, [sessionId, selectedWorkflowId, sessionCalendarContext, addMessage, updateMessage, setSessionId])
+  }, [sessionId, selectedWorkflowId, sessionCalendarContext, addMessage, updateMessage, setSessionId, refreshFollowUpState])
 
   // Keep ref always pointing to the latest handleSendMessage
   handleSendMessageRef.current = handleSendMessage
@@ -551,6 +579,8 @@ export function AgentChatPage() {
       confirm_decision: "confirm_decision",
       create_tasks: "create_tasks",
       generate_miro: "generate_miro",
+      start_follow_up: "start_follow_up",
+      cancel_follow_up: "cancel_follow_up",
     }
     const agentAction = actionMap[action]
     if (!agentAction) return
@@ -567,7 +597,7 @@ export function AgentChatPage() {
       (event: SSEEvent) => {
         if (event.type === "done") return
 
-        if (event.content && event.type !== "miro_status") {
+        if (event.content && event.type !== "miro_status" && event.type !== "follow_up_prompt") {
           contentParts.push(event.content)
           updateMessage(aiMsgId, { content: contentParts.join("\n") })
         }
@@ -601,16 +631,26 @@ export function AgentChatPage() {
             workflowRunId: event.data?.workflow_run_id,
           })
         }
+        if (event.type === "follow_up_prompt") {
+          contentParts.push(event.content || "")
+          setFollowUpAvailable(false)
+          setFollowUpStarted(true)
+          updateMessage(aiMsgId, {
+            content: contentParts.join("\n"),
+            isFollowUpPrompt: true,
+          })
+        }
       },
       (error) => {
         updateMessage(aiMsgId, { content: `Error: ${error.message}`, type: "error" })
         setIsStreaming(false)
       },
       () => {
+        void refreshFollowUpState(sessionId)
         setIsStreaming(false)
       }
     )
-  }, [sessionId, addMessage, updateMessage])
+  }, [sessionId, addMessage, updateMessage, refreshFollowUpState])
 
   // Auto-send calendar context message when arriving from calendar/event page (once only).
   // Uses a module-level flag + ref to handleSendMessage so this effect only fires on mount
@@ -635,7 +675,7 @@ export function AgentChatPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <MessageList messages={messages} onAction={handleAction} onNavigate={(view, msg) => {
+      <MessageList messages={messages} onAction={handleAction} latestAnalysisMessageId={latestAnalysisMessageId} showFollowUpToggle={followUpAvailable || followUpStarted} followUpActive={followUpStarted} onNavigate={(view, msg) => {
         if (msg?.navigateHref && typeof window !== "undefined") {
           window.location.href = msg.navigateHref
           return

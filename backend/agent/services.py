@@ -599,6 +599,26 @@ class AgentOrchestrator:
             yield {"type": "done"}
             return
 
+        if action == 'start_follow_up':
+            latest_run = self.session.workflow_runs.filter(
+                status='awaiting_confirmation',
+                analysis_result__isnull=False,
+                is_deleted=False,
+            ).order_by('-created_at').first()
+            yield from self._start_follow_up(latest_run)
+            yield {"type": "done"}
+            return
+
+        if action == 'cancel_follow_up':
+            latest_run = self.session.workflow_runs.filter(
+                status='awaiting_confirmation',
+                analysis_result__isnull=False,
+                is_deleted=False,
+            ).order_by('-created_at').first()
+            yield from self._cancel_follow_up(latest_run)
+            yield {"type": "done"}
+            return
+
         # --- Start a new workflow ---
         if file_id or spreadsheet_id or csv_filename or (action == 'analyze'):
             workflow_def = self._resolve_workflow(workflow_id)
@@ -941,11 +961,6 @@ class AgentOrchestrator:
             "content": "\n".join(summary_parts),
             "data": analysis,
         }
-        yield {
-            "type": "confirmation_request",
-            "content": "I've finished the analysis. You can send one follow-up message now. I can explain the findings, turn them into a short report, or prepare messages to forward to specific project members. If you want me to forward something, include the exact username or email.",
-            "data": {"workflow_run_id": str(workflow_run.id)},
-        }
 
     def analyze_spreadsheet(self, spreadsheet_id):
         """Read spreadsheet data via ORM, send to LLM for analysis."""
@@ -991,11 +1006,6 @@ class AgentOrchestrator:
             "type": "analysis",
             "content": "\n".join(summary_parts),
             "data": analysis,
-        }
-        yield {
-            "type": "confirmation_request",
-            "content": "I've finished the analysis. You can send one follow-up message now. I can explain the findings, turn them into a short report, or prepare messages to forward to specific project members. If you want me to forward something, include the exact username or email.",
-            "data": {"workflow_run_id": str(workflow_run.id)},
         }
 
     def analyze_csv(self, csv_filename):
@@ -1062,9 +1072,44 @@ class AgentOrchestrator:
             "content": "\n".join(summary_parts),
             "data": analysis,
         }
+
+    def _start_follow_up(self, workflow_run):
+        if not workflow_run or not workflow_run.analysis_result:
+            yield {"type": "error", "content": "No analysis found to start a follow-up chat."}
+            return
+
+        if workflow_run.chat_followed_up:
+            yield {"type": "error", "content": "Follow-up chat is already completed for this analysis."}
+            return
+
+        if not workflow_run.chat_follow_up_started:
+            workflow_run.chat_follow_up_started = True
+            workflow_run.save(update_fields=['chat_follow_up_started'])
+
         yield {
-            "type": "confirmation_request",
-            "content": "I've finished the analysis. You can send one follow-up message now. I can explain the findings, turn them into a short report, or prepare messages to forward to specific project members. If you want me to forward something, include the exact username or email.",
+            "type": "follow_up_prompt",
+            "content": "Follow-up chat started. Ask one follow-up question about the analysis, or include the exact username/email if you want me to prepare a forwarded message.",
+            "data": {"workflow_run_id": str(workflow_run.id)},
+        }
+
+    def _cancel_follow_up(self, workflow_run):
+        if not workflow_run or not workflow_run.analysis_result:
+            yield {"type": "error", "content": "No analysis found to cancel a follow-up chat for."}
+            return
+
+        if workflow_run.chat_followed_up:
+            yield {"type": "error", "content": "Follow-up chat is already completed for this analysis."}
+            return
+
+        if not workflow_run.chat_follow_up_started:
+            yield {"type": "text", "content": "Follow-up chat is already inactive."}
+            return
+
+        workflow_run.chat_follow_up_started = False
+        workflow_run.save(update_fields=['chat_follow_up_started'])
+        yield {
+            "type": "text",
+            "content": "Follow-up chat closed.",
             "data": {"workflow_run_id": str(workflow_run.id)},
         }
 
@@ -1448,6 +1493,7 @@ class AgentOrchestrator:
             # Follow-up chat path
             latest_run = self.session.workflow_runs.filter(
                 status='awaiting_confirmation',
+                chat_follow_up_started=True,
                 chat_followed_up=False,
             ).order_by('-created_at').first()
 

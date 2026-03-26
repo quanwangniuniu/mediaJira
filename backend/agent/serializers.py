@@ -29,15 +29,25 @@ class AgentSessionListSerializer(serializers.ModelSerializer):
 class AgentSessionDetailSerializer(serializers.ModelSerializer):
     messages = AgentMessageSerializer(many=True, read_only=True)
     follow_up_available = serializers.SerializerMethodField()
+    follow_up_started = serializers.SerializerMethodField()
 
     class Meta:
         model = AgentSession
-        fields = ['id', 'title', 'status', 'created_at', 'updated_at', 'messages', 'follow_up_available']
+        fields = ['id', 'title', 'status', 'created_at', 'updated_at', 'messages', 'follow_up_available', 'follow_up_started']
         read_only_fields = ['id', 'status', 'created_at', 'updated_at']
 
     def get_follow_up_available(self, obj):
         return obj.workflow_runs.filter(
             status='awaiting_confirmation',
+            chat_follow_up_started=False,
+            chat_followed_up=False,
+            is_deleted=False,
+        ).exists()
+
+    def get_follow_up_started(self, obj):
+        return obj.workflow_runs.filter(
+            status='awaiting_confirmation',
+            chat_follow_up_started=True,
             chat_followed_up=False,
             is_deleted=False,
         ).exists()
@@ -75,7 +85,7 @@ class ChatInputSerializer(serializers.Serializer):
     )
     file_id = serializers.UUIDField(required=False, allow_null=True)
     action = serializers.ChoiceField(
-        choices=['analyze', 'confirm_decision', 'create_tasks', 'generate_miro'],
+        choices=['analyze', 'confirm_decision', 'create_tasks', 'generate_miro', 'start_follow_up', 'cancel_follow_up'],
         required=False,
         allow_null=True,
     )

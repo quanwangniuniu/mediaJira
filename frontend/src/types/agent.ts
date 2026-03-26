@@ -16,6 +16,7 @@ export interface AgentSession {
 export interface AgentSessionDetail extends AgentSession {
   messages: AgentMessage[];
   follow_up_available?: boolean;
+  follow_up_started?: boolean;
 }
 
 export interface UpdateSessionRequest {
@@ -67,6 +68,7 @@ export type SSEEventType =
   | 'text'
   | 'analysis'
   | 'confirmation_request'
+  | 'follow_up_prompt'
   | 'decision_draft'
   | 'task_created'
   | 'miro_status'
@@ -85,7 +87,7 @@ export interface SSEEvent {
 
 // ==================== Chat Request ====================
 
-export type AgentAction = 'analyze' | 'confirm_decision' | 'create_tasks' | 'generate_miro';
+export type AgentAction = 'analyze' | 'confirm_decision' | 'create_tasks' | 'generate_miro' | 'start_follow_up' | 'cancel_follow_up';
 
 export interface CalendarContextPayload {
   type: 'calendar' | 'event';

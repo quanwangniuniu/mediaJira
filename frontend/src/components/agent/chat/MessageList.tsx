@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 import { AGENT_MESSAGES } from "@/lib/agentMessages"
 import { AnomalyCard } from "./AnomalyCard"
 import { DecisionCard } from "./DecisionCard"
+import { FollowUpCard } from "./FollowUpCard"
 import { MiroGenerateCard } from "./MiroGenerateCard"
 import { TaskListCard } from "./TaskListCard"
 import type { AnomalyItem, SuggestedDecision, RecommendedTask } from "@/types/agent"
@@ -38,9 +39,19 @@ interface MessageListProps {
   messages: ChatMessage[]
   onAction?: (action: string) => void
   onNavigate?: (view: string, message?: ChatMessage) => void
+  latestAnalysisMessageId?: string | null
+  showFollowUpToggle?: boolean
+  followUpActive?: boolean
 }
 
-export function MessageList({ messages, onAction, onNavigate }: MessageListProps) {
+export function MessageList({
+  messages,
+  onAction,
+  onNavigate,
+  latestAnalysisMessageId,
+  showFollowUpToggle,
+  followUpActive,
+}: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -145,6 +156,13 @@ export function MessageList({ messages, onAction, onNavigate }: MessageListProps
                 />
                 <MiroGenerateCard onGenerate={() => onAction?.("generate_miro")} />
               </>
+            )}
+
+            {showFollowUpToggle && message.id === latestAnalysisMessageId && (
+              <FollowUpCard
+                active={followUpActive}
+                onToggle={() => onAction?.(followUpActive ? "cancel_follow_up" : "start_follow_up")}
+              />
             )}
           </div>
         </div>

@@ -133,21 +133,23 @@ class ChatView(EnglishResponseMixin, APIView):
         calendar_context = serializer.validated_data.get('calendar_context')
         workflow_id = serializer.validated_data.get('workflow_id')
 
-        # Auto-generate title from first message
-        if not session.title and message_text:
+        should_persist_user_message = action not in {'start_follow_up', 'cancel_follow_up'}
+
+        # Auto-generate title from first real user message
+        if should_persist_user_message and not session.title and message_text:
             session.title = message_text[:100]
             session.save(update_fields=['title'])
 
-        # Save user message
-        AgentMessage.objects.create(
-            session=session,
-            role='user',
-            content=message_text,
-            metadata={
-                'spreadsheet_id': spreadsheet_id,
-                'action': action,
-            },
-        )
+        if should_persist_user_message:
+            AgentMessage.objects.create(
+                session=session,
+                role='user',
+                content=message_text,
+                metadata={
+                    'spreadsheet_id': spreadsheet_id,
+                    'action': action,
+                },
+            )
 
         project = session.project
         orchestrator = AgentOrchestrator(

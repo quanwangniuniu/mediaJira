@@ -44,6 +44,7 @@ class AgentMessage(TimeStampedModel):
         ('decision_draft', 'Decision Draft'),
         ('task_created', 'Task Created'),
         ('confirmation_request', 'Confirmation Request'),
+        ('follow_up_prompt', 'Follow-up Prompt'),
         ('error', 'Error'),
     ]
 
@@ -210,6 +211,7 @@ class AgentWorkflowRun(TimeStampedModel):
         related_name='agent_workflow_runs',
     )
     error_message = models.TextField(null=True, blank=True)
+    chat_follow_up_started = models.BooleanField(default=False)
     chat_followed_up = models.BooleanField(default=False)
 
     class Meta:
