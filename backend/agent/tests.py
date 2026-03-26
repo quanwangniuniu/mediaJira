@@ -366,6 +366,7 @@ class OrchestratorTests(TestCase):
             session=self.session,
             status='awaiting_confirmation',
             analysis_result=_test_analysis_data(),
+            chat_follow_up_started=True,
         )
         AgentMessage.objects.create(
             session=self.session,
@@ -390,7 +391,9 @@ class OrchestratorTests(TestCase):
 
         self.assertTrue(mock_call_dify_chat.called)
         project_members = mock_call_dify_chat.call_args.kwargs['project_members']
+        current_username = mock_call_dify_chat.call_args.kwargs['current_username']
         usernames = {member['username'] for member in project_members}
+        self.assertEqual(current_username, 'orchuser')
         self.assertIn('orchuser', usernames)
         self.assertIn('alice', usernames)
         self.assertNotIn('agent-bot', usernames)
@@ -401,6 +404,7 @@ class OrchestratorTests(TestCase):
             session=self.session,
             status='awaiting_confirmation',
             analysis_result=_test_analysis_data(),
+            chat_follow_up_started=True,
         )
         mock_call_dify_chat.return_value = {
             'status': 'needs_clarification',
@@ -415,8 +419,81 @@ class OrchestratorTests(TestCase):
             {'type': 'text', 'content': 'Please provide the exact username.'},
             chunks,
         )
+        self.assertEqual(
+            mock_call_dify_chat.call_args.kwargs['current_username'],
+            'orchuser',
+        )
         workflow_run.refresh_from_db()
         self.assertFalse(workflow_run.chat_followed_up)
+        self.assertTrue(workflow_run.chat_follow_up_started)
+
+    def test_start_follow_up_marks_run_started_and_returns_prompt(self):
+        workflow_run = AgentWorkflowRun.objects.create(
+            session=self.session,
+            status='awaiting_confirmation',
+            analysis_result=_test_analysis_data(),
+        )
+
+        orchestrator = AgentOrchestrator(self.user, self.project, self.session)
+        chunks = list(orchestrator.handle_message("start_follow_up", action="start_follow_up"))
+
+        self.assertIn(
+            {
+                'type': 'follow_up_prompt',
+                'content': 'Follow-up chat started. Ask one follow-up question about the analysis, or include the exact username/email if you want me to prepare a forwarded message.',
+                'data': {'workflow_run_id': str(workflow_run.id)},
+            },
+            chunks,
+        )
+        workflow_run.refresh_from_db()
+        self.assertTrue(workflow_run.chat_follow_up_started)
+        self.assertFalse(workflow_run.chat_followed_up)
+
+    def test_cancel_follow_up_marks_run_inactive(self):
+        workflow_run = AgentWorkflowRun.objects.create(
+            session=self.session,
+            status='awaiting_confirmation',
+            analysis_result=_test_analysis_data(),
+            chat_follow_up_started=True,
+        )
+
+        orchestrator = AgentOrchestrator(self.user, self.project, self.session)
+        chunks = list(orchestrator.handle_message("cancel_follow_up", action="cancel_follow_up"))
+
+        self.assertIn(
+            {
+                'type': 'text',
+                'content': 'Follow-up chat closed.',
+                'data': {'workflow_run_id': str(workflow_run.id)},
+            },
+            chunks,
+        )
+        workflow_run.refresh_from_db()
+        self.assertFalse(workflow_run.chat_follow_up_started)
+        self.assertFalse(workflow_run.chat_followed_up)
+
+    @patch('agent.services._call_dify_chat')
+    def test_follow_up_requires_explicit_start(self, mock_call_dify_chat):
+        AgentWorkflowRun.objects.create(
+            session=self.session,
+            status='awaiting_confirmation',
+            analysis_result=_test_analysis_data(),
+        )
+
+        orchestrator = AgentOrchestrator(self.user, self.project, self.session)
+        chunks = list(orchestrator.handle_message("Explain this to me."))
+
+        self.assertIn(
+            {
+                'type': 'text',
+                'content': (
+                    "I can help you analyze spreadsheet data and create decisions. "
+                    "To get started, select a spreadsheet and use the 'analyze' action."
+                ),
+            },
+            chunks,
+        )
+        mock_call_dify_chat.assert_not_called()
 
     @patch('chat.tasks.notify_new_message.delay')
     def test_forward_to_users_does_not_match_first_name(self, mock_notify_delay):
@@ -740,6 +817,211 @@ class DecisionFieldCompatibilityTests(TestCase):
         self.assertIsNotNone(draft_chunk['data']['decision_id'])
 
 
+class CalendarAgentTests(TestCase):
+    """
+    Verify that answer_calendar_question() correctly routes calendar
+    context through the Dify Calendar workflow and handles responses.
+    """
+
+    def setUp(self):
+        self.org = Organization.objects.create(name='Test Org Cal', slug='test-org-cal')
+        self.user = CustomUser.objects.create_user(
+            email='cal@test.com',
+            username='caluser',
+            password='testpass123',
+        )
+        self.user.organization = self.org
+        self.user.save()
+        self.project = Project.objects.create(
+            name='Test Project Cal',
+            organization=self.org,
+            owner=self.user,
+        )
+        self.session = AgentSession.objects.create(
+            user=self.user,
+            project=self.project,
+        )
+        self.orchestrator = AgentOrchestrator(self.user, self.project, self.session)
+
+    def _make_calendar_and_event(self, days_offset=1):
+        """Create a Calendar + Event for this org and return (calendar, event)."""
+        from calendars.models import Calendar as CalendarModel, Event as EventModel
+        from django.utils import timezone
+        cal = CalendarModel.objects.create(
+            organization=self.org,
+            owner=self.user,
+            name='Test Calendar',
+        )
+        now = timezone.now()
+        event = EventModel.objects.create(
+            organization=self.org,
+            calendar=cal,
+            created_by=self.user,
+            title='Team Standup',
+            description='Daily sync',
+            start_datetime=now + timezone.timedelta(days=days_offset),
+            end_datetime=now + timezone.timedelta(days=days_offset, hours=1),
+            timezone='UTC',
+        )
+        return cal, event
+
+    # ------------------------------------------------------------------ #
+    # handle_message routing                                              #
+    # ------------------------------------------------------------------ #
+
+    @patch.dict('os.environ', {'DIFY_CALENDAR_API_KEY': 'test-key'})
+    @patch('agent.services.requests.post')
+    def test_handle_message_routes_to_calendar_when_context_provided(self, mock_post):
+        """handle_message with calendar_context skips general chat and calls Dify calendar."""
+        mock_post.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {'data': {'outputs': {'answer': '{"answer": "You have 1 event.", "create_events": []}'}}},
+        )
+        mock_post.return_value.raise_for_status = lambda: None
+
+        calendar_context = {'type': 'calendar', 'calendarIds': [], 'currentView': 'week'}
+        chunks = list(self.orchestrator.handle_message(
+            'What is on my calendar?',
+            calendar_context=calendar_context,
+        ))
+        types = [c['type'] for c in chunks]
+        self.assertIn('text', types)
+        self.assertIn('done', types)
+        # Dify calendar endpoint must have been called
+        self.assertTrue(mock_post.called)
+
+    @patch('agent.services.requests.post')
+    def test_handle_message_without_calendar_context_skips_calendar(self, mock_post):
+        """handle_message without calendar_context must NOT call the calendar Dify endpoint."""
+        chunks = list(self.orchestrator.handle_message('Hello'))
+        # requests.post should not have been called for the calendar workflow
+        self.assertFalse(mock_post.called)
+
+    # ------------------------------------------------------------------ #
+    # _fetch_events_for_context                                           #
+    # ------------------------------------------------------------------ #
+
+    def test_fetch_events_returns_upcoming_events(self):
+        """Events within the 30-day past / 60-day future window are returned."""
+        _, event = self._make_calendar_and_event(days_offset=5)
+        calendar_context = {'type': 'calendar', 'calendarIds': []}
+        events = self.orchestrator._fetch_events_for_context(calendar_context)
+        event_ids = [str(e.id) for e in events]
+        self.assertIn(str(event.id), event_ids)
+
+    def test_fetch_events_returns_specific_event_by_id(self):
+        """When eventId is given, only that event is returned."""
+        _, event = self._make_calendar_and_event(days_offset=3)
+        calendar_context = {'type': 'event', 'eventId': str(event.id)}
+        events = self.orchestrator._fetch_events_for_context(calendar_context)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(str(events[0].id), str(event.id))
+
+    def test_fetch_events_filters_by_calendar_ids(self):
+        """calendarIds filter limits results to the specified calendar."""
+        from calendars.models import Calendar as CalendarModel, Event as EventModel
+        from django.utils import timezone
+
+        cal1, event1 = self._make_calendar_and_event(days_offset=2)
+        cal2 = CalendarModel.objects.create(
+            organization=self.org, owner=self.user, name='Other Calendar',
+        )
+        now = timezone.now()
+        event2 = EventModel.objects.create(
+            organization=self.org,
+            calendar=cal2,
+            created_by=self.user,
+            title='Other Event',
+            start_datetime=now + timezone.timedelta(days=2),
+            end_datetime=now + timezone.timedelta(days=2, hours=1),
+            timezone='UTC',
+        )
+
+        context_cal1_only = {'type': 'calendar', 'calendarIds': [str(cal1.id)]}
+        events = self.orchestrator._fetch_events_for_context(context_cal1_only)
+        ids = [str(e.id) for e in events]
+        self.assertIn(str(event1.id), ids)
+        self.assertNotIn(str(event2.id), ids)
+
+    def test_fetch_events_returns_empty_for_unknown_event_id(self):
+        """Non-existent eventId returns empty list (no crash)."""
+        context = {'type': 'event', 'eventId': str(uuid.uuid4())}
+        events = self.orchestrator._fetch_events_for_context(context)
+        self.assertEqual(events, [])
+
+    # ------------------------------------------------------------------ #
+    # answer_calendar_question — Dify response handling                  #
+    # ------------------------------------------------------------------ #
+
+    @patch.dict('os.environ', {'DIFY_CALENDAR_API_KEY': 'test-key'})
+    @patch('agent.services.requests.post')
+    def test_answer_calendar_question_yields_text_chunk(self, mock_post):
+        """A successful Dify response yields a text chunk with the answer."""
+        mock_post.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {'data': {'outputs': {'answer': '{"answer": "You have 2 events this week.", "create_events": []}'}}},
+        )
+        mock_post.return_value.raise_for_status = lambda: None
+
+        self._make_calendar_and_event(days_offset=1)
+        context = {'type': 'calendar', 'calendarIds': []}
+        chunks = list(self.orchestrator.answer_calendar_question('What is on my calendar?', context))
+        text_chunks = [c for c in chunks if c['type'] == 'text' and 'events this week' in c.get('content', '')]
+        self.assertTrue(len(text_chunks) > 0)
+
+    @patch.dict('os.environ', {'DIFY_CALENDAR_API_KEY': 'test-key'})
+    @patch('agent.services.requests.post')
+    def test_answer_calendar_question_creates_event_from_dify(self, mock_post):
+        """When Dify returns create_events, the events are created in the DB."""
+        from calendars.models import Calendar as CalendarModel, Event as EventModel
+        CalendarModel.objects.create(
+            organization=self.org, owner=self.user, name='My Calendar',
+        )
+        dify_answer = json.dumps({
+            'answer': 'I have scheduled a meeting for you.',
+            'create_events': [{
+                'title': 'AI Scheduled Meeting',
+                'description': 'Auto-created by agent',
+                'start_datetime': '2026-04-01T10:00:00+00:00',
+                'end_datetime': '2026-04-01T11:00:00+00:00',
+            }]
+        })
+        mock_post.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {'data': {'outputs': {'answer': dify_answer}}},
+        )
+        mock_post.return_value.raise_for_status = lambda: None
+
+        before_count = EventModel.objects.filter(organization=self.org).count()
+        context = {'type': 'calendar', 'calendarIds': []}
+        list(self.orchestrator.answer_calendar_question('Schedule a meeting', context))
+        after_count = EventModel.objects.filter(organization=self.org).count()
+        self.assertEqual(after_count, before_count + 1)
+
+    @patch('agent.services.requests.post')
+    def test_answer_calendar_question_dify_error_yields_error_chunk(self, mock_post):
+        """A Dify network error yields an error chunk without raising."""
+        mock_post.side_effect = Exception('Network timeout')
+        context = {'type': 'calendar', 'calendarIds': []}
+        chunks = list(self.orchestrator.answer_calendar_question('What is on my calendar?', context))
+        error_chunks = [c for c in chunks if c['type'] == 'error']
+        self.assertTrue(len(error_chunks) > 0)
+
+    @patch.dict('os.environ', {}, clear=False)
+    def test_answer_calendar_question_no_api_key_yields_error(self):
+        """Missing DIFY_CALENDAR_API_KEY yields a configuration error chunk."""
+        import os
+        original = os.environ.pop('DIFY_CALENDAR_API_KEY', None)
+        try:
+            context = {'type': 'calendar', 'calendarIds': []}
+            chunks = list(self.orchestrator.answer_calendar_question('Any events?', context))
+            error_chunks = [c for c in chunks if c['type'] == 'error']
+            self.assertTrue(len(error_chunks) > 0)
+        finally:
+            if original is not None:
+                os.environ['DIFY_CALENDAR_API_KEY'] = original
+
+
 def _create_default_workflow():
     """Helper: create a system default 5-step workflow definition."""
     wf = AgentWorkflowDefinition.objects.create(
@@ -828,11 +1110,12 @@ class WorkflowEngineTests(TestCase):
         self.assertEqual(found, other_wf)
 
     def test_executor_registry_complete(self):
-        """All 7 step types have a registered executor."""
+        """All workflow step types have a registered executor."""
         from .executors import EXECUTOR_REGISTRY
         expected = {
             'analyze_data', 'call_dify', 'call_llm',
             'create_decision', 'create_tasks',
+            'generate_miro_snapshot', 'create_miro_board',
             'await_confirmation', 'custom_api',
         }
         self.assertEqual(set(EXECUTOR_REGISTRY.keys()), expected)

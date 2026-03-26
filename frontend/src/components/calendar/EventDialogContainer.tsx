@@ -14,6 +14,7 @@ type EventDialogContainerProps = {
   preferredCalendarId?: string | null;
   onSave: (payload: { action: () => Promise<void> }) => Promise<void>;
   onDelete?: (event: EventDTO) => Promise<void>;
+  onAskAgent?: (event: EventDTO) => void;
   position: EventPanelPosition | null;
 };
 

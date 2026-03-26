@@ -1,6 +1,7 @@
  "use client";
 
 import React, { useCallback, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { addDays, format, startOfWeek } from "date-fns";
 import toast from "react-hot-toast";
 import Layout from "@/components/layout/Layout";
@@ -22,6 +23,7 @@ import {
 } from "@/components/calendar/utils";
 
 function CalendarPageContent() {
+  const router = useRouter();
   const [currentView, setCurrentView] = useState<CalendarViewType>("week");
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [visibleCalendarIds, setVisibleCalendarIds] = useState<string[] | undefined>(undefined);
@@ -42,6 +44,35 @@ function CalendarPageContent() {
     currentDate,
     calendarIds: visibleCalendarIds,
   });
+
+  const handleAskAgentFromCalendar = useCallback(() => {
+    const ctx = {
+      type: "calendar" as const,
+      calendarIds: visibleCalendarIds ?? [],
+      currentView,
+      currentDate: format(currentDate, "yyyy-MM-dd"),
+      userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    };
+    sessionStorage.setItem("agent-calendar-context", JSON.stringify(ctx));
+    sessionStorage.removeItem("agent-session-id");
+    router.push("/agent");
+  }, [visibleCalendarIds, currentView, currentDate, router]);
+
+  const handleAskAgentFromEvent = useCallback((event: EventDTO) => {
+    const ctx = {
+      type: "event" as const,
+      eventId: event.id,
+      eventTitle: event.title || "(No title)",
+      calendarId: event.calendar_id,
+      startDatetime: event.start_datetime,
+      endDatetime: event.end_datetime,
+      description: event.description ?? "",
+      userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    };
+    sessionStorage.setItem("agent-calendar-context", JSON.stringify(ctx));
+    sessionStorage.removeItem("agent-session-id");
+    router.push("/agent");
+  }, [router]);
 
   const handleVisibleCalendarsChange = useCallback(
     (calendarIds: string[] | undefined) => {
@@ -223,6 +254,47 @@ function CalendarPageContent() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Auto-refresh when the agent creates a calendar event.
+  // On mount: consume any pending flag written before this page loaded (navigation case).
+  // Custom event: same-window floating chat. Storage event: cross-tab.
+  // pageshow / visibilitychange: handle bfcache restores (browser back button).
+  React.useEffect(() => {
+    const consumePending = () => {
+      const pending = localStorage.getItem("calendar-events-updated");
+      if (pending) {
+        localStorage.removeItem("calendar-events-updated");
+        refetch();
+      }
+    };
+
+    consumePending();
+
+    const handleRefresh = () => refetch();
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === "calendar-events-updated") {
+        localStorage.removeItem("calendar-events-updated");
+        refetch();
+      }
+    };
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) consumePending();
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") consumePending();
+    };
+
+    window.addEventListener("agent:calendar-updated", handleRefresh);
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener("pageshow", handlePageShow);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.removeEventListener("agent:calendar-updated", handleRefresh);
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("pageshow", handlePageShow);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [refetch]);
+
   return (
     <Layout>
       <div className="flex min-h-screen flex-col bg-[#f8fafd]">
@@ -238,6 +310,7 @@ function CalendarPageContent() {
           }}
           onToday={handleToday}
           onOffset={handleOffset}
+          onAskAgent={handleAskAgentFromCalendar}
         />
 
         <div className="flex flex-1 overflow-hidden">
@@ -347,6 +420,7 @@ function CalendarPageContent() {
                 toast.error("Failed to delete event");
               }
             }}
+            onAskAgent={handleAskAgentFromEvent}
           />
         </div>
       </div>

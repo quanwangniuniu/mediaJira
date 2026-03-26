@@ -5,6 +5,7 @@ import {
   Calendar as CalendarIcon,
   Clock,
   Pencil,
+  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -25,6 +26,7 @@ type EventPanelDialogProps = {
   preferredCalendarId?: string | null;
   onSave: (payload: { action: () => Promise<void> }) => Promise<void>;
   onDelete?: (event: EventDTO) => Promise<void>;
+  onAskAgent?: (event: EventDTO) => void;
   position: EventPanelPosition | null;
 };
 
@@ -40,6 +42,7 @@ export function EventPanelDialog({
   preferredCalendarId,
   onSave,
   onDelete,
+  onAskAgent,
   position,
 }: EventPanelDialogProps) {
   const resolveDefaultCalendarId = useCallback(
@@ -167,6 +170,18 @@ export function EventPanelDialog({
               <p className="mt-2 text-xs text-gray-500">
                 This is a recurring event. Editing applies to the entire series.
               </p>
+            )}
+            {onAskAgent && (
+              <div className="mt-3 border-t border-gray-200 pt-3">
+                <button
+                  type="button"
+                  onClick={() => onAskAgent(event)}
+                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-violet-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-violet-700"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Ask Agent about this event
+                </button>
+              </div>
             )}
           </div>
         </div>

@@ -130,23 +130,26 @@ class ChatView(EnglishResponseMixin, APIView):
         csv_filename = serializer.validated_data.get('csv_filename')
         file_id = serializer.validated_data.get('file_id')
         action = serializer.validated_data.get('action')
+        calendar_context = serializer.validated_data.get('calendar_context')
         workflow_id = serializer.validated_data.get('workflow_id')
 
-        # Auto-generate title from first message
-        if not session.title and message_text:
+        should_persist_user_message = action not in {'start_follow_up', 'cancel_follow_up'}
+
+        # Auto-generate title from first real user message
+        if should_persist_user_message and not session.title and message_text:
             session.title = message_text[:100]
             session.save(update_fields=['title'])
 
-        # Save user message
-        AgentMessage.objects.create(
-            session=session,
-            role='user',
-            content=message_text,
-            metadata={
-                'spreadsheet_id': spreadsheet_id,
-                'action': action,
-            },
-        )
+        if should_persist_user_message:
+            AgentMessage.objects.create(
+                session=session,
+                role='user',
+                content=message_text,
+                metadata={
+                    'spreadsheet_id': spreadsheet_id,
+                    'action': action,
+                },
+            )
 
         project = session.project
         orchestrator = AgentOrchestrator(
@@ -159,6 +162,23 @@ class ChatView(EnglishResponseMixin, APIView):
             assistant_content_parts = []
             assistant_metadata = {}
             last_message_type = 'text'
+            standalone_message_types = {'miro_status', 'miro_suggestion'}
+
+            def _flush_message():
+                """Save accumulated content as an assistant message and reset state."""
+                nonlocal assistant_content_parts, assistant_metadata, last_message_type
+                body = '\n'.join(p for p in assistant_content_parts if p)
+                if body:
+                    AgentMessage.objects.create(
+                        session=session,
+                        role='assistant',
+                        content=body,
+                        message_type=last_message_type,
+                        metadata=assistant_metadata,
+                    )
+                assistant_content_parts = []
+                assistant_metadata = {}
+                last_message_type = 'text'
 
             for chunk in orchestrator.handle_message(
                 message_text,
@@ -166,14 +186,33 @@ class ChatView(EnglishResponseMixin, APIView):
                 csv_filename=csv_filename,
                 action=action,
                 file_id=file_id,
+                calendar_context=calendar_context,
                 workflow_id=workflow_id,
             ):
                 chunk_type = chunk.get('type', 'text')
                 content = chunk.get('content', '')
                 data = chunk.get('data')
 
-                if chunk_type != 'done':
-                    assistant_content_parts.append(content)
+                # Save calendar_invite as a separate message so it can be
+                # restored independently from the preceding calendar answer.
+                if chunk_type == 'calendar_invite':
+                    _flush_message()
+                    sse_data = json.dumps(chunk, default=str)
+                    yield f"data: {sse_data}\n\n"
+                    if content:
+                        AgentMessage.objects.create(
+                            session=session,
+                            role='assistant',
+                            content=content,
+                            message_type='calendar_invite',
+                            metadata={},
+                        )
+                    continue
+
+                # Skip internal signalling events from content accumulation
+                if chunk_type not in ('done', 'calendar_updated'):
+                    if content:
+                        assistant_content_parts.append(content)
                     last_message_type = chunk_type
                     if data:
                         assistant_metadata.update(data)
@@ -181,15 +220,8 @@ class ChatView(EnglishResponseMixin, APIView):
                 sse_data = json.dumps(chunk, default=str)
                 yield f"data: {sse_data}\n\n"
 
-                # Save assistant message when done
-                if chunk_type == 'done' and assistant_content_parts:
-                    AgentMessage.objects.create(
-                        session=session,
-                        role='assistant',
-                        content='\n'.join(assistant_content_parts),
-                        message_type=last_message_type,
-                        metadata=assistant_metadata,
-                    )
+                if chunk_type == 'done':
+                    _flush_message()
 
         response = StreamingHttpResponse(
             event_stream(),
