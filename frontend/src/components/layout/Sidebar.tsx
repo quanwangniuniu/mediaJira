@@ -160,12 +160,12 @@ const getNavigationItems = (
         },
       ],
     },
-    {
-      name: t ? t("sidebar.reports") : "Reports",
-      href: "/reports",
-      icon: FileText,
-      description: t ? t("sidebar.analytics_reports") : "Analytics and reports",
-    },
+    // {
+    //   name: t ? t("sidebar.reports") : "Reports",
+    //   href: "/reports",
+    //   icon: FileText,
+    //   description: t ? t("sidebar.analytics_reports") : "Analytics and reports",
+    // },
     {
       name: t ? t("sidebar.messages") : "Messages",
       href: "/messages",
@@ -206,11 +206,11 @@ const getNavigationItems = (
           href: "/admin/permissions",
           icon: Shield,
         },
-        {
-          name: t ? t("sidebar.system_settings") : "System Settings",
-          href: "/admin/settings",
-          icon: Settings,
-        },
+        // {
+        //   name: t ? t("sidebar.system_settings") : "System Settings",
+        //   href: "/admin/settings",
+        //   icon: Settings,
+        // },
         {
           name: t ? t("sidebar.notifications") : "Notifications",
           href: "/admin/notifications",
@@ -220,12 +220,12 @@ const getNavigationItems = (
     });
   }
 
-  baseItems.push({
-    name: t ? t("sidebar.settings") : "Settings",
-    href: "/settings",
-    icon: Settings,
-    description: t ? t("sidebar.user_preferences") : "User preferences",
-  });
+  // baseItems.push({
+  //   name: t ? t("sidebar.settings") : "Settings",
+  //   href: "/settings",
+  //   icon: Settings,
+  //   description: t ? t("sidebar.user_preferences") : "User preferences",
+  // });
 
   return baseItems;
 };
@@ -364,17 +364,8 @@ const Sidebar: FC<SidebarProps> = ({
     `}
     >
       {/* Collapse button */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200">
-        {!collapsed && (
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center">
-              <div className="w-3 h-3 bg-white rounded"></div>
-            </div>
-            <span className="text-sm font-medium text-gray-700">
-              {t("sidebar.navigation")}
-            </span>
-          </div>
-        )}
+      <div className="flex items-center justify-end p-4 border-b border-gray-200">
+        
 
         <button
           onClick={handleCollapseToggle}
