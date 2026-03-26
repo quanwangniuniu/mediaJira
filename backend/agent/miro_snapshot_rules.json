@@ -1,0 +1,120 @@
+{
+  "version": "1.0",
+  "name": "mediajira_miro_snapshot_rules",
+  "description": "Rules and output contract for generating a MediaJira Miro board snapshot. This is not a Dify app DSL export.",
+  "snapshot_schema": {
+    "type": "object",
+    "required": ["viewport", "items"],
+    "properties": {
+      "viewport": {
+        "type": "object",
+        "required": ["x", "y", "zoom"],
+        "properties": {
+          "x": { "type": "number" },
+          "y": { "type": "number" },
+          "zoom": { "type": "number" }
+        }
+      },
+      "items": {
+        "type": "array",
+        "maxItems": 50,
+        "items": {
+          "type": "object",
+          "required": ["id", "type", "x", "y", "width", "height", "style", "content", "z_index"],
+          "properties": {
+            "id": { "type": "string" },
+            "type": {
+              "type": "string",
+              "enum": ["text", "shape", "sticky_note", "frame", "connector"]
+            },
+            "parent_item_id": { "type": ["string", "null"] },
+            "x": { "type": "number" },
+            "y": { "type": "number" },
+            "width": { "type": "number" },
+            "height": { "type": "number" },
+            "rotation": { "type": ["number", "null"] },
+            "style": { "type": "object" },
+            "content": { "type": "string" },
+            "z_index": { "type": "integer" }
+          }
+        }
+      }
+    }
+  },
+  "item_rules": {
+    "frame": {
+      "purpose": "Container for a section of related items",
+      "style_keys": ["backgroundColor", "borderColor", "borderWidth", "label"],
+      "notes": [
+        "Use content or style.label as the visible frame title",
+        "Frames should usually be larger than their child items"
+      ]
+    },
+    "sticky_note": {
+      "purpose": "Short insight, anomaly, task or recommendation",
+      "style_keys": ["backgroundColor", "fontSize", "color", "fontFamily"],
+      "notes": [
+        "Keep content concise, usually under 140 characters",
+        "Use warm colors for anomalies and action items"
+      ]
+    },
+    "text": {
+      "purpose": "Section headers or explanatory text",
+      "style_keys": ["backgroundColor", "fontSize", "color", "fontFamily", "fontWeight", "textAlign"],
+      "notes": [
+        "Use for titles, subtitles, summaries and legends"
+      ]
+    },
+    "shape": {
+      "purpose": "Structured node such as a decision block or summary block",
+      "style_keys": ["shapeType", "backgroundColor", "borderColor", "borderWidth"],
+      "allowed_shape_types": ["rect", "roundRect", "ellipse", "diamond"]
+    },
+    "connector": {
+      "purpose": "Directional relationship between two items or sections",
+      "style_keys": ["strokeColor", "strokeWidth", "strokeDasharray"],
+      "notes": [
+        "Render connectors horizontally using the item's width and height",
+        "Optional content can label the relationship"
+      ]
+    }
+  },
+  "layout_guidance": {
+    "default_template": "dynamic_sections",
+    "sections": [
+      "Summary",
+      "Anomalies",
+      "Decision",
+      "Decision Options",
+      "Tasks",
+      "Risks",
+      "Follow-up",
+      "Notes"
+    ],
+    "flow_direction": "left_to_right",
+    "recommended_spacing": 40,
+    "frame_padding": {
+      "left": 24,
+      "right": 24,
+      "top": 72,
+      "bottom": 24
+    },
+    "layout_notes": [
+      "Infer the number of frames from the available structured content rather than forcing exactly three sections.",
+      "When there are 1-3 sections, use a single row.",
+      "When there are 4-6 sections, use a two-row grid with left-to-right reading order.",
+      "All child items must remain fully inside their parent frame bounds.",
+      "Prefer readable summaries as primary labels and move raw internal names to secondary text when needed."
+    ],
+    "recommended_viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 0.75
+    }
+  },
+  "output_contract": {
+    "strict_json_only": true,
+    "no_markdown_fences": true,
+    "no_extra_text": true
+  }
+}

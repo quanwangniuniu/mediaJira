@@ -366,6 +366,7 @@ class OrchestratorTests(TestCase):
             session=self.session,
             status='awaiting_confirmation',
             analysis_result=_test_analysis_data(),
+            chat_follow_up_started=True,
         )
         AgentMessage.objects.create(
             session=self.session,
@@ -390,7 +391,9 @@ class OrchestratorTests(TestCase):
 
         self.assertTrue(mock_call_dify_chat.called)
         project_members = mock_call_dify_chat.call_args.kwargs['project_members']
+        current_username = mock_call_dify_chat.call_args.kwargs['current_username']
         usernames = {member['username'] for member in project_members}
+        self.assertEqual(current_username, 'orchuser')
         self.assertIn('orchuser', usernames)
         self.assertIn('alice', usernames)
         self.assertNotIn('agent-bot', usernames)
@@ -401,6 +404,7 @@ class OrchestratorTests(TestCase):
             session=self.session,
             status='awaiting_confirmation',
             analysis_result=_test_analysis_data(),
+            chat_follow_up_started=True,
         )
         mock_call_dify_chat.return_value = {
             'status': 'needs_clarification',
@@ -415,8 +419,81 @@ class OrchestratorTests(TestCase):
             {'type': 'text', 'content': 'Please provide the exact username.'},
             chunks,
         )
+        self.assertEqual(
+            mock_call_dify_chat.call_args.kwargs['current_username'],
+            'orchuser',
+        )
         workflow_run.refresh_from_db()
         self.assertFalse(workflow_run.chat_followed_up)
+        self.assertTrue(workflow_run.chat_follow_up_started)
+
+    def test_start_follow_up_marks_run_started_and_returns_prompt(self):
+        workflow_run = AgentWorkflowRun.objects.create(
+            session=self.session,
+            status='awaiting_confirmation',
+            analysis_result=_test_analysis_data(),
+        )
+
+        orchestrator = AgentOrchestrator(self.user, self.project, self.session)
+        chunks = list(orchestrator.handle_message("start_follow_up", action="start_follow_up"))
+
+        self.assertIn(
+            {
+                'type': 'follow_up_prompt',
+                'content': 'Follow-up chat started. Ask one follow-up question about the analysis, or include the exact username/email if you want me to prepare a forwarded message.',
+                'data': {'workflow_run_id': str(workflow_run.id)},
+            },
+            chunks,
+        )
+        workflow_run.refresh_from_db()
+        self.assertTrue(workflow_run.chat_follow_up_started)
+        self.assertFalse(workflow_run.chat_followed_up)
+
+    def test_cancel_follow_up_marks_run_inactive(self):
+        workflow_run = AgentWorkflowRun.objects.create(
+            session=self.session,
+            status='awaiting_confirmation',
+            analysis_result=_test_analysis_data(),
+            chat_follow_up_started=True,
+        )
+
+        orchestrator = AgentOrchestrator(self.user, self.project, self.session)
+        chunks = list(orchestrator.handle_message("cancel_follow_up", action="cancel_follow_up"))
+
+        self.assertIn(
+            {
+                'type': 'text',
+                'content': 'Follow-up chat closed.',
+                'data': {'workflow_run_id': str(workflow_run.id)},
+            },
+            chunks,
+        )
+        workflow_run.refresh_from_db()
+        self.assertFalse(workflow_run.chat_follow_up_started)
+        self.assertFalse(workflow_run.chat_followed_up)
+
+    @patch('agent.services._call_dify_chat')
+    def test_follow_up_requires_explicit_start(self, mock_call_dify_chat):
+        AgentWorkflowRun.objects.create(
+            session=self.session,
+            status='awaiting_confirmation',
+            analysis_result=_test_analysis_data(),
+        )
+
+        orchestrator = AgentOrchestrator(self.user, self.project, self.session)
+        chunks = list(orchestrator.handle_message("Explain this to me."))
+
+        self.assertIn(
+            {
+                'type': 'text',
+                'content': (
+                    "I can help you analyze spreadsheet data and create decisions. "
+                    "To get started, select a spreadsheet and use the 'analyze' action."
+                ),
+            },
+            chunks,
+        )
+        mock_call_dify_chat.assert_not_called()
 
     @patch('chat.tasks.notify_new_message.delay')
     def test_forward_to_users_does_not_match_first_name(self, mock_notify_delay):
@@ -1033,11 +1110,12 @@ class WorkflowEngineTests(TestCase):
         self.assertEqual(found, other_wf)
 
     def test_executor_registry_complete(self):
-        """All 7 step types have a registered executor."""
+        """All workflow step types have a registered executor."""
         from .executors import EXECUTOR_REGISTRY
         expected = {
             'analyze_data', 'call_dify', 'call_llm',
             'create_decision', 'create_tasks',
+            'generate_miro_snapshot', 'create_miro_board',
             'await_confirmation', 'custom_api',
         }
         self.assertEqual(set(EXECUTOR_REGISTRY.keys()), expected)
