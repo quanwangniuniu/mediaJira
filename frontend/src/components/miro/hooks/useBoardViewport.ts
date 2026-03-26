@@ -95,6 +95,14 @@ export function useBoardViewport(initialViewport: Viewport) {
     isPanningRef.current = false;
   }, []);
 
+  const panBy = useCallback((dx: number, dy: number) => {
+    _setViewport((prev) => ({
+      ...prev,
+      x: prev.x - dx,
+      y: prev.y - dy,
+    }));
+  }, []);
+
   return {
     viewport,
     setViewport,
@@ -104,6 +112,7 @@ export function useBoardViewport(initialViewport: Viewport) {
     startPan,
     updatePan,
     endPan,
+    panBy,
   };
 }
 

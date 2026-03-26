@@ -20,11 +20,13 @@ export default function ConnectorItem({
   const strokeDasharray = item.style?.strokeDasharray;
   const width = item.width || 200;
   const height = item.height || 20;
+  const linkedPath = typeof item.style?.svgPath === "string" ? item.style.svgPath : null;
+  const isLinked = Boolean(item.style?.connection && linkedPath);
 
   // Arrow marker ID (unique per item)
   const markerId = `connectorArrow-${item.id}`;
 
-  // Line goes from left edge to right edge, centered vertically
+  // Line goes from left edge to right edge, centered vertically (free / arrow tool)
   const lineY = height / 2;
 
   const content = item.content || "";
@@ -57,9 +59,9 @@ export default function ConnectorItem({
           </marker>
         </defs>
 
-        {/* Line with arrow */}
+        {/* Linked: curved path in local box coords; free: straight horizontal */}
         <path
-          d={`M 0 ${lineY} L ${width} ${lineY}`}
+          d={isLinked ? linkedPath! : `M 0 ${lineY} L ${width} ${lineY}`}
           fill="none"
           stroke={strokeColor}
           strokeWidth={strokeWidth}

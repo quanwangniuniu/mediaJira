@@ -61,7 +61,7 @@ export interface UpdateMiroBoardData {
 export interface BoardItem {
   id: string;
   board_id: string;
-  type: 'text' | 'shape' | 'sticky_note' | 'frame' | 'line' | 'connector' | 'freehand';
+  type: 'text' | 'shape' | 'sticky_note' | 'frame' | 'line' | 'connector' | 'freehand' | 'emoji';
   parent_item_id?: string | null;
   x: number;
   y: number;
