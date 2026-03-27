@@ -1,12 +1,20 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
+import dynamic from "next/dynamic";
 import { BoardItem } from "@/lib/api/miroApi";
 import { Trash2 } from "lucide-react";
 import { ToolType } from "./hooks/useToolDnD";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import type { EmojiClickData } from "emoji-picker-react";
+
+const EmojiPicker = dynamic(() => import("emoji-picker-react").then((m) => m.default), {
+  ssr: false,
+});
 
 interface BoardPropertiesPanelProps {
   selectedItem: BoardItem | null;
+  selectedItemsCount?: number;
   activeTool?: ToolType;
   brushSettings?: {
     strokeColor: string;
@@ -19,12 +27,15 @@ interface BoardPropertiesPanelProps {
 
 export default function BoardPropertiesPanel({
   selectedItem,
+  selectedItemsCount = 0,
   activeTool,
   brushSettings,
   onBrushSettingsChange,
   onUpdate,
   onDelete,
 }: BoardPropertiesPanelProps) {
+  const [emojiReplaceOpen, setEmojiReplaceOpen] = useState(false);
+
   // Show brush configuration when freehand tool is active and no item is selected
   if (!selectedItem && activeTool === "freehand" && brushSettings && onBrushSettingsChange) {
     return (
@@ -71,6 +82,21 @@ export default function BoardPropertiesPanel({
   }
 
   if (!selectedItem) {
+    if (selectedItemsCount > 1) {
+      return (
+        <div className="w-64 border-l bg-white p-4 overflow-y-auto">
+          <h3 className="text-sm font-semibold text-gray-700 mb-4">Multi-selection</h3>
+          <p className="text-sm text-gray-500 mb-4">{selectedItemsCount} items selected</p>
+          <button
+            onClick={onDelete}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-50 text-red-700 rounded hover:bg-red-100"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span className="text-sm">Delete Selected</span>
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="w-64 border-l bg-white p-4">
         <h3 className="text-sm font-semibold text-gray-700 mb-4">
@@ -135,6 +161,106 @@ export default function BoardPropertiesPanel({
             />
           </div>
         </div>
+
+        {selectedItem.type === "emoji" && (
+          <div>
+            <label className="text-xs font-medium text-gray-600">Emoji</label>
+            <div className="flex gap-2 mt-1 items-center">
+              <input
+                type="text"
+                value={selectedItem.content || ""}
+                onChange={(e) => onUpdate({ content: e.target.value })}
+                className="flex-1 text-sm border rounded px-2 py-1"
+                placeholder="Paste or type an emoji"
+              />
+              <Popover open={emojiReplaceOpen} onOpenChange={setEmojiReplaceOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="text-xs px-2 py-1 border rounded bg-white hover:bg-gray-50 shrink-0"
+                  >
+                    Replace…
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-auto max-h-[min(420px,70vh)] overflow-y-auto p-0 border-0 shadow-lg"
+                  align="end"
+                  onOpenAutoFocus={(e) => e.preventDefault()}
+                >
+                  <EmojiPicker
+                    onEmojiClick={(data: EmojiClickData) => {
+                      onUpdate({ content: data.emoji });
+                      setEmojiReplaceOpen(false);
+                    }}
+                    width={280}
+                    height={360}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <p className="text-[11px] text-gray-500 mt-1">
+              Resize the box to scale; optional fixed size below overrides auto sizing.
+            </p>
+            <label className="text-xs font-medium text-gray-600 mt-2 block">
+              Font size:{" "}
+              {typeof selectedItem.style?.fontSize === "number"
+                ? `${selectedItem.style.fontSize}px`
+                : `Auto (${Math.round(
+                    Math.max(16, Math.min(selectedItem.height * 0.72, selectedItem.width * 0.72))
+                  )}px preview)`}
+            </label>
+            <input
+              type="range"
+              min={8}
+              max={200}
+              value={
+                typeof selectedItem.style?.fontSize === "number"
+                  ? selectedItem.style.fontSize
+                  : Math.round(
+                      Math.max(16, Math.min(selectedItem.height * 0.72, selectedItem.width * 0.72))
+                    )
+              }
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                onUpdate({
+                  style: {
+                    ...selectedItem.style,
+                    fontSize: n,
+                  },
+                });
+              }}
+              className="w-full mt-1"
+            />
+            <input
+              type="number"
+              min={8}
+              max={200}
+              value={
+                typeof selectedItem.style?.fontSize === "number"
+                  ? selectedItem.style.fontSize
+                  : ""
+              }
+              placeholder="Auto"
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "") {
+                  const { fontSize: _f, ...rest } = selectedItem.style || {};
+                  onUpdate({ style: rest });
+                  return;
+                }
+                const n = parseInt(v, 10);
+                if (!Number.isFinite(n)) return;
+                onUpdate({
+                  style: {
+                    ...selectedItem.style,
+                    fontSize: n,
+                  },
+                });
+              }}
+              className="w-full text-sm border rounded px-2 py-1 mt-1"
+            />
+          </div>
+        )}
 
         {/* Content (for text, sticky notes, and shapes) */}
         {(selectedItem.type === "text" || selectedItem.type === "sticky_note" || selectedItem.type === "shape") && (
@@ -590,6 +716,13 @@ export default function BoardPropertiesPanel({
         {/* Connector properties */}
         {selectedItem.type === "connector" && (
           <>
+            {selectedItem.style?.connection && (
+              <p className="text-xs text-gray-500 mb-2">
+                Linked connector — moving attached items updates the curve. Adjust stroke below.
+              </p>
+            )}
+            {!selectedItem.style?.connection && (
+            <>
             <div>
               <label className="text-xs font-medium text-gray-600">Content</label>
               <textarea
@@ -690,6 +823,8 @@ export default function BoardPropertiesPanel({
                 min="1"
               />
             </div>
+            </>
+            )}
             <div>
               <label className="text-xs font-medium text-gray-600">Stroke Color</label>
               <input

@@ -12,6 +12,7 @@ jest.mock('@/components/miro/hooks/useItemDrag', () => ({
     updateDrag: jest.fn(),
     endDrag: jest.fn(),
     getOverridePosition: jest.fn(() => null),
+    isDragging: false,
   })),
 }));
 
@@ -21,6 +22,7 @@ jest.mock('@/components/miro/hooks/useItemResize', () => ({
     updateResize: jest.fn(),
     endResize: jest.fn(),
     getOverrideSize: jest.fn(() => null),
+    isResizing: false,
   })),
 }));
 
@@ -31,7 +33,7 @@ const mockCanvasRef = React.createRef<HTMLDivElement>();
 const defaultProps = {
   viewport: mockViewport,
   items: mockItems,
-  selectedItemId: null,
+  selectedItemIds: [],
   activeTool: 'select' as ToolType,
   onItemSelect: jest.fn(),
   onItemUpdate: jest.fn(),
@@ -41,6 +43,7 @@ const defaultProps = {
   onPanUpdate: jest.fn(),
   onPanEnd: jest.fn(),
   onZoom: jest.fn(),
+  onPanBy: jest.fn(),
   onItemCreate: jest.fn(),
   onFreehandCreate: jest.fn(),
   width: 800,

@@ -3,16 +3,18 @@
 import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Layout from "@/components/layout/Layout";
-import { miroApi, MiroBoard, BoardItem } from "@/lib/api/miroApi";
+import { miroApi, MiroBoard, BoardItem, UpdateBoardItemData } from "@/lib/api/miroApi";
 import { useBoardViewport, Viewport } from "@/components/miro/hooks/useBoardViewport";
 import { useBoardItems } from "@/components/miro/hooks/useBoardItems";
 import { LineVariant, ToolOptions, ToolType } from "@/components/miro/hooks/useToolDnD";
+import { useBoardItemHistory } from "@/components/miro/hooks/useBoardItemHistory";
 import BoardCanvas from "@/components/miro/BoardCanvas";
 import BoardHeader from "@/components/miro/BoardHeader";
 import BoardToolbar from "@/components/miro/BoardToolbar";
 import BoardPropertiesPanel from "@/components/miro/BoardPropertiesPanel";
 import BoardSnapshotsModal from "@/components/miro/BoardSnapshotsModal";
 import BoardPreviewModal from "@/components/miro/BoardPreviewModal";
+import type { AnchorSide } from "@/components/miro/utils/connectorLayout";
 
 export default function MiroBoardPage() {
   const params = useParams();
@@ -57,20 +59,65 @@ export default function MiroBoardPage() {
     startPan,
     updatePan,
     endPan,
+    panBy,
   } = useBoardViewport(initialViewport);
 
   const {
     items,
     loading: itemsLoading,
-    selectedItemId,
-    setSelectedItemId,
+    selectedItemIds,
+    setSelectedItemIds,
     loadItems,
     createItem,
     updateItem,
     updateItemOptimistic,
     updateItemAsync,
     deleteItem,
+    batchUpdateItems,
+    removeItemsOptimistic,
+    restoreItemsOptimistic,
   } = useBoardItems(boardId);
+  const { push, undo, redo, canUndo, canRedo, buildUpdateEntry } = useBoardItemHistory();
+
+  const linkedConnectorSigRef = useRef<Map<string, string>>(new Map());
+
+  // Persist linked connector geometry (and soft-deletes) after layout runs in useBoardItems.
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      const connectors = items.filter((i) => i.type === "connector" && i.style?.connection);
+      if (connectors.length === 0) return;
+      const updates: Array<{ id: string } & Partial<UpdateBoardItemData>> = [];
+      for (const c of connectors) {
+        const sig = [
+          c.is_deleted,
+          c.x,
+          c.y,
+          c.width,
+          c.height,
+          c.style?.svgPath ?? "",
+          JSON.stringify(c.style?.connection ?? {}),
+        ].join("|");
+        if (linkedConnectorSigRef.current.get(c.id) === sig) continue;
+        linkedConnectorSigRef.current.set(c.id, sig);
+        updates.push({
+          id: c.id,
+          x: c.x,
+          y: c.y,
+          width: c.width,
+          height: c.height,
+          rotation: 0,
+          style: c.style,
+          is_deleted: c.is_deleted,
+        });
+      }
+      if (updates.length > 0) {
+        batchUpdateItems(updates).catch((err) =>
+          console.error("Failed to persist linked connectors:", err)
+        );
+      }
+    }, 220);
+    return () => clearTimeout(t);
+  }, [items, batchUpdateItems]);
 
   // Load board data
   useEffect(() => {
@@ -256,9 +303,18 @@ export default function MiroBoardPage() {
   );
 
   // Handle item selection
-  const handleItemSelect = useCallback((itemId: string | null) => {
-    setSelectedItemId(itemId);
-  }, [setSelectedItemId]);
+  const handleItemSelect = useCallback((itemId: string | null, options?: { shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean }) => {
+    if (!itemId) {
+      setSelectedItemIds([]);
+      return;
+    }
+    const additive = Boolean(options?.shiftKey || options?.metaKey || options?.ctrlKey);
+    setSelectedItemIds((prev) => {
+      if (!additive) return [itemId];
+      if (prev.includes(itemId)) return prev.filter((id) => id !== itemId);
+      return [...prev, itemId];
+    });
+  }, [setSelectedItemIds]);
 
   // Handle item update
   const handleItemUpdate = useCallback(
@@ -266,34 +322,70 @@ export default function MiroBoardPage() {
       try {
         // For content edits (typing), update UI immediately and persist in background.
         if (Object.prototype.hasOwnProperty.call(updates, "content")) {
+          const before = items.filter((item) => item.id === itemId);
           const rollback = updateItemOptimistic(itemId, updates);
           updateItemAsync(itemId, updates, rollback).catch((err) => {
             console.error("Failed to persist item update (content):", err);
           });
+          const after = before.map((item) => ({ ...item, ...updates }));
+          push(buildUpdateEntry(before, after, async (snapshot) => {
+            const target = snapshot[0];
+            if (!target) return;
+            await updateItem(target.id, target);
+          }));
           return;
         }
 
+        const before = items.filter((item) => item.id === itemId);
         await updateItem(itemId, updates);
+        const after = items
+          .map((item) => (item.id === itemId ? { ...item, ...updates } : item))
+          .filter((item) => item.id === itemId);
+        push(buildUpdateEntry(before, after, async (snapshot) => {
+          const target = snapshot[0];
+          if (!target) return;
+          await updateItem(target.id, target);
+        }));
       } catch (err) {
         console.error("Failed to update item:", err);
       }
     },
-    [updateItem, updateItemOptimistic, updateItemAsync]
+    [updateItem, updateItemOptimistic, updateItemAsync, items, push, buildUpdateEntry]
   );
 
   // Handle item delete
   const handleItemDelete = useCallback(async () => {
-    if (!selectedItemId) return;
+    if (selectedItemIds.length === 0) return;
+    let rollback: (() => void) | undefined;
     try {
-      await deleteItem(selectedItemId);
-      setSelectedItemId(null);
+      const deletingIds = selectedItemIds.slice();
+      rollback = removeItemsOptimistic(deletingIds);
+      await Promise.all(deletingIds.map((id) => deleteItem(id)));
+      const redoDelete = async () => {
+        await Promise.all(deletingIds.map((id) => deleteItem(id)));
+      };
+      const undoDelete = async () => {
+        const restoreRollback = restoreItemsOptimistic(deletingIds);
+        try {
+          await Promise.all(deletingIds.map((id) => updateItem(id, { is_deleted: false })));
+        } catch (err) {
+          restoreRollback();
+          throw err;
+        }
+      };
+      push({ undo: undoDelete, redo: redoDelete });
+      setSelectedItemIds([]);
     } catch (err) {
+      rollback?.();
       console.error("Failed to delete item:", err);
     }
-  }, [selectedItemId, deleteItem, setSelectedItemId]);
+  }, [selectedItemIds, deleteItem, setSelectedItemIds, push, removeItemsOptimistic, restoreItemsOptimistic, updateItem]);
 
   const resolveToolCreateSpec = useCallback(
-    (toolType: ToolType, options?: ToolOptions) => {
+    (toolType: ToolType, options?: ToolOptions): {
+      resolvedType: BoardItem["type"];
+      style: Record<string, any>;
+    } => {
       const lv = options?.lineVariant ?? lineVariant;
       if (toolType === "line") {
         const strokeDasharray =
@@ -307,8 +399,8 @@ export default function MiroBoardPage() {
         return { resolvedType, style: { strokeColor: "#111827", strokeWidth: 4, strokeDasharray } };
       }
 
-      if (toolType === "connector") {
-        return { resolvedType: toolType as BoardItem["type"], style: { strokeColor: "#111827", strokeWidth: 4 } };
+      if (toolType === "emoji") {
+        return { resolvedType: "emoji", style: {} as Record<string, any> };
       }
 
       return { resolvedType: toolType as BoardItem["type"], style: {} as Record<string, any> };
@@ -319,7 +411,7 @@ export default function MiroBoardPage() {
   // Handle item creation via drag-and-drop
   const handleItemCreate = useCallback(
     async (toolType: ToolType, worldX: number, worldY: number, options?: ToolOptions) => {
-      if (toolType === "select") return;
+      if (toolType === "select" || toolType === "multi_select" || toolType === "connect") return;
 
       const defaultSizes: Record<string, { width: number; height: number }> = {
         text: { width: 200, height: 50 },
@@ -329,33 +421,99 @@ export default function MiroBoardPage() {
         line: { width: 200, height: 20 },
         connector: { width: 200, height: 20 },
         freehand: { width: 100, height: 100 },
+        emoji: { width: 64, height: 64 },
       };
 
       const { resolvedType, style } = resolveToolCreateSpec(toolType, options);
       const size = defaultSizes[resolvedType] || { width: 100, height: 100 };
 
+      const initialContent =
+        toolType === "text" || toolType === "sticky_note"
+          ? ""
+          : toolType === "emoji"
+            ? options?.emoji ?? "😀"
+            : "";
+
       try {
-        await createItem({
+        const created = await createItem({
           type: resolvedType,
           x: worldX,
           y: worldY,
           width: size.width,
           height: size.height,
-          content: toolType === "text" || toolType === "sticky_note" ? "" : "",
+          content: initialContent,
           style,
           z_index: 0,
+        });
+        push({
+          undo: async () => {
+            await updateItem(created.id, { is_deleted: true });
+          },
+          redo: async () => {
+            await updateItem(created.id, { is_deleted: false });
+          },
         });
         // Keep tool selected for potential repeated use
       } catch (err) {
         console.error("Failed to create item:", err);
       }
     },
-    [createItem, resolveToolCreateSpec]
+    [createItem, resolveToolCreateSpec, push, updateItem]
+  );
+
+  const handleEmojiInsert = useCallback(
+    async (emoji: string) => {
+      let w = canvasSize.width;
+      let h = canvasSize.height;
+      if ((w <= 0 || h <= 0) && canvasContainerRef.current) {
+        w = canvasContainerRef.current.clientWidth;
+        h = canvasContainerRef.current.clientHeight;
+      }
+      if (w <= 0 || h <= 0) return;
+
+      const size = { width: 64, height: 64 };
+      const centerWorld = screenToWorld(w / 2, h / 2);
+      const x = centerWorld.x - size.width / 2;
+      const y = centerWorld.y - size.height / 2;
+
+      try {
+        const created = await createItem({
+          type: "emoji",
+          x,
+          y,
+          width: size.width,
+          height: size.height,
+          content: emoji,
+          style: {},
+          z_index: 0,
+        });
+        push({
+          undo: async () => {
+            await updateItem(created.id, { is_deleted: true });
+          },
+          redo: async () => {
+            await updateItem(created.id, { is_deleted: false });
+          },
+        });
+        setSelectedItemIds([created.id]);
+      } catch (err) {
+        console.error("Failed to create emoji:", err);
+      }
+    },
+    [canvasSize.height, canvasSize.width, createItem, push, screenToWorld, updateItem, setSelectedItemIds]
   );
 
   const createAtViewportCenter = useCallback(
     async (toolType: ToolType, options?: ToolOptions) => {
-      if (toolType === "select" || toolType === "freehand") return;
+      if (
+        toolType === "select" ||
+        toolType === "multi_select" ||
+        toolType === "freehand" ||
+        toolType === "emoji" ||
+        toolType === "connect"
+      ) {
+        return;
+      }
 
       // Use live ref dimensions when state is still 0 (e.g. before first layout effect runs).
       let w = canvasSize.width;
@@ -379,6 +537,7 @@ export default function MiroBoardPage() {
         line: { width: 200, height: 20 },
         connector: { width: 200, height: 20 },
         freehand: { width: 100, height: 100 },
+        emoji: { width: 64, height: 64 },
       };
 
       const { resolvedType, style } = resolveToolCreateSpec(toolType, options);
@@ -388,7 +547,7 @@ export default function MiroBoardPage() {
       const y = centerWorld.y - size.height / 2;
 
       try {
-        await createItem({
+        const created = await createItem({
           type: resolvedType,
           x,
           y,
@@ -398,16 +557,68 @@ export default function MiroBoardPage() {
           style,
           z_index: 0,
         });
+        push({
+          undo: async () => {
+            await updateItem(created.id, { is_deleted: true });
+          },
+          redo: async () => {
+            await updateItem(created.id, { is_deleted: false });
+          },
+        });
       } catch (err) {
         console.error("Failed to create item:", err);
       } finally {
         setActiveTool("select");
       }
     },
-    [canvasSize.height, canvasSize.width, createItem, resolveToolCreateSpec, screenToWorld]
+    [canvasSize.height, canvasSize.width, createItem, resolveToolCreateSpec, screenToWorld, push, updateItem]
   );
 
   // Handle freehand creation
+  const handleLinkedConnectorCreate = useCallback(
+    async (payload: {
+      fromItemId: string;
+      toItemId: string;
+      fromAnchor: AnchorSide;
+      toAnchor: AnchorSide;
+    }) => {
+      try {
+        const created = await createItem({
+          type: "connector",
+          x: 0,
+          y: 0,
+          width: 120,
+          height: 40,
+          content: "",
+          rotation: 0,
+          style: {
+            strokeColor: "#111827",
+            strokeWidth: 4,
+            connection: {
+              fromItemId: payload.fromItemId,
+              toItemId: payload.toItemId,
+              fromAnchor: payload.fromAnchor,
+              toAnchor: payload.toAnchor,
+            },
+          },
+          z_index: 0,
+        });
+        push({
+          undo: async () => {
+            await updateItem(created.id, { is_deleted: true });
+          },
+          redo: async () => {
+            await updateItem(created.id, { is_deleted: false });
+          },
+        });
+        setSelectedItemIds([created.id]);
+      } catch (err) {
+        console.error("Failed to create linked connector:", err);
+      }
+    },
+    [createItem, push, updateItem, setSelectedItemIds]
+  );
+
   const handleFreehandCreate = useCallback(
     async (data: {
       x: number;
@@ -417,7 +628,7 @@ export default function MiroBoardPage() {
       style: { svgPath: string; strokeColor: string; strokeWidth: number };
     }) => {
       try {
-        await createItem({
+        const created = await createItem({
           type: "freehand",
           x: data.x,
           y: data.y,
@@ -427,11 +638,19 @@ export default function MiroBoardPage() {
           style: data.style,
           z_index: 0,
         });
+        push({
+          undo: async () => {
+            await updateItem(created.id, { is_deleted: true });
+          },
+          redo: async () => {
+            await updateItem(created.id, { is_deleted: false });
+          },
+        });
       } catch (err) {
         console.error("Failed to create freehand:", err);
       }
     },
-    [createItem]
+    [createItem, push, updateItem]
   );
 
 
@@ -577,7 +796,64 @@ export default function MiroBoardPage() {
     [zoomAtPoint]
   );
 
-  const selectedItem = items.find((item) => item.id === selectedItemId) || null;
+  const selectedItem = selectedItemIds.length === 1
+    ? items.find((item) => item.id === selectedItemIds[0]) || null
+    : null;
+
+  const applySnapshot = useCallback(async (snapshot: BoardItem[]) => {
+    await Promise.all(snapshot.map((item) => updateItem(item.id, item)));
+  }, [updateItem]);
+
+  const handleItemsBatchUpdate = useCallback(async (updates: Array<{ id: string } & Partial<BoardItem>>) => {
+    const before = items.filter((item) => updates.some((u) => u.id === item.id));
+    await batchUpdateItems(updates);
+    const after = before.map((item) => {
+      const update = updates.find((u) => u.id === item.id);
+      return update ? { ...item, ...update } : item;
+    });
+    push(buildUpdateEntry(before, after, applySnapshot));
+  }, [items, batchUpdateItems, push, buildUpdateEntry, applySnapshot]);
+
+  useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null): boolean => {
+      const element = target as HTMLElement | null;
+      if (!element) return false;
+      return Boolean(element.closest("input, textarea, select, [contenteditable='true']"));
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (isEditableTarget(event.target) || isPreviewOpen || isSnapshotsModalOpen) return;
+      const key = event.key.toLowerCase();
+      const mod = event.metaKey || event.ctrlKey;
+      if ((key === "delete" || key === "backspace") && selectedItemIds.length > 0) {
+        event.preventDefault();
+        handleItemDelete();
+        return;
+      }
+      if (key === "escape" && selectedItemIds.length > 0) {
+        event.preventDefault();
+        setSelectedItemIds([]);
+        return;
+      }
+      if (mod && key === "z" && event.shiftKey) {
+        event.preventDefault();
+        redo();
+        return;
+      }
+      if (mod && key === "z") {
+        event.preventDefault();
+        undo();
+        return;
+      }
+      if (!event.metaKey && event.ctrlKey && key === "y") {
+        event.preventDefault();
+        redo();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedItemIds, handleItemDelete, redo, undo, setSelectedItemIds, isPreviewOpen, isSnapshotsModalOpen]);
 
   if (loading) {
     return (
@@ -622,6 +898,10 @@ export default function MiroBoardPage() {
           shareToken={board.share_token}
           onSnapshotClick={handleSnapshotsClick}
           onPreviewClick={handlePreviewClick}
+          onUndo={undo}
+          onRedo={redo}
+          canUndo={canUndo}
+          canRedo={canRedo}
         />
 
         <div className="flex flex-1 overflow-hidden min-h-0">
@@ -629,6 +909,7 @@ export default function MiroBoardPage() {
             activeTool={activeTool}
             onToolChange={setActiveTool}
             onToolPrimaryAction={createAtViewportCenter}
+            onEmojiInsert={handleEmojiInsert}
             lineVariant={lineVariant}
             onLineVariantChange={setLineVariant}
           />
@@ -637,7 +918,7 @@ export default function MiroBoardPage() {
             <BoardCanvas
               viewport={viewport}
               items={items}
-              selectedItemId={selectedItemId}
+              selectedItemIds={selectedItemIds}
               activeTool={activeTool}
               onItemSelect={handleItemSelect}
               onItemUpdate={handleItemUpdate}
@@ -647,8 +928,11 @@ export default function MiroBoardPage() {
               onPanUpdate={handlePanUpdate}
               onPanEnd={handlePanEnd}
               onZoom={handleZoom}
+              onPanBy={panBy}
               onItemCreate={handleItemCreate}
               onFreehandCreate={handleFreehandCreate}
+              onLinkedConnectorCreate={handleLinkedConnectorCreate}
+              onItemsBatchUpdate={handleItemsBatchUpdate}
               width={canvasSize.width}
               height={canvasSize.height}
               canvasRef={canvasRef}
@@ -658,6 +942,7 @@ export default function MiroBoardPage() {
 
           <BoardPropertiesPanel
             selectedItem={selectedItem}
+            selectedItemsCount={selectedItemIds.length}
             activeTool={activeTool}
             brushSettings={brushSettings}
             onBrushSettingsChange={setBrushSettings}
