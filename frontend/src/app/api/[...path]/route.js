@@ -3,13 +3,23 @@ import logger from '@/lib/logger';
 // Ensure this route uses Node.js runtime (not edge runtime)
 export const runtime = 'nodejs';
 
+function buildTargetUrl(backendUrl, path, searchParams = '') {
+  if (path.startsWith('auth/')) {
+    return `${backendUrl}/${path}${searchParams ? `?${searchParams}` : ''}`;
+  }
+  if (path.startsWith('users/')) {
+    return `${backendUrl}/${path}${searchParams ? `?${searchParams}` : ''}`;
+  }
+  return `${backendUrl}/api/${path}${searchParams ? `?${searchParams}` : ''}`;
+}
+
 export async function GET(request, { params }) {
   const path = params.path.join('/');
   const url = new URL(request.url);
   const searchParams = url.searchParams.toString();
 
   const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-  const targetUrl = `${backendUrl}/api/${path}${searchParams ? `?${searchParams}` : ''}`;
+  const targetUrl = buildTargetUrl(backendUrl, path, searchParams);
 
   try {
     const response = await fetch(targetUrl, {
@@ -51,7 +61,7 @@ export async function POST(request, { params }) {
   const contentType = request.headers.get('content-type') || '';
 
   const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-  const targetUrl = `${backendUrl}/api/${path}`;
+  const targetUrl = buildTargetUrl(backendUrl, path);
 
   try {
     const outgoingHeaders = {

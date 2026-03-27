@@ -62,25 +62,6 @@ html, body {
   background: #d1d5db;
 }
 
-.error-banner {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  margin-bottom: 2em;
-  padding: 1em 1.5em;
-}
-.error-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  color: #dc2626;
-  font-weight: 500;
-}
-.error-content span {
-  flex: 1;
-  margin-right: 1em;
-}
-
 .campaigns-header {
   display: flex;
   justify-content: space-between;
@@ -108,18 +89,9 @@ html, body {
 .input:invalid {
   border-color: #dc2626;
 }
-.input-error {
-  border-color: #dc2626;
-  background: #fef2f2;
-}
 .input:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-.error-text {
-  color: #dc2626;
-  font-size: 0.875rem;
-  margin-top: 0.25em;
 }
 .status-badge {
   display: inline-block;
@@ -149,30 +121,6 @@ html, body {
   background: #e5e7eb;
   color: #374151;
 }
-.centered {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  min-height: 200px;
-  gap: 1em;
-}
-.empty-state {
-  text-align: center;
-  background: #fff;
-  border-radius: 8px;
-  padding: 2em 1.5em;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
-}
-.empty-state h3 {
-  margin-bottom: 0.5em;
-  color: #374151;
-}
-.empty-state p {
-  color: #6b7280;
-  margin-bottom: 1.5em;
-}
-
 @keyframes timeline-reveal {
   0% {
     transform: translateY(-50%) scaleX(0);
@@ -230,49 +178,6 @@ html, body {
     animation: none;
   }
 }
-.modal-overlay {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.15);
-  z-index: 1000;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-.modal {
-  background: #fff;
-  border-radius: 10px;
-  padding: 2em 2.5em;
-  min-width: 340px;
-  max-width: 95vw;
-  box-shadow: 0 4px 32px rgba(0,0,0,0.12);
-}
-.modal-title {
-  font-size: 1.5rem;
-  font-weight: 600;
-  margin-bottom: 1em;
-}
-.modal-form {
-  display: flex;
-  flex-direction: column;
-  gap: 1em;
-}
-.modal-form label {
-  display: flex;
-  flex-direction: column;
-  font-weight: 500;
-  color: #374151;
-}
-.modal-form label span {
-  margin-bottom: 0.25em;
-}
-.modal-actions {
-  display: flex;
-  gap: 1em;
-  justify-content: flex-end;
-  margin-top: 1em;
-}
-
 /* Test Page Styles */
 .test-page-bg {
   background: #f7f8fa;
@@ -382,16 +287,6 @@ hr {
     padding: 1.5em;
   }
   
-  .modal-actions {
-    flex-direction: column;
-  }
-  
-  .error-content {
-    flex-direction: column;
-    gap: 1em;
-    align-items: flex-start;
-  }
-  
   .test-actions {
     flex-direction: column;
   }
@@ -403,6 +298,7 @@ hr {
 
 @layer base {
   :root {
+    --font-size: 16px;
     --background: 0 0% 100%;
     --foreground: 0 0% 3.9%;
     --card: 0 0% 100%;
@@ -421,6 +317,8 @@ hr {
     --destructive-foreground: 0 0% 98%;
     --border: 0 0% 89.8%;
     --input: 0 0% 89.8%;
+    --input-background: 0 0% 95.7%;
+    --switch-background: 220 10% 81%;
     --ring: 0 0% 3.9%;
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;
@@ -431,7 +329,17 @@ hr {
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
+    --font-weight-medium: 500;
+    --font-weight-normal: 400;
     --radius: 0.5rem;
+    --sidebar: 0 0% 98%;
+    --sidebar-foreground: 0 0% 3.9%;
+    --sidebar-primary: 0 0% 9%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 0 0% 95.5%;
+    --sidebar-accent-foreground: 0 0% 20%;
+    --sidebar-border: 0 0% 92%;
+    --sidebar-ring: 0 0% 70%;
   }
   .dark {
     --background: 224 71% 4%;
@@ -452,6 +360,8 @@ hr {
     --destructive-foreground: 0 0% 100%;
     --border: 216 34% 17%;
     --input: 216 34% 17%;
+    --input-background: 216 34% 17%;
+    --switch-background: 220 10% 35%;
     --ring: 210 100% 52%;
     --chart-1: 210 100% 52%;
     --chart-2: 160 60% 45%;
@@ -462,7 +372,17 @@ hr {
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
+    --font-weight-medium: 500;
+    --font-weight-normal: 400;
     --radius: 0.5rem;
+    --sidebar: 0 0% 20%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: 210 100% 52%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 0 0% 26%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 0 0% 26%;
+    --sidebar-ring: 0 0% 44%;
   }
 }
 

@@ -94,7 +94,7 @@ export default function SetPasswordPage() {
     setLoading(true);
 
     try {
-      const response = await api.post('/auth/google/set-password/', {
+      const response = await api.post('/api/auth/google/set-password/', {
         token: token,
         password: formData.password
       });

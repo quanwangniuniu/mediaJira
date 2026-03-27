@@ -12,6 +12,8 @@ export interface Meeting {
   scheduled_time: string | null;
   external_reference: string | null;
   status: MeetingStatus;
+  /** Workspace module layout (blocks order); API may return null — treat as []. */
+  layout_config?: unknown[] | null;
 }
 
 export interface MeetingCreateRequest {
@@ -44,6 +46,7 @@ export interface MeetingPartialUpdateRequest {
   scheduled_time?: string | null;
   external_reference?: string | null;
   status?: MeetingStatus;
+  layout_config?: unknown[] | null;
 }
 
 export interface AgendaItem {

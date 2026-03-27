@@ -1,0 +1,274 @@
+"use client";
+
+import React, { useEffect, useMemo, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import toast from 'react-hot-toast';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Plus, ArrowLeft } from 'lucide-react';
+
+type WorkspaceBlockType = 'header' | 'agenda' | 'participants' | 'artifacts' | 'custom_block';
+type WorkspaceBlock = {
+  id: string;
+  type: WorkspaceBlockType;
+  title?: string;
+  content?: string;
+};
+
+export type SidebarTemplate = {
+  id: string;
+  name: string;
+  meta?: string;
+  meetingType?: string;
+  layout_config?: unknown;
+};
+
+export type TemplateSidebarViewMode = 'list' | 'create';
+
+type TemplateSidebarProps = {
+  isOpen: boolean;
+  blocks: WorkspaceBlock[];
+
+  templateList: SidebarTemplate[];
+  onApplyTemplate: (tpl: SidebarTemplate) => void;
+
+  onEnterCreateMode: () => void;
+  onAddDefaultBlock: (type: WorkspaceBlockType) => void;
+  onCreateTemplate: (payload: { name: string; layout_config: unknown }) => Promise<SidebarTemplate>;
+
+  templateDirty?: boolean;
+  activeTemplateId?: string | null;
+  onSaveTemplateAgendaChanges?: () => Promise<void>;
+
+  onAfterSave?: () => void;
+};
+
+export function TemplateSidebar({
+  isOpen,
+  blocks,
+  templateList,
+  onApplyTemplate,
+  onEnterCreateMode,
+  onAddDefaultBlock,
+  onCreateTemplate,
+  templateDirty,
+  activeTemplateId,
+  onSaveTemplateAgendaChanges,
+  onAfterSave,
+}: TemplateSidebarProps) {
+  const [viewMode, setViewMode] = useState<TemplateSidebarViewMode>('list');
+  const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setViewMode('list');
+      setIsSaveDialogOpen(false);
+      setTemplateName('');
+      setSaving(false);
+    }
+  }, [isOpen]);
+
+  const moduleCards = useMemo(
+    () => [
+      { type: 'header' as const, label: 'Header' },
+      { type: 'agenda' as const, label: 'Agenda' },
+      { type: 'participants' as const, label: 'Participants' },
+      { type: 'artifacts' as const, label: 'Artifacts' },
+      { type: 'custom_block' as const, label: 'Custom Block' },
+    ],
+    [],
+  );
+
+  const handleCreateCustomTemplateClick = () => {
+    onEnterCreateMode();
+    setViewMode('create');
+  };
+
+  const handleBackToList = () => {
+    setViewMode('list');
+  };
+
+  const handleSaveTemplate = async () => {
+    const name = templateName.trim();
+    if (!name) {
+      toast.error('Template name is required');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await onCreateTemplate({
+        name,
+        layout_config: blocks,
+      });
+      setIsSaveDialogOpen(false);
+      setTemplateName('');
+      setViewMode('list');
+      toast.success('Template saved');
+      onAfterSave?.();
+    } catch (err: unknown) {
+      console.error('Failed to save template:', err);
+      // Parent component should show a detailed toast with the backend error.
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <AnimatePresence>
+      {isOpen ? (
+        <motion.aside
+          className="fixed top-0 right-0 z-40 h-screen w-[350px] border-l border-slate-200 bg-white p-4 shadow-[0_0_30px_rgba(15,23,42,0.08)]"
+          initial={{ x: '100%' }}
+          animate={{ x: 0 }}
+          exit={{ x: '100%' }}
+          transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+        >
+          <div className="flex items-center justify-between">
+            {viewMode === 'create' ? (
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 text-sm text-slate-700 hover:text-slate-900"
+                onClick={handleBackToList}
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back
+              </button>
+            ) : (
+              <p className="text-xs font-semibold tracking-wider text-gray-400 uppercase">Templates</p>
+            )}
+          </div>
+
+          {viewMode === 'create' ? (
+            <div className="mt-3 flex h-full flex-col">
+              <h2 className="text-lg font-semibold text-slate-900">Configure Template</h2>
+
+              <div className="mt-4 space-y-3">
+                <div className="grid gap-2">
+                  {moduleCards.map((m) => (
+                    <button
+                      key={m.type}
+                      type="button"
+                      className="rounded-md border border-slate-200 px-2 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+                      onClick={() => onAddDefaultBlock(m.type)}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Plus className="h-4 w-4 text-slate-400" />
+                        {m.label}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-auto">
+                <Button
+                  type="button"
+                  onClick={() => setIsSaveDialogOpen(true)}
+                  className="w-full"
+                  variant="default"
+                >
+                  Save Template
+                </Button>
+              </div>
+
+              {/* Safety: if something else closes the sidebar, we want the canvas to stay cleared */}
+              {blocks.length > 0 ? null : (
+                <p className="mt-4 text-xs text-slate-500">
+                  Canvas is empty. Click module cards to build.
+                </p>
+              )}
+
+              <Dialog open={isSaveDialogOpen} onOpenChange={setIsSaveDialogOpen}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Save Template</DialogTitle>
+                    <DialogDescription>Give your template a name.</DialogDescription>
+                  </DialogHeader>
+
+                  <div className="space-y-2">
+                    <label className="text-sm text-slate-700">Template Name</label>
+                    <Input
+                      value={templateName}
+                      onChange={(e) => setTemplateName(e.currentTarget.value)}
+                      placeholder="e.g. Weekly Planning"
+                    />
+                  </div>
+
+                  <DialogFooter>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => {
+                        setIsSaveDialogOpen(false);
+                      }}
+                      disabled={saving}
+                    >
+                      Cancel
+                    </Button>
+                    <Button type="button" onClick={() => void handleSaveTemplate()} disabled={saving}>
+                      {saving ? 'Saving…' : 'Save'}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+          ) : (
+            <div className="mt-3 space-y-3">
+              <button
+                type="button"
+                onClick={() => handleCreateCustomTemplateClick()}
+                className="flex w-full items-center gap-3 rounded-xl border border-dashed border-blue-200 bg-blue-50/40 p-3 text-left transition hover:bg-blue-50"
+              >
+                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
+                  <Plus className="h-4 w-4" />
+                </span>
+                <span>
+                  <span className="block text-sm font-semibold text-gray-800">Create Custom Template</span>
+                  <span className="block text-xs text-gray-500">Save current layout</span>
+                </span>
+              </button>
+
+              <div className="space-y-2">
+                {templateList.length === 0 ? (
+                  <p className="text-sm text-slate-500">No templates.</p>
+                ) : (
+                  templateList.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => onApplyTemplate(item)}
+                      className="flex w-full items-center gap-3 rounded-xl border border-gray-100 bg-white p-3 text-left shadow-sm transition hover:bg-gray-50"
+                    >
+                      <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
+                        <Plus className="h-4 w-4 opacity-70" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold text-gray-800">{item.name}</span>
+                        {item.meta ? <span className="block truncate text-xs text-gray-500">{item.meta}</span> : null}
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+
+              {templateDirty && activeTemplateId ? (
+                <button
+                  type="button"
+                  onClick={() => (onSaveTemplateAgendaChanges ? void onSaveTemplateAgendaChanges() : null)}
+                  className="mt-4 w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                >
+                  Save Changes
+                </button>
+              ) : null}
+            </div>
+          )}
+        </motion.aside>
+      ) : null}
+    </AnimatePresence>
+  );
+}
+

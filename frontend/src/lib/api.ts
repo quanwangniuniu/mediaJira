@@ -92,7 +92,7 @@ api.interceptors.response.use(
     const status = error.response?.status;
     const url = error.config?.url;
 
-    if (status === 401 && url !== '/auth/login/') {
+    if (status === 401 && url !== '/api/auth/login/') {
       // Clear auth data and redirect to login on unauthorized requests
       // This will be handled by the Zustand store
       if (typeof window !== 'undefined') {
@@ -107,34 +107,34 @@ api.interceptors.response.use(
 // Authentication API functions - connected to Django backend
 export const authAPI = {
   login: async (credentials: LoginRequest): Promise<LoginResponse> => {
-    const response = await api.post('/auth/login/', credentials);
+    const response = await api.post('/api/auth/login/', credentials);
     return response.data;
   },
   
   register: async (userData: RegisterRequest): Promise<RegisterResponse> => {
-    const response = await api.post('/auth/register/', userData);
+    const response = await api.post('/api/auth/register/', userData);
     return response.data;
   },
   
   // Email verification endpoint
   verifyEmail: async (token: string): Promise<{ message: string }> => {
-    const response = await api.get(`/auth/verify/?token=${token}`);
+    const response = await api.get(`/api/auth/verify/?token=${token}`);
     return response.data;
   },
   
   getCurrentUser: async (): Promise<User> => {
-    const response = await api.get('/auth/me/');
+    const response = await api.get('/api/auth/me/');
     return response.data;
   },
   
   logout: async (): Promise<{ message: string }> => {
-    const response = await api.post('/auth/logout/');
+    const response = await api.post('/api/auth/logout/');
     return response.data;
   },
   
   // Google OAuth endpoints
   googleSetPassword: async (data: SetPasswordRequest): Promise<GoogleAuthResponse> => {
-    const response = await api.post('/auth/google/set-password/', data);
+    const response = await api.post('/api/auth/google/set-password/', data);
     return response.data;
   },
 
@@ -143,7 +143,7 @@ export const authAPI = {
     const config = profileData instanceof FormData 
       ? { headers: { 'Content-Type': 'multipart/form-data' } }
       : {};
-    const response = await api.patch('/auth/me/', profileData, config);
+    const response = await api.patch('/api/auth/me/', profileData, config);
     return response.data;
   }
 };

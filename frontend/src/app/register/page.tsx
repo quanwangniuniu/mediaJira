@@ -87,7 +87,7 @@ export default function RegisterPage() {
     try {
       // Call backend to get Google OAuth URL
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
-      const response = await fetch(`${apiUrl}/auth/google/start/`);
+      const response = await fetch(`${apiUrl}/api/auth/google/start/`);
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
