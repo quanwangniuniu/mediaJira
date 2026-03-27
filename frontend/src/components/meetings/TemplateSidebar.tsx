@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, ArrowLeft } from 'lucide-react';
+import { Plus, ArrowLeft, Trash2 } from 'lucide-react';
 
 type WorkspaceBlockType = 'header' | 'agenda' | 'participants' | 'artifacts' | 'custom_block';
 type WorkspaceBlock = {
@@ -37,6 +37,8 @@ type TemplateSidebarProps = {
   onAddDefaultBlock: (type: WorkspaceBlockType) => void;
   onCreateTemplate: (payload: { name: string; layout_config: unknown }) => Promise<SidebarTemplate>;
 
+  onDeleteTemplate?: (id: string) => Promise<void>;
+
   templateDirty?: boolean;
   activeTemplateId?: string | null;
   onSaveTemplateAgendaChanges?: () => Promise<void>;
@@ -52,6 +54,7 @@ export function TemplateSidebar({
   onEnterCreateMode,
   onAddDefaultBlock,
   onCreateTemplate,
+  onDeleteTemplate,
   templateDirty,
   activeTemplateId,
   onSaveTemplateAgendaChanges,
@@ -116,6 +119,9 @@ export function TemplateSidebar({
       setSaving(false);
     }
   };
+
+  const systemTemplates = templateList.filter((tpl) => tpl.meetingType);
+  const customTemplates = templateList.filter((tpl) => !tpl.meetingType);
 
   return (
     <AnimatePresence>
@@ -232,11 +238,13 @@ export function TemplateSidebar({
                 </span>
               </button>
 
+              {/* System templates (read-only) */}
               <div className="space-y-2">
-                {templateList.length === 0 ? (
-                  <p className="text-sm text-slate-500">No templates.</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">System templates</p>
+                {systemTemplates.length === 0 ? (
+                  <p className="text-sm text-slate-500">No system templates.</p>
                 ) : (
-                  templateList.map((item) => (
+                  systemTemplates.map((item) => (
                     <button
                       key={item.id}
                       type="button"
@@ -251,6 +259,47 @@ export function TemplateSidebar({
                         {item.meta ? <span className="block truncate text-xs text-gray-500">{item.meta}</span> : null}
                       </span>
                     </button>
+                  ))
+                )}
+              </div>
+
+              {/* Custom templates with hover-delete */}
+              <div className="mt-4 space-y-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Your templates</p>
+                {customTemplates.length === 0 ? (
+                  <p className="text-sm text-slate-500">No custom templates yet.</p>
+                ) : (
+                  customTemplates.map((item) => (
+                    <div
+                      key={item.id}
+                      className="group flex w-full items-center gap-3 rounded-xl border border-gray-100 bg-white p-3 text-left shadow-sm transition hover:bg-gray-50"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => onApplyTemplate(item)}
+                        className="flex flex-1 items-center gap-3 text-left"
+                      >
+                        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
+                          <Plus className="h-4 w-4 opacity-70" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-semibold text-gray-800">{item.name}</span>
+                          {item.meta ? (
+                            <span className="block truncate text-xs text-gray-500">{item.meta}</span>
+                          ) : null}
+                        </span>
+                      </button>
+                      {onDeleteTemplate ? (
+                        <button
+                          type="button"
+                          onClick={() => void onDeleteTemplate(item.id)}
+                          className="ml-1 inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-50 text-red-500 opacity-0 transition group-hover:opacity-100 hover:bg-red-100 hover:text-red-600"
+                          aria-label="Delete template"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      ) : null}
+                    </div>
                   ))
                 )}
               </div>

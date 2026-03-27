@@ -104,6 +104,11 @@ class MeetingViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         project = self.get_project()
+        # If the client doesn't provide a layout_config, initialize it to the default
+        # workspace module order so the editor always has a predictable starting state.
+        lc = serializer.validated_data.get("layout_config")
+        if lc is None or not isinstance(lc, list) or len(lc) == 0:
+            serializer.validated_data["layout_config"] = list(DEFAULT_MEETING_LAYOUT)
         raw_ids = serializer.validated_data.pop("participant_user_ids", None)
         if raw_ids is None:
             participant_user_ids: list[int] = []

@@ -238,6 +238,10 @@ export const MeetingsAPI = {
     return [];
   },
 
+  async deleteMeetingTemplate(templateId: string): Promise<void> {
+    await api.delete(`/api/meetings/templates/${templateId}/`);
+  },
+
   async saveMeetingLayout(projectId: number, meetingId: number, layout_config: unknown): Promise<void> {
     await api.patch(`${basePath(projectId)}/${meetingId}/`, { layout_config });
   },

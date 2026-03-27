@@ -4,7 +4,23 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { AlertCircle, Circle, CheckCircle2, Copy, ExternalLink, Check, Loader2, Plus, Trash2, CalendarDays, Target, Users, Lightbulb, Rocket } from 'lucide-react';
+import {
+  AlertCircle,
+  Circle,
+  CheckCircle2,
+  Copy,
+  ExternalLink,
+  Check,
+  Loader2,
+  Plus,
+  Trash2,
+  CalendarDays,
+  Target,
+  Users,
+  Lightbulb,
+  Rocket,
+  Search,
+} from 'lucide-react';
 import { motion } from 'framer-motion';
 import { DndContext, closestCenter, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -35,6 +51,23 @@ import {
 import type { AgendaItem, ArtifactLink, Meeting, ParticipantLink } from '@/types/meeting';
 import { ProjectAPI, type ProjectData, type ProjectMemberData } from '@/lib/api/projectApi';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card } from '@/components/ui/card';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import AutoResizeTextarea from '@/components/ui/AutoResizeTextarea';
 import {
   meetingDateToInput,
@@ -59,6 +92,15 @@ type WorkspaceBlock = {
   content?: string;
 };
 type NestedSection = NestedAgendaTemplateSection;
+
+const PARTICIPANT_ROLE_OPTIONS = [
+  { value: 'Meeting Owner', label: 'Meeting Owner', className: 'bg-purple-100 text-purple-800' },
+  { value: 'Participant', label: 'Participant', className: 'bg-blue-100 text-blue-800' },
+  { value: 'Reviewer', label: 'Reviewer', className: 'bg-orange-100 text-orange-800' },
+  { value: 'Observer', label: 'Observer', className: 'bg-slate-100 text-slate-700' },
+] as const;
+
+const DEFAULT_PARTICIPANT_ROLE = 'Participant';
 
 function normalizeMeetingFromApi(m: Meeting): Meeting {
   const raw = m.layout_config;
@@ -318,11 +360,10 @@ export default function MeetingWorkspacePage() {
 
   const [projectMembers, setProjectMembers] = useState<ProjectMemberData[]>([]);
   const [project, setProject] = useState<ProjectData | null>(null);
-  const [newParticipantUserId, setNewParticipantUserId] = useState<number | null>(null);
-  const [newParticipantRole, setNewParticipantRole] = useState('');
-  const [isParticipantEditorOpen, setIsParticipantEditorOpen] = useState(false);
+  const [participantDropdownOpen, setParticipantDropdownOpen] = useState(false);
+  const [participantSearchMode, setParticipantSearchMode] = useState(false);
+  const [participantSearchText, setParticipantSearchText] = useState('');
   const [addingParticipant, setAddingParticipant] = useState(false);
-  const [participantRoleDrafts, setParticipantRoleDrafts] = useState<Record<number, string>>({});
   const [savingParticipantIds, setSavingParticipantIds] = useState<Set<number>>(new Set());
   const [removingParticipantIds, setRemovingParticipantIds] = useState<Set<number>>(new Set());
 
@@ -495,21 +536,6 @@ export default function MeetingWorkspacePage() {
     const list = Array.isArray(participants) ? participants : [];
     return [...list].sort((a, b) => (a.user ?? 0) - (b.user ?? 0) || a.id - b.id);
   }, [participants]);
-
-  useEffect(() => {
-    setParticipantRoleDrafts((prev) => {
-      const next: Record<number, string> = { ...prev };
-      for (const p of orderedParticipants) {
-        if (!(p.id in next)) next[p.id] = p.role ?? '';
-      }
-      for (const key of Object.keys(next)) {
-        const id = Number(key);
-        if (!Number.isFinite(id)) continue;
-        if (!orderedParticipants.some((p) => p.id === id)) delete next[id];
-      }
-      return next;
-    });
-  }, [orderedParticipants]);
 
   useEffect(() => {
     if (!meeting) return;
@@ -907,6 +933,17 @@ export default function MeetingWorkspacePage() {
     })();
   };
 
+  const deleteCustomTemplate = async (templateId: string) => {
+    try {
+      await MeetingsAPI.deleteMeetingTemplate(templateId);
+      setCustomTemplates((prev) => prev.filter((t) => t.id !== templateId));
+      toast.success('Template deleted');
+    } catch (err: unknown) {
+      console.error('Failed to delete template:', err);
+      toast.error(getApiErrorMessage(err, 'Failed to delete template'));
+    }
+  };
+
   const orderedArtifacts = useMemo(() => {
     const list = Array.isArray(artifacts) ? artifacts : [];
     return [...list].sort(
@@ -927,12 +964,13 @@ export default function MeetingWorkspacePage() {
 
   const templateLibrary = MEETING_TYPE_OPTIONS.map((opt, index) => {
     const matched = templateIcons[index % templateIcons.length];
+    const sections = getNestedTemplateForMeetingType(opt.value);
     const itemCount = getTemplateForMeetingType(opt.value).length;
     return {
       id: opt.value,
       meetingType: opt.value,
       name: opt.label,
-      meta: `1 section • ${itemCount} items`,
+      meta: `${sections.length} sections • ${itemCount} items`,
       icon: matched.icon,
       tint: matched.tint,
     };
@@ -945,10 +983,31 @@ export default function MeetingWorkspacePage() {
     return row ? formatProjectMemberLabel(row) : `User #${userId}`;
   };
 
+  const participantInitialsForUserId = (userId: number) => {
+    return participantLabelForUserId(userId)
+      .split(' ')
+      .map((s) => s.charAt(0))
+      .join('')
+      .slice(0, 2)
+      .toUpperCase();
+  };
+
+  const roleMetaFor = (role: string | null | undefined) => {
+    const normalized = (role ?? '').trim();
+    const matched = PARTICIPANT_ROLE_OPTIONS.find((opt) => opt.value === normalized);
+    return matched ?? PARTICIPANT_ROLE_OPTIONS[1];
+  };
+
   const availableMembers = useMemo(
     () => projectMembers.filter((m) => !orderedParticipants.some((p) => p.user === m.user.id)),
     [projectMembers, orderedParticipants],
   );
+
+  const participantSearchResults = useMemo(() => {
+    const term = participantSearchText.trim().toLowerCase();
+    if (!term) return [];
+    return availableMembers.filter((m) => (m.user.email ?? '').toLowerCase().includes(term));
+  }, [availableMembers, participantSearchText]);
 
   const artifactChoices = useMemo(() => {
     const linked = new Set(artifacts.map((a) => `${normalizeMeetingArtifactType(a.artifact_type)}:${a.artifact_id}`));
@@ -966,27 +1025,20 @@ export default function MeetingWorkspacePage() {
     return byType;
   }, [artifactResources, artifacts]);
 
-  const addParticipant = async () => {
+  const addParticipant = async (userId: number) => {
     if (!projectId || Number.isNaN(projectId) || !meetingId || Number.isNaN(meetingId)) return;
     if (addingParticipant) return;
-
-    if (newParticipantUserId == null) {
-      toast.error('Select a project member');
-      return;
-    }
-
-    const userId = newParticipantUserId;
 
     setAddingParticipant(true);
     try {
       const created = await MeetingsAPI.addParticipant(projectId, meetingId, {
         user: userId,
-        role: newParticipantRole.trim() ? newParticipantRole.trim() : null,
+        role: DEFAULT_PARTICIPANT_ROLE,
       });
       setParticipants((prev) => [...(Array.isArray(prev) ? prev : []), created]);
-      setNewParticipantUserId(null);
-      setNewParticipantRole('');
-      setIsParticipantEditorOpen(false);
+      setParticipantDropdownOpen(false);
+      setParticipantSearchMode(false);
+      setParticipantSearchText('');
       toast.success('Participant added');
     } catch (err: unknown) {
       console.error('Failed to add participant:', err);
@@ -1085,7 +1137,6 @@ export default function MeetingWorkspacePage() {
     } catch (err: unknown) {
       console.error('Failed to save participant role:', err);
       toast.error(getApiErrorMessage(err, 'Failed to save participant role'));
-      if (current) setParticipantRoleDrafts((prev) => ({ ...prev, [participantLinkId]: current.role ?? '' }));
     } finally {
       setSavingParticipantIds((prev) => {
         const next = new Set(prev);
@@ -1729,54 +1780,88 @@ export default function MeetingWorkspacePage() {
                           <h3 className="text-xl font-bold text-slate-900">
                             Participants ({orderedParticipants.length})
                           </h3>
-                          <button
-                            type="button"
-                            className="text-sm text-gray-500 transition hover:text-gray-800"
-                            onClick={() => setIsParticipantEditorOpen((v) => !v)}
-                          >
-                            + Add
-                          </button>
+                          <DropdownMenu open={participantDropdownOpen} onOpenChange={setParticipantDropdownOpen}>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                className="text-sm text-gray-500 transition hover:text-gray-800"
+                              >
+                                + Add
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-72">
+                              <DropdownMenuItem
+                                onSelect={() => {
+                                  setParticipantSearchMode(true);
+                                  setParticipantSearchText('');
+                                }}
+                              >
+                                <Search className="h-4 w-4" />
+                                Search members
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              {availableMembers.length === 0 ? (
+                                <DropdownMenuItem disabled>
+                                  All project members are already participants
+                                </DropdownMenuItem>
+                              ) : (
+                                availableMembers.map((m) => (
+                                  <DropdownMenuItem
+                                    key={m.id}
+                                    disabled={addingParticipant}
+                                    onSelect={() => {
+                                      void addParticipant(m.user.id);
+                                    }}
+                                  >
+                                    {formatProjectMemberLabel(m)}
+                                  </DropdownMenuItem>
+                                ))
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
-                        {isParticipantEditorOpen ? (
-                          <div className="mb-3 flex items-center gap-2">
-                            <select
-                              value={newParticipantUserId ?? ''}
-                              onChange={(e) => setNewParticipantUserId(e.target.value ? Number(e.target.value) : null)}
-                              className="min-w-[220px] border-none bg-transparent px-1 py-1 text-sm text-slate-700 outline-none"
-                            >
-                              <option value="">Select member…</option>
-                              {availableMembers.map((m) => (
-                                <option key={m.id} value={m.user.id}>
-                                  {formatProjectMemberLabel(m)}
-                                </option>
-                              ))}
-                            </select>
-                            <input
-                              value={newParticipantRole}
-                              onChange={(e) => setNewParticipantRole(e.currentTarget.value)}
-                              placeholder="role"
-                              className="border-none bg-transparent px-1 py-1 text-sm text-slate-600 outline-none"
-                            />
-                            <button
-                              type="button"
-                              onClick={addParticipant}
-                              disabled={addingParticipant || newParticipantUserId == null}
-                              className="text-xs text-slate-600 hover:text-slate-900 disabled:opacity-40"
-                            >
-                              Save
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setIsParticipantEditorOpen(false);
-                                setNewParticipantUserId(null);
-                                setNewParticipantRole('');
-                              }}
-                              className="text-xs text-slate-400 hover:text-slate-700"
-                            >
-                              Cancel
-                            </button>
-                          </div>
+                        {participantSearchMode ? (
+                          <Card className="mb-3 rounded-xl border-slate-200 bg-white/70 p-3 shadow-none">
+                            <div className="relative">
+                              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                              <Input
+                                value={participantSearchText}
+                                onChange={(e) => setParticipantSearchText(e.currentTarget.value)}
+                                placeholder="Search by email"
+                                className="h-10 rounded-xl border border-transparent bg-slate-50 pl-9 pr-3 text-sm focus-visible:border-blue-400 focus-visible:bg-white"
+                              />
+                            </div>
+                            <div className="mt-2">
+                              {participantSearchText.trim().length === 0 ? null : participantSearchResults.length > 0 ? (
+                                <div className="space-y-2">
+                                  {participantSearchResults.map((m) => (
+                                    <Card key={m.id} className="rounded-lg border-slate-200 bg-white p-0 shadow-none">
+                                      <button
+                                        type="button"
+                                        disabled={addingParticipant}
+                                        onClick={() => {
+                                          void addParticipant(m.user.id);
+                                        }}
+                                        className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left hover:bg-slate-50 disabled:opacity-50"
+                                      >
+                                        <span className="truncate text-sm text-slate-800">
+                                          {formatProjectMemberLabel(m)}
+                                        </span>
+                                        <span className="text-xs text-slate-400">{m.user.email ?? ''}</span>
+                                      </button>
+                                    </Card>
+                                  ))}
+                                </div>
+                              ) : (
+                                <Card className="mt-2 rounded-xl border-slate-200 bg-slate-50/50 p-6 shadow-none">
+                                  <div className="flex flex-col items-center justify-center gap-2">
+                                    <Search className="h-8 w-8 text-slate-300" />
+                                    <p className="text-sm text-slate-500">No member found in this project.</p>
+                                  </div>
+                                </Card>
+                              )}
+                            </div>
+                          </Card>
                         ) : null}
                         <div className="grid gap-2">
                           {orderedParticipants.length === 0 ? (
@@ -1784,40 +1869,53 @@ export default function MeetingWorkspacePage() {
                               No participants yet.
                             </div>
                           ) : (
-                            orderedParticipants.map((p) => (
-                              <div key={p.id} className="flex items-center justify-between px-2 py-2">
-                                <div className="flex min-w-0 items-center gap-3">
-                                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-700">
-                                    {participantLabelForUserId(p.user)
-                                      .split(' ')
-                                      .map((s) => s.charAt(0))
-                                      .join('')
-                                      .slice(0, 2)
-                                      .toUpperCase()}
-                                  </span>
-                                  <span className="truncate text-sm font-medium text-gray-800">{participantLabelForUserId(p.user)}</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    value={participantRoleDrafts[p.id] ?? p.role ?? ''}
-                                    onChange={(e) =>
-                                      setParticipantRoleDrafts((prev) => ({ ...prev, [p.id]: e.currentTarget.value }))
-                                    }
-                                    onBlur={() => void saveParticipantRole(p.id, participantRoleDrafts[p.id] ?? p.role ?? '')}
-                                    className="w-28 border-none bg-transparent px-1 py-1 text-xs text-gray-700 outline-none"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => removeParticipant(p.id)}
-                                    disabled={removingParticipantIds.has(p.id)}
-                                    className="rounded-md p-1 text-gray-400 transition hover:bg-gray-50 hover:text-red-500"
-                                    aria-label="Remove participant"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </button>
-                                </div>
-                              </div>
-                            ))
+                            orderedParticipants.map((p) => {
+                              const roleMeta = roleMetaFor(p.role);
+                              return (
+                                <Card key={p.id} className="rounded-xl border-slate-200 bg-white px-3 py-2 shadow-none">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex min-w-0 items-center gap-4">
+                                      <Avatar className="h-9 w-9">
+                                        <AvatarFallback className="bg-indigo-100 text-xs font-semibold text-indigo-700">
+                                          {participantInitialsForUserId(p.user)}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                      <span className="truncate text-sm font-medium text-slate-800">
+                                        {participantLabelForUserId(p.user)}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                      <Select
+                                        value={roleMeta.value}
+                                        onValueChange={(nextRole) => {
+                                          void saveParticipantRole(p.id, nextRole);
+                                        }}
+                                      >
+                                        <SelectTrigger className={`h-8 w-36 border-none px-2 text-xs font-medium ${roleMeta.className}`}>
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {PARTICIPANT_ROLE_OPTIONS.map((opt) => (
+                                            <SelectItem key={opt.value} value={opt.value}>
+                                              {opt.label}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeParticipant(p.id)}
+                                        disabled={removingParticipantIds.has(p.id)}
+                                        className="rounded-md p-1 text-gray-400 transition hover:bg-gray-50 hover:text-red-500"
+                                        aria-label="Remove participant"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </Card>
+                              );
+                            })
                           )}
                         </div>
                       </section>
@@ -2017,6 +2115,7 @@ export default function MeetingWorkspacePage() {
           activeTemplateId={activeTemplateId}
           onSaveTemplateAgendaChanges={saveTemplateLayout}
           onAfterSave={() => setIsSidebarOpen(false)}
+          onDeleteTemplate={deleteCustomTemplate}
         />
       </div>
     );
