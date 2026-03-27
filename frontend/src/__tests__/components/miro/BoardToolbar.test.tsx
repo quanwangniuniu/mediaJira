@@ -8,6 +8,7 @@ const defaultProps = {
   activeTool: 'select' as ToolType,
   onToolChange: jest.fn(),
   onToolPrimaryAction: jest.fn(),
+  onEmojiInsert: jest.fn(),
   lineVariant: 'straight_solid' as const,
   onLineVariantChange: jest.fn(),
 };
@@ -22,13 +23,15 @@ describe('BoardToolbar Component', () => {
       render(<BoardToolbar {...defaultProps} />);
       
       expect(screen.getByRole('button', { name: 'Select' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Multi-select' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Text' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Shape' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Sticky Note' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Frame' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Line' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Connector' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'brush' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Emoji' })).toBeInTheDocument();
     });
 
     test('shows tooltip on hover', () => {
@@ -99,7 +102,7 @@ describe('BoardToolbar Component', () => {
       expect(onToolPrimaryAction).toHaveBeenCalledWith('text');
     });
 
-    test('calls onToolChange only for select/freehand/line', () => {
+    test('calls onToolChange only for select/multi-select/freehand/line', () => {
       const onToolChange = jest.fn();
       const onToolPrimaryAction = jest.fn();
       render(
@@ -110,15 +113,16 @@ describe('BoardToolbar Component', () => {
         />,
       );
       
-      const tools: ToolType[] = ['select', 'text', 'shape', 'sticky_note', 'frame', 'line', 'connector', 'freehand'];
+      const tools: ToolType[] = ['select', 'multi_select', 'text', 'shape', 'sticky_note', 'frame', 'line', 'connect', 'freehand'];
       const toolLabelByType: Record<ToolType, string> = {
         select: 'Select',
+        multi_select: 'Multi-select',
         text: 'Text',
         shape: 'Shape',
         sticky_note: 'Sticky Note',
         frame: 'Frame',
         line: 'Line',
-        connector: 'Connector',
+        connect: 'Connect',
         freehand: 'brush',
       };
       
@@ -127,11 +131,13 @@ describe('BoardToolbar Component', () => {
         fireEvent.click(button);
       });
       
-      expect(onToolChange).toHaveBeenCalledTimes(3);
+      expect(onToolChange).toHaveBeenCalledTimes(5);
       expect(onToolChange).toHaveBeenCalledWith('select');
+      expect(onToolChange).toHaveBeenCalledWith('multi_select');
       expect(onToolChange).toHaveBeenCalledWith('line');
+      expect(onToolChange).toHaveBeenCalledWith('connect');
       expect(onToolChange).toHaveBeenCalledWith('freehand');
-      expect(onToolPrimaryAction).toHaveBeenCalledTimes(5);
+      expect(onToolPrimaryAction).toHaveBeenCalledTimes(4);
     });
   });
 
@@ -186,7 +192,7 @@ describe('BoardToolbar Component', () => {
       // Icons are rendered as SVG elements from lucide-react
       // We can verify they exist by checking the button structure
       const buttons = screen.getAllByRole('button');
-      expect(buttons.length).toBe(8);
+      expect(buttons.length).toBe(10);
     });
   });
 

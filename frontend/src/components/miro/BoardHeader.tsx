@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { ZoomIn, ZoomOut, Maximize2, Share2, ArrowLeft, Save, Camera, Eye } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize2, Share2, ArrowLeft, Save, Camera, Eye, Undo2, Redo2 } from "lucide-react";
 import { Viewport } from "./hooks/useBoardViewport";
 import { useRouter } from "next/navigation";
 
@@ -17,6 +17,10 @@ interface BoardHeaderProps {
   shareToken: string;
   onSnapshotClick?: () => void;
   onPreviewClick?: () => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
 }
 
 export default function BoardHeader({
@@ -31,6 +35,10 @@ export default function BoardHeader({
   shareToken,
   onSnapshotClick,
   onPreviewClick,
+  onUndo,
+  onRedo,
+  canUndo = false,
+  canRedo = false,
 }: BoardHeaderProps) {
   const router = useRouter();
 
@@ -92,6 +100,26 @@ export default function BoardHeader({
             title="Preview"
           >
             <Eye className="w-4 h-4" />
+          </button>
+        )}
+        {onUndo && (
+          <button
+            onClick={onUndo}
+            disabled={!canUndo}
+            className={`p-2 rounded ${canUndo ? "hover:bg-gray-100" : "opacity-40 cursor-not-allowed"}`}
+            title="Undo (Cmd/Ctrl+Z)"
+          >
+            <Undo2 className="w-4 h-4" />
+          </button>
+        )}
+        {onRedo && (
+          <button
+            onClick={onRedo}
+            disabled={!canRedo}
+            className={`p-2 rounded ${canRedo ? "hover:bg-gray-100" : "opacity-40 cursor-not-allowed"}`}
+            title="Redo (Cmd+Shift+Z / Ctrl+Y)"
+          >
+            <Redo2 className="w-4 h-4" />
           </button>
         )}
         <button

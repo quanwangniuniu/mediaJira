@@ -44,6 +44,7 @@ class AgentMessage(TimeStampedModel):
         ('decision_draft', 'Decision Draft'),
         ('task_created', 'Task Created'),
         ('confirmation_request', 'Confirmation Request'),
+        ('follow_up_prompt', 'Follow-up Prompt'),
         ('error', 'Error'),
     ]
 
@@ -134,6 +135,8 @@ class AgentWorkflowStep(TimeStampedModel):
         ('call_llm', 'Call LLM'),
         ('create_decision', 'Create Decision'),
         ('create_tasks', 'Create Tasks'),
+        ('generate_miro_snapshot', 'Generate Miro Snapshot'),
+        ('create_miro_board', 'Create Miro Board'),
         ('custom_api', 'Custom API'),
         ('await_confirmation', 'Await Confirmation'),
     ]
@@ -199,7 +202,16 @@ class AgentWorkflowRun(TimeStampedModel):
     current_step_order = models.PositiveIntegerField(null=True, blank=True)
     analysis_result = models.JSONField(null=True, blank=True)
     created_tasks = models.JSONField(default=list, blank=True)
+    miro_snapshot = models.JSONField(null=True, blank=True)
+    miro_board = models.ForeignKey(
+        'miro.Board',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='agent_workflow_runs',
+    )
     error_message = models.TextField(null=True, blank=True)
+    chat_follow_up_started = models.BooleanField(default=False)
     chat_followed_up = models.BooleanField(default=False)
 
     class Meta:
