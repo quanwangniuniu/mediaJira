@@ -40,6 +40,7 @@ interface BoardCanvasProps {
     toAnchor: AnchorSide;
   }) => void;
   onItemsBatchUpdate?: (updates: Array<{ id: string } & Partial<BoardItem>>) => void;
+  onEraseItem?: (itemId: string) => void;
   width: number;
   height: number;
   canvasRef: React.RefObject<HTMLDivElement>;
@@ -67,6 +68,7 @@ export default function BoardCanvas({
   onFreehandCreate,
   onLinkedConnectorCreate,
   onItemsBatchUpdate,
+  onEraseItem,
   width,
   height,
   canvasRef,
@@ -87,6 +89,12 @@ export default function BoardCanvas({
     fromAnchor: AnchorSide;
     fromWorld: { x: number; y: number };
   } | null>(null);
+
+  const cancelConnectionDraft = useCallback(() => {
+    connectionDraftRef.current = null;
+    setConnectionDraft(null);
+    setDraftPointerWorld(null);
+  }, []);
   
   // Inline editing state
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -128,6 +136,8 @@ export default function BoardCanvas({
     endDrag,
     getOverridePosition,
     isDragging,
+    draggingItemId,
+    dragTick,
   } = useItemDrag();
 
   const {
@@ -368,12 +378,17 @@ export default function BoardCanvas({
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", up);
         const d = connectionDraftRef.current;
-        connectionDraftRef.current = null;
-        setConnectionDraft(null);
-        setDraftPointerWorld(null);
+        cancelConnectionDraft();
         if (!d || !onLinkedConnectorCreate) return;
-        const el = document.elementFromPoint(ev.clientX, ev.clientY);
-        const h = el?.closest?.("[data-connect-anchor]") as HTMLElement | null;
+        // Use elementsFromPoint so we can "see through" connector strokes/overlays
+        // and still hit the anchor underneath.
+        const els = typeof document.elementsFromPoint === "function"
+          ? document.elementsFromPoint(ev.clientX, ev.clientY)
+          : [document.elementFromPoint(ev.clientX, ev.clientY)].filter(Boolean) as Element[];
+        const h =
+          (els
+            .map((el) => (el as HTMLElement | null)?.closest?.("[data-connect-anchor]") as HTMLElement | null)
+            .find(Boolean) as HTMLElement | undefined) ?? null;
         if (h) {
           const toId = h.getAttribute("data-item-id");
           const toAnchor = h.getAttribute("data-anchor") as AnchorSide | null;
@@ -390,8 +405,14 @@ export default function BoardCanvas({
       window.addEventListener("pointermove", move);
       window.addEventListener("pointerup", up);
     },
-    [items, clientToWorld, onLinkedConnectorCreate]
+    [items, clientToWorld, onLinkedConnectorCreate, cancelConnectionDraft]
   );
+
+  useEffect(() => {
+    if (activeTool !== "connect" && connectionDraftRef.current) {
+      cancelConnectionDraft();
+    }
+  }, [activeTool, cancelConnectionDraft]);
 
   // Freehand drawing hook
   const {
@@ -428,7 +449,12 @@ export default function BoardCanvas({
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       const targetEl = e.target as HTMLElement | null;
-      const isBackground = !targetEl?.closest?.('[data-board-item="true"]');
+      const isItemInteractionTarget = Boolean(
+        targetEl?.closest?.(
+          '.resize-handle, .connect-anchor-handle, .line-endpoint-handle, [data-hit-region="true"]'
+        )
+      );
+      const isBackground = !isItemInteractionTarget;
 
       // If we're editing content, only clicking the canvas background should commit.
       // Clicking inside the editor (or on items) should NOT immediately commit.
@@ -461,10 +487,9 @@ export default function BoardCanvas({
       }
 
       if (isBackground) {
-        // In select mode, clicking background should clear selection (and allow drag-to-pan immediately).
-        if (activeTool === "select") {
-          onItemSelect(null);
-        } else if (activeTool === "multi_select") {
+        // Background interaction: in select mode, clicking empty space should not affect selection.
+        // Multi-select uses background drag to start marquee.
+        if (activeTool === "multi_select") {
           const world = clientToWorld(e.clientX, e.clientY);
           setMarqueeRect({ startX: world.x, startY: world.y, currentX: world.x, currentY: world.y });
           return;
@@ -717,6 +742,37 @@ export default function BoardCanvas({
     }
   }, [endDrag, items, findContainingFrame, selectedItemIds, onItemsBatchUpdate, onItemUpdate]);
 
+  const handleItemSelectFromContainer = useCallback(
+    (itemId: string, event?: { shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean }) => {
+      const additive = Boolean(event?.shiftKey || event?.metaKey || event?.ctrlKey);
+      // If we already have a multi-selection and the user clicks any selected item without modifiers,
+      // keep the selection intact so they can drag the whole group.
+      if (!additive && selectedItemIds.length > 1 && selectedItemIds.includes(itemId)) {
+        return;
+      }
+      groupDragStartRef.current.clear();
+      onItemSelect(itemId, event);
+    },
+    [onItemSelect, selectedItemIds]
+  );
+
+  const handleItemDragStart = useCallback(
+    (itemId: string, itemX: number, itemY: number, worldX: number, worldY: number) => {
+      if (selectedItemIds.length > 1 && selectedItemIds.includes(itemId)) {
+        const selectedSet = new Set(selectedItemIds);
+        groupDragStartRef.current = new Map(
+          items
+            .filter((i) => selectedSet.has(i.id))
+            .map((i) => [i.id, { x: i.x, y: i.y }] as const)
+        );
+      } else {
+        groupDragStartRef.current.clear();
+      }
+      startDrag(itemId, itemX, itemY, worldX, worldY);
+    },
+    [items, selectedItemIds, startDrag]
+  );
+
   const selectionBounds = useMemo(() => getSelectionBounds(items, selectedItemIds), [items, selectedItemIds]);
 
   const canvasStyle: React.CSSProperties = {
@@ -725,10 +781,41 @@ export default function BoardCanvas({
     willChange: "transform",
   };
 
+  const gridStyle = useMemo(() => {
+    const BASE_CELL_WORLD = 20;
+    const MIN_CELL_PX = 16;
+    const MAX_CELL_PX = 40;
+
+    let cellWorld = BASE_CELL_WORLD;
+    let cellPx = cellWorld * viewport.zoom;
+
+    while (cellPx > MAX_CELL_PX) {
+      cellWorld /= 2;
+      cellPx /= 2;
+    }
+    while (cellPx < MIN_CELL_PX) {
+      cellWorld *= 2;
+      cellPx *= 2;
+    }
+
+    return {
+      backgroundImage: `
+        linear-gradient(to right, #e5e7eb 1px, transparent 1px),
+        linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)
+      `,
+      backgroundSize: `${cellPx}px ${cellPx}px`,
+      backgroundPosition: `${viewport.x}px ${viewport.y}px`,
+    } satisfies React.CSSProperties;
+  }, [viewport.x, viewport.y, viewport.zoom]);
+
   return (
     <div
       ref={canvasRef}
-      className="relative w-full h-full overflow-hidden bg-gray-50 cursor-grab active:cursor-grabbing"
+      className={`relative w-full h-full overflow-hidden bg-gray-50 ${
+        activeTool === "eraser" || activeTool === "connect"
+          ? "cursor-crosshair"
+          : "cursor-grab active:cursor-grabbing"
+      }`}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
@@ -740,13 +827,7 @@ export default function BoardCanvas({
       {/* Grid background */}
       <div
         className="canvas-background absolute inset-0"
-        style={{
-          backgroundImage: `
-            linear-gradient(to right, #e5e7eb 1px, transparent 1px),
-            linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)
-          `,
-          backgroundSize: `${20 * viewport.zoom}px ${20 * viewport.zoom}px`,
-        }}
+        style={gridStyle}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
       />
@@ -781,6 +862,34 @@ export default function BoardCanvas({
             (item.type === "line" || (item.type === "connector" && !item.style?.connection)) &&
             selectedItemIds.length === 1 &&
             selectedItemIds.includes(item.id);
+
+          // If we're dragging one of multiple selected items, apply the same delta to all selected items
+          // so they move together during the drag (not only on commit).
+          const groupDragOverride = (() => {
+            if (!isDragging) return null;
+            if (selectedItemIds.length <= 1) return null;
+            if (!draggingItemId) return null;
+            if (!selectedItemIds.includes(draggingItemId)) return null;
+            if (!selectedItemIds.includes(item.id)) return null;
+
+            // dragTick is intentionally referenced so this re-evaluates during the rAF loop.
+            void dragTick;
+
+            const original = groupDragStartRef.current;
+            if (original.size === 0) return null;
+            const baseStart = original.get(draggingItemId);
+            const draggedPos = getOverridePosition(draggingItemId);
+            if (!baseStart || !draggedPos) return null;
+
+            const deltaX = draggedPos.x - baseStart.x;
+            const deltaY = draggedPos.y - baseStart.y;
+
+            const start = original.get(item.id);
+            if (!start) return null;
+            return { x: start.x + deltaX, y: start.y + deltaY };
+          })();
+
+          const finalOverridePosition = groupDragOverride ?? overridePosition;
           return (
             <BoardItemContainer
             key={item.id}
@@ -789,10 +898,11 @@ export default function BoardCanvas({
               canvasRef={canvasRef}
             isSelected={selectedItemIds.includes(item.id)}
               selectionCount={selectedItemIds.length}
-              overridePosition={overridePosition}
+              overridePosition={finalOverridePosition}
               overrideSize={overrideSize}
               overrideRotation={overrideRotation}
               activeTool={activeTool}
+              onEraseItem={onEraseItem}
               onLineEndpointDragStart={
                 canLineEndpoints
                   ? (endpoint) => startLineEndpointDrag(item, endpoint)
@@ -812,25 +922,20 @@ export default function BoardCanvas({
                 (activeTool === "connect" || connectionDraft !== null) &&
                 itemSupportsConnectAnchors(item.type)
               }
+              showLinkedConnectorEndpoints={
+                (activeTool === "connect" || connectionDraft !== null) &&
+                item.type === "connector" &&
+                Boolean(item.style?.connection)
+              }
               onConnectAnchorPointerDown={
                 activeTool === "connect" || connectionDraft !== null
                   ? handleConnectAnchorPointerDown
                   : undefined
               }
-            onSelect={(event) => {
-              if (selectedItemIds.length > 1 && selectedItemIds.includes(item.id)) {
-                const selectedSet = new Set(selectedItemIds);
-                groupDragStartRef.current = new Map(
-                  items.filter((i) => selectedSet.has(i.id)).map((i) => [i.id, { x: i.x, y: i.y }])
-                );
-              } else {
-                groupDragStartRef.current.clear();
-              }
-              onItemSelect(item.id, event);
-            }}
+            onSelect={(event) => handleItemSelectFromContainer(item.id, event)}
             onUpdate={(updates) => onItemUpdate(item.id, updates)}
               onRequestEdit={() => startEditing(item)}
-              onDragStart={startDrag}
+              onDragStart={handleItemDragStart}
               onDragMove={updateDrag}
               onDragEnd={handleItemDragEnd}
               onResizeStart={startResize}

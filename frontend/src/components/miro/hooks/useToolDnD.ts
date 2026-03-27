@@ -10,7 +10,8 @@ export type ToolType =
   | "line"
   | "connect"
   | "freehand"
-  | "emoji";
+  | "emoji"
+  | "eraser";
 
 export type LineVariant =
   | "straight_solid"

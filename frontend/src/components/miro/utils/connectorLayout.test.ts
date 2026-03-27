@@ -233,7 +233,7 @@ describe("computeLinkedConnectorGeometry", () => {
 });
 
 describe("applyConnectorLayouts", () => {
-  test("soft-deletes connector when endpoint missing", () => {
+  test("soft-deletes connector when endpoint missing (default)", () => {
     const c = item({
       id: "c",
       type: "connector",
@@ -254,5 +254,30 @@ describe("applyConnectorLayouts", () => {
     const next = applyConnectorLayouts([c, b]);
     const updated = next.find((i) => i.id === "c");
     expect(updated?.is_deleted).toBe(true);
+  });
+
+  test("preserves connector when endpoint missing if preserveOrphanConnectors", () => {
+    const c = item({
+      id: "c",
+      type: "connector",
+      x: 0,
+      y: 0,
+      width: 10,
+      height: 10,
+      style: {
+        connection: {
+          fromItemId: "missing",
+          toItemId: "b",
+          fromAnchor: "right",
+          toAnchor: "left",
+        },
+      },
+    });
+    const b = item({ id: "b", type: "shape", x: 100, y: 0, width: 40, height: 40 });
+    const next = applyConnectorLayouts([c, b], { preserveOrphanConnectors: true });
+    const updated = next.find((i) => i.id === "c");
+    expect(updated?.is_deleted).toBeFalsy();
+    expect(updated?.x).toBe(0);
+    expect(updated?.width).toBe(10);
   });
 });
