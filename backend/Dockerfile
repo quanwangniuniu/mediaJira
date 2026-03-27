@@ -23,4 +23,4 @@ RUN chown -R appuser:appuser /app
 RUN chmod +x /app/entrypoint
 USER appuser
 
-ENTRYPOINT ["/app/entrypoint"] 
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "backend.asgi:application"] 
