@@ -15,6 +15,8 @@ export interface AgentSession {
 
 export interface AgentSessionDetail extends AgentSession {
   messages: AgentMessage[];
+  follow_up_available?: boolean;
+  follow_up_started?: boolean;
 }
 
 export interface UpdateSessionRequest {
@@ -43,6 +45,9 @@ export interface AgentMessageData {
   anomalies?: AnomalyItem[];
   decision_id?: number;
   task_ids?: number[];
+  board_id?: string;
+  event_type?: string;
+  status?: string;
   suggested_decision?: SuggestedDecision;
   recommended_tasks?: RecommendedTask[];
   file_id?: string;
@@ -63,9 +68,13 @@ export type SSEEventType =
   | 'text'
   | 'analysis'
   | 'confirmation_request'
+  | 'follow_up_prompt'
   | 'decision_draft'
   | 'task_created'
+  | 'miro_status'
   | 'file_uploaded'
+  | 'calendar_invite'
+  | 'calendar_updated'
   | 'step_progress'
   | 'done'
   | 'error';
@@ -78,13 +87,28 @@ export interface SSEEvent {
 
 // ==================== Chat Request ====================
 
-export type AgentAction = 'analyze' | 'confirm_decision' | 'create_tasks';
+export type AgentAction = 'analyze' | 'confirm_decision' | 'create_tasks' | 'generate_miro' | 'start_follow_up' | 'cancel_follow_up';
+
+export interface CalendarContextPayload {
+  type: 'calendar' | 'event';
+  eventId?: string;
+  eventTitle?: string;
+  calendarId?: string;
+  startDatetime?: string;
+  endDatetime?: string;
+  description?: string;
+  calendarIds?: string[];
+  currentView?: string;
+  currentDate?: string;
+  userTimezone?: string;
+}
 
 export interface AgentChatRequest {
   message: string;
   spreadsheet_id?: number;
   csv_filename?: string;
   action?: AgentAction;
+  calendar_context?: CalendarContextPayload;
   workflow_id?: string;
 }
 

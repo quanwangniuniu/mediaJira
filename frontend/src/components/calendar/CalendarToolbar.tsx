@@ -1,6 +1,6 @@
 import React from "react";
 import type { CalendarViewType } from "@/lib/api/calendarApi";
-import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import { VIEW_LABELS, VIEW_SHORTCUTS } from "@/components/calendar/utils";
 
 type CalendarToolbarProps = {
@@ -12,6 +12,7 @@ type CalendarToolbarProps = {
   onSelectView: (view: CalendarViewType) => void;
   onToday: () => void;
   onOffset: (direction: "prev" | "next") => void;
+  onAskAgent?: () => void;
 };
 
 export function CalendarToolbar({
@@ -23,6 +24,7 @@ export function CalendarToolbar({
   onSelectView,
   onToday,
   onOffset,
+  onAskAgent,
 }: CalendarToolbarProps) {
   return (
     <header className="flex items-center justify-between bg-inherit px-4 py-3">
@@ -58,6 +60,16 @@ export function CalendarToolbar({
       </div>
 
       <div className="flex items-center gap-2" ref={viewSwitcherRef}>
+        {onAskAgent && (
+          <button
+            type="button"
+            onClick={onAskAgent}
+            className="inline-flex items-center gap-1.5 rounded-full bg-violet-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-violet-700"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Ask Agent
+          </button>
+        )}
         <div className="relative">
           <button
             type="button"

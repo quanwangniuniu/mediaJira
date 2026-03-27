@@ -59,6 +59,7 @@ class BoardItem(models.Model):
         LINE = 'line', 'Line'
         CONNECTOR = 'connector', 'Connector'
         FREEHAND = 'freehand', 'Freehand'
+        EMOJI = 'emoji', 'Emoji'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     board = models.ForeignKey(
