@@ -6,6 +6,8 @@ from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import Max
 
+from django.utils import timezone as django_timezone
+
 from spreadsheet.models import Spreadsheet, Sheet, Cell
 from decision.models import Decision, Signal, Option
 from task.models import Task
@@ -15,8 +17,31 @@ from .models import (
 )
 from . import data_service
 from . import file_parser
+from .dify_workflows import json_input, run_dify_workflow, serialize_agent_messages
 
 logger = logging.getLogger(__name__)
+
+
+def _create_agent_status_message(session, content, *, event_type, message_type='text', **metadata):
+    if not isinstance(session, AgentSession):
+        logger.debug(
+            "Skipping agent status message creation for non-model session=%s event_type=%s",
+            getattr(session, 'id', session),
+            event_type,
+        )
+        return None
+    logger.info(
+        "Creating agent status message for session=%s event_type=%s",
+        session.id,
+        event_type,
+    )
+    return AgentMessage.objects.create(
+        session=session,
+        role='assistant',
+        content=content,
+        message_type=message_type,
+        metadata={'event_type': event_type, **metadata},
+    )
 
 
 def _get_llm_client():
@@ -121,35 +146,19 @@ def _call_dify(spreadsheet_data, user_id=None):
     if not config:
         raise RuntimeError("Dify not configured (DIFY_API_URL / DIFY_API_KEY missing)")
 
-    api_url = config['url'].rstrip('/')
-    headers = {
-        'Authorization': f"Bearer {config['key']}",
-        'Content-Type': 'application/json',
-    }
-
-    payload = {
-        'inputs': {
-            'spreadsheet_data': json.dumps(spreadsheet_data, default=str),
-        },
-        'response_mode': 'blocking',
-        'user': str(user_id or 'agent'),
-    }
-
-    response = requests.post(
-        f"{api_url}/v1/workflows/run",
-        headers=headers,
-        json=payload,
-        timeout=120,
-    )
-
-    if response.status_code != 200:
-        logger.error(f"Dify API error: HTTP {response.status_code}")
-        raise RuntimeError(f"Dify API returned {response.status_code}")
-
-    result = response.json()
-
-    # Dify workflow output is in data.outputs
-    outputs = result.get('data', {}).get('outputs', {})
+    try:
+        outputs = run_dify_workflow(
+            api_url=config['url'],
+            api_key=config['key'],
+            inputs={
+                'spreadsheet_data': json_input(spreadsheet_data),
+            },
+            user_id=user_id,
+        )
+    except requests.HTTPError as e:
+        status_code = getattr(getattr(e, 'response', None), 'status_code', None)
+        logger.error(f"Dify API error: HTTP {status_code}")
+        raise RuntimeError(f"Dify API returned {status_code}") from e
 
     # The workflow should return our expected JSON structure.
     # It may be in a 'result' or 'text' key, or directly as structured data.
@@ -292,42 +301,35 @@ def _normalize_dify_chat_output(output):
     return None
 
 
-def _call_dify_chat(chat_messages, user_id=None, analysis_result=None, project_members=None):
+def _call_dify_chat(
+    chat_messages,
+    user_id=None,
+    analysis_result=None,
+    project_members=None,
+    current_username='',
+):
     """Call Dify chat workflow API with conversation context."""
     api_url = getattr(settings, 'DIFY_API_URL', '') or os.environ.get('DIFY_API_URL', '')
     api_key = getattr(settings, 'DIFY_CHAT_API_KEY', '') or os.environ.get('DIFY_CHAT_API_KEY', '')
     if not api_url or not api_key:
         raise RuntimeError("Dify chat not configured (DIFY_API_URL / DIFY_CHAT_API_KEY missing)")
 
-    api_url = api_url.rstrip('/')
-    headers = {
-        'Authorization': f"Bearer {api_key}",
-        'Content-Type': 'application/json',
-    }
-
-    payload = {
-        'inputs': {
-            'chat_messages': chat_messages,
-            'analysis_result': json.dumps(analysis_result, default=str) if analysis_result else '',
-            'project_members': json.dumps(project_members or [], default=str),
-        },
-        'response_mode': 'blocking',
-        'user': str(user_id or 'agent'),
-    }
-
-    response = requests.post(
-        f"{api_url}/v1/workflows/run",
-        headers=headers,
-        json=payload,
-        timeout=120,
-    )
-
-    if response.status_code != 200:
-        logger.error(f"Dify chat API error: HTTP {response.status_code}")
-        raise RuntimeError(f"Dify chat API returned {response.status_code}")
-
-    result = response.json()
-    outputs = result.get('data', {}).get('outputs', {})
+    try:
+        outputs = run_dify_workflow(
+            api_url=api_url,
+            api_key=api_key,
+            inputs={
+                'chat_messages': chat_messages,
+                'analysis_result': json_input(analysis_result) if analysis_result else '',
+                'project_members': json_input(project_members or []),
+                'current_username': current_username or '',
+            },
+            user_id=user_id,
+        )
+    except requests.HTTPError as e:
+        status_code = getattr(getattr(e, 'response', None), 'status_code', None)
+        logger.error(f"Dify chat API error: HTTP {status_code}")
+        raise RuntimeError(f"Dify chat API returned {status_code}") from e
 
     if isinstance(outputs, dict):
         candidates = [outputs]
@@ -405,6 +407,43 @@ def _call_dify_chat(chat_messages, user_id=None, analysis_result=None, project_m
     return {"reply": reply, "forwards": forwards}
 
 
+def _generate_miro_board_for_workflow_run(orchestrator, workflow_run):
+    """Generate and persist a Miro board from an existing workflow run."""
+    from .miro_board_service import create_board_from_snapshot
+    from .miro_generation import (
+        build_miro_generation_context_from_run,
+        call_dify_miro_generator,
+    )
+
+    context = build_miro_generation_context_from_run(
+        session=orchestrator.session,
+        workflow_run=workflow_run,
+    )
+    snapshot = call_dify_miro_generator(context, user_id=orchestrator.user.id)
+    board, persisted_snapshot = create_board_from_snapshot(
+        project=orchestrator.project,
+        session=orchestrator.session,
+        workflow_run=workflow_run,
+        snapshot=snapshot,
+    )
+
+    workflow_run.miro_snapshot = persisted_snapshot
+    workflow_run.miro_board = board
+    workflow_run.save(update_fields=['miro_snapshot', 'miro_board'])
+
+    return persisted_snapshot, board
+
+
+def _enqueue_miro_generation_for_workflow_run(orchestrator, workflow_run):
+    """Queue Miro generation so task creation can return immediately."""
+    from .tasks import generate_miro_board_for_workflow_run_task
+
+    logger.info(
+        "Queueing background Miro generation for workflow_run=%s session=%s",
+        workflow_run.id,
+        orchestrator.session.id,
+    )
+    generate_miro_board_for_workflow_run_task.delay(str(workflow_run.id))
 def _get_or_create_bot_private_chat(bot, target_user, project):
     """Find or create a private chat with exactly 2 participants: bot and target.
 
@@ -526,11 +565,17 @@ class AgentOrchestrator:
         self.session = session
 
     def handle_message(self, message, spreadsheet_id=None, csv_filename=None,
-                       action=None, file_id=None, workflow_id=None):
-        """Main entry point. Routes to workflow engine or legacy logic.
+                       action=None, file_id=None, calendar_context=None, workflow_id=None):
+        """Main entry point. Routes calendar context first, then workflow engine or legacy logic.
 
         Yields SSE chunks as dicts.
         """
+        # --- Calendar context takes priority over all other routing ---
+        if calendar_context:
+            yield from self.answer_calendar_question(message, calendar_context)
+            yield {"type": "done"}
+            return
+
         # --- Resume a paused workflow ---
         if action in ('confirm_decision', 'create_tasks'):
             latest_run = self.session.workflow_runs.filter(
@@ -545,6 +590,34 @@ class AgentOrchestrator:
                 yield from self._legacy_confirm(action, latest_run)
                 yield {"type": "done"}
                 return
+
+        if action == 'generate_miro':
+            latest_run = self.session.workflow_runs.filter(
+                is_deleted=False
+            ).order_by('-created_at').first()
+            yield from self._legacy_confirm(action, latest_run)
+            yield {"type": "done"}
+            return
+
+        if action == 'start_follow_up':
+            latest_run = self.session.workflow_runs.filter(
+                status='awaiting_confirmation',
+                analysis_result__isnull=False,
+                is_deleted=False,
+            ).order_by('-created_at').first()
+            yield from self._start_follow_up(latest_run)
+            yield {"type": "done"}
+            return
+
+        if action == 'cancel_follow_up':
+            latest_run = self.session.workflow_runs.filter(
+                status='awaiting_confirmation',
+                analysis_result__isnull=False,
+                is_deleted=False,
+            ).order_by('-created_at').first()
+            yield from self._cancel_follow_up(latest_run)
+            yield {"type": "done"}
+            return
 
         # --- Start a new workflow ---
         if file_id or spreadsheet_id or csv_filename or (action == 'analyze'):
@@ -563,6 +636,277 @@ class AgentOrchestrator:
         yield from self._legacy_handle(
             message, spreadsheet_id, csv_filename, action, file_id
         )
+
+    def _fetch_events_for_context(self, calendar_context):
+        """Fetch calendar events for the given context.
+
+        For a specific event: returns just that event.
+        For a calendar view: returns events within the currently visible date
+        range (day / week / month), so the AI only discusses what the user sees.
+        Falls back to a ±7-day window when no view info is available.
+        """
+        try:
+            from calendars.models import Event
+        except ImportError:
+            return []
+
+        org_id = getattr(self.user, 'organization_id', None)
+        if not org_id:
+            return []
+
+        event_id = calendar_context.get('eventId')
+
+        # Specific event — return it regardless of time
+        if event_id:
+            try:
+                return [Event.objects.select_related('calendar').get(
+                    id=event_id, organization_id=org_id
+                )]
+            except Event.DoesNotExist:
+                return []
+
+        # Determine window from the calendar view the user is currently on
+        import pytz as _pytz
+        from datetime import datetime as _dt, timedelta as _td, time as _time
+
+        current_date_str = calendar_context.get('currentDate')
+        current_view = (calendar_context.get('currentView') or 'week').lower()
+        user_tz_name = (calendar_context.get('userTimezone') or 'UTC').strip()
+        try:
+            user_tz = _pytz.timezone(user_tz_name)
+        except _pytz.UnknownTimeZoneError:
+            user_tz = _pytz.utc
+
+        if current_date_str:
+            try:
+                base = _dt.strptime(current_date_str, '%Y-%m-%d').date()
+                if current_view == 'day':
+                    view_start = base
+                    view_end = base
+                elif current_view == 'month':
+                    import calendar as _cal
+                    view_start = base.replace(day=1)
+                    view_end = base.replace(day=_cal.monthrange(base.year, base.month)[1])
+                else:  # week (default)
+                    # Monday of the week containing base; extend 2 extra weeks so
+                    # follow-up questions like "what about next week?" have data.
+                    monday = base - _td(days=base.weekday())
+                    view_start = monday
+                    view_end = monday + _td(days=20)
+
+                window_start = user_tz.localize(_dt.combine(view_start, _time.min)).astimezone(_pytz.utc)
+                window_end = user_tz.localize(_dt.combine(view_end, _time.max)).astimezone(_pytz.utc)
+            except (ValueError, Exception):
+                now = django_timezone.now()
+                window_start = now - django_timezone.timedelta(days=7)
+                window_end = now + django_timezone.timedelta(days=7)
+        else:
+            now = django_timezone.now()
+            window_start = now - django_timezone.timedelta(days=7)
+            window_end = now + django_timezone.timedelta(days=7)
+
+        qs = Event.objects.filter(
+            organization_id=org_id,
+            start_datetime__gte=window_start,
+            start_datetime__lte=window_end,
+            is_deleted=False,
+        ).select_related('calendar').order_by('start_datetime')
+
+        # Filter by visible calendar IDs if provided in context
+        calendar_ids = calendar_context.get('calendarIds') or []
+        calendar_id = calendar_context.get('calendarId')
+        if calendar_ids:
+            qs = qs.filter(calendar__id__in=calendar_ids)
+        elif calendar_id:
+            qs = qs.filter(calendar__id=calendar_id)
+
+        return list(qs[:30])
+
+    def _create_calendar_event(self, org_id, event_spec, user_tz=None):
+        """Create a single calendar event from a dict spec. Returns event id or None."""
+        try:
+            from calendars.models import Calendar as CalendarModel, Event as EventModel
+            from dateutil import parser as date_parser
+            import pytz
+
+            def _parse_dt(dt_str):
+                if not dt_str:
+                    return None
+                # Dify may echo back the timezone-name suffix we used for existing
+                # events (e.g. "2026-03-31T14:00:00 Australia/Melbourne").
+                # dateutil cannot parse IANA timezone names inline, so strip the
+                # suffix and let user_tz.localize() apply the correct timezone.
+                raw = str(dt_str).strip()
+                date_part = raw.split(" ")[0] if " " in raw else raw
+                dt = date_parser.parse(date_part)
+                if dt.tzinfo is None and user_tz:
+                    dt = user_tz.localize(dt)
+                elif dt.tzinfo is None:
+                    dt = pytz.utc.localize(dt)
+                return dt
+
+            # Prefer the user's primary calendar; fall back to any calendar they own
+            cal = (
+                CalendarModel.objects.filter(
+                    organization_id=org_id,
+                    owner=self.user,
+                    is_deleted=False,
+                ).order_by('-is_primary').first()
+            )
+            if not cal:
+                return None
+            tz_name = str(user_tz) if user_tz else "UTC"
+            new_event = EventModel.objects.create(
+                organization_id=org_id,
+                calendar=cal,
+                created_by=self.user,
+                title=event_spec.get("title", "New Event"),
+                description=event_spec.get("description", ""),
+                start_datetime=_parse_dt(event_spec.get("start_datetime")),
+                end_datetime=_parse_dt(event_spec.get("end_datetime")),
+                timezone=tz_name,
+            )
+            return str(new_event.id)
+        except Exception as e:
+            logger.error(f"Failed to create calendar event: {e}")
+            return None
+
+    def answer_calendar_question(self, message, calendar_context):
+        """Answer calendar-related questions using real event data via Dify AI."""
+        yield {"type": "text", "content": "Looking up your calendar data..."}
+
+        events = self._fetch_events_for_context(calendar_context)
+
+        # Resolve user timezone from context (fallback to UTC)
+        import pytz
+        user_tz_name = (calendar_context.get('userTimezone') or 'UTC').strip()
+        try:
+            user_tz = pytz.timezone(user_tz_name)
+        except pytz.UnknownTimeZoneError:
+            user_tz = pytz.utc
+            user_tz_name = 'UTC'
+
+        # Serialize events for Dify using user's local timezone
+        now = django_timezone.now()
+        now_local = now.astimezone(user_tz)
+        events_data = []
+        for evt in events:
+            is_past = evt.start_datetime < now
+            local_start = evt.start_datetime.astimezone(user_tz)
+            local_end = evt.end_datetime.astimezone(user_tz)
+            events_data.append({
+                "id": str(evt.id),
+                "title": evt.title or "(No title)",
+                "start_datetime": local_start.strftime(f'%Y-%m-%dT%H:%M:%S {user_tz_name}'),
+                "end_datetime": local_end.strftime(f'%Y-%m-%dT%H:%M:%S {user_tz_name}'),
+                "is_past": is_past,
+                "calendar": evt.calendar.name,
+                "location": evt.location or "",
+                "description": evt.description or "",
+            })
+
+        calendar_payload = {
+            "current_time_local": now_local.strftime(f'%Y-%m-%dT%H:%M:%S {user_tz_name}'),
+            "user_timezone": user_tz_name,
+            "events": events_data,
+        }
+        calendar_data_str = json.dumps(calendar_payload, ensure_ascii=False)
+
+        # Call Dify Calendar Assistant workflow
+        dify_api_key = os.environ.get('DIFY_CALENDAR_API_KEY')
+        dify_api_url = os.environ.get('DIFY_API_URL', 'https://api.dify.ai')
+
+        if not dify_api_key:
+            yield {"type": "error", "content": "Calendar AI is not configured. Please set DIFY_CALENDAR_API_KEY."}
+            return
+
+        try:
+            resp = requests.post(
+                f"{dify_api_url}/v1/workflows/run",
+                headers={
+                    "Authorization": f"Bearer {dify_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "inputs": {
+                        "calendar_data": calendar_data_str,
+                        "user_question": message,
+                    },
+                    "response_mode": "blocking",
+                    "user": str(self.user.id),
+                },
+                timeout=90,
+            )
+            resp.raise_for_status()
+            result = resp.json()
+            raw_answer = result.get("data", {}).get("outputs", {}).get("answer", "")
+        except Exception as e:
+            logger.error(f"Dify calendar workflow error: {e}")
+            yield {"type": "error", "content": "Failed to get AI response. Please try again."}
+            return
+
+        # Parse AI response (expects JSON with answer + create_events array)
+        text = raw_answer.strip()
+        for fence in ('```json', '```'):
+            if text.startswith(fence):
+                text = text[len(fence):]
+        if text.endswith('```'):
+            text = text[:-3]
+        text = text.strip()
+
+        try:
+            parsed = json.loads(text)
+            answer_text = parsed.get("answer", raw_answer)
+            # Prefer create_events (array); only fall back to create_event (single) when
+            # the array is absent/empty — avoids duplicates if Dify returns both keys.
+            events_to_create = parsed.get("create_events") or []
+            if not events_to_create:
+                single = parsed.get("create_event")
+                if single and isinstance(single, dict):
+                    events_to_create = [single]
+            # Track whether Dify included ANY creation-related key (even if empty/declined).
+            # Used to suppress the calendar invite when the user already asked to create.
+            # Only True when Dify actually provided event data to create.
+            # Key presence alone (e.g. create_events: null / []) does not count.
+            had_creation_intent = bool(parsed.get("create_events")) or bool(parsed.get("create_event"))
+        except (json.JSONDecodeError, AttributeError):
+            answer_text = raw_answer
+            events_to_create = []
+            had_creation_intent = False
+
+        # Create all suggested events
+        org_id = getattr(self.user, 'organization_id', None)
+        created_count = 0
+        failed_count = 0
+        if events_to_create and org_id:
+            for event_spec in events_to_create:
+                if not isinstance(event_spec, dict):
+                    continue
+                event_id_created = self._create_calendar_event(org_id, event_spec, user_tz=user_tz)
+                if event_id_created:
+                    created_count += 1
+                else:
+                    failed_count += 1
+
+            if created_count:
+                answer_text += f"\n\n✅ {created_count} calendar event{'s' if created_count != 1 else ''} created successfully."
+            if failed_count:
+                answer_text += f"\n⚠️ {failed_count} event{'s' if failed_count != 1 else ''} could not be created automatically."
+
+        yield {
+            "type": "text",
+            "content": answer_text,
+        }
+        if created_count:
+            # Notify the calendar page to refresh
+            yield {"type": "calendar_updated"}
+        elif not had_creation_intent:
+            # Only invite when the user asked a general calendar question,
+            # not when they explicitly requested creation (even if Dify declined).
+            yield {
+                "type": "calendar_invite",
+                "content": "Do you need me to create an event for you? If so, please tell me the specific time (down to the hour).",
+            }
 
     def analyze_file(self, file_id):
         """Analyse any uploaded file (CSV/Excel) by its DB id."""
@@ -617,11 +961,6 @@ class AgentOrchestrator:
             "content": "\n".join(summary_parts),
             "data": analysis,
         }
-        yield {
-            "type": "confirmation_request",
-            "content": "I've finished the analysis. You can send one follow-up message now. I can explain the findings, turn them into a short report, or prepare messages to forward to specific project members. If you want me to forward something, include the exact username or email.",
-            "data": {"workflow_run_id": str(workflow_run.id)},
-        }
 
     def analyze_spreadsheet(self, spreadsheet_id):
         """Read spreadsheet data via ORM, send to LLM for analysis."""
@@ -667,11 +1006,6 @@ class AgentOrchestrator:
             "type": "analysis",
             "content": "\n".join(summary_parts),
             "data": analysis,
-        }
-        yield {
-            "type": "confirmation_request",
-            "content": "I've finished the analysis. You can send one follow-up message now. I can explain the findings, turn them into a short report, or prepare messages to forward to specific project members. If you want me to forward something, include the exact username or email.",
-            "data": {"workflow_run_id": str(workflow_run.id)},
         }
 
     def analyze_csv(self, csv_filename):
@@ -738,9 +1072,44 @@ class AgentOrchestrator:
             "content": "\n".join(summary_parts),
             "data": analysis,
         }
+
+    def _start_follow_up(self, workflow_run):
+        if not workflow_run or not workflow_run.analysis_result:
+            yield {"type": "error", "content": "No analysis found to start a follow-up chat."}
+            return
+
+        if workflow_run.chat_followed_up:
+            yield {"type": "error", "content": "Follow-up chat is already completed for this analysis."}
+            return
+
+        if not workflow_run.chat_follow_up_started:
+            workflow_run.chat_follow_up_started = True
+            workflow_run.save(update_fields=['chat_follow_up_started'])
+
         yield {
-            "type": "confirmation_request",
-            "content": "I've finished the analysis. You can send one follow-up message now. I can explain the findings, turn them into a short report, or prepare messages to forward to specific project members. If you want me to forward something, include the exact username or email.",
+            "type": "follow_up_prompt",
+            "content": "Follow-up chat started. Ask one follow-up question about the analysis, or include the exact username/email if you want me to prepare a forwarded message.",
+            "data": {"workflow_run_id": str(workflow_run.id)},
+        }
+
+    def _cancel_follow_up(self, workflow_run):
+        if not workflow_run or not workflow_run.analysis_result:
+            yield {"type": "error", "content": "No analysis found to cancel a follow-up chat for."}
+            return
+
+        if workflow_run.chat_followed_up:
+            yield {"type": "error", "content": "Follow-up chat is already completed for this analysis."}
+            return
+
+        if not workflow_run.chat_follow_up_started:
+            yield {"type": "text", "content": "Follow-up chat is already inactive."}
+            return
+
+        workflow_run.chat_follow_up_started = False
+        workflow_run.save(update_fields=['chat_follow_up_started'])
+        yield {
+            "type": "text",
+            "content": "Follow-up chat closed.",
             "data": {"workflow_run_id": str(workflow_run.id)},
         }
 
@@ -819,6 +1188,19 @@ class AgentOrchestrator:
         """Create Tasks directly from analysis results, optionally linking to Decision if it exists."""
         yield {"type": "text", "content": "Creating tasks..."}
 
+        existing_task_ids = getattr(workflow_run, "created_tasks", []) or []
+        if existing_task_ids:
+            decision = workflow_run.decision
+            yield {
+                "type": "task_created",
+                "content": f"Tasks already created ({len(existing_task_ids)}).",
+                "data": {
+                    "task_ids": existing_task_ids,
+                    "decision_id": decision.id if decision else None,
+                },
+            }
+            return
+
         analysis = workflow_run.analysis_result or {}
         recommended_tasks = analysis.get("recommended_tasks", [])
         if not recommended_tasks:
@@ -853,14 +1235,16 @@ class AgentOrchestrator:
             task_ids.append(task.id)
 
         workflow_run.created_tasks = task_ids
-        workflow_run.status = 'completed'
-        workflow_run.save()
+        workflow_run.save(update_fields=['created_tasks'])
 
         yield {
             "type": "task_created",
             "content": f"Created {len(task_ids)} tasks.",
             "data": {"task_ids": task_ids, "decision_id": decision.id if decision else None},
         }
+
+        workflow_run.status = 'completed'
+        workflow_run.save(update_fields=['status'])
 
     # ------------------------------------------------------------------
     # Workflow engine methods (AGENT-9)
@@ -1043,6 +1427,37 @@ class AgentOrchestrator:
                 yield from self.create_tasks_from_analysis(workflow_run)
             else:
                 yield {"type": "error", "content": "No analysis found to create tasks from."}
+        elif action == 'generate_miro':
+            if not workflow_run or not workflow_run.analysis_result:
+                yield {"type": "error", "content": "No analysis found to generate a Miro board from."}
+                return
+            if getattr(workflow_run, "miro_board_id", None):
+                logger.info(
+                    "Generate Miro requested but board already exists for workflow_run=%s board=%s",
+                    workflow_run.id,
+                    workflow_run.miro_board_id,
+                )
+                yield {
+                    "type": "text",
+                    "content": f"Miro board already exists: {workflow_run.miro_board.title}",
+                }
+                return
+            try:
+                _enqueue_miro_generation_for_workflow_run(self, workflow_run)
+                _create_agent_status_message(
+                    self.session,
+                    "Miro board generation started in background.",
+                    event_type="miro_generation_started",
+                    workflow_run_id=str(workflow_run.id),
+                )
+                yield {
+                    "type": "miro_status",
+                    "content": "Miro board generation started in background.",
+                    "data": {"workflow_run_id": str(workflow_run.id), "status": "running"},
+                }
+            except Exception as e:
+                logger.exception("Failed to enqueue legacy Miro generation for workflow_run=%s", workflow_run.id)
+                yield {"type": "error", "content": f"Failed to start Miro generation: {e}"}
 
     def _legacy_handle(self, message, spreadsheet_id=None, csv_filename=None,
                        action=None, file_id=None):
@@ -1078,6 +1493,7 @@ class AgentOrchestrator:
             # Follow-up chat path
             latest_run = self.session.workflow_runs.filter(
                 status='awaiting_confirmation',
+                chat_follow_up_started=True,
                 chat_followed_up=False,
             ).order_by('-created_at').first()
 
@@ -1086,9 +1502,7 @@ class AgentOrchestrator:
                 history = AgentMessage.objects.filter(
                     session=self.session
                 ).order_by('created_at')
-                chat_context = "\n".join(
-                    f"[{m.role}]: {m.content}" for m in history
-                )
+                chat_context = serialize_agent_messages(history)
                 full_input = f"{chat_context}\n\n[user]: {message}"
                 try:
                     from core.utils.bot_user import get_agent_bot_user
@@ -1111,19 +1525,21 @@ class AgentOrchestrator:
                         user_id=self.user.id,
                         analysis_result=latest_run.analysis_result,
                         project_members=project_members,
+                        current_username=self.user.username or '',
                     )
                     follow_up_status = result.get("status", "completed")
                     reply = result.get("text") or result.get("reply", "")
                     forwards = result.get("forwards", [])
+                    close_follow_up = follow_up_status == 'completed' or bool(forwards)
                     logger.info(
                         "Agent follow-up chat completed for workflow_run=%s status=%s forwards=%s close_follow_up=%s",
                         latest_run.id,
                         follow_up_status,
                         len(forwards),
-                        follow_up_status == 'completed',
+                        close_follow_up,
                     )
 
-                    if follow_up_status == 'completed':
+                    if close_follow_up:
                         latest_run.chat_followed_up = True
                         latest_run.save(update_fields=['chat_followed_up'])
                     yield {"type": "text", "content": reply}

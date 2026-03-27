@@ -11,6 +11,22 @@ import { AGENT_MESSAGES } from "@/lib/agentMessages"
 import { WorkflowSelector } from "./WorkflowSelector"
 import type { StepProgressItem } from "./StepProgress"
 
+function getPendingMiroWorkflowRunIds(messages: ChatMessage[]): string[] {
+  const completedOrFailed = new Set(
+    messages
+      .filter((message) =>
+        message.workflowRunId &&
+        (message.eventType === "miro_board_created" || message.eventType === "miro_generation_failed")
+      )
+      .map((message) => message.workflowRunId as string)
+  )
+
+  return messages
+    .filter((message) => message.eventType === "miro_generation_started" && message.workflowRunId)
+    .map((message) => message.workflowRunId as string)
+    .filter((workflowRunId) => !completedOrFailed.has(workflowRunId))
+}
+
 /** Broadcast anomalies from restored messages to RightPanel Alerts. */
 function broadcastRestoredAnomalies(messages: AgentMessage[]) {
   // Find the last message with anomalies and broadcast it
@@ -29,9 +45,28 @@ function restoreMessage(m: AgentMessage): ChatMessage {
   let type: ChatMessage["type"] = "text"
   let navigateTo: string | undefined
   let navigateLabel: string | undefined
-  const isFollowUpPrompt = m.message_type === "confirmation_request"
+  let navigateDisabled = false
+  let navigateHref: string | undefined
+  const isFollowUpPrompt = m.message_type === "follow_up_prompt"
 
-  if (m.data?.anomalies) {
+
+  const eventType = m.data?.event_type
+
+  if (m.message_type === "calendar_invite") {
+    type = "calendar_invite"
+  } else if (eventType === "miro_generation_started") {
+    type = "miro_status"
+    navigateTo = "miro"
+    navigateLabel = "Generating Miro..."
+    navigateDisabled = true
+  } else if (eventType === "miro_board_created" && m.data?.board_id) {
+    type = "miro_status"
+    navigateTo = "miro"
+    navigateLabel = "Open Miro"
+    navigateHref = `/miro/${m.data.board_id}`
+  } else if (eventType === "miro_generation_failed") {
+    type = "error"
+  } else if (m.data?.anomalies) {
     type = "analysis"
   } else if (m.message_type === "decision_draft" || m.data?.decision_id) {
     type = "decision_created"
@@ -54,7 +89,42 @@ function restoreMessage(m: AgentMessage): ChatMessage {
     recommendedTasks: m.data?.recommended_tasks,
     navigateTo,
     navigateLabel,
+    navigateDisabled,
+    navigateHref,
+    eventType,
+    workflowRunId: m.data?.workflow_run_id,
     decisionId: m.data?.decision_id ? Number(m.data.decision_id) : undefined,
+  }
+}
+
+type CalendarPreload = { message: string; context: Record<string, unknown> }
+
+// Module-level flag — persists across React StrictMode's unmount+remount cycles.
+// Reset to false each time new calendar context is loaded so the auto-send fires once per navigation.
+let _calendarAutoSendFired = false
+
+function buildCalendarPreload(): CalendarPreload | null {
+  if (typeof window === "undefined") return null
+  const raw = sessionStorage.getItem("agent-calendar-context")
+  if (!raw) return null
+  sessionStorage.removeItem("agent-calendar-context")
+  _calendarAutoSendFired = false  // new context arrived — allow one send
+  try {
+    const ctx = JSON.parse(raw)
+    let message: string
+    if (ctx.type === "event") {
+      const start = new Date(ctx.startDatetime)
+      const end = new Date(ctx.endDatetime)
+      const dateStr = start.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })
+      const startTime = start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      const endTime = end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      message = `I'm looking at a calendar event: "${ctx.eventTitle}" on ${dateStr} from ${startTime} to ${endTime}.${ctx.description ? ` Description: ${ctx.description}.` : ""} Can you help me understand this event and suggest what I should prepare or do?`
+    } else {
+      message = `I'm viewing my calendar (${ctx.currentView ?? "week"} view). Can you help me understand my calendar events, check my availability, or assist with scheduling?`
+    }
+    return { message, context: ctx }
+  } catch {
+    return null
   }
 }
 
@@ -66,25 +136,31 @@ export function AgentChatPage() {
   const [hasStarted, setHasStarted] = useState(false)
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null)
   const [stepProgress, setStepProgress] = useState<StepProgressItem[]>([])
+  const [followUpAvailable, setFollowUpAvailable] = useState(false)
+  const [followUpStarted, setFollowUpStarted] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
-  const latestMessage = messages[messages.length - 1]
-  const isAwaitingFollowUp = Boolean(
-    latestMessage &&
-    latestMessage.role === "assistant" &&
-    latestMessage.isFollowUpPrompt &&
-    !isStreaming
+  const [pendingCalendarPreload] = useState<CalendarPreload | null>(buildCalendarPreload)
+  // Persist calendar context for the lifetime of this session so follow-up messages
+  // also go through the calendar workflow, not the generic fallback.
+  const [sessionCalendarContext, setSessionCalendarContext] = useState<Record<string, unknown> | null>(
+    pendingCalendarPreload ? pendingCalendarPreload.context : null
   )
+  // Persist calendar context so it survives page refreshes / session restores
+  useEffect(() => {
+    if (sessionCalendarContext) {
+      sessionStorage.setItem("agent-session-calendar-context", JSON.stringify(sessionCalendarContext))
+    }
+  }, [sessionCalendarContext])
+
+  const handleSendMessageRef = useRef<typeof handleSendMessage | null>(null)
+  const isAwaitingFollowUp = followUpStarted && !isStreaming
   const inputPlaceholder = isAwaitingFollowUp
     ? "Ask one follow-up question about the analysis, or include an exact username/email for forwarding..."
     : "Ask about your data or upload a file..."
   const inputHelperText = isAwaitingFollowUp
     ? "You can send one follow-up message now. Ask for an explanation, a short report, or forwarding to specific project members."
     : undefined
-
-  // Abort SSE on unmount
-  useEffect(() => {
-    return () => { abortRef.current?.abort() }
-  }, [])
+  const latestAnalysisMessageId = [...messages].reverse().find((message) => message.type === "analysis")?.id ?? null
 
   const setSessionId = useCallback((id: string | null) => {
     setSessionIdState(id)
@@ -95,31 +171,73 @@ export function AgentChatPage() {
     }
   }, [])
 
+  const applySessionState = useCallback((session: Awaited<ReturnType<typeof AgentAPI.getSession>>) => {
+    setSessionId(String(session.id))
+    setHasStarted(true)
+    setMessages(session.messages.map(restoreMessage))
+    setFollowUpAvailable(Boolean(session.follow_up_available))
+    setFollowUpStarted(Boolean(session.follow_up_started))
+    broadcastRestoredAnomalies(session.messages)
+  }, [setSessionId])
+
+  const refreshFollowUpState = useCallback(async (id: string) => {
+    try {
+      const session = await AgentAPI.getSession(id)
+      setFollowUpAvailable(Boolean(session.follow_up_available))
+      setFollowUpStarted(Boolean(session.follow_up_started))
+    } catch {
+      // ignore refresh failures; next restore/poll can retry
+    }
+  }, [])
+
+  // Abort SSE on unmount
+  useEffect(() => {
+    return () => { abortRef.current?.abort() }
+  }, [])
+
+  useEffect(() => {
+    if (!sessionId) return
+    const pendingWorkflowRunIds = getPendingMiroWorkflowRunIds(messages)
+    if (pendingWorkflowRunIds.length === 0) return
+
+    const intervalId = window.setInterval(async () => {
+      try {
+        const session = await AgentAPI.getSession(sessionId)
+        setMessages(session.messages.map(restoreMessage))
+        setFollowUpAvailable(Boolean(session.follow_up_available))
+        setFollowUpStarted(Boolean(session.follow_up_started))
+      } catch {
+        // ignore polling failures; next cycle can retry
+      }
+    }, 5000)
+
+    return () => window.clearInterval(intervalId)
+  }, [sessionId, messages])
+
   // Restore session on mount
   useEffect(() => {
     const storedId = sessionStorage.getItem("agent-session-id")
     if (storedId) {
       AgentAPI.getSession(storedId)
-        .then((session) => {
-          setSessionIdState(String(session.id))
-          setHasStarted(true)
-          setMessages(session.messages.map(restoreMessage))
-          broadcastRestoredAnomalies(session.messages)
-        })
+        .then((session) => applySessionState(session))
         .catch(() => {
           sessionStorage.removeItem("agent-session-id")
         })
     }
-  }, [])
+  }, [applySessionState])
 
   // Listen for sidebar events
   useEffect(() => {
     const handleNewChat = () => {
       setSessionIdState(null)
       sessionStorage.removeItem("agent-session-id")
+      sessionStorage.removeItem("agent-session-calendar-context")
       setMessages([])
+      setSessionCalendarContext(null)
       setHasStarted(false)
       setIsStreaming(false)
+      setFollowUpAvailable(false)
+      setFollowUpStarted(false)
       abortRef.current?.abort()
     }
 
@@ -129,10 +247,7 @@ export function AgentChatPage() {
 
       try {
         const session = await AgentAPI.getSession(detail.sessionId)
-        setSessionId(String(session.id))
-        setHasStarted(true)
-        setMessages(session.messages.map(restoreMessage))
-        broadcastRestoredAnomalies(session.messages)
+        applySessionState(session)
       } catch {
         // Session not found — stay on welcome
       }
@@ -144,7 +259,7 @@ export function AgentChatPage() {
       window.removeEventListener("agent:new-chat", handleNewChat)
       window.removeEventListener("agent:load-session", handleLoadSession)
     }
-  }, [])
+  }, [applySessionState])
 
   /** Append a new message and return its id */
   const addMessage = useCallback((msg: ChatMessage) => {
@@ -202,6 +317,8 @@ export function AgentChatPage() {
         } else if (event.type === "analysis") {
           contentParts.push(event.content || "")
           analysisData = (event.data as unknown as AnalysisResult) || null
+          setFollowUpAvailable(true)
+          setFollowUpStarted(false)
           updateMessage(aiMsgId, {
             content: contentParts.join("\n"),
             type: "analysis",
@@ -219,6 +336,13 @@ export function AgentChatPage() {
           contentParts.push(event.content || "")
           updateMessage(aiMsgId, {
             content: contentParts.join("\n"),
+          })
+        } else if (event.type === "follow_up_prompt") {
+          contentParts.push(event.content || "")
+          setFollowUpAvailable(false)
+          setFollowUpStarted(true)
+          updateMessage(aiMsgId, {
+            content: contentParts.join("\n"),
             isFollowUpPrompt: true,
           })
         } else if (event.type === "error") {
@@ -229,6 +353,7 @@ export function AgentChatPage() {
           if (sid) {
             setSessionId(sid)
             window.dispatchEvent(new CustomEvent("agent:sessions-changed"))
+            void refreshFollowUpState(sid)
           }
         }
       },
@@ -237,14 +362,22 @@ export function AgentChatPage() {
         setIsStreaming(false)
       },
       () => {
+        if (sessionId) {
+          void refreshFollowUpState(sessionId)
+        }
         setIsStreaming(false)
       }
     )
-  }, [sessionId, addMessage, updateMessage])
+  }, [sessionId, addMessage, updateMessage, setSessionId, refreshFollowUpState])
 
   /** Handle text message send */
-  const handleSendMessage = useCallback(async (text: string) => {
+  const handleSendMessage = useCallback(async (text: string, calendarContext?: Record<string, unknown>) => {
     setHasStarted(true)
+    // Use provided context or fall back to the session-level calendar context
+    const effectiveCalendarContext = calendarContext ?? sessionCalendarContext ?? undefined
+    if (calendarContext && !sessionCalendarContext) {
+      setSessionCalendarContext(calendarContext)
+    }
 
     const userMsgId = `user-${Date.now()}`
     addMessage({ id: userMsgId, role: "user", content: text, type: "text" })
@@ -277,9 +410,40 @@ export function AgentChatPage() {
 
     abortRef.current = AgentAPI.sendMessage(
       sid!,
-      { message: text, workflow_id: selectedWorkflowId || undefined },
+      {
+        message: text,
+        workflow_id: selectedWorkflowId || undefined,
+        ...(effectiveCalendarContext ? { calendar_context: effectiveCalendarContext as any } : {}),
+      },
       (event: SSEEvent) => {
         if (event.type === "done") return
+
+        // Notify the calendar page to refresh when events are created.
+        // Dispatch a custom event for same-window (floating chat) communication,
+        // and also write to localStorage for cross-tab communication.
+        if (event.type === "calendar_updated") {
+          window.dispatchEvent(new CustomEvent("agent:calendar-updated"))
+          localStorage.setItem("calendar-events-updated", String(Date.now()))
+          return
+        }
+
+        // Add a separate invite message so the calendar answer is preserved.
+        // Switch to calendar mode so the user's reply goes through the calendar workflow.
+        if (event.type === "calendar_invite") {
+          addMessage({
+            id: `ai-invite-${Date.now()}`,
+            role: "assistant",
+            content: event.content || "",
+            type: "calendar_invite",
+          })
+          setSessionCalendarContext({
+            type: "calendar",
+            userTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            currentView: "week",
+            currentDate: new Date().toISOString().split("T")[0],
+          })
+          return
+        }
 
         if (event.type === "step_progress" && event.data) {
           const { step_order, step_name, total_steps } = event.data
@@ -318,13 +482,15 @@ export function AgentChatPage() {
           return
         }
 
-        if (event.content) {
+        if (event.content && event.type !== "miro_status" && event.type !== "follow_up_prompt") {
           contentParts.push(event.content)
           updateMessage(aiMsgId, { content: contentParts.join("\n") })
         }
 
         if (event.type === "analysis" && event.data) {
           const data = event.data as unknown as AnalysisResult
+          setFollowUpAvailable(true)
+          setFollowUpStarted(false)
           updateMessage(aiMsgId, {
             type: "analysis",
             anomalies: data.anomalies,
@@ -356,12 +522,35 @@ export function AgentChatPage() {
             navigateLabel: "Go to Tasks",
           })
         }
+        if (event.type === "miro_status") {
+          updateMessage(aiMsgId, {
+            content: event.content || "Miro board generation started in background.",
+            type: "miro_status",
+            navigateTo: "miro",
+            navigateLabel: "Generating Miro...",
+            navigateDisabled: true,
+            eventType: "miro_generation_started",
+            workflowRunId: event.data?.workflow_run_id,
+          })
+        }
+        if (event.type === "follow_up_prompt") {
+          contentParts.push(event.content || "")
+          setFollowUpAvailable(false)
+          setFollowUpStarted(true)
+          updateMessage(aiMsgId, {
+            content: contentParts.join("\n"),
+            isFollowUpPrompt: true,
+          })
+        }
       },
       (error) => {
         updateMessage(aiMsgId, { content: `Error: ${error.message}`, type: "error" })
         setIsStreaming(false)
       },
       () => {
+        if (sid) {
+          void refreshFollowUpState(String(sid))
+        }
         // Attach final step progress to the message
         setStepProgress((prev) => {
           if (prev.length > 0) {
@@ -377,7 +566,10 @@ export function AgentChatPage() {
         setIsStreaming(false)
       }
     )
-  }, [sessionId, selectedWorkflowId, addMessage, updateMessage])
+  }, [sessionId, selectedWorkflowId, sessionCalendarContext, addMessage, updateMessage, setSessionId, refreshFollowUpState])
+
+  // Keep ref always pointing to the latest handleSendMessage
+  handleSendMessageRef.current = handleSendMessage
 
   /** Handle action buttons (Create Decision, Create Tasks) */
   const handleAction = useCallback(async (action: string) => {
@@ -386,6 +578,9 @@ export function AgentChatPage() {
     const actionMap: Record<string, AgentAction> = {
       confirm_decision: "confirm_decision",
       create_tasks: "create_tasks",
+      generate_miro: "generate_miro",
+      start_follow_up: "start_follow_up",
+      cancel_follow_up: "cancel_follow_up",
     }
     const agentAction = actionMap[action]
     if (!agentAction) return
@@ -402,7 +597,7 @@ export function AgentChatPage() {
       (event: SSEEvent) => {
         if (event.type === "done") return
 
-        if (event.content) {
+        if (event.content && event.type !== "miro_status" && event.type !== "follow_up_prompt") {
           contentParts.push(event.content)
           updateMessage(aiMsgId, { content: contentParts.join("\n") })
         }
@@ -425,16 +620,48 @@ export function AgentChatPage() {
             navigateLabel: "Go to Tasks",
           })
         }
+        if (event.type === "miro_status") {
+          updateMessage(aiMsgId, {
+            content: event.content || "Miro board generation started in background.",
+            type: "miro_status",
+            navigateTo: "miro",
+            navigateLabel: "Generating Miro...",
+            navigateDisabled: true,
+            eventType: "miro_generation_started",
+            workflowRunId: event.data?.workflow_run_id,
+          })
+        }
+        if (event.type === "follow_up_prompt") {
+          contentParts.push(event.content || "")
+          setFollowUpAvailable(false)
+          setFollowUpStarted(true)
+          updateMessage(aiMsgId, {
+            content: contentParts.join("\n"),
+            isFollowUpPrompt: true,
+          })
+        }
       },
       (error) => {
         updateMessage(aiMsgId, { content: `Error: ${error.message}`, type: "error" })
         setIsStreaming(false)
       },
       () => {
+        void refreshFollowUpState(sessionId)
         setIsStreaming(false)
       }
     )
-  }, [sessionId, addMessage, updateMessage])
+  }, [sessionId, addMessage, updateMessage, refreshFollowUpState])
+
+  // Auto-send calendar context message when arriving from calendar/event page (once only).
+  // Uses a module-level flag + ref to handleSendMessage so this effect only fires on mount
+  // and when hasStarted changes — NOT when sessionId changes and recreates handleSendMessage.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!pendingCalendarPreload || hasStarted) return
+    if (_calendarAutoSendFired) return
+    _calendarAutoSendFired = true
+    handleSendMessageRef.current?.(pendingCalendarPreload.message, pendingCalendarPreload.context)
+  }, [pendingCalendarPreload, hasStarted])
 
   if (!hasStarted) {
     return (
@@ -448,7 +675,11 @@ export function AgentChatPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <MessageList messages={messages} onAction={handleAction} onNavigate={(view, msg) => {
+      <MessageList messages={messages} onAction={handleAction} latestAnalysisMessageId={latestAnalysisMessageId} showFollowUpToggle={followUpAvailable || followUpStarted} followUpActive={followUpStarted} onNavigate={(view, msg) => {
+        if (msg?.navigateHref && typeof window !== "undefined") {
+          window.location.href = msg.navigateHref
+          return
+        }
         setActiveView(view as AgentView)
         if (floatingChat.mode === "maximized") toggleMaximize()
         if (view === "decisions" && msg?.decisionId) {

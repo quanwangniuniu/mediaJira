@@ -5,6 +5,10 @@ import { BoardItem } from "@/lib/api/miroApi";
 import { Viewport } from "../hooks/useBoardViewport";
 import { ToolType } from "../hooks/useToolDnD";
 import BoardItemRenderer from "./BoardItemRenderer";
+import { usesLinePivotTransform } from "../utils/lineEndpointMath";
+import type { LineEndpoint } from "../hooks/useLineEndpointDrag";
+import type { AnchorSide } from "../utils/connectorLayout";
+import { itemSupportsConnectAnchors } from "../utils/connectorLayout";
 
 type ResizeCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 
@@ -13,12 +17,17 @@ interface BoardItemContainerProps {
   viewport: Viewport;
   canvasRef: React.RefObject<HTMLDivElement>;
   isSelected: boolean;
+  selectionCount?: number;
   overridePosition: { x: number; y: number } | null;
   overrideSize?: { x: number; y: number; width: number; height: number } | null;
+  overrideRotation?: number | null;
   activeTool?: ToolType;
   disableDrag?: boolean;
   disableResize?: boolean;
-  onSelect: () => void;
+  onLineEndpointDragStart?: (endpoint: LineEndpoint) => void;
+  onLineEndpointDragMove?: (worldX: number, worldY: number) => void;
+  onLineEndpointDragEnd?: () => void;
+  onSelect: (event?: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => void;
   onUpdate: (updates: Partial<BoardItem>) => void;
   onRequestEdit?: () => void;
   onDragStart: (itemId: string, itemX: number, itemY: number, worldX: number, worldY: number) => void;
@@ -27,6 +36,8 @@ interface BoardItemContainerProps {
   onResizeStart: (itemId: string, corner: ResizeCorner, itemX: number, itemY: number, itemWidth: number, itemHeight: number, clientX: number, clientY: number) => void;
   onResizeMove: (clientX: number, clientY: number) => void;
   onResizeEnd: () => void;
+  showConnectAnchors?: boolean;
+  onConnectAnchorPointerDown?: (itemId: string, anchor: AnchorSide, e: React.PointerEvent) => void;
 }
 
 const BoardItemContainer = memo(function BoardItemContainer({
@@ -34,11 +45,16 @@ const BoardItemContainer = memo(function BoardItemContainer({
   viewport,
   canvasRef,
   isSelected,
+  selectionCount = 1,
   overridePosition,
   overrideSize,
+  overrideRotation,
   activeTool,
   disableDrag = false,
   disableResize = false,
+  onLineEndpointDragStart,
+  onLineEndpointDragMove,
+  onLineEndpointDragEnd,
   onSelect,
   onUpdate,
   onRequestEdit,
@@ -48,6 +64,8 @@ const BoardItemContainer = memo(function BoardItemContainer({
   onResizeStart,
   onResizeMove,
   onResizeEnd,
+  showConnectAnchors = false,
+  onConnectAnchorPointerDown,
 }: BoardItemContainerProps) {
   // Treat pointer interaction as click by default; only become a drag after moving past a small threshold.
   const isDraggingRef = React.useRef(false);
@@ -58,6 +76,7 @@ const BoardItemContainer = memo(function BoardItemContainer({
   // Resize state
   const isResizingRef = React.useRef(false);
   const resizeCornerRef = React.useRef<ResizeCorner | null>(null);
+  const isLineEndpointDraggingRef = React.useRef(false);
 
   const cleanupPointerInteraction = useCallback((target: Element, pointerId?: number) => {
     isDraggingRef.current = false;
@@ -118,8 +137,51 @@ const BoardItemContainer = memo(function BoardItemContainer({
     [item, overridePosition, overrideSize, onResizeStart]
   );
 
+  const handleLineEndpointPointerDown = useCallback(
+    (e: React.PointerEvent, endpoint: LineEndpoint) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (!onLineEndpointDragStart || !onLineEndpointDragMove || !onLineEndpointDragEnd) return;
+      isLineEndpointDraggingRef.current = true;
+      onLineEndpointDragStart(endpoint);
+      const w = screenToWorld(e.clientX, e.clientY);
+      onLineEndpointDragMove(w.x, w.y);
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    [onLineEndpointDragStart, onLineEndpointDragMove, onLineEndpointDragEnd, screenToWorld]
+  );
+
+  const handleLineEndpointPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (!isLineEndpointDraggingRef.current || !onLineEndpointDragMove) return;
+      const w = screenToWorld(e.clientX, e.clientY);
+      onLineEndpointDragMove(w.x, w.y);
+    },
+    [onLineEndpointDragMove, screenToWorld]
+  );
+
+  const handleLineEndpointPointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      if (!isLineEndpointDraggingRef.current) return;
+      isLineEndpointDraggingRef.current = false;
+      onLineEndpointDragEnd?.();
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        // ignore
+      }
+    },
+    [onLineEndpointDragEnd]
+  );
+
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
+      if ((e.target as HTMLElement).closest(".connect-anchor-handle")) {
+        return;
+      }
+      if ((e.target as HTMLElement).classList.contains("line-endpoint-handle")) {
+        return;
+      }
       // Don't start drag if clicking on a resize handle
       if ((e.target as HTMLElement).classList.contains('resize-handle')) {
         return;
@@ -129,13 +191,13 @@ const BoardItemContainer = memo(function BoardItemContainer({
       // Allow events to bubble to BoardCanvas for freehand drawing handling
       if (activeTool === "freehand") {
         // Still allow selection on click
-        onSelect();
+        onSelect({ shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey });
         return;
       }
 
       e.stopPropagation();
       // Select immediately so properties panel opens without waiting for click.
-      onSelect();
+      onSelect({ shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey });
 
       if (disableDrag) {
         return;
@@ -242,13 +304,16 @@ const BoardItemContainer = memo(function BoardItemContainer({
   const currentWidth = overrideSize?.width ?? item.width;
   const currentHeight = overrideSize?.height ?? item.height;
 
+  const rotationDeg = overrideRotation ?? item.rotation ?? 0;
+
   const itemStyle: React.CSSProperties = {
     position: "absolute",
     left: `${currentX}px`,
     top: `${currentY}px`,
     width: `${currentWidth}px`,
     height: `${currentHeight}px`,
-    transform: `rotate(${item.rotation || 0}deg)`,
+    transform: `rotate(${rotationDeg}deg)`,
+    transformOrigin: usesLinePivotTransform(item) ? "0 50%" : "50% 50%",
     zIndex: item.z_index,
     cursor: "move",
   };
@@ -274,8 +339,115 @@ const BoardItemContainer = memo(function BoardItemContainer({
     [item.type, onRequestEdit]
   );
 
+  const showLineEndpoints =
+    isSelected &&
+    !disableResize &&
+    selectionCount === 1 &&
+    onLineEndpointDragStart &&
+    onLineEndpointDragMove &&
+    onLineEndpointDragEnd &&
+    (item.type === "line" || (item.type === "connector" && !item.style?.connection));
+
+  const renderLineEndpointHandles = () => {
+    if (!showLineEndpoints) return null;
+    const midY = "50%";
+    return (
+      <>
+        <div
+          className="line-endpoint-handle"
+          style={{
+            position: "absolute",
+            left: `${HANDLE_OFFSET}px`,
+            top: midY,
+            width: `${HANDLE_SIZE}px`,
+            height: `${HANDLE_SIZE}px`,
+            marginTop: `${HANDLE_OFFSET}px`,
+            backgroundColor: "#3b82f6",
+            border: "1px solid white",
+            borderRadius: "50%",
+            cursor: "grab",
+            zIndex: 1000,
+          }}
+          onPointerDown={(e) => handleLineEndpointPointerDown(e, "start")}
+          onPointerMove={handleLineEndpointPointerMove}
+          onPointerUp={handleLineEndpointPointerUp}
+          onPointerCancel={handleLineEndpointPointerUp}
+          onLostPointerCapture={handleLineEndpointPointerUp}
+        />
+        <div
+          className="line-endpoint-handle"
+          style={{
+            position: "absolute",
+            left: `calc(100% + ${HANDLE_OFFSET}px)`,
+            top: midY,
+            width: `${HANDLE_SIZE}px`,
+            height: `${HANDLE_SIZE}px`,
+            marginTop: `${HANDLE_OFFSET}px`,
+            backgroundColor: "#3b82f6",
+            border: "1px solid white",
+            borderRadius: "50%",
+            cursor: "grab",
+            zIndex: 1000,
+          }}
+          onPointerDown={(e) => handleLineEndpointPointerDown(e, "end")}
+          onPointerMove={handleLineEndpointPointerMove}
+          onPointerUp={handleLineEndpointPointerUp}
+          onPointerCancel={handleLineEndpointPointerUp}
+          onLostPointerCapture={handleLineEndpointPointerUp}
+        />
+      </>
+    );
+  };
+
+  const ANCHOR_SIZE = 11;
+  const ANCHOR_OFF = -ANCHOR_SIZE / 2;
+
+  const renderConnectAnchors = () => {
+    if (!showConnectAnchors || !onConnectAnchorPointerDown || !itemSupportsConnectAnchors(item.type)) {
+      return null;
+    }
+    const sides: AnchorSide[] = ["left", "right", "top", "bottom"];
+    const styleFor = (side: AnchorSide): React.CSSProperties => {
+      const base: React.CSSProperties = {
+        position: "absolute",
+        width: `${ANCHOR_SIZE}px`,
+        height: `${ANCHOR_SIZE}px`,
+        borderRadius: "50%",
+        border: "2px solid #3b82f6",
+        backgroundColor: "rgba(255,255,255,0.95)",
+        boxSizing: "border-box",
+        cursor: "crosshair",
+        zIndex: 1001,
+        pointerEvents: "auto",
+      };
+      if (side === "left")
+        return { ...base, left: ANCHOR_OFF, top: "50%", marginTop: ANCHOR_OFF };
+      if (side === "right")
+        return { ...base, right: ANCHOR_OFF, top: "50%", marginTop: ANCHOR_OFF };
+      if (side === "top")
+        return { ...base, top: ANCHOR_OFF, left: "50%", marginLeft: ANCHOR_OFF };
+      return { ...base, bottom: ANCHOR_OFF, left: "50%", marginLeft: ANCHOR_OFF };
+    };
+    return (
+      <>
+        {sides.map((side) => (
+          <div
+            key={side}
+            className="connect-anchor-handle"
+            data-connect-anchor="true"
+            data-item-id={item.id}
+            data-anchor={side}
+            style={styleFor(side)}
+            onPointerDown={(e) => onConnectAnchorPointerDown(item.id, side, e)}
+          />
+        ))}
+      </>
+    );
+  };
+
   const renderResizeHandles = () => {
     if (!isSelected || disableResize) return null;
+    if (showLineEndpoints) return renderLineEndpointHandles();
 
     const handles: Array<{ corner: ResizeCorner; style: React.CSSProperties }> = [
       {
@@ -375,6 +547,7 @@ const BoardItemContainer = memo(function BoardItemContainer({
         onSelect={onSelect}
         onUpdate={onUpdate}
       />
+      {renderConnectAnchors()}
       {renderResizeHandles()}
     </div>
   );

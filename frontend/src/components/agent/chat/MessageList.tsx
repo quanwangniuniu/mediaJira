@@ -1,17 +1,19 @@
 "use client"
 
 import { useEffect, useRef } from "react"
-import { Bot, User, FileSpreadsheet, ArrowRight } from "lucide-react"
+import { Bot, User, FileSpreadsheet, ArrowRight, CalendarPlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { AGENT_MESSAGES } from "@/lib/agentMessages"
 import { AnomalyCard } from "./AnomalyCard"
 import { DecisionCard } from "./DecisionCard"
+import { FollowUpCard } from "./FollowUpCard"
+import { MiroGenerateCard } from "./MiroGenerateCard"
 import { TaskListCard } from "./TaskListCard"
 import type { AnomalyItem, SuggestedDecision, RecommendedTask } from "@/types/agent"
 import { StepProgress, type StepProgressItem } from "./StepProgress"
 
-export type ChatMessageType = "text" | "analysis" | "file_uploaded" | "decision_created" | "tasks_created" | "step_progress" | "error"
+export type ChatMessageType = "text" | "analysis" | "file_uploaded" | "decision_created" | "tasks_created" | "miro_status" | "step_progress" | "error" | "calendar_invite"
 
 export interface ChatMessage {
   id: string
@@ -25,6 +27,10 @@ export interface ChatMessage {
   fileName?: string
   navigateTo?: string
   navigateLabel?: string
+  navigateDisabled?: boolean
+  navigateHref?: string
+  eventType?: string
+  workflowRunId?: string
   decisionId?: number
   stepProgress?: StepProgressItem[]
 }
@@ -33,9 +39,19 @@ interface MessageListProps {
   messages: ChatMessage[]
   onAction?: (action: string) => void
   onNavigate?: (view: string, message?: ChatMessage) => void
+  latestAnalysisMessageId?: string | null
+  showFollowUpToggle?: boolean
+  followUpActive?: boolean
 }
 
-export function MessageList({ messages, onAction, onNavigate }: MessageListProps) {
+export function MessageList({
+  messages,
+  onAction,
+  onNavigate,
+  latestAnalysisMessageId,
+  showFollowUpToggle,
+  followUpActive,
+}: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -76,8 +92,8 @@ export function MessageList({ messages, onAction, onNavigate }: MessageListProps
               </div>
             )}
 
-            {/* Text bubble */}
-            {message.content && (
+            {/* Text bubble — hidden for calendar_invite which renders its own card */}
+            {message.content && message.type !== "calendar_invite" && (
               <div
                 className={cn(
                   "rounded-lg px-4 py-2.5 text-sm whitespace-pre-wrap",
@@ -102,12 +118,22 @@ export function MessageList({ messages, onAction, onNavigate }: MessageListProps
                 size="sm"
                 variant="outline"
                 className="gap-2"
+                disabled={message.navigateDisabled}
                 onClick={() => onNavigate?.(message.navigateTo!, message)}
               >
                 {message.navigateLabel}
                 <ArrowRight className="h-3.5 w-3.5" />
               </Button>
             )}
+
+            {/* Calendar invite prompt */}
+            {message.type === "calendar_invite" && (
+              <div className="flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2">
+                <CalendarPlus className="h-4 w-4 shrink-0 text-violet-600" />
+                <span className="text-sm text-violet-800">{message.content}</span>
+              </div>
+            )}
+
 
             {/* Analysis result cards */}
             {message.anomalies && message.anomalies.length > 0 && (
@@ -123,9 +149,19 @@ export function MessageList({ messages, onAction, onNavigate }: MessageListProps
             )}
 
             {message.recommendedTasks && message.recommendedTasks.length > 0 && (
-              <TaskListCard
-                tasks={message.recommendedTasks}
-                onCreateAll={() => onAction?.("create_tasks")}
+              <>
+                <TaskListCard
+                  tasks={message.recommendedTasks}
+                  onCreateAll={() => onAction?.("create_tasks")}
+                />
+                <MiroGenerateCard onGenerate={() => onAction?.("generate_miro")} />
+              </>
+            )}
+
+            {showFollowUpToggle && message.id === latestAnalysisMessageId && (
+              <FollowUpCard
+                active={followUpActive}
+                onToggle={() => onAction?.(followUpActive ? "cancel_follow_up" : "start_follow_up")}
               />
             )}
           </div>

@@ -1,11 +1,12 @@
 import { useState, useCallback } from 'react';
 import { miroApi, BoardItem, CreateBoardItemData, UpdateBoardItemData } from '@/lib/api/miroApi';
+import { applyConnectorLayouts } from '@/components/miro/utils/connectorLayout';
 
 export function useBoardItems(boardId: string) {
   const [items, setItems] = useState<BoardItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
 
   // Load items
   const loadItems = useCallback(async () => {
@@ -13,7 +14,7 @@ export function useBoardItems(boardId: string) {
     setError(null);
     try {
       const boardItems = await miroApi.getBoardItems(boardId);
-      setItems(boardItems);
+      setItems(applyConnectorLayouts(boardItems));
     } catch (err: any) {
       console.error('Failed to load board items:', err);
       setError(err instanceof Error ? err.message : 'Failed to load items');
@@ -27,7 +28,7 @@ export function useBoardItems(boardId: string) {
     async (data: CreateBoardItemData) => {
       try {
         const newItem = await miroApi.createBoardItem(boardId, data);
-        setItems((prev) => [...prev, newItem]);
+        setItems((prev) => applyConnectorLayouts([...prev, newItem]));
         return newItem;
       } catch (err: any) {
         console.error('Failed to create item:', err);
@@ -44,7 +45,9 @@ export function useBoardItems(boardId: string) {
         throw new Error('updateItem called without itemId');
       }
       const updatedItem = await miroApi.updateBoardItem(itemId, data);
-      setItems((prev) => prev.map((item) => (item.id === itemId ? updatedItem : item)));
+      setItems((prev) =>
+        applyConnectorLayouts(prev.map((item) => (item.id === itemId ? updatedItem : item)))
+      );
       return updatedItem;
     } catch (err: any) {
       console.error('Failed to update item:', err);
@@ -67,15 +70,17 @@ export function useBoardItems(boardId: string) {
         return prev;
       }
       previousItem = item;
-      return prev.map((i) =>
-        i.id === itemId ? { ...i, ...data } : i
+      return applyConnectorLayouts(
+        prev.map((i) => (i.id === itemId ? { ...i, ...data } : i))
       );
     });
 
     // Return rollback function
     return () => {
       if (previousItem) {
-        setItems((prev) => prev.map((item) => (item.id === itemId ? previousItem! : item)));
+        setItems((prev) =>
+          applyConnectorLayouts(prev.map((item) => (item.id === itemId ? previousItem! : item)))
+        );
       }
     };
   }, []);
@@ -88,7 +93,9 @@ export function useBoardItems(boardId: string) {
   ) => {
     try {
       const updatedItem = await miroApi.updateBoardItem(itemId, data);
-      setItems((prev) => prev.map((item) => (item.id === itemId ? updatedItem : item)));
+      setItems((prev) =>
+        applyConnectorLayouts(prev.map((item) => (item.id === itemId ? updatedItem : item)))
+      );
       return updatedItem;
     } catch (err: any) {
       console.error('Failed to update item (rolling back):', err);
@@ -105,15 +112,15 @@ export function useBoardItems(boardId: string) {
       }
       // Use PATCH to set is_deleted=true instead of DELETE
       const updatedItem = await miroApi.updateBoardItem(itemId, { is_deleted: true });
-      setItems((prev) => prev.map((item) => (item.id === itemId ? updatedItem : item)));
-      if (selectedItemId === itemId) {
-        setSelectedItemId(null);
-      }
+      setItems((prev) =>
+        applyConnectorLayouts(prev.map((item) => (item.id === itemId ? updatedItem : item)))
+      );
+      setSelectedItemIds((prev) => prev.filter((id) => id !== itemId));
     } catch (err: any) {
       console.error('Failed to delete item:', err);
       throw err;
     }
-  }, [selectedItemId]);
+  }, []);
 
   // Batch update items
   const batchUpdateItems = useCallback(
@@ -123,7 +130,7 @@ export function useBoardItems(boardId: string) {
         // Update local state with successful updates
         setItems((prev) => {
           const updatedMap = new Map(result.updated.map((item) => [item.id, item]));
-          return prev.map((item) => updatedMap.get(item.id) || item);
+          return applyConnectorLayouts(prev.map((item) => updatedMap.get(item.id) || item));
         });
         return result;
       } catch (err: any) {
@@ -134,12 +141,62 @@ export function useBoardItems(boardId: string) {
     [boardId]
   );
 
+  const removeItemsOptimistic = useCallback((itemIds: string[]) => {
+    const idSet = new Set(itemIds);
+    const previousItems = new Map<string, BoardItem>();
+    setItems((prev) =>
+      applyConnectorLayouts(
+        prev.map((item) => {
+          if (!idSet.has(item.id)) return item;
+          previousItems.set(item.id, item);
+          return { ...item, is_deleted: true };
+        })
+      )
+    );
+    setSelectedItemIds((prev) => prev.filter((id) => !idSet.has(id)));
+
+    return () => {
+      setItems((prev) =>
+        applyConnectorLayouts(
+          prev.map((item) => {
+            const previous = previousItems.get(item.id);
+            return previous ?? item;
+          })
+        )
+      );
+    };
+  }, []);
+
+  const restoreItemsOptimistic = useCallback((itemIds: string[]) => {
+    const idSet = new Set(itemIds);
+    const previousItems = new Map<string, BoardItem>();
+    setItems((prev) =>
+      applyConnectorLayouts(
+        prev.map((item) => {
+          if (!idSet.has(item.id)) return item;
+          previousItems.set(item.id, item);
+          return { ...item, is_deleted: false };
+        })
+      )
+    );
+    return () => {
+      setItems((prev) =>
+        applyConnectorLayouts(
+          prev.map((item) => {
+            const previous = previousItems.get(item.id);
+            return previous ?? item;
+          })
+        )
+      );
+    };
+  }, []);
+
   return {
     items,
     loading,
     error,
-    selectedItemId,
-    setSelectedItemId,
+    selectedItemIds,
+    setSelectedItemIds,
     loadItems,
     createItem,
     updateItem,
@@ -147,6 +204,8 @@ export function useBoardItems(boardId: string) {
     updateItemAsync,
     deleteItem,
     batchUpdateItems,
+    removeItemsOptimistic,
+    restoreItemsOptimistic,
   };
 }
 
