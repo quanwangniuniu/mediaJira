@@ -155,6 +155,16 @@ export interface CreateBoardRevisionData {
   note?: string;
 }
 
+export interface LatestProjectBoardResponse {
+  board: MiroBoard;
+}
+
+export interface BoardAccessResponse {
+  board_id: string;
+  project_id: number;
+  last_accessed_at: string;
+}
+
 function normalizeBoardItem(raw: any): BoardItem {
   const id = raw?.id ?? raw?.item_id ?? raw?.pk ?? raw?.uuid;
   if (!id) {
@@ -189,6 +199,26 @@ export const miroApi = {
     } catch (error) {
       console.error(`Failed to fetch Miro board ${id}:`, error);
       return normalizeApiError(error, `Failed to fetch Miro board ${id}`);
+    }
+  },
+
+  getLatestProjectBoard: async (projectId: number): Promise<LatestProjectBoardResponse> => {
+    try {
+      const response = await api.get(`/api/miro/projects/${projectId}/latest-board/`);
+      return response.data;
+    } catch (error) {
+      console.error(`Failed to fetch latest board for project ${projectId}:`, error);
+      return normalizeApiError(error, `Failed to fetch latest board for project ${projectId}`);
+    }
+  },
+
+  markBoardAccess: async (boardId: string): Promise<BoardAccessResponse> => {
+    try {
+      const response = await api.post(`/api/miro/boards/${boardId}/access/`);
+      return response.data;
+    } catch (error) {
+      console.error(`Failed to mark board access for ${boardId}:`, error);
+      return normalizeApiError(error, `Failed to mark board access for ${boardId}`);
     }
   },
 

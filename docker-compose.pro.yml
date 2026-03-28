@@ -57,6 +57,7 @@ services:
         condition: service_healthy
     networks:
       - app-network
+    command: ["/bin/bash", "/app/entrypoint"]      
     logging:
       driver: "json-file"
       options:

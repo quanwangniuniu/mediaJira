@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { ZoomIn, ZoomOut, Maximize2, Share2, ArrowLeft, Save, Camera, Eye, Undo2, Redo2 } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize2, Share2, ArrowLeft, Save, Camera, Eye, Undo2, Redo2, PanelLeft } from "lucide-react";
 import { Viewport } from "./hooks/useBoardViewport";
 import { useRouter } from "next/navigation";
 
@@ -21,6 +21,7 @@ interface BoardHeaderProps {
   onRedo?: () => void;
   canUndo?: boolean;
   canRedo?: boolean;
+  onBoardsToggle?: () => void;
 }
 
 export default function BoardHeader({
@@ -39,6 +40,7 @@ export default function BoardHeader({
   onRedo,
   canUndo = false,
   canRedo = false,
+  onBoardsToggle,
 }: BoardHeaderProps) {
   const router = useRouter();
 
@@ -72,6 +74,15 @@ export default function BoardHeader({
       </div>
 
       <div className="flex items-center gap-2">
+        {onBoardsToggle && (
+          <button
+            onClick={onBoardsToggle}
+            className="p-2 hover:bg-gray-100 rounded"
+            title="Toggle Boards Sidebar"
+          >
+            <PanelLeft className="w-4 h-4" />
+          </button>
+        )}
         {onSave && (
           <button
             onClick={onSave}

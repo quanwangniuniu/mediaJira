@@ -23,8 +23,16 @@ from miro.serializers import (
     BoardRevisionSerializer,
     BoardRevisionCreateSerializer,
     ShareBoardResponseSerializer,
+    LatestProjectBoardResponseSerializer,
+    BoardAccessResponseSerializer,
 )
 from miro.permissions import IsBoardProjectMember, HasValidShareToken
+from miro.services import (
+    user_has_project_access,
+    get_accessible_board_for_user,
+    get_latest_project_board_for_user,
+    record_board_access,
+)
 
 
 class BoardViewSet(viewsets.ModelViewSet):
@@ -358,4 +366,37 @@ class ShareBoardView(APIView):
             'board': board_serializer.data,
             'items': items_serializer.data
         }, status=status.HTTP_200_OK)
+
+
+class LatestProjectBoardView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, project_id=None):
+        if not user_has_project_access(request.user, project_id):
+            raise PermissionDenied("You do not have access to this project")
+
+        board = get_latest_project_board_for_user(request.user, project_id)
+        if not board:
+            raise NotFound("No board found for this project")
+
+        serializer = LatestProjectBoardResponseSerializer({"board": board})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class BoardAccessView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, board_id=None):
+        try:
+            board = get_accessible_board_for_user(request.user, board_id)
+        except Board.DoesNotExist:
+            raise NotFound("Board not found")
+
+        access = record_board_access(request.user, board)
+        serializer = BoardAccessResponseSerializer({
+            "board_id": board.id,
+            "project_id": board.project_id,
+            "last_accessed_at": access.last_accessed_at,
+        })
+        return Response(serializer.data, status=status.HTTP_200_OK)
 

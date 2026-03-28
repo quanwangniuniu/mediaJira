@@ -260,3 +260,13 @@ class ShareBoardResponseSerializer(serializers.Serializer):
     board = BoardSerializer()
     items = BoardItemSerializer(many=True)
 
+
+class LatestProjectBoardResponseSerializer(serializers.Serializer):
+    board = BoardSerializer()
+
+
+class BoardAccessResponseSerializer(serializers.Serializer):
+    board_id = serializers.UUIDField()
+    project_id = serializers.IntegerField()
+    last_accessed_at = serializers.DateTimeField()
+

@@ -19,6 +19,9 @@ set -e
 #   -Dsonar.host.url=http://sonarqube:9000 \
 #   -Dsonar.login=$SONAR_TOKEN || echo "Sonar scan skipped or failed"
 
-# Start Django
+# Apply DB migrations (dev): keeps schema in sync when new models/migrations land
 export DJANGO_SETTINGS_MODULE=backend.settings
+python manage.py migrate --noinput
+
+# Start Django
 exec opentelemetry-instrument daphne -b 0.0.0.0 -p 8000 backend.asgi:application

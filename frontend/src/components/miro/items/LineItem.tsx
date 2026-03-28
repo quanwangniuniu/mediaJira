@@ -13,7 +13,6 @@ interface LineItemProps {
 export default function LineItem({
   item,
   isSelected,
-  onSelect,
 }: LineItemProps) {
   const strokeColor = item.style?.strokeColor || "#111827";
   const strokeWidth = item.style?.strokeWidth || 4;
@@ -32,12 +31,22 @@ export default function LineItem({
         width: "100%",
         height: "100%",
         border: isSelected ? "2px solid #3b82f6" : "none",
-        cursor: "pointer",
+        cursor: "inherit",
         position: "relative",
       }}
-      onClick={onSelect}
     >
       <svg width="100%" height="100%" style={{ display: "block" }}>
+        {/* Invisible thicker hit stroke for easier selection */}
+        <path
+          data-hit-region="true"
+          d={`M 0 ${lineY} L ${width} ${lineY}`}
+          fill="none"
+          stroke="transparent"
+          strokeWidth={Math.max(12, strokeWidth * 3)}
+          strokeLinecap="round"
+          strokeDasharray={strokeDasharray}
+          pointerEvents="stroke"
+        />
         {/* Line without arrow */}
         <path
           d={`M 0 ${lineY} L ${width} ${lineY}`}
@@ -46,6 +55,7 @@ export default function LineItem({
           strokeWidth={strokeWidth}
           strokeLinecap="round"
           strokeDasharray={strokeDasharray}
+          pointerEvents="none"
         />
       </svg>
       {/* Content text above the line */}
