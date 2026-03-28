@@ -155,3 +155,35 @@ class BoardRevision(models.Model):
     def __str__(self):
         return f"Revision {self.version} of {self.board.title} ({self.id})"
 
+
+class BoardAccess(models.Model):
+    """
+    Tracks each user's most recently opened board per project.
+    """
+    user = models.ForeignKey(
+        'core.CustomUser',
+        on_delete=models.CASCADE,
+        related_name='board_accesses',
+    )
+    project = models.ForeignKey(
+        'core.Project',
+        on_delete=models.CASCADE,
+        related_name='board_accesses',
+    )
+    board = models.ForeignKey(
+        'Board',
+        on_delete=models.CASCADE,
+        related_name='accesses',
+    )
+    last_accessed_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['user', 'project']
+        indexes = [
+            models.Index(fields=['user', 'project']),
+            models.Index(fields=['project', 'last_accessed_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.user_id}:{self.project_id} -> {self.board_id}"
+

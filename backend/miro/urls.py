@@ -1,5 +1,11 @@
 from django.urls import path
-from miro.views import BoardViewSet, BoardItemViewSet, ShareBoardView
+from miro.views import (
+    BoardViewSet,
+    BoardItemViewSet,
+    ShareBoardView,
+    LatestProjectBoardView,
+    BoardAccessView,
+)
 
 app_name = 'miro'
 
@@ -7,6 +13,7 @@ urlpatterns = [
     # Board CRUD
     path('boards/', BoardViewSet.as_view({'get': 'list', 'post': 'create'}), name='board-list'),
     path('boards/<uuid:pk>/', BoardViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update'}), name='board-detail'),
+    path('boards/<uuid:board_id>/access/', BoardAccessView.as_view(), name='board-access'),
     
     # Board items (nested)
     path('boards/<uuid:board_id>/items/', BoardViewSet.as_view({'get': 'items', 'post': 'items'}), name='board-items'),
@@ -22,5 +29,6 @@ urlpatterns = [
     
     # Share token access
     path('share/boards/<str:share_token>/', ShareBoardView.as_view(), name='share-board'),
+    path('projects/<int:project_id>/latest-board/', LatestProjectBoardView.as_view(), name='latest-project-board'),
 ]
 

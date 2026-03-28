@@ -10,7 +10,7 @@ interface EmojiItemProps {
   onUpdate: (updates: Partial<BoardItem>) => void;
 }
 
-export default function EmojiItem({ item, isSelected, onSelect }: EmojiItemProps) {
+export default function EmojiItem({ item, isSelected }: EmojiItemProps) {
   const emoji = item.content?.trim() || "🙂";
   const fontSize =
     typeof item.style?.fontSize === "number"
@@ -21,6 +21,7 @@ export default function EmojiItem({ item, isSelected, onSelect }: EmojiItemProps
     <div
       role="img"
       aria-label={emoji}
+      data-hit-region="true"
       style={{
         width: "100%",
         height: "100%",
@@ -29,12 +30,11 @@ export default function EmojiItem({ item, isSelected, onSelect }: EmojiItemProps
         justifyContent: "center",
         border: isSelected ? "2px solid #3b82f6" : "none",
         borderRadius: "4px",
-        cursor: "pointer",
+        cursor: "inherit",
         userSelect: "none",
         fontSize: `${fontSize}px`,
         lineHeight: 1,
       }}
-      onClick={onSelect}
     >
       {emoji}
     </div>

@@ -249,7 +249,20 @@ export function computeLinkedConnectorGeometry(
   };
 }
 
-export function applyConnectorLayouts(items: BoardItem[]): BoardItem[] {
+export type ApplyConnectorLayoutsOptions = {
+  /**
+   * When true, connectors whose endpoint item is soft-deleted keep their last stored
+   * geometry instead of being soft-deleted (used by the eraser tool).
+   * Default false keeps the previous behavior: orphan connectors are removed.
+   */
+  preserveOrphanConnectors?: boolean;
+};
+
+export function applyConnectorLayouts(
+  items: BoardItem[],
+  options?: ApplyConnectorLayoutsOptions
+): BoardItem[] {
+  const preserveOrphans = Boolean(options?.preserveOrphanConnectors);
   const active = items.filter((i) => !i.is_deleted);
   const byId = new Map(active.map((i) => [i.id, i]));
 
@@ -263,6 +276,9 @@ export function applyConnectorLayouts(items: BoardItem[]): BoardItem[] {
     const fromItem = byId.get(conn.fromItemId);
     const toItem = byId.get(conn.toItemId);
     if (!fromItem || !toItem) {
+      if (preserveOrphans) {
+        return item;
+      }
       anyChanged = true;
       return { ...item, is_deleted: true };
     }

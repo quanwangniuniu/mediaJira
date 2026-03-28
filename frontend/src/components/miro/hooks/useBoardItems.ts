@@ -1,6 +1,9 @@
 import { useState, useCallback } from 'react';
 import { miroApi, BoardItem, CreateBoardItemData, UpdateBoardItemData } from '@/lib/api/miroApi';
-import { applyConnectorLayouts } from '@/components/miro/utils/connectorLayout';
+import {
+  applyConnectorLayouts,
+  type ApplyConnectorLayoutsOptions,
+} from '@/components/miro/utils/connectorLayout';
 
 export function useBoardItems(boardId: string) {
   const [items, setItems] = useState<BoardItem[]>([]);
@@ -105,7 +108,7 @@ export function useBoardItems(boardId: string) {
   }, []);
 
   // Delete item (soft delete via is_deleted=true)
-  const deleteItem = useCallback(async (itemId: string) => {
+  const deleteItem = useCallback(async (itemId: string, layoutOptions?: ApplyConnectorLayoutsOptions) => {
     try {
       if (!itemId) {
         throw new Error('deleteItem called without itemId');
@@ -113,7 +116,10 @@ export function useBoardItems(boardId: string) {
       // Use PATCH to set is_deleted=true instead of DELETE
       const updatedItem = await miroApi.updateBoardItem(itemId, { is_deleted: true });
       setItems((prev) =>
-        applyConnectorLayouts(prev.map((item) => (item.id === itemId ? updatedItem : item)))
+        applyConnectorLayouts(
+          prev.map((item) => (item.id === itemId ? updatedItem : item)),
+          layoutOptions
+        )
       );
       setSelectedItemIds((prev) => prev.filter((id) => id !== itemId));
     } catch (err: any) {
@@ -141,31 +147,35 @@ export function useBoardItems(boardId: string) {
     [boardId]
   );
 
-  const removeItemsOptimistic = useCallback((itemIds: string[]) => {
-    const idSet = new Set(itemIds);
-    const previousItems = new Map<string, BoardItem>();
-    setItems((prev) =>
-      applyConnectorLayouts(
-        prev.map((item) => {
-          if (!idSet.has(item.id)) return item;
-          previousItems.set(item.id, item);
-          return { ...item, is_deleted: true };
-        })
-      )
-    );
-    setSelectedItemIds((prev) => prev.filter((id) => !idSet.has(id)));
-
-    return () => {
+  const removeItemsOptimistic = useCallback(
+    (itemIds: string[], layoutOptions?: ApplyConnectorLayoutsOptions) => {
+      const idSet = new Set(itemIds);
+      const previousItems = new Map<string, BoardItem>();
       setItems((prev) =>
         applyConnectorLayouts(
           prev.map((item) => {
-            const previous = previousItems.get(item.id);
-            return previous ?? item;
-          })
+            if (!idSet.has(item.id)) return item;
+            previousItems.set(item.id, item);
+            return { ...item, is_deleted: true };
+          }),
+          layoutOptions
         )
       );
-    };
-  }, []);
+      setSelectedItemIds((prev) => prev.filter((id) => !idSet.has(id)));
+
+      return () => {
+        setItems((prev) =>
+          applyConnectorLayouts(
+            prev.map((item) => {
+              const previous = previousItems.get(item.id);
+              return previous ?? item;
+            })
+          )
+        );
+      };
+    },
+    []
+  );
 
   const restoreItemsOptimistic = useCallback((itemIds: string[]) => {
     const idSet = new Set(itemIds);
