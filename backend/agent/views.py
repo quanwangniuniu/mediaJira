@@ -498,7 +498,7 @@ class DecisionStatsView(EnglishResponseMixin, APIView):
                 {"detail": "No active project."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        qs = Decision.objects.filter(project=project, is_deleted=False)
+        qs = Decision.objects.filter(project=project, is_deleted=False, is_pre_draft=False)
 
         counts = qs.values('status').annotate(count=Count('id'))
         stats = {}
@@ -531,8 +531,42 @@ class DecisionRecentView(EnglishResponseMixin, APIView):
                 'confidence': d.confidence,
                 'author': d.author.get_full_name() if d.author else 'AI Agent',
                 'created_at': d.created_at.isoformat(),
+                'is_pre_draft': d.is_pre_draft,
             })
         return Response(result)
+
+
+class DecisionPromoteView(EnglishResponseMixin, APIView):
+    """POST /api/agent/decisions/<id>/promote/ — promote a pre-draft to a real draft."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, decision_id):
+        project = _get_user_project(request)
+        if not project:
+            return Response(
+                {"detail": "No active project."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            decision = Decision.objects.get(
+                id=decision_id,
+                project=project,
+                is_pre_draft=True,
+                is_deleted=False,
+            )
+        except Decision.DoesNotExist:
+            return Response(
+                {"detail": "Pre-draft decision not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        decision.is_pre_draft = False
+        decision.save(update_fields=['is_pre_draft', 'updated_at'])
+        return Response({
+            'id': decision.id,
+            'title': decision.title,
+            'status': decision.status,
+            'is_pre_draft': False,
+        })
 
 
 class AnomalyLatestView(EnglishResponseMixin, APIView):

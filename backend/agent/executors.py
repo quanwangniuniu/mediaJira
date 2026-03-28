@@ -159,6 +159,7 @@ class CreateDecisionExecutor(BaseStepExecutor):
                 author=user,
                 created_by_agent=True,
                 agent_session_id=self.orchestrator.session.id,
+                is_pre_draft=True,
             )
 
             for anomaly in analysis.get('anomalies', []):
