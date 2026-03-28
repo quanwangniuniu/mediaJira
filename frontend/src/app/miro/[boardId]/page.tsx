@@ -14,7 +14,14 @@ import BoardToolbar from "@/components/miro/BoardToolbar";
 import BoardPropertiesPanel from "@/components/miro/BoardPropertiesPanel";
 import BoardSnapshotsModal from "@/components/miro/BoardSnapshotsModal";
 import BoardPreviewModal from "@/components/miro/BoardPreviewModal";
-import type { AnchorSide } from "@/components/miro/utils/connectorLayout";
+import BoardListSidebar from "@/components/miro/BoardListSidebar";
+import CreateBoardModal from "@/components/miro/CreateBoardModal";
+import { applyConnectorLayouts, type AnchorSide } from "@/components/miro/utils/connectorLayout";
+import { insertGraphTemplate } from "@/components/miro/templates/insertGraphTemplate";
+import type { GraphTemplateId } from "@/components/miro/templates/graphTemplates";
+
+/** Eraser: keep linked connectors at their last layout when an endpoint is erased. */
+const ERASE_CONNECTOR_LAYOUT_OPTIONS = { preserveOrphanConnectors: true as const };
 
 export default function MiroBoardPage() {
   const params = useParams();
@@ -29,6 +36,12 @@ export default function MiroBoardPage() {
   const [isSavingBoard, setIsSavingBoard] = useState(false);
   const [isSnapshotsModalOpen, setIsSnapshotsModalOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isBoardsSidebarOpen, setIsBoardsSidebarOpen] = useState(true);
+  const [projectBoards, setProjectBoards] = useState<MiroBoard[]>([]);
+  const [isBoardsLoading, setIsBoardsLoading] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isCreatingBoard, setIsCreatingBoard] = useState(false);
+  const [deleteBoardLoadingId, setDeleteBoardLoadingId] = useState<string | null>(null);
   const [lineVariant, setLineVariant] = useState<LineVariant>("straight_solid");
   const [brushSettings, setBrushSettings] = useState({
     strokeColor: "#000000",
@@ -79,7 +92,50 @@ export default function MiroBoardPage() {
   } = useBoardItems(boardId);
   const { push, undo, redo, canUndo, canRedo, buildUpdateEntry } = useBoardItemHistory();
 
+  const connectorSignature = useCallback((c: BoardItem): string => {
+    const conn = c.style?.connection ? JSON.stringify(c.style.connection) : "";
+    const svgPath = typeof c.style?.svgPath === "string" ? c.style.svgPath : "";
+    return [c.is_deleted, c.x, c.y, c.width, c.height, svgPath, conn].join("|");
+  }, []);
+
+  const getChangedLinkedConnectors = useCallback(
+    (prevItems: BoardItem[], nextItems: BoardItem[]): Array<{ before: BoardItem; after: BoardItem }> => {
+      const prevById = new Map(prevItems.map((i) => [i.id, i]));
+      const nextById = new Map(nextItems.map((i) => [i.id, i]));
+
+      const pairs: Array<{ before: BoardItem; after: BoardItem }> = [];
+      for (const next of nextItems) {
+        if (next.type !== "connector" || !next.style?.connection) continue;
+        const prev = prevById.get(next.id);
+        if (!prev || prev.type !== "connector") continue;
+        if (connectorSignature(prev) !== connectorSignature(next)) {
+          pairs.push({ before: prev, after: nextById.get(next.id)! });
+        }
+      }
+      return pairs;
+    },
+    [connectorSignature]
+  );
+
   const linkedConnectorSigRef = useRef<Map<string, string>>(new Map());
+
+  const loadProjectBoards = useCallback(
+    async (projectId: number) => {
+      setIsBoardsLoading(true);
+      try {
+        const allBoards = await miroApi.getBoards();
+        const boards = allBoards.filter(
+          (item) => item.project_id === projectId && !item.is_archived
+        );
+        setProjectBoards(boards);
+      } catch (err) {
+        console.error("Failed to load project boards:", err);
+      } finally {
+        setIsBoardsLoading(false);
+      }
+    },
+    []
+  );
 
   // Persist linked connector geometry (and soft-deletes) after layout runs in useBoardItems.
   useEffect(() => {
@@ -127,6 +183,10 @@ export default function MiroBoardPage() {
       try {
         const boardData = await miroApi.getBoard(boardId);
         setBoard(boardData);
+        loadProjectBoards(boardData.project_id);
+        miroApi.markBoardAccess(boardId).catch((markErr) => {
+          console.error("Failed to mark board access:", markErr);
+        });
         
         // Update viewport from board
         if (boardData.viewport) {
@@ -152,7 +212,7 @@ export default function MiroBoardPage() {
       loadBoard();
       loadItems();
     }
-  }, [boardId, loadItems, setViewport]);
+  }, [boardId, loadItems, setViewport, loadProjectBoards]);
 
   // Reset one-time auto-fit when switching boards
   useEffect(() => {
@@ -302,6 +362,79 @@ export default function MiroBoardPage() {
     [board, boardId]
   );
 
+  const handleCreateBoard = useCallback(async (data: { title: string }) => {
+    if (!board) return;
+    setIsCreatingBoard(true);
+    try {
+      const created = await miroApi.createBoard({
+        project_id: board.project_id,
+        title: data.title,
+        viewport: { x: 0, y: 0, zoom: 1 },
+      });
+      setIsCreateModalOpen(false);
+      router.push(`/miro/${created.id}`);
+    } catch (err) {
+      console.error("Failed to create board:", err);
+    } finally {
+      setIsCreatingBoard(false);
+    }
+  }, [board, router]);
+
+  const handleDeleteBoardFromSidebar = useCallback(
+    async (targetBoardId: string) => {
+      if (!board) return;
+      const target =
+        projectBoards.find((b) => b.id === targetBoardId) ??
+        (board.id === targetBoardId ? board : null);
+      if (!target) {
+        alert("Board not found.");
+        return;
+      }
+      if (target.is_archived) {
+        alert("Cannot delete archived boards.");
+        return;
+      }
+      const title = target.title?.trim() || "Untitled Board";
+      if (
+        !confirm(
+          `Are you sure you want to delete "${title}"? This will archive the board.`
+        )
+      ) {
+        return;
+      }
+      setDeleteBoardLoadingId(targetBoardId);
+      try {
+        await miroApi.deleteBoard(targetBoardId);
+        const allBoards = await miroApi.getBoards();
+        const nextProjectBoards = allBoards.filter(
+          (item) => item.project_id === board.project_id && !item.is_archived
+        );
+        setProjectBoards(nextProjectBoards);
+        if (targetBoardId === boardId) {
+          if (nextProjectBoards.length > 0) {
+            router.push(`/miro/${nextProjectBoards[0].id}`);
+          } else {
+            router.push("/miro");
+          }
+        }
+      } catch (err: any) {
+        console.error("Failed to delete board:", err);
+        if (err?.status === 401) {
+          window.location.href = "/login";
+          return;
+        }
+        alert(
+          err instanceof Error
+            ? err.message
+            : "Failed to delete board. Please try again."
+        );
+      } finally {
+        setDeleteBoardLoadingId(null);
+      }
+    },
+    [board, boardId, projectBoards, router]
+  );
+
   // Handle item selection
   const handleItemSelect = useCallback((itemId: string | null, options?: { shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean }) => {
     if (!itemId) {
@@ -336,11 +469,25 @@ export default function MiroBoardPage() {
           return;
         }
 
-        const before = items.filter((item) => item.id === itemId);
+        const prevItems = items;
+        const beforeItem = prevItems.filter((item) => item.id === itemId);
         await updateItem(itemId, updates);
-        const after = items
-          .map((item) => (item.id === itemId ? { ...item, ...updates } : item))
-          .filter((item) => item.id === itemId);
+
+        const nextItems = applyConnectorLayouts(
+          prevItems.map((item) => (item.id === itemId ? { ...item, ...updates } : item))
+        );
+        const afterItem = nextItems.filter((item) => item.id === itemId);
+        const changedConnectors = getChangedLinkedConnectors(prevItems, nextItems);
+
+        const before = [
+          ...beforeItem,
+          ...changedConnectors.map((p) => p.before),
+        ];
+        const after = [
+          ...afterItem,
+          ...changedConnectors.map((p) => p.after),
+        ];
+
         push(buildUpdateEntry(before, after, async (snapshot) => {
           const target = snapshot[0];
           if (!target) return;
@@ -350,7 +497,7 @@ export default function MiroBoardPage() {
         console.error("Failed to update item:", err);
       }
     },
-    [updateItem, updateItemOptimistic, updateItemAsync, items, push, buildUpdateEntry]
+    [updateItem, updateItemOptimistic, updateItemAsync, items, push, buildUpdateEntry, getChangedLinkedConnectors]
   );
 
   // Handle item delete
@@ -380,6 +527,35 @@ export default function MiroBoardPage() {
       console.error("Failed to delete item:", err);
     }
   }, [selectedItemIds, deleteItem, setSelectedItemIds, push, removeItemsOptimistic, restoreItemsOptimistic, updateItem]);
+
+  const handleEraseItem = useCallback(
+    async (itemId: string) => {
+      let rollback: (() => void) | undefined;
+      try {
+        rollback = removeItemsOptimistic([itemId], ERASE_CONNECTOR_LAYOUT_OPTIONS);
+        await deleteItem(itemId, ERASE_CONNECTOR_LAYOUT_OPTIONS);
+        push({
+          undo: async () => {
+            const restoreRollback = restoreItemsOptimistic([itemId]);
+            try {
+              await updateItem(itemId, { is_deleted: false });
+            } catch (err) {
+              restoreRollback();
+              throw err;
+            }
+          },
+          redo: async () => {
+            await deleteItem(itemId, ERASE_CONNECTOR_LAYOUT_OPTIONS);
+          },
+        });
+        setSelectedItemIds((prev) => prev.filter((id) => id !== itemId));
+      } catch (err) {
+        rollback?.();
+        console.error("Failed to erase item:", err);
+      }
+    },
+    [deleteItem, push, removeItemsOptimistic, restoreItemsOptimistic, updateItem, setSelectedItemIds]
+  );
 
   const resolveToolCreateSpec = useCallback(
     (toolType: ToolType, options?: ToolOptions): {
@@ -572,6 +748,46 @@ export default function MiroBoardPage() {
       }
     },
     [canvasSize.height, canvasSize.width, createItem, resolveToolCreateSpec, screenToWorld, push, updateItem]
+  );
+
+  const handleInsertTemplate = useCallback(
+    async (templateId: GraphTemplateId) => {
+      // Use live ref dimensions when state is still 0 (e.g. before first layout effect runs).
+      let w = canvasSize.width;
+      let h = canvasSize.height;
+      if (w <= 0 || h <= 0) {
+        if (canvasContainerRef.current) {
+          w = canvasContainerRef.current.clientWidth;
+          h = canvasContainerRef.current.clientHeight;
+        }
+        if (w <= 0 || h <= 0) return;
+      }
+
+      const centerWorld = screenToWorld(w / 2, h / 2);
+
+      try {
+        const result = await insertGraphTemplate({
+          templateId,
+          origin: centerWorld,
+          createItem,
+        });
+
+        const ids = result.createdItemIds.slice();
+        push({
+          undo: async () => {
+            await Promise.all(ids.map((id) => updateItem(id, { is_deleted: true })));
+          },
+          redo: async () => {
+            await Promise.all(ids.map((id) => updateItem(id, { is_deleted: false })));
+          },
+        });
+
+        setSelectedItemIds([result.rootItemId]);
+      } catch (err) {
+        console.error("Failed to insert template:", err);
+      }
+    },
+    [canvasSize.width, canvasSize.height, screenToWorld, createItem, push, updateItem, setSelectedItemIds]
   );
 
   // Handle freehand creation
@@ -805,14 +1021,29 @@ export default function MiroBoardPage() {
   }, [updateItem]);
 
   const handleItemsBatchUpdate = useCallback(async (updates: Array<{ id: string } & Partial<BoardItem>>) => {
-    const before = items.filter((item) => updates.some((u) => u.id === item.id));
+    const prevItems = items;
+    const updateIds = new Set(updates.map((u) => u.id));
+    const beforeItems = prevItems.filter((item) => updateIds.has(item.id));
+
+    const nextItems = applyConnectorLayouts(
+      prevItems.map((item) => {
+        const update = updates.find((u) => u.id === item.id);
+        return update ? { ...item, ...update } : item;
+      })
+    );
+    const changedConnectors = getChangedLinkedConnectors(prevItems, nextItems);
+
+    const before = [...beforeItems, ...changedConnectors.map((p) => p.before)];
+
     await batchUpdateItems(updates);
-    const after = before.map((item) => {
-      const update = updates.find((u) => u.id === item.id);
-      return update ? { ...item, ...update } : item;
-    });
+
+    const after = [
+      ...nextItems.filter((item) => updateIds.has(item.id)),
+      ...changedConnectors.map((p) => p.after),
+    ];
+
     push(buildUpdateEntry(before, after, applySnapshot));
-  }, [items, batchUpdateItems, push, buildUpdateEntry, applySnapshot]);
+  }, [items, batchUpdateItems, push, buildUpdateEntry, applySnapshot, getChangedLinkedConnectors]);
 
   useEffect(() => {
     const isEditableTarget = (target: EventTarget | null): boolean => {
@@ -825,6 +1056,11 @@ export default function MiroBoardPage() {
       if (isEditableTarget(event.target) || isPreviewOpen || isSnapshotsModalOpen) return;
       const key = event.key.toLowerCase();
       const mod = event.metaKey || event.ctrlKey;
+      if (key === "escape" && activeTool !== "select") {
+        event.preventDefault();
+        setActiveTool("select");
+        return;
+      }
       if ((key === "delete" || key === "backspace") && selectedItemIds.length > 0) {
         event.preventDefault();
         handleItemDelete();
@@ -853,7 +1089,32 @@ export default function MiroBoardPage() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedItemIds, handleItemDelete, redo, undo, setSelectedItemIds, isPreviewOpen, isSnapshotsModalOpen]);
+  }, [selectedItemIds, handleItemDelete, redo, undo, setSelectedItemIds, isPreviewOpen, isSnapshotsModalOpen, activeTool]);
+
+  useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null): boolean => {
+      const element = target as HTMLElement | null;
+      if (!element) return false;
+      return Boolean(element.closest("input, textarea, select, [contenteditable='true']"));
+    };
+
+    const onContextMenu = (event: MouseEvent) => {
+      if (isEditableTarget(event.target) || isPreviewOpen || isSnapshotsModalOpen) return;
+      if (activeTool === "select") return;
+
+      const el = canvasRef.current;
+      const target = event.target as HTMLElement | null;
+      if (!el || !target) return;
+
+      if (el.contains(target)) {
+        event.preventDefault();
+        setActiveTool("select");
+      }
+    };
+
+    window.addEventListener("contextmenu", onContextMenu, { capture: true });
+    return () => window.removeEventListener("contextmenu", onContextMenu, { capture: true } as any);
+  }, [activeTool, isPreviewOpen, isSnapshotsModalOpen]);
 
   if (loading) {
     return (
@@ -902,14 +1163,31 @@ export default function MiroBoardPage() {
           onRedo={redo}
           canUndo={canUndo}
           canRedo={canRedo}
+          onBoardsToggle={() => setIsBoardsSidebarOpen((prev) => !prev)}
         />
 
         <div className="flex flex-1 overflow-hidden min-h-0">
+          {board && (
+            <BoardListSidebar
+              isOpen={isBoardsSidebarOpen}
+              boards={projectBoards}
+              activeBoardId={boardId}
+              activeBoardTitle={board.title}
+              loading={isBoardsLoading}
+              onToggle={() => setIsBoardsSidebarOpen((prev) => !prev)}
+              onSelectBoard={(id) => router.push(`/miro/${id}`)}
+              onCreateBoard={() => setIsCreateModalOpen(true)}
+              onDeleteBoard={handleDeleteBoardFromSidebar}
+              deleteLoadingBoardId={deleteBoardLoadingId}
+            />
+          )}
+
           <BoardToolbar
             activeTool={activeTool}
             onToolChange={setActiveTool}
             onToolPrimaryAction={createAtViewportCenter}
             onEmojiInsert={handleEmojiInsert}
+            onInsertTemplate={handleInsertTemplate}
             lineVariant={lineVariant}
             onLineVariantChange={setLineVariant}
           />
@@ -933,6 +1211,7 @@ export default function MiroBoardPage() {
               onFreehandCreate={handleFreehandCreate}
               onLinkedConnectorCreate={handleLinkedConnectorCreate}
               onItemsBatchUpdate={handleItemsBatchUpdate}
+              onEraseItem={handleEraseItem}
               width={canvasSize.width}
               height={canvasSize.height}
               canvasRef={canvasRef}
@@ -974,6 +1253,14 @@ export default function MiroBoardPage() {
           open={isPreviewOpen}
           items={items}
           onClose={() => setIsPreviewOpen(false)}
+        />
+
+        <CreateBoardModal
+          open={isCreateModalOpen}
+          projectId={board?.project_id}
+          isCreating={isCreatingBoard}
+          onClose={() => setIsCreateModalOpen(false)}
+          onCreate={handleCreateBoard}
         />
       </div>
     </Layout>

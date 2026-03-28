@@ -13,7 +13,6 @@ interface TextItemProps {
 export default function TextItem({
   item,
   isSelected,
-  onSelect,
   onUpdate,
 }: TextItemProps) {
   const textStyle = {
@@ -34,9 +33,10 @@ export default function TextItem({
         padding: "4px",
         backgroundColor: item.style.backgroundColor || "transparent",
       }}
-      onClick={onSelect}
     >
-      <div style={textStyle}>{item.content || "Text"}</div>
+      <div data-hit-region="true" style={textStyle}>
+        {item.content || "Text"}
+      </div>
     </div>
   );
 }

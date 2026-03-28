@@ -53,15 +53,6 @@ export default function NotionLayout({
   return (
     <div className="flex h-full w-full overflow-hidden bg-white">
       <aside className="w-60 flex-shrink-0 bg-[#f7f7f5] border-r border-gray-200 flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-3 py-3 hover:bg-gray-200/60 cursor-pointer">
-          <div className="flex items-center gap-2">
-            <div className="w-5 h-5 bg-blue-600 rounded flex items-center justify-center">
-              <div className="w-2.5 h-2.5 bg-white rounded-sm" />
-            </div>
-            <span className="text-sm font-semibold text-gray-800">MediaJira</span>
-          </div>
-          <ChevronDown className="h-3.5 w-3.5 text-gray-500" />
-        </div>
 
         <div className="px-2 space-y-0.5">
           <button
@@ -168,7 +159,7 @@ export default function NotionLayout({
 
       {isPreviewOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4 py-8">
-          <div className="relative flex flex-col max-h-[90vh] w-full max-w-3xl rounded-xl bg-white shadow-2xl">
+          <div className="relative flex flex-col max-h-[90vh] min-h-[300px] w-full max-w-3xl rounded-xl bg-white shadow-2xl overflow-hidden">
             <div className="flex-shrink-0 h-16 border-b border-gray-200 bg-white px-6 flex items-center">
               <div className="flex-1">
                 <h3 className="text-lg font-semibold text-gray-900">{title || 'Untitled'}</h3>
