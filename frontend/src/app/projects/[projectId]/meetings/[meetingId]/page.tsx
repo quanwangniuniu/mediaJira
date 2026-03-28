@@ -20,6 +20,9 @@ import {
   Lightbulb,
   Rocket,
   Search,
+  FileSpreadsheet,
+  Scale,
+  ListTodo,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { DndContext, closestCenter, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core';
@@ -43,14 +46,12 @@ import { MeetingsAPI } from '@/lib/api/meetingsApi';
 import type { TaskData } from '@/types/task';
 import {
   isKnownMeetingArtifactKind,
-  meetingArtifactDisplayLabel,
   meetingArtifactHref,
   normalizeMeetingArtifactType,
   type MeetingArtifactResourceIndex,
 } from '@/lib/meetings/artifactLinks';
 import type { AgendaItem, ArtifactLink, Meeting, ParticipantLink } from '@/types/meeting';
 import { ProjectAPI, type ProjectData, type ProjectMemberData } from '@/lib/api/projectApi';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -59,6 +60,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -101,6 +105,52 @@ const PARTICIPANT_ROLE_OPTIONS = [
 ] as const;
 
 const DEFAULT_PARTICIPANT_ROLE = 'Participant';
+
+type ArtifactKind = 'decision' | 'task' | 'spreadsheet';
+
+type ArtifactSearchHit = {
+  kind: ArtifactKind;
+  id: number;
+  title: string;
+  subtitle?: string;
+};
+
+function artifactModuleBadge(kind: ArtifactKind): { label: string; className: string } {
+  switch (kind) {
+    case 'spreadsheet':
+      return { label: 'Spreadsheet', className: 'bg-emerald-100 text-emerald-800' };
+    case 'decision':
+      return { label: 'Decision', className: 'bg-amber-100 text-amber-800' };
+    case 'task':
+      return { label: 'Task', className: 'bg-blue-100 text-blue-800' };
+  }
+}
+
+function ArtifactTypeIcon({ kind }: { kind: ArtifactKind }) {
+  const cls = 'h-4 w-4 shrink-0';
+  if (kind === 'spreadsheet') return <FileSpreadsheet className={cls} />;
+  if (kind === 'decision') return <Scale className={cls} />;
+  return <ListTodo className={cls} />;
+}
+
+function artifactRowTitle(link: ArtifactLink, index: MeetingArtifactResourceIndex): string {
+  const t = normalizeMeetingArtifactType(link.artifact_type);
+  const id = link.artifact_id;
+  if (t === 'decision') {
+    const d = index.decisions.find((x) => x.id === id);
+    return d?.title?.trim() || `Decision #${id}`;
+  }
+  if (t === 'task') {
+    const task = index.tasks.find((x) => x.id === id);
+    const s = task?.summary?.trim();
+    return s ? s.slice(0, 200) + (s.length > 200 ? '…' : '') : `Task #${id}`;
+  }
+  if (t === 'spreadsheet') {
+    const s = index.spreadsheets.find((x) => x.id === id);
+    return s?.name?.trim() || `Spreadsheet #${id}`;
+  }
+  return `${t || 'Artifact'} #${id}`;
+}
 
 function normalizeMeetingFromApi(m: Meeting): Meeting {
   const raw = m.layout_config;
@@ -374,11 +424,9 @@ export default function MeetingWorkspacePage() {
   });
   const [artifactResourcesLoading, setArtifactResourcesLoading] = useState(false);
   const [addingArtifact, setAddingArtifact] = useState(false);
-  const [isArtifactEditorOpen, setIsArtifactEditorOpen] = useState(false);
-  const [artifactEditorType, setArtifactEditorType] = useState<'decision' | 'task' | 'spreadsheet'>(
-    'decision',
-  );
-  const [artifactEditorId, setArtifactEditorId] = useState<number | null>(null);
+  const [artifactDropdownOpen, setArtifactDropdownOpen] = useState(false);
+  const [artifactSearchMode, setArtifactSearchMode] = useState(false);
+  const [artifactSearchText, setArtifactSearchText] = useState('');
   const [removingArtifactIds, setRemovingArtifactIds] = useState<Set<number>>(new Set());
 
   const [schedDateDraft, setSchedDateDraft] = useState('');
@@ -1025,6 +1073,51 @@ export default function MeetingWorkspacePage() {
     return byType;
   }, [artifactResources, artifacts]);
 
+  const artifactSearchHits = useMemo((): ArtifactSearchHit[] => {
+    const term = artifactSearchText.trim().toLowerCase();
+    if (!term) return [];
+
+    const linked = new Set(
+      artifacts.map((a) => `${normalizeMeetingArtifactType(a.artifact_type)}:${a.artifact_id}`),
+    );
+    const hits: ArtifactSearchHit[] = [];
+
+    for (const d of artifactResources.decisions) {
+      if (linked.has(`decision:${d.id}`)) continue;
+      const title = (d.title ?? '').trim();
+      const hay = title.toLowerCase();
+      if (hay.includes(term)) {
+        hits.push({ kind: 'decision', id: d.id, title: title || `Decision #${d.id}` });
+      }
+    }
+
+    for (const t of artifactResources.tasks) {
+      const tid = t.id;
+      if (tid == null || linked.has(`task:${tid}`)) continue;
+      const summary = (t.summary ?? '').trim();
+      const description = (t.description ?? '').trim();
+      const hay = `${summary} ${description}`.toLowerCase();
+      if (hay.includes(term)) {
+        hits.push({
+          kind: 'task',
+          id: tid,
+          title: summary || `Task #${tid}`,
+          subtitle: description ? description.slice(0, 120) + (description.length > 120 ? '…' : '') : undefined,
+        });
+      }
+    }
+
+    for (const s of artifactResources.spreadsheets) {
+      if (linked.has(`spreadsheet:${s.id}`)) continue;
+      const name = (s.name ?? '').trim();
+      if (name.toLowerCase().includes(term)) {
+        hits.push({ kind: 'spreadsheet', id: s.id, title: name || `Spreadsheet #${s.id}` });
+      }
+    }
+
+    return hits;
+  }, [artifactResources, artifacts, artifactSearchText]);
+
   const addParticipant = async (userId: number) => {
     if (!projectId || Number.isNaN(projectId) || !meetingId || Number.isNaN(meetingId)) return;
     if (addingParticipant) return;
@@ -1083,8 +1176,9 @@ export default function MeetingWorkspacePage() {
         artifact_id: id,
       });
       setArtifacts((prev) => [...(Array.isArray(prev) ? prev : []), created]);
-      setIsArtifactEditorOpen(false);
-      setArtifactEditorId(null);
+      setArtifactDropdownOpen(false);
+      setArtifactSearchMode(false);
+      setArtifactSearchText('');
       toast.success('Artifact linked');
     } catch (err: unknown) {
       console.error('Failed to add artifact:', err);
@@ -1991,62 +2085,161 @@ export default function MeetingWorkspacePage() {
                     <ArtifactsSection
                       artifactsCount={orderedArtifacts.length}
                       orderedArtifacts={orderedArtifacts}
-                      addingArtifact={addingArtifact}
-                      onFocusAdd={() => setIsArtifactEditorOpen((v) => !v)}
-                      linker={
-                        isArtifactEditorOpen ? (
-                          <div className="mb-2 flex items-center gap-2">
-                            <select
-                              value={artifactEditorType}
-                              onChange={(e) => {
-                                setArtifactEditorType(e.target.value as 'decision' | 'task' | 'spreadsheet');
-                                setArtifactEditorId(null);
-                              }}
-                              className="border-none bg-transparent px-1 py-1 text-sm text-slate-700 outline-none"
-                              disabled={artifactResourcesLoading || addingArtifact}
-                            >
-                              <option value="decision">Decision</option>
-                              <option value="task">Task</option>
-                              <option value="spreadsheet">Spreadsheet</option>
-                            </select>
-                            <select
-                              value={artifactEditorId ?? ''}
-                              onChange={(e) => setArtifactEditorId(e.target.value ? Number(e.target.value) : null)}
-                              className="min-w-[240px] border-none bg-transparent px-1 py-1 text-sm text-slate-700 outline-none"
-                              disabled={artifactResourcesLoading || addingArtifact}
-                            >
-                              <option value="">
-                                {artifactResourcesLoading ? 'Loading…' : 'Select resource…'}
-                              </option>
-                              {artifactChoices[artifactEditorType].map((row) => (
-                                <option key={`${artifactEditorType}-${row.id}`} value={row.id}>
-                                  {row.label}
-                                </option>
-                              ))}
-                            </select>
+                      addControl={
+                        <DropdownMenu open={artifactDropdownOpen} onOpenChange={setArtifactDropdownOpen}>
+                          <DropdownMenuTrigger asChild>
                             <button
                               type="button"
-                              onClick={() =>
-                                artifactEditorId != null
-                                  ? void linkMeetingArtifact(artifactEditorType, artifactEditorId)
-                                  : null
-                              }
-                              disabled={addingArtifact || artifactEditorId == null}
-                              className="text-xs text-slate-600 hover:text-slate-900 disabled:opacity-40"
+                              className="text-sm text-gray-500 transition hover:text-gray-800"
+                              disabled={addingArtifact}
                             >
-                              Save
+                              + Add
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setIsArtifactEditorOpen(false);
-                                setArtifactEditorId(null);
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-56">
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                setArtifactSearchMode(true);
+                                setArtifactSearchText('');
                               }}
-                              className="text-xs text-slate-400 hover:text-slate-700"
                             >
-                              Cancel
-                            </button>
-                          </div>
+                              <Search className="h-4 w-4" />
+                              Search artifacts
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuSub>
+                              <DropdownMenuSubTrigger disabled={artifactResourcesLoading}>
+                                Spreadsheet
+                              </DropdownMenuSubTrigger>
+                              <DropdownMenuSubContent className="max-h-64 overflow-y-auto">
+                                {artifactChoices.spreadsheet.length === 0 ? (
+                                  <DropdownMenuItem disabled>
+                                    {artifactResourcesLoading ? 'Loading…' : 'No spreadsheets'}
+                                  </DropdownMenuItem>
+                                ) : (
+                                  artifactChoices.spreadsheet.map((row) => (
+                                    <DropdownMenuItem
+                                      key={`ss-${row.id}`}
+                                      disabled={addingArtifact}
+                                      onSelect={() => {
+                                        void linkMeetingArtifact('spreadsheet', row.id);
+                                      }}
+                                    >
+                                      {row.label}
+                                    </DropdownMenuItem>
+                                  ))
+                                )}
+                              </DropdownMenuSubContent>
+                            </DropdownMenuSub>
+                            <DropdownMenuSub>
+                              <DropdownMenuSubTrigger disabled={artifactResourcesLoading}>
+                                Decisions
+                              </DropdownMenuSubTrigger>
+                              <DropdownMenuSubContent className="max-h-64 overflow-y-auto">
+                                {artifactChoices.decision.length === 0 ? (
+                                  <DropdownMenuItem disabled>
+                                    {artifactResourcesLoading ? 'Loading…' : 'No decisions'}
+                                  </DropdownMenuItem>
+                                ) : (
+                                  artifactChoices.decision.map((row) => (
+                                    <DropdownMenuItem
+                                      key={`d-${row.id}`}
+                                      disabled={addingArtifact}
+                                      onSelect={() => {
+                                        void linkMeetingArtifact('decision', row.id);
+                                      }}
+                                    >
+                                      {row.label}
+                                    </DropdownMenuItem>
+                                  ))
+                                )}
+                              </DropdownMenuSubContent>
+                            </DropdownMenuSub>
+                            <DropdownMenuSub>
+                              <DropdownMenuSubTrigger disabled={artifactResourcesLoading}>
+                                Tasks
+                              </DropdownMenuSubTrigger>
+                              <DropdownMenuSubContent className="max-h-64 overflow-y-auto">
+                                {artifactChoices.task.length === 0 ? (
+                                  <DropdownMenuItem disabled>
+                                    {artifactResourcesLoading ? 'Loading…' : 'No tasks'}
+                                  </DropdownMenuItem>
+                                ) : (
+                                  artifactChoices.task.map((row) => (
+                                    <DropdownMenuItem
+                                      key={`t-${row.id}`}
+                                      disabled={addingArtifact}
+                                      onSelect={() => {
+                                        void linkMeetingArtifact('task', row.id);
+                                      }}
+                                    >
+                                      {row.label}
+                                    </DropdownMenuItem>
+                                  ))
+                                )}
+                              </DropdownMenuSubContent>
+                            </DropdownMenuSub>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      }
+                      searchPanel={
+                        artifactSearchMode ? (
+                          <Card className="mb-3 rounded-xl border-slate-200 bg-white/70 p-3 shadow-none">
+                            <div className="relative">
+                              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                              <Input
+                                value={artifactSearchText}
+                                onChange={(e) => setArtifactSearchText(e.currentTarget.value)}
+                                placeholder="Search by name or description"
+                                className="h-10 rounded-xl border border-transparent bg-slate-50 pl-9 pr-3 text-sm focus-visible:border-blue-400 focus-visible:bg-white"
+                              />
+                            </div>
+                            <div className="mt-2">
+                              {artifactSearchText.trim().length === 0 ? null : artifactSearchHits.length > 0 ? (
+                                <div className="space-y-2">
+                                  {artifactSearchHits.map((hit) => {
+                                    const badge = artifactModuleBadge(hit.kind);
+                                    return (
+                                      <Card key={`${hit.kind}-${hit.id}`} className="rounded-lg border-slate-200 bg-white p-0 shadow-none">
+                                        <button
+                                          type="button"
+                                          disabled={addingArtifact}
+                                          onClick={() => {
+                                            void linkMeetingArtifact(hit.kind, hit.id);
+                                          }}
+                                          className="flex w-full items-start justify-between gap-3 rounded-lg px-3 py-2 text-left hover:bg-slate-50 disabled:opacity-50"
+                                        >
+                                          <div className="flex min-w-0 flex-1 items-start gap-3">
+                                            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-600">
+                                              <ArtifactTypeIcon kind={hit.kind} />
+                                            </div>
+                                            <div className="min-w-0">
+                                              <div className="truncate text-sm font-medium text-slate-800">{hit.title}</div>
+                                              {hit.subtitle ? (
+                                                <div className="mt-0.5 line-clamp-2 text-xs text-slate-500">{hit.subtitle}</div>
+                                              ) : null}
+                                            </div>
+                                          </div>
+                                          <span
+                                            className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${badge.className}`}
+                                          >
+                                            {badge.label}
+                                          </span>
+                                        </button>
+                                      </Card>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <Card className="mt-2 rounded-xl border-slate-200 bg-slate-50/50 p-6 shadow-none">
+                                  <div className="flex flex-col items-center justify-center gap-2">
+                                    <Search className="h-8 w-8 text-slate-300" />
+                                    <p className="text-sm text-slate-500">No artifacts found in this project.</p>
+                                  </div>
+                                </Card>
+                              )}
+                            </div>
+                          </Card>
                         ) : null
                       }
                       rows={orderedArtifacts.map((a) => {
@@ -2054,35 +2247,46 @@ export default function MeetingWorkspacePage() {
                           Number.isFinite(projectId) && !Number.isNaN(projectId)
                             ? meetingArtifactHref(projectId, a.artifact_type, a.artifact_id)
                             : null;
-                        const title = meetingArtifactDisplayLabel(
-                          a.artifact_type,
-                          a.artifact_id,
-                          artifactResources,
-                        );
-                        const artifactType = normalizeMeetingArtifactType(a.artifact_type);
+                        const rawT = normalizeMeetingArtifactType(a.artifact_type);
+                        const kind: ArtifactKind =
+                          rawT === 'spreadsheet' || rawT === 'decision' || rawT === 'task' ? rawT : 'task';
+                        const badge = artifactModuleBadge(kind);
+                        const displayTitle = artifactRowTitle(a, artifactResources);
                         return (
-                          <div key={a.id} className="flex items-center justify-between px-2 py-2">
-                            <div className="min-w-0">
-                              <div className="truncate text-sm font-medium text-gray-800">{title}</div>
-                              <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                                <span>{artifactType === 'decision' ? '📘 Decision' : artifactType === 'task' ? '✅ Task' : '📎 Artifact'} · {a.artifact_id}</span>
-                                {href ? (
-                                  <Link href={href} className="inline-flex items-center gap-1 text-blue-600 hover:underline">
-                                    Open <ExternalLink className="h-3 w-3" />
-                                  </Link>
-                                ) : null}
+                          <Card key={a.id} className="rounded-xl border-slate-200 bg-white px-3 py-2 shadow-none">
+                            <div className="flex items-center justify-between gap-4">
+                              <div className="flex min-w-0 flex-1 items-center gap-4">
+                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-600">
+                                  <ArtifactTypeIcon kind={kind} />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="truncate text-sm font-medium text-slate-800">{displayTitle}</div>
+                                  {href ? (
+                                    <Link
+                                      href={href}
+                                      className="mt-1 inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                                    >
+                                      Open <ExternalLink className="h-3 w-3" />
+                                    </Link>
+                                  ) : null}
+                                </div>
+                                <span
+                                  className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${badge.className}`}
+                                >
+                                  {badge.label}
+                                </span>
                               </div>
+                              <button
+                                type="button"
+                                onClick={() => removeArtifact(a.id)}
+                                disabled={removingArtifactIds.has(a.id)}
+                                className="shrink-0 rounded-md p-1 text-gray-400 transition hover:bg-gray-50 hover:text-red-500"
+                                aria-label="Unlink artifact"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => removeArtifact(a.id)}
-                              disabled={removingArtifactIds.has(a.id)}
-                              className="rounded-md p-1 text-gray-400 transition hover:bg-gray-50 hover:text-red-500"
-                              aria-label="Unlink artifact"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
+                          </Card>
                         );
                       })}
                     />
