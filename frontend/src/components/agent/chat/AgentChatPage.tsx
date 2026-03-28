@@ -668,6 +668,7 @@ export function AgentChatPage() {
       <WelcomeScreen
         onSend={handleSendMessage}
         onFileUpload={handleFileUpload}
+        onSelectWorkflow={setSelectedWorkflowId}
         disabled={isStreaming}
       />
     )
