@@ -1,8 +1,10 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { X, RotateCcw } from "lucide-react"
+import { X, RotateCcw, Workflow, Loader2 } from "lucide-react"
 import { getDebugMode, setDebugMode } from "@/lib/agentDebug"
+import { AgentAPI } from "@/lib/api/agentApi"
+import type { AgentWorkflowDefinition } from "@/types/agent"
 
 interface SettingsPanelProps {
   isOpen: boolean
@@ -11,11 +13,25 @@ interface SettingsPanelProps {
 
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const [debugEnabled, setDebugEnabled] = useState(true)
+  const [workflows, setWorkflows] = useState<AgentWorkflowDefinition[]>([])
+  const [workflowsLoading, setWorkflowsLoading] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
 
   // Sync from localStorage on mount
   useEffect(() => {
     setDebugEnabled(getDebugMode())
+  }, [isOpen])
+
+  // Fetch internal workflows when panel opens
+  useEffect(() => {
+    if (!isOpen) return
+    setWorkflowsLoading(true)
+    AgentAPI.listWorkflows()
+      .then((data) =>
+        setWorkflows(data.filter((w) => w.is_system && w.status === "active"))
+      )
+      .catch(() => setWorkflows([]))
+      .finally(() => setWorkflowsLoading(false))
   }, [isOpen])
 
   // Close on outside click
@@ -55,7 +71,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
       </div>
 
       {/* Body */}
-      <div className="px-4 py-3 space-y-3">
+      <div className="px-4 py-3 space-y-3 max-h-[70vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <div>
             <span className="text-sm text-card-foreground">Debug Mode</span>
@@ -96,6 +112,47 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
             <RotateCcw className="w-3.5 h-3.5" />
             Restart
           </button>
+        </div>
+
+        {/* Internal Workflows */}
+        <div className="pt-2 border-t border-border">
+          <div className="flex items-center gap-2 mb-2">
+            <Workflow className="w-3.5 h-3.5 text-muted-foreground" />
+            <span className="text-sm text-card-foreground">Internal Workflows</span>
+          </div>
+          <p className="text-xs text-muted-foreground mb-2">
+            System-managed workflow definitions
+          </p>
+
+          {workflowsLoading ? (
+            <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              Loading...
+            </div>
+          ) : workflows.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-1">No active system workflows</p>
+          ) : (
+            <div className="space-y-1.5">
+              {workflows.map((wf) => (
+                <div
+                  key={wf.id}
+                  className="flex items-center justify-between rounded-md bg-muted/30 px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <span className="text-xs font-medium text-card-foreground truncate block">
+                      {wf.name}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {wf.step_count ?? 0} steps
+                    </span>
+                  </div>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 shrink-0">
+                    active
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

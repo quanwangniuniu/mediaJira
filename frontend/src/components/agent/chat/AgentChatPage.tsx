@@ -8,7 +8,6 @@ import { ChatInput } from "./ChatInput"
 import { AgentAPI } from "@/lib/api/agentApi"
 import type { SSEEvent, AgentAction, AgentMessage, AnalysisResult } from "@/types/agent"
 import { AGENT_MESSAGES } from "@/lib/agentMessages"
-import { WorkflowSelector } from "./WorkflowSelector"
 import type { StepProgressItem } from "./StepProgress"
 
 function getPendingMiroWorkflowRunIds(messages: ChatMessage[]): string[] {
@@ -134,7 +133,6 @@ export function AgentChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [hasStarted, setHasStarted] = useState(false)
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null)
   const [stepProgress, setStepProgress] = useState<StepProgressItem[]>([])
   const [followUpAvailable, setFollowUpAvailable] = useState(false)
   const [followUpStarted, setFollowUpStarted] = useState(false)
@@ -412,7 +410,6 @@ export function AgentChatPage() {
       sid!,
       {
         message: text,
-        workflow_id: selectedWorkflowId || undefined,
         ...(effectiveCalendarContext ? { calendar_context: effectiveCalendarContext as any } : {}),
       },
       (event: SSEEvent) => {
@@ -566,7 +563,7 @@ export function AgentChatPage() {
         setIsStreaming(false)
       }
     )
-  }, [sessionId, selectedWorkflowId, sessionCalendarContext, addMessage, updateMessage, setSessionId, refreshFollowUpState])
+  }, [sessionId, sessionCalendarContext, addMessage, updateMessage, setSessionId, refreshFollowUpState])
 
   // Keep ref always pointing to the latest handleSendMessage
   handleSendMessageRef.current = handleSendMessage
@@ -668,7 +665,6 @@ export function AgentChatPage() {
       <WelcomeScreen
         onSend={handleSendMessage}
         onFileUpload={handleFileUpload}
-        onSelectWorkflow={setSelectedWorkflowId}
         disabled={isStreaming}
       />
     )
@@ -687,13 +683,6 @@ export function AgentChatPage() {
           setPendingDecisionId(msg.decisionId)
         }
       }} />
-      <div className="flex items-center gap-2 px-4 pb-1">
-        <WorkflowSelector
-          selectedId={selectedWorkflowId}
-          onSelect={setSelectedWorkflowId}
-          disabled={isStreaming}
-        />
-      </div>
       <ChatInput
         onSend={handleSendMessage}
         onFileUpload={handleFileUpload}
