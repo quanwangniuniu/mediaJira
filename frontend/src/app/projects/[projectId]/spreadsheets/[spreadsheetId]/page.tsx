@@ -73,6 +73,9 @@ export default function SpreadsheetDetailPage() {
   const [renamingSheetId, setRenamingSheetId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [renaming, setRenaming] = useState(false);
+  const [renamingSpreadsheetTitle, setRenamingSpreadsheetTitle] = useState(false);
+  const [spreadsheetTitleRenameValue, setSpreadsheetTitleRenameValue] = useState('');
+  const [renamingSpreadsheetSaving, setRenamingSpreadsheetSaving] = useState(false);
   const [sheetMenuOpenId, setSheetMenuOpenId] = useState<number | null>(null);
   const [sheetMenuAnchor, setSheetMenuAnchor] = useState<{ top: number; left: number } | null>(null);
   const [deleteConfirmSheet, setDeleteConfirmSheet] = useState<SheetData | null>(null);
@@ -1067,6 +1070,57 @@ export default function SpreadsheetDetailPage() {
     setRenameValue('');
   };
 
+  const handleRenameSpreadsheet = async () => {
+    if (!spreadsheetId) {
+      toast.error('Spreadsheet ID is required');
+      return;
+    }
+
+    const trimmedName = spreadsheetTitleRenameValue.trim();
+    if (!trimmedName) {
+      toast.error('Spreadsheet name is required');
+      return;
+    }
+
+    if (trimmedName.length > 200) {
+      toast.error('Spreadsheet name cannot exceed 200 characters');
+      return;
+    }
+
+    setRenamingSpreadsheetSaving(true);
+    try {
+      const updated = await SpreadsheetAPI.updateSpreadsheet(Number(spreadsheetId), {
+        name: trimmedName,
+      });
+      setSpreadsheet((prev) => (prev ? { ...prev, name: updated.name } : prev));
+      toast.success('Spreadsheet renamed');
+      setRenamingSpreadsheetTitle(false);
+      setSpreadsheetTitleRenameValue('');
+    } catch (err: any) {
+      console.error('Failed to rename spreadsheet:', err);
+      const errorMessage =
+        err?.response?.data?.error ||
+        err?.response?.data?.detail ||
+        err?.message ||
+        'Failed to rename spreadsheet';
+      toast.error(errorMessage);
+    } finally {
+      setRenamingSpreadsheetSaving(false);
+    }
+  };
+
+  const beginRenameSpreadsheetTitle = () => {
+    if (renamingSheetId != null) return;
+    if (!spreadsheet) return;
+    setRenamingSpreadsheetTitle(true);
+    setSpreadsheetTitleRenameValue(spreadsheet.name);
+  };
+
+  const cancelRenameSpreadsheetTitle = () => {
+    setRenamingSpreadsheetTitle(false);
+    setSpreadsheetTitleRenameValue('');
+  };
+
   const handleDeleteSheet = useCallback(
     async (sheet: SheetData) => {
       if (!spreadsheetId || !projectId) {
@@ -1250,11 +1304,55 @@ export default function SpreadsheetDetailPage() {
                     <ArrowLeft className="h-4 w-4" />
                     Back
                   </button>
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded bg-green-50 text-green-700">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-green-50 text-green-700">
                       <FileSpreadsheet className="h-5 w-5" />
                     </div>
-                    <h1 className="text-lg font-medium text-gray-900">{spreadsheet.name}</h1>
+                    {renamingSpreadsheetTitle ? (
+                      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                        <input
+                          type="text"
+                          value={spreadsheetTitleRenameValue}
+                          onChange={(e) => setSpreadsheetTitleRenameValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              void handleRenameSpreadsheet();
+                            } else if (e.key === 'Escape') {
+                              e.preventDefault();
+                              cancelRenameSpreadsheetTitle();
+                            }
+                          }}
+                          className="h-8 min-w-[12rem] max-w-md flex-1 rounded border border-gray-300 px-2 text-lg font-medium text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          autoFocus
+                          disabled={renamingSpreadsheetSaving}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void handleRenameSpreadsheet()}
+                          className="rounded bg-blue-600 px-2 py-1 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                          disabled={renamingSpreadsheetSaving}
+                        >
+                          Rename
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelRenameSpreadsheetTitle}
+                          className="rounded border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-50"
+                          disabled={renamingSpreadsheetSaving}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <h1
+                        className="truncate text-lg font-medium text-gray-900 cursor-default select-none"
+                        onDoubleClick={beginRenameSpreadsheetTitle}
+                        title="Double-click to rename"
+                      >
+                        {spreadsheet.name}
+                      </h1>
+                    )}
                   </div>
                 </div>
               </div>
