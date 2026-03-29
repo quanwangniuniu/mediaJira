@@ -24,6 +24,7 @@ import { formatMeetingsApiError } from '@/lib/meetingsApiErrors';
 import {
   buildSystemTemplateOptions,
   fetchUnifiedMeetingTemplateOptions,
+  labelForMeetingType,
   layoutConfigForNewMeetingFromSelection,
   type UnifiedMeetingTemplateOption,
 } from '@/lib/meetings/unifiedMeetingTemplates';
@@ -351,7 +352,9 @@ export default function ProjectMeetingsPage() {
           >
             <div className="mb-1 flex w-full items-center justify-between">
               <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                {meeting.meeting_type || 'Meeting'}
+                {meeting.meeting_type
+                  ? labelForMeetingType(meeting.meeting_type, unifiedTemplateOptions)
+                  : 'Meeting'}
               </span>
               <div className="flex items-center gap-2">
                 <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">

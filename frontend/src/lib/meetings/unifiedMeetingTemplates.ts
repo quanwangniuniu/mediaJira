@@ -36,12 +36,14 @@ export function customTemplateMeetingTypeValue(templateId: string): string {
 }
 
 export function isCustomTemplateMeetingType(meetingType: string): boolean {
-  return meetingType.startsWith(CUSTOM_TEMPLATE_TYPE_PREFIX);
+  return meetingType.trim().toLowerCase().startsWith(CUSTOM_TEMPLATE_TYPE_PREFIX);
 }
 
 export function parseCustomTemplateId(meetingType: string): string | null {
-  if (!isCustomTemplateMeetingType(meetingType)) return null;
-  const id = meetingType.slice(CUSTOM_TEMPLATE_TYPE_PREFIX.length).trim();
+  const m = meetingType.trim();
+  const match = new RegExp(`^${CUSTOM_TEMPLATE_TYPE_PREFIX}(.+)$`, 'i').exec(m);
+  if (!match) return null;
+  const id = match[1].trim();
   return id || null;
 }
 
@@ -49,9 +51,17 @@ export function labelForMeetingType(
   meetingType: string,
   options: UnifiedMeetingTemplateOption[],
 ): string {
-  const found = options.find((o) => o.value === meetingType);
-  if (found) return found.label;
-  return meetingType;
+  const trimmed = meetingType.trim();
+  const byExact = options.find((o) => o.value === trimmed);
+  if (byExact) return byExact.label;
+
+  const templateId = parseCustomTemplateId(trimmed);
+  if (templateId) {
+    const byTemplateId = options.find((o) => o.templateId === templateId);
+    if (byTemplateId) return byTemplateId.label;
+  }
+
+  return trimmed;
 }
 
 /**

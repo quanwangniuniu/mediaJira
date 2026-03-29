@@ -161,16 +161,21 @@ export function TemplateSidebar({
               <h2 className="text-lg font-semibold text-slate-900">Configure Template</h2>
 
               <div className="mt-4 space-y-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  Add blocks
+                </p>
                 <div className="grid gap-2">
                   {moduleCards.map((m) => (
                     <button
                       key={m.type}
                       type="button"
-                      className="rounded-md border border-slate-200 px-2 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+                      className="flex w-full items-center gap-3 rounded-xl border border-gray-100 bg-white p-3 text-left shadow-sm transition hover:border-slate-200 hover:bg-slate-50 hover:shadow-md"
                       onClick={() => onAddDefaultBlock(m.type)}
                     >
-                      <span className="flex items-center gap-2">
-                        <Plus className="h-4 w-4 text-slate-400" />
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
+                        <Plus className="h-4 w-4" />
+                      </span>
+                      <span className="min-w-0 flex-1 text-center text-xs font-semibold uppercase tracking-wide text-slate-800">
                         {m.label}
                       </span>
                     </button>
