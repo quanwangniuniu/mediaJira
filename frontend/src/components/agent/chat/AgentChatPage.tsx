@@ -5,8 +5,9 @@ import { useAgentLayout, type AgentView } from "@/components/agent/AgentLayoutCo
 import { WelcomeScreen } from "./WelcomeScreen"
 import { MessageList, type ChatMessage } from "./MessageList"
 import { ChatInput } from "./ChatInput"
+import { ActionBar } from "./ActionBar"
 import { AgentAPI } from "@/lib/api/agentApi"
-import type { SSEEvent, AgentAction, AgentMessage, AnalysisResult } from "@/types/agent"
+import type { SSEEvent, AgentAction, AgentMessage, AnalysisResult, WorkflowStepState } from "@/types/agent"
 import { AGENT_MESSAGES } from "@/lib/agentMessages"
 import type { StepProgressItem } from "./StepProgress"
 
@@ -134,6 +135,11 @@ export function AgentChatPage() {
   const [isStreaming, setIsStreaming] = useState(false)
   const [hasStarted, setHasStarted] = useState(false)
   const [stepProgress, setStepProgress] = useState<StepProgressItem[]>([])
+  const [stepState, setStepState] = useState<WorkflowStepState>({
+    analysisComplete: false,
+    decisionCreated: false,
+    tasksCreated: false,
+  })
   const [followUpAvailable, setFollowUpAvailable] = useState(false)
   const [followUpStarted, setFollowUpStarted] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
@@ -176,6 +182,18 @@ export function AgentChatPage() {
     setFollowUpAvailable(Boolean(session.follow_up_available))
     setFollowUpStarted(Boolean(session.follow_up_started))
     broadcastRestoredAnomalies(session.messages)
+    // Derive step state from restored messages
+    const restoredStepState: WorkflowStepState = {
+      analysisComplete: false,
+      decisionCreated: false,
+      tasksCreated: false,
+    }
+    for (const m of session.messages) {
+      if (m.data?.anomalies) restoredStepState.analysisComplete = true
+      if (m.message_type === "decision_draft" || m.data?.decision_id) restoredStepState.decisionCreated = true
+      if (m.message_type === "task_created" || m.data?.task_ids) restoredStepState.tasksCreated = true
+    }
+    setStepState(restoredStepState)
   }, [setSessionId])
 
   const refreshFollowUpState = useCallback(async (id: string) => {
@@ -236,6 +254,7 @@ export function AgentChatPage() {
       setIsStreaming(false)
       setFollowUpAvailable(false)
       setFollowUpStarted(false)
+      setStepState({ analysisComplete: false, decisionCreated: false, tasksCreated: false })
       abortRef.current?.abort()
     }
 
@@ -317,6 +336,7 @@ export function AgentChatPage() {
           analysisData = (event.data as unknown as AnalysisResult) || null
           setFollowUpAvailable(true)
           setFollowUpStarted(false)
+          setStepState((prev) => ({ ...prev, analysisComplete: true }))
           updateMessage(aiMsgId, {
             content: contentParts.join("\n"),
             type: "analysis",
@@ -324,12 +344,8 @@ export function AgentChatPage() {
             suggestedDecision: analysisData?.suggested_decision,
             recommendedTasks: analysisData?.recommended_tasks,
           })
-          // Broadcast to RightPanel Alerts
-          if (analysisData?.anomalies) {
-            window.dispatchEvent(new CustomEvent("agent:analysis-complete", {
-              detail: { anomalies: analysisData.anomalies }
-            }))
-          }
+          // Individual anomalies are added to the right panel via the
+          // AnomalyCard "+ Add" button — no auto-broadcast on new analysis.
         } else if (event.type === "confirmation_request") {
           contentParts.push(event.content || "")
           updateMessage(aiMsgId, {
@@ -488,21 +504,19 @@ export function AgentChatPage() {
           const data = event.data as unknown as AnalysisResult
           setFollowUpAvailable(true)
           setFollowUpStarted(false)
+          setStepState((prev) => ({ ...prev, analysisComplete: true }))
           updateMessage(aiMsgId, {
             type: "analysis",
             anomalies: data.anomalies,
             suggestedDecision: data.suggested_decision,
             recommendedTasks: data.recommended_tasks,
           })
-          // Broadcast to RightPanel Alerts
-          if (data.anomalies) {
-            window.dispatchEvent(new CustomEvent("agent:analysis-complete", {
-              detail: { anomalies: data.anomalies }
-            }))
-          }
+          // Individual anomalies are added to the right panel via the
+          // AnomalyCard "+ Add" button — no auto-broadcast on new analysis.
         }
         if (event.type === "decision_draft" && event.data) {
           const decisionId = event.data?.decision_id
+          setStepState((prev) => ({ ...prev, decisionCreated: true }))
           updateMessage(aiMsgId, {
             content: contentParts.join("\n"),
             type: "decision_created",
@@ -512,6 +526,7 @@ export function AgentChatPage() {
           })
         }
         if (event.type === "task_created" && event.data) {
+          setStepState((prev) => ({ ...prev, tasksCreated: true }))
           updateMessage(aiMsgId, {
             content: contentParts.join("\n"),
             type: "tasks_created",
@@ -576,6 +591,7 @@ export function AgentChatPage() {
       confirm_decision: "confirm_decision",
       create_tasks: "create_tasks",
       generate_miro: "generate_miro",
+      distribute_message: "distribute_message",
       start_follow_up: "start_follow_up",
       cancel_follow_up: "cancel_follow_up",
     }
@@ -601,6 +617,7 @@ export function AgentChatPage() {
 
         if (event.type === "decision_draft") {
           const decisionId = event.data?.decision_id
+          setStepState((prev) => ({ ...prev, decisionCreated: true }))
           updateMessage(aiMsgId, {
             content: contentParts.join("\n"),
             type: "decision_created",
@@ -610,6 +627,7 @@ export function AgentChatPage() {
           })
         }
         if (event.type === "task_created") {
+          setStepState((prev) => ({ ...prev, tasksCreated: true }))
           updateMessage(aiMsgId, {
             content: contentParts.join("\n"),
             type: "tasks_created",
@@ -672,7 +690,7 @@ export function AgentChatPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <MessageList messages={messages} onAction={handleAction} latestAnalysisMessageId={latestAnalysisMessageId} showFollowUpToggle={followUpAvailable || followUpStarted} followUpActive={followUpStarted} onNavigate={(view, msg) => {
+      <MessageList messages={messages} onAction={handleAction} latestAnalysisMessageId={latestAnalysisMessageId} showFollowUpToggle={followUpAvailable || followUpStarted} followUpActive={followUpStarted} stepState={stepState} onNavigate={(view, msg) => {
         if (msg?.navigateHref && typeof window !== "undefined") {
           window.location.href = msg.navigateHref
           return
@@ -683,6 +701,7 @@ export function AgentChatPage() {
           setPendingDecisionId(msg.decisionId)
         }
       }} />
+      <ActionBar stepState={stepState} onAction={handleAction} disabled={isStreaming} />
       <ChatInput
         onSend={handleSendMessage}
         onFileUpload={handleFileUpload}

@@ -1,6 +1,8 @@
 import json
 import logging
+import os
 
+from django.conf import settings as django_settings
 from django.db.models import Count, Max, Q
 from django.http import StreamingHttpResponse
 from django.utils.translation import activate as activate_language
@@ -133,7 +135,11 @@ class ChatView(EnglishResponseMixin, APIView):
         calendar_context = serializer.validated_data.get('calendar_context')
         workflow_id = serializer.validated_data.get('workflow_id')
 
-        should_persist_user_message = action not in {'start_follow_up', 'cancel_follow_up'}
+        should_persist_user_message = action not in {
+            'start_follow_up', 'cancel_follow_up',
+            'confirm_decision', 'create_tasks', 'generate_miro',
+            'distribute_message',
+        }
 
         # Auto-generate title from first real user message
         if should_persist_user_message and not session.title and message_text:
@@ -180,48 +186,58 @@ class ChatView(EnglishResponseMixin, APIView):
                 assistant_metadata = {}
                 last_message_type = 'text'
 
-            for chunk in orchestrator.handle_message(
-                message_text,
-                spreadsheet_id=spreadsheet_id,
-                csv_filename=csv_filename,
-                action=action,
-                file_id=file_id,
-                calendar_context=calendar_context,
-                workflow_id=workflow_id,
-            ):
-                chunk_type = chunk.get('type', 'text')
-                content = chunk.get('content', '')
-                data = chunk.get('data')
+            try:
+                for chunk in orchestrator.handle_message(
+                    message_text,
+                    spreadsheet_id=spreadsheet_id,
+                    csv_filename=csv_filename,
+                    action=action,
+                    file_id=file_id,
+                    calendar_context=calendar_context,
+                    workflow_id=workflow_id,
+                ):
+                    chunk_type = chunk.get('type', 'text')
+                    content = chunk.get('content', '')
+                    data = chunk.get('data')
 
-                # Save calendar_invite as a separate message so it can be
-                # restored independently from the preceding calendar answer.
-                if chunk_type == 'calendar_invite':
-                    _flush_message()
+                    # Save calendar_invite as a separate message so it can be
+                    # restored independently from the preceding calendar answer.
+                    if chunk_type == 'calendar_invite':
+                        _flush_message()
+                        sse_data = json.dumps(chunk, default=str)
+                        yield f"data: {sse_data}\n\n"
+                        if content:
+                            AgentMessage.objects.create(
+                                session=session,
+                                role='assistant',
+                                content=content,
+                                message_type='calendar_invite',
+                                metadata={},
+                            )
+                        continue
+
+                    # Skip internal signalling events from content accumulation
+                    if chunk_type not in ('done', 'calendar_updated'):
+                        if content:
+                            assistant_content_parts.append(content)
+                        last_message_type = chunk_type
+                        if data:
+                            assistant_metadata.update(data)
+
                     sse_data = json.dumps(chunk, default=str)
                     yield f"data: {sse_data}\n\n"
-                    if content:
-                        AgentMessage.objects.create(
-                            session=session,
-                            role='assistant',
-                            content=content,
-                            message_type='calendar_invite',
-                            metadata={},
-                        )
-                    continue
 
-                # Skip internal signalling events from content accumulation
-                if chunk_type not in ('done', 'calendar_updated'):
-                    if content:
-                        assistant_content_parts.append(content)
-                    last_message_type = chunk_type
-                    if data:
-                        assistant_metadata.update(data)
-
-                sse_data = json.dumps(chunk, default=str)
-                yield f"data: {sse_data}\n\n"
-
-                if chunk_type == 'done':
-                    _flush_message()
+                    if chunk_type == 'done':
+                        _flush_message()
+            except Exception:
+                logger.exception("Error during agent SSE stream")
+                _flush_message()
+                error_payload = json.dumps({
+                    "type": "error",
+                    "content": "An internal error occurred. Please try again.",
+                })
+                yield f"data: {error_payload}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
         response = StreamingHttpResponse(
             event_stream(),
@@ -753,3 +769,24 @@ class WorkflowRunDetailView(EnglishResponseMixin, APIView):
             executions, many=True,
         ).data
         return Response(run_data)
+
+
+class AgentConfigStatusView(EnglishResponseMixin, APIView):
+    """GET /api/agent/config/status/ — check which API keys are configured."""
+    permission_classes = [IsAuthenticated]
+
+    # Mapping of response key -> (settings attr, env var fallback)
+    KEY_MAP = {
+        'dify_api': ('DIFY_API_KEY', 'DIFY_API_KEY'),
+        'dify_chat': ('DIFY_CHAT_API_KEY', 'DIFY_CHAT_API_KEY'),
+        'dify_calendar': ('DIFY_CALENDAR_API_KEY', 'DIFY_CALENDAR_API_KEY'),
+        'dify_miro': ('DIFY_MIRO_API_KEY', 'DIFY_MIRO_API_KEY'),
+        'anthropic': ('ANTHROPIC_API_KEY', 'ANTHROPIC_API_KEY'),
+    }
+
+    def get(self, request):
+        result = {}
+        for key, (settings_attr, env_var) in self.KEY_MAP.items():
+            val = getattr(django_settings, settings_attr, None) or os.environ.get(env_var, '')
+            result[key] = bool(val and val.strip())
+        return Response(result)
