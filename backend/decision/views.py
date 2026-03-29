@@ -181,7 +181,7 @@ class DecisionViewSet(
     http_method_names = ["get", "post", "put", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
-        base = Decision.objects.filter(is_deleted=False).order_by("-updated_at")
+        base = Decision.objects.filter(is_deleted=False, is_pre_draft=False).order_by("-updated_at")
 
         if self.action == "list":
             base = base.select_related("project")
@@ -516,6 +516,11 @@ class DecisionViewSet(
     @action(detail=True, methods=['post'])
     def commit(self, request, pk=None):
         decision = self.get_object()
+        if decision.is_pre_draft:
+            return Response(
+                {"detail": "Pre-draft must be promoted before committing."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         if decision.status != Decision.Status.DRAFT:
             return invalid_state_response(
                 current_status=decision.status,

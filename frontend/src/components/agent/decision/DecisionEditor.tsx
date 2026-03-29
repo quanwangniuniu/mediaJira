@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 // useCallback removed — only used by batch manage
 import {
   Plus,
@@ -66,6 +66,7 @@ interface DecisionListItem {
   risk_level: string
   author: string
   created_at: string
+  is_pre_draft?: boolean
 }
 
 const signalIcons = {
@@ -82,6 +83,7 @@ const riskColors: Record<string, string> = {
 
 const statusStyles: Record<string, string> = {
   draft: "bg-muted/50 text-muted-foreground border-input",
+  pre_draft: "bg-violet-500/10 text-violet-400 border-violet-500/20",
   committed: "bg-blue-500/10 text-blue-400 border-blue-500/20",
   awaiting_approval: "bg-amber-500/10 text-amber-400 border-amber-500/20",
   reviewed: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
@@ -117,6 +119,7 @@ export function DecisionEditor() {
   // Editing state
   const [editingDecisionId, setEditingDecisionId] = useState<number | null>(null)
   const [editingStatus, setEditingStatus] = useState<string>("draft")
+  const [isPreDraft, setIsPreDraft] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const activeProject = useProjectStore((s) => s.activeProject)
 
@@ -170,6 +173,7 @@ export function DecisionEditor() {
     setSelectedOption("")
     setEditingDecisionId(d.id)
     setEditingStatus(d.status || "draft")
+    setIsPreDraft(d.is_pre_draft ?? false)
     setViewMode("edit")
 
     // Fetch full decision detail to populate context, reasoning, signals, options
@@ -229,19 +233,6 @@ export function DecisionEditor() {
     } catch {
       // Keep what we have from the list item
     }
-  }
-
-  const createNew = () => {
-    setTitle("")
-    setContext("")
-    setReasoning("")
-    setSignals([])
-    setOptions([])
-    setSelectedOption("")
-    setPriority("medium")
-    setEditingDecisionId(null)
-    setEditingStatus("draft")
-    setViewMode("edit")
   }
 
   // ─── Validation ─────────────────────────────────────
@@ -348,7 +339,7 @@ export function DecisionEditor() {
       }
 
       await DecisionAPI.patchDraft(id!, payload, activeProject?.id)
-      toast.success("Draft saved")
+      toast.success(isPreDraft ? "Pre-draft saved" : "Draft saved")
       await refreshList()
       return id
     } catch (err: any) {
@@ -377,6 +368,26 @@ export function DecisionEditor() {
     }
   }
 
+  const submitAsDraft = async () => {
+    setIsSaving(true)
+    try {
+      const id = await saveDraft(true)
+      if (!id) return
+      await AgentAPI.promoteDecision(id)
+      toast.success("Pre-draft submitted as draft")
+      await refreshList()
+      setViewMode("list")
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || "Failed to promote"
+      toast.error(detail)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const preDrafts = useMemo(() => decisionList.filter((d) => d.is_pre_draft), [decisionList])
+  const drafts = useMemo(() => decisionList.filter((d) => !d.is_pre_draft), [decisionList])
+
   // ─── Consume pendingDecisionId from context ───────────────────
 
   const { pendingDecisionId, setPendingDecisionId } = useAgentLayout()
@@ -387,7 +398,7 @@ export function DecisionEditor() {
     if (found) {
       loadDecision(found)
     } else {
-      loadDecision({ id: pendingDecisionId, title: "", status: "draft", risk_level: "", author: "", created_at: "" })
+      loadDecision({ id: pendingDecisionId, title: "", status: "draft", risk_level: "", author: "", created_at: "", is_pre_draft: true })
     }
     setPendingDecisionId(null)
   }, [pendingDecisionId, listLoading, decisionList])
@@ -404,50 +415,86 @@ export function DecisionEditor() {
               <h1 className="text-xl font-bold text-foreground">Decisions</h1>
               <p className="text-sm text-muted-foreground mt-1">View and manage advertising decisions</p>
             </div>
-            <div className="flex items-center gap-2">
-              <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={createNew}>
-                <Plus className="w-3.5 h-3.5 mr-1.5" />
-                New Decision
-              </Button>
-            </div>
+            <div className="flex items-center gap-2" />
           </div>
 
           {listLoading ? (
             <div className="text-center py-8 text-muted-foreground text-sm">Loading decisions...</div>
           ) : decisionList.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground text-sm">
-              No decisions yet. Create one or run an AI analysis.
+              No decisions yet. Run an AI analysis to generate one.
             </div>
           ) : (
-            <div className="space-y-2">
-              {decisionList.map((d) => (
-                <div key={d.id}>
-                  <Card
-                    className="bg-card border-border cursor-pointer transition-colors hover:border-input"
-                    onClick={() => loadDecision(d)}
-                  >
-                    <CardContent className="py-3 px-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs text-muted-foreground/60 font-mono">#{d.id}</span>
-                          <span className="text-sm text-foreground">{d.title}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className={cn("text-[10px]", statusStyles[d.status] || statusStyles.draft)}>
-                            {d.status}
-                          </Badge>
-                          {d.risk_level && (
-                            <Badge variant="outline" className={cn("text-[10px]", riskColors[d.risk_level] || "")}>
-                              {d.risk_level}
+            <div className="space-y-4">
+              {/* Pre-drafts section */}
+              {preDrafts.length > 0 && (
+                <div className="space-y-2">
+                  <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Pre-Drafts</h2>
+                  {preDrafts.map((d) => (
+                    <Card
+                      key={d.id}
+                      className="bg-card border-border cursor-pointer transition-colors hover:border-input"
+                      onClick={() => loadDecision(d)}
+                    >
+                      <CardContent className="py-3 px-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs text-muted-foreground/60 font-mono">#{d.id}</span>
+                            <span className="text-sm text-foreground">{d.title}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className={cn("text-[10px]", statusStyles.pre_draft)}>
+                              pre-draft
                             </Badge>
-                          )}
-                          <span className="text-xs text-muted-foreground">{d.author}</span>
+                            {d.risk_level && (
+                              <Badge variant="outline" className={cn("text-[10px]", riskColors[d.risk_level] || "")}>
+                                {d.risk_level}
+                              </Badge>
+                            )}
+                            <span className="text-xs text-muted-foreground">{d.author}</span>
+                          </div>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
-              ))}
+              )}
+
+              {/* Drafts section */}
+              {drafts.length > 0 && (
+                <div className="space-y-2">
+                  <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Drafts</h2>
+                  {drafts.map((d) => (
+                    <Card
+                      key={d.id}
+                      className="bg-card border-border cursor-pointer transition-colors hover:border-input"
+                      onClick={() => {
+                        window.location.href = `/decisions/${d.id}?project_id=${activeProject?.id || ""}`
+                      }}
+                    >
+                      <CardContent className="py-3 px-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs text-muted-foreground/60 font-mono">#{d.id}</span>
+                            <span className="text-sm text-foreground">{d.title}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className={cn("text-[10px]", statusStyles[d.status] || statusStyles.draft)}>
+                              {d.status}
+                            </Badge>
+                            {d.risk_level && (
+                              <Badge variant="outline" className={cn("text-[10px]", riskColors[d.risk_level] || "")}>
+                                {d.risk_level}
+                              </Badge>
+                            )}
+                            <span className="text-xs text-muted-foreground">{d.author}</span>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -499,20 +546,31 @@ export function DecisionEditor() {
                 onClick={() => saveDraft()}
                 disabled={isSaving}
               >
-                {isSaving ? "Saving..." : "Save Draft"}
+                {isSaving ? "Saving..." : isPreDraft ? "Save as Pre-Draft" : "Save Draft"}
               </Button>
-              <Button
-                size="sm"
-                disabled={!allPassed || isSaving}
-                onClick={submitForReview}
-                className={cn(
-                  allPassed && !isSaving
-                    ? "bg-blue-600 hover:bg-blue-700 text-white"
-                    : "bg-input text-muted-foreground cursor-not-allowed"
-                )}
-              >
-                Submit for Review
-              </Button>
+              {isPreDraft ? (
+                <Button
+                  size="sm"
+                  disabled={isSaving}
+                  onClick={submitAsDraft}
+                  className="bg-violet-600 hover:bg-violet-700 text-white"
+                >
+                  Submit as Draft
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  disabled={!allPassed || isSaving}
+                  onClick={submitForReview}
+                  className={cn(
+                    allPassed && !isSaving
+                      ? "bg-blue-600 hover:bg-blue-700 text-white"
+                      : "bg-input text-muted-foreground cursor-not-allowed"
+                  )}
+                >
+                  Submit for Review
+                </Button>
+              )}
             </div>
           )}
         </div>
