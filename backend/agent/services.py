@@ -1142,6 +1142,7 @@ class AgentOrchestrator:
             reasoning=suggested.get("reasoning", ""),
             risk_level=suggested.get("risk_level", "MEDIUM"),
             confidence=suggested.get("confidence", 3),
+            status=Decision.Status.PREDRAFT,
             project=self.project,
             project_seq=max_seq + 1,
             author=self.user,

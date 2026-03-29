@@ -17,6 +17,7 @@ interface DecisionItem {
 }
 
 const statusStyles: Record<string, string> = {
+  predraft: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
   approved: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
   committed: "bg-blue-500/10 text-blue-400 border-blue-500/20",
   awaiting_approval: "bg-amber-500/10 text-amber-400 border-amber-500/20",
@@ -26,6 +27,7 @@ const statusStyles: Record<string, string> = {
 }
 
 const statusLabels: Record<string, string> = {
+  predraft: "Pre-Draft",
   approved: "Approved",
   committed: "Committed",
   awaiting_approval: "Awaiting",

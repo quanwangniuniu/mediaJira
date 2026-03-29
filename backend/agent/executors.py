@@ -154,6 +154,7 @@ class CreateDecisionExecutor(BaseStepExecutor):
                 reasoning=suggested.get('reasoning', ''),
                 risk_level=suggested.get('risk_level', 'MEDIUM'),
                 confidence=suggested.get('confidence', 3),
+                status=Decision.Status.PREDRAFT,
                 project=project,
                 project_seq=max_seq + 1,
                 author=user,
