@@ -102,6 +102,23 @@ type WorkspaceBlock = {
 };
 type NestedSection = NestedAgendaTemplateSection;
 
+function workspaceBlockOverline(block: WorkspaceBlock): string {
+  switch (block.type) {
+    case 'header':
+      return 'Header';
+    case 'agenda':
+      return 'Agenda';
+    case 'participants':
+      return 'Participants';
+    case 'artifacts':
+      return 'Artifacts';
+    case 'custom_block':
+      return block.title?.trim() || 'Custom Block';
+    default:
+      return 'Block';
+  }
+}
+
 const DEFAULT_WORKSPACE_BLOCKS = DEFAULT_MEETING_WORKSPACE_BLOCKS as WorkspaceBlock[];
 
 function parseMeetingLayoutConfig(raw: unknown): {
@@ -1969,6 +1986,7 @@ export default function MeetingWorkspacePage() {
                     <SortableBlock
                       id={block.id}
                       key={block.id}
+                      overlineLabel={workspaceBlockOverline(block)}
                       actions={(
                         <div className="flex items-center gap-2 rounded-md p-0">
                           <button
@@ -2019,6 +2037,7 @@ export default function MeetingWorkspacePage() {
                     <SortableBlock
                       id={block.id}
                       key={block.id}
+                      overlineLabel={workspaceBlockOverline(block)}
                       actions={(
                         <div className="flex items-center gap-2 rounded-md p-0">
                           <button
@@ -2142,6 +2161,7 @@ export default function MeetingWorkspacePage() {
                     <SortableBlock
                       id={block.id}
                       key={block.id}
+                      overlineLabel={workspaceBlockOverline(block)}
                       actions={(
                         <div className="flex items-center gap-2 rounded-md p-0">
                           <button
@@ -2316,6 +2336,7 @@ export default function MeetingWorkspacePage() {
                     <SortableBlock
                       id={block.id}
                       key={block.id}
+                      overlineLabel={workspaceBlockOverline(block)}
                       actions={(
                       <div className="flex items-center gap-2 rounded-md p-0">
                           <button
@@ -2355,6 +2376,7 @@ export default function MeetingWorkspacePage() {
                   <SortableBlock
                     id={block.id}
                     key={block.id}
+                    overlineLabel={workspaceBlockOverline(block)}
                     actions={(
                       <div className="flex items-center gap-2 rounded-md p-0">
                         <button
