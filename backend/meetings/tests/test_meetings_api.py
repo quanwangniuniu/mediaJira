@@ -237,4 +237,47 @@ class TestMeetingAPI(TestCase):
             ).exists(),
         )
 
+    def test_patch_meeting_layout_config_object_shape(self):
+        meeting = Meeting.objects.create(
+            project=self.project_a,
+            title="Meeting",
+            meeting_type="planning",
+            objective="Objective",
+        )
+        url = f"/api/v1/projects/{self.project_a.id}/meetings/{meeting.id}/"
+        payload = {
+            "layout_config": {
+                "blocks": [
+                    {"id": "header", "type": "header"},
+                    {"id": "agenda", "type": "agenda"},
+                ],
+                "nestedSections": [
+                    {
+                        "id": "s1",
+                        "title": "Section A",
+                        "items": [
+                            {
+                                "id": "1",
+                                "text": "Item",
+                                "completed": False,
+                                "duration": "5m",
+                            }
+                        ],
+                    }
+                ],
+            }
+        }
+        response = self.client.patch(url, data=payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        meeting.refresh_from_db()
+        self.assertIsInstance(meeting.layout_config, dict)
+        self.assertEqual(len(meeting.layout_config["blocks"]), 2)
+        self.assertEqual(len(meeting.layout_config["nestedSections"]), 1)
+
+        get_response = self.client.get(url)
+        self.assertEqual(get_response.status_code, status.HTTP_200_OK)
+        lc = get_response.data["layout_config"]
+        self.assertIsInstance(lc, dict)
+        self.assertEqual(lc["nestedSections"][0]["title"], "Section A")
+
 

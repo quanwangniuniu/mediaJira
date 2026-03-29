@@ -22,6 +22,10 @@ export type SidebarTemplate = {
   meta?: string;
   meetingType?: string;
   layout_config?: unknown;
+  /** Optional sidebar icon (system templates). */
+  icon?: React.ReactNode;
+  /** Tailwind classes for icon wrapper, e.g. bg-* text-* */
+  tint?: string;
 };
 
 export type TemplateSidebarViewMode = 'list' | 'create';
@@ -44,6 +48,8 @@ type TemplateSidebarProps = {
   onSaveTemplateAgendaChanges?: () => Promise<void>;
 
   onAfterSave?: () => void;
+  /** Called when user leaves Configure Template via Back (restore parent canvas if needed). */
+  onLeaveConfigureMode?: () => void;
 };
 
 export function TemplateSidebar({
@@ -59,6 +65,7 @@ export function TemplateSidebar({
   activeTemplateId,
   onSaveTemplateAgendaChanges,
   onAfterSave,
+  onLeaveConfigureMode,
 }: TemplateSidebarProps) {
   const [viewMode, setViewMode] = useState<TemplateSidebarViewMode>('list');
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
@@ -92,6 +99,7 @@ export function TemplateSidebar({
 
   const handleBackToList = () => {
     setViewMode('list');
+    onLeaveConfigureMode?.();
   };
 
   const handleSaveTemplate = async () => {
@@ -251,8 +259,12 @@ export function TemplateSidebar({
                       onClick={() => onApplyTemplate(item)}
                       className="flex w-full items-center gap-3 rounded-xl border border-gray-100 bg-white p-3 text-left shadow-sm transition hover:bg-gray-50"
                     >
-                      <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
-                        <Plus className="h-4 w-4 opacity-70" />
+                      <span
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
+                          item.tint ?? 'bg-slate-100 text-slate-700'
+                        }`}
+                      >
+                        {item.icon ?? <Plus className="h-4 w-4 opacity-70" />}
                       </span>
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-semibold text-gray-800">{item.name}</span>

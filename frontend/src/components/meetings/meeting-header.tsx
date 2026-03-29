@@ -2,11 +2,16 @@ import { useEffect, useState } from 'react';
 import { Calendar, Check, Clock, ExternalLink, Link as LinkIcon, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { MEETING_TYPE_OPTIONS } from '@/lib/meetings/meetingTypes';
+interface MeetingTypePickerOption {
+  value: string;
+  label: string;
+}
 
 interface MeetingHeaderProps {
   title: string;
   meetingType: string;
+  /** Unified list: system meeting types + custom templates (`custom_tpl:<id>`). */
+  meetingTypeOptions: MeetingTypePickerOption[];
   status: string;
   meetingTypeSaving: boolean;
   objective: string;
@@ -47,6 +52,7 @@ function PropertyRow({
 export function MeetingHeader({
   title,
   meetingType,
+  meetingTypeOptions,
   status,
   meetingTypeSaving,
   objective,
@@ -74,6 +80,9 @@ export function MeetingHeader({
 
   useEffect(() => setTitleDraft(title), [title]);
   useEffect(() => setObjectiveDraft(objective), [objective]);
+
+  const meetingTypeLabel =
+    meetingTypeOptions.find((o) => o.value === meetingType)?.label ?? meetingType;
 
   return (
     <section className="py-1">
@@ -110,12 +119,12 @@ export function MeetingHeader({
                 className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-700"
                 disabled={meetingTypeSaving}
               >
-                {meetingType}
+                {meetingTypeLabel}
                 <ChevronDown className="h-3 w-3" />
               </button>
               {meetingTypeMenuOpen ? (
-                <div className="absolute top-8 left-0 z-20 min-w-[180px] rounded-md border border-slate-100 bg-white p-1 shadow-sm">
-                  {MEETING_TYPE_OPTIONS.map((opt) => (
+                <div className="absolute top-8 left-0 z-20 max-h-[min(70vh,320px)] min-w-[200px] overflow-y-auto rounded-md border border-slate-100 bg-white p-1 shadow-sm">
+                  {meetingTypeOptions.map((opt) => (
                     <button
                       key={opt.value}
                       type="button"

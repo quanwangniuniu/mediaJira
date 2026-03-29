@@ -17,7 +17,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
   Planning: [
     {
       id: 'planning-goals',
-      title: 'Goals & Objectives (目标设定)',
+      title: 'Goals & Objectives',
       items: [
         {
           id: 'planning-goals-1',
@@ -35,7 +35,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
     },
     {
       id: 'planning-capacity',
-      title: 'Capacity & Velocity (资源评估)',
+      title: 'Capacity & Velocity',
       items: [
         {
           id: 'planning-capacity-1',
@@ -53,7 +53,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
     },
     {
       id: 'planning-backlog',
-      title: 'Backlog Refinement (待办事项梳理)',
+      title: 'Backlog Refinement',
       items: [
         {
           id: 'planning-backlog-1',
@@ -71,7 +71,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
     },
     {
       id: 'planning-breakdown',
-      title: 'Task Breakdown & Estimation (任务拆解与估点)',
+      title: 'Task Breakdown & Estimation',
       items: [
         {
           id: 'planning-breakdown-1',
@@ -89,7 +89,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
     },
     {
       id: 'planning-risks',
-      title: 'Risks & Dependencies (风险与依赖)',
+      title: 'Risks & Dependencies',
       items: [
         {
           id: 'planning-risks-1',
@@ -109,7 +109,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
   'Client Meeting': [
     {
       id: 'client-milestones',
-      title: 'Milestone Review (里程碑回顾)',
+      title: 'Milestone Review',
       items: [
         {
           id: 'client-milestones-1',
@@ -127,7 +127,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
     },
     {
       id: 'client-deliverables',
-      title: 'Key Deliverables Demo (交付物演示)',
+      title: 'Key Deliverables Demo',
       items: [
         {
           id: 'client-deliverables-1',
@@ -145,7 +145,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
     },
     {
       id: 'client-feedback',
-      title: 'Requirements & Feedback (需求与反馈)',
+      title: 'Requirements & Feedback',
       items: [
         {
           id: 'client-feedback-1',
@@ -163,7 +163,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
     },
     {
       id: 'client-constraints',
-      title: 'Technical Constraints (技术限制说明)',
+      title: 'Technical Constraints',
       items: [
         {
           id: 'client-constraints-1',
@@ -181,7 +181,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
     },
     {
       id: 'client-next-steps',
-      title: 'Next Steps & Deadlines (后续计划与截止日期)',
+      title: 'Next Steps & Deadlines',
       items: [
         {
           id: 'client-next-steps-1',
@@ -201,7 +201,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
   'Stand-up': [
     {
       id: 'standup-progress',
-      title: 'Progress Since Yesterday (昨日进展)',
+      title: 'Progress Since Yesterday',
       items: [
         {
           id: 'standup-progress-1',
@@ -219,7 +219,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
     },
     {
       id: 'standup-today',
-      title: "Today's Focus (今日计划)",
+      title: "Today's Focus",
       items: [
         {
           id: 'standup-today-1',
@@ -237,7 +237,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
     },
     {
       id: 'standup-blockers',
-      title: 'Blockers & Hurdles (障碍与困难)',
+      title: 'Blockers & Hurdles',
       items: [
         {
           id: 'standup-blockers-1',
@@ -255,7 +255,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
     },
     {
       id: 'standup-board',
-      title: 'Board Health Check (看板状态检查)',
+      title: 'Board Health Check',
       items: [
         {
           id: 'standup-board-1',
@@ -273,7 +273,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
     },
     {
       id: 'standup-announcements',
-      title: 'Quick Announcements (快速公告)',
+      title: 'Quick Announcements',
       items: [
         {
           id: 'standup-announcements-1',
@@ -293,7 +293,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
   'Review & Retrospective': [
     {
       id: 'retro-done',
-      title: 'Done vs. Not Done (交付情况对比)',
+      title: 'Done vs. Not Done',
       items: [
         {
           id: 'retro-done-1',
@@ -311,7 +311,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
     },
     {
       id: 'retro-good',
-      title: 'What Went Well (做得好的地方)',
+      title: 'What Went Well',
       items: [
         {
           id: 'retro-good-1',
@@ -329,7 +329,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
     },
     {
       id: 'retro-improve',
-      title: 'What Could Be Improved (改进点)',
+      title: 'What Could Be Improved',
       items: [
         {
           id: 'retro-improve-1',
@@ -347,7 +347,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
     },
     {
       id: 'retro-root-cause',
-      title: 'Root Cause Analysis (根因分析)',
+      title: 'Root Cause Analysis',
       items: [
         {
           id: 'retro-root-cause-1',
@@ -365,7 +365,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
     },
     {
       id: 'retro-actions',
-      title: 'Action Items for Next Sprint (改进动作)',
+      title: 'Action Items for Next Sprint',
       items: [
         {
           id: 'retro-actions-1',
@@ -385,7 +385,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
   'Deployment Sync': [
     {
       id: 'deploy-build',
-      title: 'Build Verification (构建验证)',
+      title: 'Build Verification',
       items: [
         {
           id: 'deploy-build-1',
@@ -403,7 +403,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
     },
     {
       id: 'deploy-env',
-      title: 'Environment Readiness (环境就绪检查)',
+      title: 'Environment Readiness',
       items: [
         {
           id: 'deploy-env-1',
@@ -421,7 +421,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
     },
     {
       id: 'deploy-rollback',
-      title: 'Rollback Strategy (回滚策略)',
+      title: 'Rollback Strategy',
       items: [
         {
           id: 'deploy-rollback-1',
@@ -439,7 +439,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
     },
     {
       id: 'deploy-comms',
-      title: 'Communication Plan (沟通计划)',
+      title: 'Communication Plan',
       items: [
         {
           id: 'deploy-comms-1',
@@ -457,7 +457,7 @@ export const MEETING_TEMPLATES: Record<MeetingTypeOptionValue, NestedAgendaTempl
     },
     {
       id: 'deploy-monitoring',
-      title: 'Post-Deployment Monitoring (上线后监控)',
+      title: 'Post-Deployment Monitoring',
       items: [
         {
           id: 'deploy-monitoring-1',

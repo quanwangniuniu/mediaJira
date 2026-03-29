@@ -39,16 +39,40 @@ class MeetingSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         data = super().to_representation(instance)
         lc = data.get("layout_config")
-        if lc is None or not isinstance(lc, list):
+        if lc is None:
+            data["layout_config"] = []
+        elif isinstance(lc, (list, dict)):
+            pass
+        else:
             data["layout_config"] = []
         return data
 
     def validate_layout_config(self, value):
         if value is None:
             return []
-        if not isinstance(value, list):
-            raise serializers.ValidationError("layout_config must be a list.")
-        return value
+        if isinstance(value, list):
+            return value
+        if isinstance(value, dict):
+            blocks = value.get("blocks")
+            if not isinstance(blocks, list):
+                raise serializers.ValidationError(
+                    "layout_config.blocks must be a list when layout_config is an object."
+                )
+            nested = value.get("nestedSections")
+            if nested is not None and not isinstance(nested, list):
+                raise serializers.ValidationError(
+                    "layout_config.nestedSections must be a list or omitted."
+                )
+            try:
+                json.dumps(value)
+            except (TypeError, ValueError) as exc:
+                raise serializers.ValidationError(
+                    "layout_config must be JSON-serializable."
+                ) from exc
+            return value
+        raise serializers.ValidationError(
+            "layout_config must be a list of blocks or an object with a blocks list."
+        )
 
     def update(self, instance, validated_data):
         # Participants are managed via the participants sub-resource

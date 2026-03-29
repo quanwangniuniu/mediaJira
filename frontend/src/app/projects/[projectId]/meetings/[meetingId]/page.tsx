@@ -15,9 +15,9 @@ import {
   Plus,
   Trash2,
   CalendarDays,
-  Target,
-  Users,
-  Lightbulb,
+  Handshake,
+  Sunrise,
+  RefreshCw,
   Rocket,
   Search,
   FileSpreadsheet,
@@ -79,7 +79,12 @@ import {
   normalizeTimeForApi,
 } from '@/lib/meetingSchedule';
 import { getNestedTemplateForMeetingType, getTemplateForMeetingType, type NestedAgendaTemplateSection } from '@/lib/meetings/meetingTemplates';
-import { MEETING_TYPE_OPTIONS } from '@/lib/meetings/meetingTypes';
+import { MEETING_TYPE_OPTIONS, type MeetingTypeOptionValue } from '@/lib/meetings/meetingTypes';
+import { DEFAULT_MEETING_WORKSPACE_BLOCKS } from '@/lib/meetings/defaultMeetingWorkspace';
+import {
+  customTemplateMeetingTypeValue,
+  isCustomTemplateMeetingType,
+} from '@/lib/meetings/unifiedMeetingTemplates';
 
 const normalizeNumberParam = (value: unknown) => {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -96,6 +101,38 @@ type WorkspaceBlock = {
   content?: string;
 };
 type NestedSection = NestedAgendaTemplateSection;
+
+const DEFAULT_WORKSPACE_BLOCKS = DEFAULT_MEETING_WORKSPACE_BLOCKS as WorkspaceBlock[];
+
+function parseMeetingLayoutConfig(raw: unknown): {
+  blocks: WorkspaceBlock[];
+  nestedSections: NestedSection[] | null;
+} {
+  if (raw == null) {
+    return { blocks: [], nestedSections: null };
+  }
+  if (Array.isArray(raw)) {
+    return { blocks: raw as WorkspaceBlock[], nestedSections: null };
+  }
+  if (typeof raw === 'object') {
+    const o = raw as { blocks?: unknown; nestedSections?: unknown };
+    const blocks = Array.isArray(o.blocks) ? (o.blocks as WorkspaceBlock[]) : [];
+    const nestedSections = Array.isArray(o.nestedSections) ? (o.nestedSections as NestedSection[]) : null;
+    return { blocks, nestedSections };
+  }
+  return { blocks: [], nestedSections: null };
+}
+
+const SYSTEM_TEMPLATE_SIDEBAR: Record<
+  MeetingTypeOptionValue,
+  { Icon: typeof CalendarDays; tint: string }
+> = {
+  Planning: { Icon: CalendarDays, tint: 'bg-blue-100 text-blue-600' },
+  'Client Meeting': { Icon: Handshake, tint: 'bg-amber-100 text-amber-800' },
+  'Stand-up': { Icon: Sunrise, tint: 'bg-orange-100 text-orange-700' },
+  'Review & Retrospective': { Icon: RefreshCw, tint: 'bg-violet-100 text-violet-700' },
+  'Deployment Sync': { Icon: Rocket, tint: 'bg-indigo-100 text-indigo-600' },
+};
 
 const PARTICIPANT_ROLE_OPTIONS = [
   { value: 'Meeting Owner', label: 'Meeting Owner', className: 'bg-purple-100 text-purple-800' },
@@ -153,9 +190,7 @@ function artifactRowTitle(link: ArtifactLink, index: MeetingArtifactResourceInde
 }
 
 function normalizeMeetingFromApi(m: Meeting): Meeting {
-  const raw = m.layout_config;
-  const layout = Array.isArray(raw) ? raw : [];
-  return { ...m, layout_config: layout };
+  return { ...m };
 }
 
 function SortableAgendaRow({
@@ -257,12 +292,14 @@ function SortableNestedSection({
   isEditingTitle,
   onStartEditTitle,
   onSaveTitle,
+  onDeleteSection,
   children,
 }: {
   section: NestedSection;
   isEditingTitle: boolean;
   onStartEditTitle: () => void;
   onSaveTitle: (title: string) => void;
+  onDeleteSection: () => void;
   children: React.ReactNode;
 }) {
   const { setNodeRef, attributes, listeners, transform, transition } = useSortable({
@@ -273,33 +310,43 @@ function SortableNestedSection({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className="p-1"
+      className="group/section p-1"
     >
-      <div className="mb-3 flex items-center gap-2 text-sm font-bold tracking-wider text-black uppercase">
+      <div className="mb-3 flex w-full items-center gap-2 text-sm font-bold tracking-wider text-black uppercase">
         <button
           type="button"
-          className="cursor-grab rounded p-1 text-gray-300 opacity-0 transition-opacity group-hover:opacity-100 hover:text-gray-500 active:cursor-grabbing"
+          className="cursor-grab rounded p-1 text-gray-300 opacity-0 transition-opacity group-hover/section:opacity-100 hover:text-gray-500 active:cursor-grabbing"
           {...(attributes as React.HTMLAttributes<HTMLButtonElement>)}
           {...listeners}
           aria-label="Drag section"
         >
           ⠿
         </button>
-        {isEditingTitle ? (
-          <input
-            autoFocus
-            defaultValue={section.title}
-            onBlur={(e) => onSaveTitle(e.currentTarget.value.trim() || 'New Section')}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur();
-            }}
-            className="bg-transparent text-sm font-bold text-black outline-none"
-          />
-        ) : (
-          <button type="button" onClick={onStartEditTitle} className="text-left text-sm font-bold text-black">
-            {section.title}
-          </button>
-        )}
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          {isEditingTitle ? (
+            <input
+              autoFocus
+              defaultValue={section.title}
+              onBlur={(e) => onSaveTitle(e.currentTarget.value.trim() || 'New Section')}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur();
+              }}
+              className="min-w-0 flex-1 bg-transparent text-sm font-bold text-black outline-none"
+            />
+          ) : (
+            <button type="button" onClick={onStartEditTitle} className="min-w-0 flex-1 text-left text-sm font-bold text-black">
+              {section.title}
+            </button>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onDeleteSection}
+          className="shrink-0 rounded-md p-1.5 text-gray-400 opacity-0 transition hover:bg-red-50 hover:text-red-600 group-hover/section:opacity-100"
+          aria-label="Delete section and all items"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
       </div>
       {children}
     </div>
@@ -312,12 +359,14 @@ function SortableNestedItem({
   onToggle,
   onTextChange,
   onDurationChange,
+  onDelete,
 }: {
   sectionId: string;
   item: NestedSection['items'][number];
   onToggle: () => void;
   onTextChange: (text: string) => void;
   onDurationChange: (duration: string) => void;
+  onDelete: () => void;
 }) {
   const { setNodeRef, attributes, listeners, transform, transition } = useSortable({
     id: `item:${item.id}`,
@@ -382,6 +431,14 @@ function SortableNestedItem({
           {item.duration}
         </button>
       )}
+      <button
+        type="button"
+        onClick={onDelete}
+        className="shrink-0 rounded-md p-1 text-gray-400 opacity-0 transition hover:bg-red-50 hover:text-red-600 group-hover/item:opacity-100"
+        aria-label="Delete agenda item"
+      >
+        <Trash2 className="h-4 w-4" />
+      </button>
     </div>
   );
 }
@@ -445,15 +502,54 @@ export default function MeetingWorkspacePage() {
   const [layoutSaving, setLayoutSaving] = useState(false);
   const [layoutSaveFeedback, setLayoutSaveFeedback] = useState<'idle' | 'saving' | 'saved'>('idle');
   const layoutSavedTimerRef = useRef<number | null>(null);
-  const [originalLayout, setOriginalLayout] = useState<WorkspaceBlock[] | null>(null);
+  type WorkspaceSnapshot = { blocks: WorkspaceBlock[]; nestedSections: NestedSection[] };
+  const [workspaceBaseline, setWorkspaceBaseline] = useState<WorkspaceSnapshot | null>(null);
 
   const [customTemplates, setCustomTemplates] = useState<SidebarTemplate[]>([]);
-  const [blocks, setBlocks] = useState<WorkspaceBlock[]>([
-    { id: 'header', type: 'header' },
-    { id: 'agenda', type: 'agenda' },
-    { id: 'participants', type: 'participants' },
-    { id: 'artifacts', type: 'artifacts' },
-  ]);
+
+  const templateLibrary = useMemo(
+    () =>
+      MEETING_TYPE_OPTIONS.map((opt) => {
+        const { Icon, tint } = SYSTEM_TEMPLATE_SIDEBAR[opt.value];
+        const sections = getNestedTemplateForMeetingType(opt.value);
+        const itemCount = getTemplateForMeetingType(opt.value).length;
+        return {
+          id: opt.value,
+          meetingType: opt.value,
+          name: opt.label,
+          meta: `${sections.length} sections • ${itemCount} items`,
+          icon: <Icon className="h-4 w-4" aria-hidden />,
+          tint,
+        };
+      }),
+    [],
+  );
+
+  const templateList = useMemo<SidebarTemplate[]>(
+    () => [...templateLibrary, ...customTemplates],
+    [templateLibrary, customTemplates],
+  );
+
+  const meetingTypePickerOptions = useMemo(
+    () =>
+      templateList.map((t) => ({
+        value: t.meetingType ?? customTemplateMeetingTypeValue(t.id),
+        label: t.name,
+      })),
+    [templateList],
+  );
+
+  const [blocks, setBlocks] = useState<WorkspaceBlock[]>(DEFAULT_WORKSPACE_BLOCKS);
+
+  const blocksRef = useRef(blocks);
+  const nestedRef = useRef(nestedSections);
+  blocksRef.current = blocks;
+  nestedRef.current = nestedSections;
+
+  const hydratedNestedFromLayoutRef = useRef(false);
+  const skipLayoutPersistRef = useRef(true);
+  const layoutPersistTimerRef = useRef<number | null>(null);
+  const lastPersistedLayoutJsonRef = useRef<string | null>(null);
 
   const orderedAgenda = useMemo(() => {
     const list = Array.isArray(agendaItems) ? agendaItems : [];
@@ -470,24 +566,23 @@ export default function MeetingWorkspacePage() {
 
   useEffect(() => {
     if (!meeting || !layoutStorageKey) return;
-    let hydrated = false;
-    let foundSaved = false;
-    const rawFromApi = normalizeMeetingFromApi(meeting as Meeting).layout_config;
-    const blocksFromApi = Array.isArray(rawFromApi) ? rawFromApi : [];
-    if (Array.isArray(rawFromApi)) {
-      setBlocks(blocksFromApi as WorkspaceBlock[]);
-      setOriginalLayout(blocksFromApi as WorkspaceBlock[]);
-      hydrated = true;
-    }
-    if (!hydrated && typeof window !== 'undefined') {
+    lastPersistedLayoutJsonRef.current = null;
+    const raw = meeting.layout_config;
+    let { blocks: nextBlocks, nestedSections: fromApiNested } = parseMeetingLayoutConfig(raw);
+    let localNested: NestedSection[] | null = null;
+
+    if (nextBlocks.length === 0 && typeof window !== 'undefined') {
       const saved = window.localStorage.getItem(layoutStorageKey);
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) {
-            setBlocks(parsed as WorkspaceBlock[]);
-            setOriginalLayout(parsed as WorkspaceBlock[]);
-            foundSaved = true;
+          if (parsed && typeof parsed === 'object' && Array.isArray(parsed.blocks)) {
+            nextBlocks = parsed.blocks as WorkspaceBlock[];
+            if (Array.isArray(parsed.nestedSections)) {
+              localNested = parsed.nestedSections as NestedSection[];
+            }
+          } else if (Array.isArray(parsed)) {
+            nextBlocks = parsed as WorkspaceBlock[];
           }
         } catch {
           // ignore malformed local layout
@@ -495,58 +590,35 @@ export default function MeetingWorkspacePage() {
       }
     }
 
-    if (!hydrated && !foundSaved) {
-      // Capture default module set as the baseline for "dirty" detection.
-      setOriginalLayout((prev) => prev ?? blocks);
+    if (nextBlocks.length === 0) {
+      nextBlocks = DEFAULT_WORKSPACE_BLOCKS;
+    }
+
+    setBlocks(nextBlocks);
+
+    if (fromApiNested !== null) {
+      setNestedSections(fromApiNested);
+      hydratedNestedFromLayoutRef.current = true;
+    } else if (localNested) {
+      setNestedSections(localNested);
+      hydratedNestedFromLayoutRef.current = true;
+    } else {
+      hydratedNestedFromLayoutRef.current = false;
     }
   }, [meeting?.id, layoutStorageKey]);
 
   const isLayoutDirty = useMemo(() => {
-    if (!originalLayout) return false;
-    return JSON.stringify(blocks) !== JSON.stringify(originalLayout);
-  }, [blocks, originalLayout]);
-
-  const saveLayoutNow = async (nextBlocks: WorkspaceBlock[]) => {
-    if (!layoutStorageKey || !Number.isFinite(projectId) || !Number.isFinite(meetingId)) return;
-    const getApiErrorMessageLocal = (err: unknown, fallback: string) => {
-      const anyErr = err as {
-        response?: { data?: any };
-        message?: string;
-      };
-      const data = anyErr?.response?.data as any;
-      if (data?.error) return String(data.error);
-      if (data?.detail) return String(data.detail);
-      if (data && typeof data === 'object') {
-        try {
-          return JSON.stringify(data);
-        } catch {
-          return fallback;
-        }
-      }
-      return String(anyErr?.message || fallback);
-    };
-
-    setLayoutSaving(true);
-    setLayoutSaveFeedback('saving');
-    try {
-      await MeetingsAPI.saveMeetingLayout(projectId, meetingId, nextBlocks);
-      setOriginalLayout(nextBlocks);
-      setLayoutSaveFeedback('saved');
-      if (layoutSavedTimerRef.current) window.clearTimeout(layoutSavedTimerRef.current);
-      layoutSavedTimerRef.current = window.setTimeout(() => setLayoutSaveFeedback('idle'), 1800);
-    } catch (err: unknown) {
-      toast.error(getApiErrorMessageLocal(err, 'Failed to save layout'));
-      setLayoutSaveFeedback('idle');
-    } finally {
-      setLayoutSaving(false);
-    }
-  };
+    if (!workspaceBaseline) return false;
+    return (
+      JSON.stringify({ blocks, nestedSections }) !== JSON.stringify(workspaceBaseline)
+    );
+  }, [blocks, nestedSections, workspaceBaseline]);
 
   useEffect(() => {
     if (!layoutStorageKey) return;
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem(layoutStorageKey, JSON.stringify(blocks));
-  }, [blocks, layoutStorageKey]);
+    window.localStorage.setItem(layoutStorageKey, JSON.stringify({ blocks, nestedSections }));
+  }, [blocks, nestedSections, layoutStorageKey]);
 
   useEffect(() => {
     setAgendaDrafts((prev) => {
@@ -564,8 +636,9 @@ export default function MeetingWorkspacePage() {
   }, [orderedAgenda]);
 
   useEffect(() => {
-    // Sync flat backend agenda into default single nested section when no template is active.
     if (activeTemplateId) return;
+    if (hydratedNestedFromLayoutRef.current) return;
+    if (nestedSections.length > 1) return;
     setNestedSections([
       {
         id: 'section-default',
@@ -578,7 +651,7 @@ export default function MeetingWorkspacePage() {
         })),
       },
     ]);
-  }, [orderedAgenda, activeTemplateId]);
+  }, [orderedAgenda, activeTemplateId, nestedSections.length]);
 
   const orderedParticipants = useMemo(() => {
     const list = Array.isArray(participants) ? participants : [];
@@ -607,6 +680,7 @@ export default function MeetingWorkspacePage() {
 
     const fetchData = async () => {
       try {
+        skipLayoutPersistRef.current = true;
         setLoading(true);
         setError(null);
 
@@ -651,6 +725,7 @@ export default function MeetingWorkspacePage() {
   useEffect(() => {
     if (!meeting) return;
     if (!meeting.meeting_type) return;
+    if (isCustomTemplateMeetingType(meeting.meeting_type)) return;
     if (activeTemplateId) return; // avoid overriding user/template interactions
     if (loading) return;
     void applyTemplateIfAgendaEmpty(meeting.meeting_type);
@@ -762,6 +837,144 @@ export default function MeetingWorkspacePage() {
     return String(anyErr?.message || fallback);
   };
 
+  const queuePersistWorkspaceLayout = () => {
+    if (!Number.isFinite(projectId) || !Number.isFinite(meetingId)) return;
+    if (skipLayoutPersistRef.current) return;
+    if (layoutPersistTimerRef.current) window.clearTimeout(layoutPersistTimerRef.current);
+    layoutPersistTimerRef.current = window.setTimeout(() => {
+      layoutPersistTimerRef.current = null;
+      void (async () => {
+        try {
+          const payload = {
+            blocks: blocksRef.current,
+            nestedSections: nestedRef.current,
+          };
+          const json = JSON.stringify({
+            blocks: payload.blocks,
+            nestedSections: payload.nestedSections,
+          });
+          if (json === lastPersistedLayoutJsonRef.current) return;
+          const updated = await MeetingsAPI.patchMeeting(projectId, meetingId, {
+            layout_config: payload,
+          });
+          lastPersistedLayoutJsonRef.current = json;
+          setMeeting((prev) =>
+            prev ? { ...prev, layout_config: updated.layout_config ?? payload } : null,
+          );
+        } catch (err: unknown) {
+          toast.error(getApiErrorMessage(err, 'Failed to save workspace layout'));
+        }
+      })();
+    }, 450);
+  };
+
+  const discardWorkspaceLayoutChanges = () => {
+    if (!workspaceBaseline) return;
+    setBlocks(JSON.parse(JSON.stringify(workspaceBaseline.blocks)));
+    setNestedSections(JSON.parse(JSON.stringify(workspaceBaseline.nestedSections)));
+  };
+
+  /** `meeting_only` — PATCH meeting only. `meeting_and_template` — also PATCH saved template when a custom template is active. */
+  type SaveLayoutMode = 'meeting_only' | 'meeting_and_template';
+
+  const isActiveCustomTemplate =
+    Boolean(activeTemplateId) && customTemplates.some((t) => t.id === activeTemplateId);
+
+  const saveLayoutNow = async (mode: SaveLayoutMode = 'meeting_only') => {
+    if (!Number.isFinite(projectId) || !Number.isFinite(meetingId)) return;
+    if (layoutPersistTimerRef.current) {
+      window.clearTimeout(layoutPersistTimerRef.current);
+      layoutPersistTimerRef.current = null;
+    }
+    setLayoutSaving(true);
+    setLayoutSaveFeedback('saving');
+    try {
+      const payload = {
+        blocks: blocksRef.current,
+        nestedSections: nestedRef.current,
+      };
+      const updated = await MeetingsAPI.patchMeeting(projectId, meetingId, {
+        layout_config: payload,
+      });
+      const json = JSON.stringify({
+        blocks: payload.blocks,
+        nestedSections: payload.nestedSections,
+      });
+      lastPersistedLayoutJsonRef.current = json;
+      setMeeting((prev) =>
+        prev ? { ...prev, layout_config: updated.layout_config ?? payload } : null,
+      );
+      setWorkspaceBaseline({
+        blocks: JSON.parse(JSON.stringify(blocksRef.current)),
+        nestedSections: JSON.parse(JSON.stringify(nestedRef.current)),
+      });
+
+      const tplId = activeTemplateId;
+      const shouldUpdateTemplate =
+        mode === 'meeting_and_template' &&
+        tplId &&
+        customTemplates.some((t) => t.id === tplId);
+
+      if (shouldUpdateTemplate) {
+        const templatePayload = {
+          blocks: JSON.parse(JSON.stringify(payload.blocks)),
+          nestedSections: JSON.parse(JSON.stringify(payload.nestedSections)),
+        };
+        try {
+          await MeetingsAPI.saveTemplateLayout(tplId, templatePayload);
+          setCustomTemplates((prev) =>
+            prev.map((t) =>
+              t.id === tplId ? { ...t, layout_config: templatePayload } : t,
+            ),
+          );
+          toast.success('Saved to this meeting and the template.');
+        } catch (tplErr: unknown) {
+          toast.error(getApiErrorMessage(tplErr, 'Meeting saved, but updating the template failed'));
+        }
+      }
+
+      setLayoutSaveFeedback('saved');
+      if (layoutSavedTimerRef.current) window.clearTimeout(layoutSavedTimerRef.current);
+      layoutSavedTimerRef.current = window.setTimeout(() => setLayoutSaveFeedback('idle'), 1800);
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, 'Failed to save layout'));
+      setLayoutSaveFeedback('idle');
+    } finally {
+      setLayoutSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!meeting || loading) return;
+    skipLayoutPersistRef.current = true;
+    const t = window.setTimeout(() => {
+      const snap = {
+        blocks: JSON.parse(JSON.stringify(blocksRef.current)),
+        nestedSections: JSON.parse(JSON.stringify(nestedRef.current)),
+      };
+      setWorkspaceBaseline(snap);
+      lastPersistedLayoutJsonRef.current = JSON.stringify({
+        blocks: snap.blocks,
+        nestedSections: snap.nestedSections,
+      });
+      skipLayoutPersistRef.current = false;
+    }, 500);
+    return () => window.clearTimeout(t);
+  }, [meeting?.id, loading]);
+
+  useEffect(() => {
+    if (!meeting || loading) return;
+    if (skipLayoutPersistRef.current) return;
+    queuePersistWorkspaceLayout();
+    return () => {
+      if (layoutPersistTimerRef.current) {
+        window.clearTimeout(layoutPersistTimerRef.current);
+        layoutPersistTimerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- debounced persist reads latest via refs
+  }, [blocks, nestedSections, meeting?.id, loading]);
+
   const saveMeetingMeta = async () => {
     if (!projectId || Number.isNaN(projectId) || !meetingId || Number.isNaN(meetingId)) return;
     if (savingMeetingMeta) return;
@@ -786,6 +999,7 @@ export default function MeetingWorkspacePage() {
   const applyTemplateIfAgendaEmpty = async (meetingType: string) => {
     if (!projectId || Number.isNaN(projectId) || !meetingId || Number.isNaN(meetingId)) return;
     if (orderedAgenda.length > 0) return;
+    if (isCustomTemplateMeetingType(meetingType)) return;
 
     const templateSections = getNestedTemplateForMeetingType(meetingType);
     if (templateSections.length === 0) return;
@@ -845,7 +1059,19 @@ export default function MeetingWorkspacePage() {
         meeting_type: trimmed,
       });
       setMeeting(normalizeMeetingFromApi(updated));
-      await applyTemplateIfAgendaEmpty(trimmed);
+      const tpl = templateList.find((t) => {
+        const v = t.meetingType ?? customTemplateMeetingTypeValue(t.id);
+        return v === trimmed;
+      });
+      if (tpl && !tpl.meetingType) {
+        applySidebarTemplate(tpl);
+      } else {
+        setBlocks(DEFAULT_WORKSPACE_BLOCKS);
+        setNestedSections(getNestedTemplateForMeetingType(trimmed));
+        setActiveTemplateId(trimmed);
+        setTemplateDirty(false);
+        await applyTemplateIfAgendaEmpty(trimmed);
+      }
       toast.success('Meeting type updated');
     } catch (err: unknown) {
       console.error('Failed to update meeting type:', err);
@@ -881,6 +1107,7 @@ export default function MeetingWorkspacePage() {
 
   const handleTemplateSelect = async (meetingType: string) => {
     setIsSidebarOpen(true);
+    setBlocks(DEFAULT_WORKSPACE_BLOCKS);
     setNestedSections(getNestedTemplateForMeetingType(meetingType));
     setActiveTemplateId(meetingType);
     setTemplateDirty(false);
@@ -888,6 +1115,11 @@ export default function MeetingWorkspacePage() {
     await applyTemplateIfAgendaEmpty(meetingType);
     toast.success('Template applied');
     setIsSidebarOpen(false);
+  };
+
+  const leaveTemplateConfigureMode = () => {
+    setActiveTemplateId(null);
+    setBlocks(DEFAULT_WORKSPACE_BLOCKS);
   };
 
   const enterCreateMode = () => {
@@ -898,7 +1130,7 @@ export default function MeetingWorkspacePage() {
     setActiveTemplateId('create-template');
     setTemplateDirty(false);
     setNestedSections([]);
-    toast('画布已清空，请添加模块开始构建', { icon: 'ℹ️' });
+    toast('Canvas cleared. Add modules from the sidebar or add a block below.', { icon: 'ℹ️' });
   };
 
   const applySidebarTemplate = (tpl: SidebarTemplate) => {
@@ -936,7 +1168,25 @@ export default function MeetingWorkspacePage() {
       setActiveTemplateId(null);
     }
     setTemplateDirty(false);
+    const expectedMeetingType = customTemplateMeetingTypeValue(tpl.id);
+    const priorMeetingType = meeting?.meeting_type;
     void (async () => {
+      if (
+        priorMeetingType !== expectedMeetingType &&
+        Number.isFinite(projectId) &&
+        Number.isFinite(meetingId)
+      ) {
+        try {
+          const typeUpdated = await MeetingsAPI.patchMeeting(projectId, meetingId, {
+            meeting_type: expectedMeetingType,
+          });
+          setMeeting(normalizeMeetingFromApi(typeUpdated));
+        } catch (err: unknown) {
+          toast.error(getApiErrorMessage(err, 'Failed to update meeting type for template'));
+          return;
+        }
+      }
+
       // If meeting agenda is empty, create backend agenda rows so nested edits can debounce-save.
       if (orderedAgenda.length === 0 && layoutNestedSections) {
         const flatItems = layoutNestedSections.flatMap((s) => s.items);
@@ -1001,30 +1251,6 @@ export default function MeetingWorkspacePage() {
         a.id - b.id,
     );
   }, [artifacts]);
-
-  const templateIcons = [
-    { icon: CalendarDays, tint: 'bg-blue-100 text-blue-600' },
-    { icon: Target, tint: 'bg-purple-100 text-purple-600' },
-    { icon: Users, tint: 'bg-green-100 text-green-600' },
-    { icon: Lightbulb, tint: 'bg-yellow-100 text-yellow-600' },
-    { icon: Rocket, tint: 'bg-indigo-100 text-indigo-600' },
-  ] as const;
-
-  const templateLibrary = MEETING_TYPE_OPTIONS.map((opt, index) => {
-    const matched = templateIcons[index % templateIcons.length];
-    const sections = getNestedTemplateForMeetingType(opt.value);
-    const itemCount = getTemplateForMeetingType(opt.value).length;
-    return {
-      id: opt.value,
-      meetingType: opt.value,
-      name: opt.label,
-      meta: `${sections.length} sections • ${itemCount} items`,
-      icon: matched.icon,
-      tint: matched.tint,
-    };
-  });
-
-  const templateList: SidebarTemplate[] = [...templateLibrary, ...customTemplates];
 
   const participantLabelForUserId = (userId: number) => {
     const row = projectMembers.find((m) => m.user.id === userId);
@@ -1133,6 +1359,7 @@ export default function MeetingWorkspacePage() {
       setParticipantSearchMode(false);
       setParticipantSearchText('');
       toast.success('Participant added');
+      queuePersistWorkspaceLayout();
     } catch (err: unknown) {
       console.error('Failed to add participant:', err);
       toast.error(getApiErrorMessage(err, 'Failed to add participant'));
@@ -1180,6 +1407,7 @@ export default function MeetingWorkspacePage() {
       setArtifactSearchMode(false);
       setArtifactSearchText('');
       toast.success('Artifact linked');
+      queuePersistWorkspaceLayout();
     } catch (err: unknown) {
       console.error('Failed to add artifact:', err);
       toast.error(getApiErrorMessage(err, 'Failed to add artifact'));
@@ -1199,6 +1427,7 @@ export default function MeetingWorkspacePage() {
     try {
       await MeetingsAPI.removeArtifact(projectId, meetingId, artifactLinkId);
       toast.success('Artifact unlinked');
+      queuePersistWorkspaceLayout();
     } catch (err: unknown) {
       console.error('Failed to remove artifact:', err);
       setArtifacts(snapshot);
@@ -1228,6 +1457,7 @@ export default function MeetingWorkspacePage() {
       });
       setParticipants((prev) => prev.map((p) => (p.id === participantLinkId ? updated : p)));
       toast.success('Role saved');
+      queuePersistWorkspaceLayout();
     } catch (err: unknown) {
       console.error('Failed to save participant role:', err);
       toast.error(getApiErrorMessage(err, 'Failed to save participant role'));
@@ -1251,6 +1481,7 @@ export default function MeetingWorkspacePage() {
     try {
       await MeetingsAPI.removeParticipant(projectId, meetingId, participantLinkId);
       toast.success('Participant removed');
+      queuePersistWorkspaceLayout();
     } catch (err: unknown) {
       console.error('Failed to remove participant:', err);
       setParticipants(snapshot);
@@ -1479,8 +1710,16 @@ export default function MeetingWorkspacePage() {
 
   const saveTemplateLayout = async () => {
     if (!activeTemplateId) return;
+    const tplId = activeTemplateId;
+    const templatePayload = {
+      blocks: JSON.parse(JSON.stringify(blocks)),
+      nestedSections: JSON.parse(JSON.stringify(nestedSections)),
+    };
     try {
-      await MeetingsAPI.saveTemplateLayout(activeTemplateId, nestedSections);
+      await MeetingsAPI.saveTemplateLayout(tplId, templatePayload);
+      setCustomTemplates((prev) =>
+        prev.map((t) => (t.id === tplId ? { ...t, layout_config: templatePayload } : t)),
+      );
       setTemplateDirty(false);
       toast.success('Template layout saved');
     } catch (err: unknown) {
@@ -1543,6 +1782,58 @@ export default function MeetingWorkspacePage() {
         return next;
       });
     }
+  };
+
+  const deleteNestedSection = async (sectionId: string) => {
+    if (!projectId || Number.isNaN(projectId) || !meetingId || Number.isNaN(meetingId)) return;
+    const section = nestedSections.find((s) => s.id === sectionId);
+    if (!section) return;
+    const numericIds = section.items
+      .map((it) => Number(it.id))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    const prevNested = nestedSections;
+    const prevAgenda = agendaItems;
+    setNestedSections((p) => p.filter((s) => s.id !== sectionId));
+    setTemplateDirty(true);
+    if (numericIds.length === 0) return;
+    setAgendaItems((p) => p.filter((a) => !numericIds.includes(a.id)));
+    try {
+      await Promise.all(
+        numericIds.map((id) => MeetingsAPI.deleteAgendaItem(projectId, meetingId, id)),
+      );
+    } catch (err: unknown) {
+      setNestedSections(prevNested);
+      setAgendaItems(prevAgenda);
+      toast.error(getApiErrorMessage(err, 'Failed to delete section'));
+    }
+  };
+
+  const deleteNestedItem = async (sectionId: string, itemId: string) => {
+    if (!projectId || Number.isNaN(projectId) || !meetingId || Number.isNaN(meetingId)) return;
+    const nid = Number(itemId);
+    if (Number.isFinite(nid) && nid > 0) {
+      const prevNested = nestedSections;
+      setNestedSections((prev) =>
+        prev.map((s) =>
+          s.id === sectionId ? { ...s, items: s.items.filter((i) => i.id !== itemId) } : s,
+        ),
+      );
+      setTemplateDirty(true);
+      try {
+        await MeetingsAPI.deleteAgendaItem(projectId, meetingId, nid);
+        setAgendaItems((prev) => prev.filter((a) => a.id !== nid));
+      } catch (err: unknown) {
+        setNestedSections(prevNested);
+        toast.error(getApiErrorMessage(err, 'Failed to delete agenda item'));
+      }
+      return;
+    }
+    setNestedSections((prev) =>
+      prev.map((s) =>
+        s.id === sectionId ? { ...s, items: s.items.filter((i) => i.id !== itemId) } : s,
+      ),
+    );
+    setTemplateDirty(true);
   };
 
   const handleAddAgendaItem = async () => {
@@ -1669,7 +1960,7 @@ export default function MeetingWorkspacePage() {
             <div className="space-y-12 text-left">
               {blocks.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500">
-                  画布为空，请从侧边栏点击模块或在下方添加 Block
+                  Canvas is empty. Please click a module from the sidebar or add a block below.
                 </div>
               ) : null}
               {blocks.map((block) => {
@@ -1702,6 +1993,7 @@ export default function MeetingWorkspacePage() {
                       <MeetingHeader
                         title={meeting.title}
                         meetingType={meeting.meeting_type}
+                        meetingTypeOptions={meetingTypePickerOptions}
                         status={meeting.status}
                         meetingTypeSaving={meetingTypeSaving}
                         objective={meeting.objective}
@@ -1793,6 +2085,7 @@ export default function MeetingWorkspacePage() {
                                   isEditingTitle={editingSectionId === section.id}
                                   onStartEditTitle={() => setEditingSectionId(section.id)}
                                   onSaveTitle={(title) => saveSectionTitle(section.id, title)}
+                                  onDeleteSection={() => void deleteNestedSection(section.id)}
                                 >
                                   <SortableContext
                                     items={section.items.map((item) => `item:${item.id}`)}
@@ -1813,6 +2106,7 @@ export default function MeetingWorkspacePage() {
                                             if (Number.isFinite(numericId)) queueAgendaSave(numericId, text);
                                           }}
                                           onDurationChange={(duration) => updateNestedItem(section.id, item.id, { duration })}
+                                          onDelete={() => void deleteNestedItem(section.id, item.id)}
                                         />
                                       ))}
                                     </div>
@@ -2293,13 +2587,14 @@ export default function MeetingWorkspacePage() {
                   </SortableBlock>
                 );
               })}
-              <div>
+              <div className="w-full">
                 <button
                   type="button"
                   onClick={() => addBlock('custom_block')}
-                  className="text-sm text-slate-500 transition hover:text-slate-800"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-gray-300 bg-white py-3 text-sm font-medium text-slate-600 transition hover:border-slate-400 hover:bg-slate-50 hover:text-slate-800"
                 >
-                  + Add Custom Block
+                  <Plus className="h-4 w-4 shrink-0" aria-hidden />
+                  Add custom block
                 </button>
               </div>
             </div>
@@ -2313,6 +2608,7 @@ export default function MeetingWorkspacePage() {
           templateList={templateList}
           onApplyTemplate={applySidebarTemplate}
           onEnterCreateMode={enterCreateMode}
+          onLeaveConfigureMode={leaveTemplateConfigureMode}
           onAddDefaultBlock={addBlock}
           onCreateTemplate={createCustomTemplate}
           templateDirty={templateDirty}
@@ -2343,25 +2639,80 @@ export default function MeetingWorkspacePage() {
             </div>
             <div className="flex items-center gap-3">
               {isLayoutDirty ? (
-                <button
-                  type="button"
-                  onClick={() => void saveLayoutNow(blocks)}
-                  disabled={layoutSaving}
-                  className={
-                    layoutSaveFeedback === 'saved'
-                      ? 'inline-flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-sm font-medium text-green-700'
-                      : layoutSaveFeedback === 'saving'
-                        ? 'inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600'
-                        : 'inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50'
-                  }
-                >
-                  {layoutSaveFeedback === 'saved' ? <Check className="h-4 w-4" /> : null}
-                  {layoutSaveFeedback === 'saved'
-                    ? 'Saved!'
-                    : layoutSaveFeedback === 'saving'
-                      ? 'Saving...'
-                      : 'Save Layout'}
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {isActiveCustomTemplate ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => void saveLayoutNow('meeting_only')}
+                        disabled={layoutSaving}
+                        title="Save layout to this meeting only. Does not change the reusable template."
+                        className={
+                          layoutSaveFeedback === 'saved'
+                            ? 'inline-flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-sm font-medium text-green-700'
+                            : layoutSaveFeedback === 'saving'
+                              ? 'inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600'
+                              : 'inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50'
+                        }
+                      >
+                        {layoutSaveFeedback === 'saved' ? <Check className="h-4 w-4" /> : null}
+                        {layoutSaveFeedback === 'saved'
+                          ? 'Saved!'
+                          : layoutSaveFeedback === 'saving'
+                            ? 'Saving...'
+                            : 'Save to meeting'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void saveLayoutNow('meeting_and_template')}
+                        disabled={layoutSaving}
+                        title="Update this meeting and the saved template (sidebar) for future use."
+                        className={
+                          layoutSaveFeedback === 'saved'
+                            ? 'inline-flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-sm font-medium text-green-700'
+                            : layoutSaveFeedback === 'saving'
+                              ? 'inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600'
+                              : 'inline-flex items-center gap-2 rounded-md border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-800 transition hover:bg-violet-100'
+                        }
+                      >
+                        {layoutSaveFeedback === 'saved' ? <Check className="h-4 w-4" /> : null}
+                        {layoutSaveFeedback === 'saved'
+                          ? 'Saved!'
+                          : layoutSaveFeedback === 'saving'
+                            ? 'Saving...'
+                            : 'Save to template'}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void saveLayoutNow('meeting_only')}
+                      disabled={layoutSaving}
+                      className={
+                        layoutSaveFeedback === 'saved'
+                          ? 'inline-flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-sm font-medium text-green-700'
+                          : layoutSaveFeedback === 'saving'
+                            ? 'inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600'
+                            : 'inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50'
+                      }
+                    >
+                      {layoutSaveFeedback === 'saved' ? <Check className="h-4 w-4" /> : null}
+                      {layoutSaveFeedback === 'saved'
+                        ? 'Saved!'
+                        : layoutSaveFeedback === 'saving'
+                          ? 'Saving...'
+                          : 'Save layout'}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={discardWorkspaceLayoutChanges}
+                    disabled={layoutSaving}
+                    className="text-sm text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
               ) : null}
               <Link href={`/projects/${projectId}`} className="text-sm text-blue-600 hover:underline">
                 Back to project

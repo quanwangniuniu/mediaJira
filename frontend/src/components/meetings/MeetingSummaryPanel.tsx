@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   Copy,
@@ -23,8 +23,14 @@ import {
   meetingTimeToInput,
   normalizeTimeForApi,
 } from '@/lib/meetingSchedule';
-import { MEETING_TYPE_OPTIONS } from '@/lib/meetings/meetingTypes';
-import type { Meeting, ParticipantLink } from '@/types/meeting';
+import {
+  buildSystemTemplateOptions,
+  fetchUnifiedMeetingTemplateOptions,
+  layoutConfigForNewMeetingFromSelection,
+  type UnifiedMeetingTemplateOption,
+} from '@/lib/meetings/unifiedMeetingTemplates';
+import { replaceAgendaAndLayoutFromNested } from '@/lib/meetings/replaceMeetingAgendaFromTemplate';
+import type { Meeting, MeetingPartialUpdateRequest, ParticipantLink } from '@/types/meeting';
 
 export interface MeetingSummaryPanelProps {
   projectId: number;
@@ -51,6 +57,9 @@ export function MeetingSummaryPanel({
   const [schedTimeDraft, setSchedTimeDraft] = useState('');
   const [extRefDraft, setExtRefDraft] = useState('');
   const [savingMeta, setSavingMeta] = useState(false);
+  const [unifiedTemplateOptions, setUnifiedTemplateOptions] = useState<UnifiedMeetingTemplateOption[]>(() =>
+    buildSystemTemplateOptions(),
+  );
 
   const [participants, setParticipants] = useState<ParticipantLink[]>([]);
   const [projectMembers, setProjectMembers] = useState<ProjectMemberData[]>([]);
@@ -99,9 +108,31 @@ export function MeetingSummaryPanel({
   }, [loadMeeting]);
 
   useEffect(() => {
+    void fetchUnifiedMeetingTemplateOptions()
+      .then(setUnifiedTemplateOptions)
+      .catch((err) => {
+        console.error('Failed to load meeting templates for details panel:', err);
+        setUnifiedTemplateOptions(buildSystemTemplateOptions());
+      });
+  }, [projectId]);
+
+  useEffect(() => {
     if (!meeting) return;
     void loadParticipants();
   }, [meeting, loadParticipants]);
+
+  const templateSelectOptions = useMemo(() => {
+    const opts = [...unifiedTemplateOptions];
+    const current = meetingTypeDraft.trim() || meeting?.meeting_type?.trim() || '';
+    if (current && !opts.some((o) => o.value === current)) {
+      opts.push({
+        value: current,
+        label: current,
+        is_system: false,
+      });
+    }
+    return opts;
+  }, [unifiedTemplateOptions, meetingTypeDraft, meeting?.meeting_type]);
 
   const saveMeta = async () => {
     if (!meeting || savingMeta) return;
@@ -111,17 +142,39 @@ export function MeetingSummaryPanel({
     }
     setSavingMeta(true);
     try {
-      const updated = await MeetingsAPI.patchMeeting(projectId, meetingId, {
+      const typeChanged = meetingTypeDraft.trim() !== meeting.meeting_type.trim();
+      const selectedOpt = unifiedTemplateOptions.find((o) => o.value === meetingTypeDraft.trim());
+
+      const patchPayload: MeetingPartialUpdateRequest = {
         title: titleDraft.trim(),
         objective: objectiveDraft.trim(),
         meeting_type: meetingTypeDraft.trim(),
         scheduled_date: schedDateDraft.trim() || null,
         scheduled_time: schedTimeDraft.trim() ? normalizeTimeForApi(schedTimeDraft) : null,
         external_reference: extRefDraft.trim() || null,
-      });
+      };
+
+      if (typeChanged) {
+        if (!selectedOpt) {
+          toast.error('Select a valid meeting type or template from the list');
+          return;
+        }
+        const { meeting_type: nextMeetingType, layout_config: lc } =
+          layoutConfigForNewMeetingFromSelection(selectedOpt);
+        const layoutSynced = await replaceAgendaAndLayoutFromNested(
+          projectId,
+          meetingId,
+          lc.blocks,
+          lc.nestedSections,
+        );
+        patchPayload.meeting_type = nextMeetingType;
+        patchPayload.layout_config = layoutSynced;
+      }
+
+      const updated = await MeetingsAPI.patchMeeting(projectId, meetingId, patchPayload);
       setMeeting(updated);
       onMeetingUpdated?.(updated);
-      toast.success('Meeting saved');
+      toast.success(typeChanged ? 'Meeting saved with new template layout' : 'Meeting saved');
     } catch (e: unknown) {
       console.error(e);
       toast.error('Failed to save meeting');
@@ -227,13 +280,29 @@ export function MeetingSummaryPanel({
                 className="mt-1 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 value={meetingTypeDraft}
                 onChange={(e) => setMeetingTypeDraft(e.target.value)}
+                aria-label="Meeting type or template"
               >
                 <option value="">Select…</option>
-                {MEETING_TYPE_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
+                <optgroup label="System templates">
+                  {templateSelectOptions
+                    .filter((o) => o.is_system)
+                    .map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                </optgroup>
+                {templateSelectOptions.some((o) => !o.is_system) ? (
+                  <optgroup label="Your templates">
+                    {templateSelectOptions
+                      .filter((o) => !o.is_system)
+                      .map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                  </optgroup>
+                ) : null}
               </select>
             </div>
             <div>

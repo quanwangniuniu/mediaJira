@@ -83,13 +83,30 @@ class MeetingViewSet(viewsets.ModelViewSet):
 
     def _normalize_meeting_layout(self, meeting: Meeting) -> Meeting:
         lc = meeting.layout_config
-        needs_default = lc is None or not isinstance(lc, list) or len(lc) == 0
-        if needs_default:
-            meeting.layout_config = list(DEFAULT_MEETING_LAYOUT)
+
+        def persist(next_lc):
+            meeting.layout_config = next_lc
             try:
                 meeting.save(update_fields=["layout_config"])
             except DatabaseError:
                 logger.exception("Could not persist default layout_config for meeting %s", meeting.pk)
+
+        if lc is None:
+            persist(list(DEFAULT_MEETING_LAYOUT))
+            return meeting
+
+        if isinstance(lc, list):
+            if len(lc) == 0:
+                persist(list(DEFAULT_MEETING_LAYOUT))
+            return meeting
+
+        if isinstance(lc, dict):
+            blocks = lc.get("blocks")
+            if not isinstance(blocks, list) or len(blocks) == 0:
+                persist({**lc, "blocks": list(DEFAULT_MEETING_LAYOUT)})
+            return meeting
+
+        persist(list(DEFAULT_MEETING_LAYOUT))
         return meeting
 
     def get_project(self) -> Project:
@@ -107,8 +124,17 @@ class MeetingViewSet(viewsets.ModelViewSet):
         # If the client doesn't provide a layout_config, initialize it to the default
         # workspace module order so the editor always has a predictable starting state.
         lc = serializer.validated_data.get("layout_config")
-        if lc is None or not isinstance(lc, list) or len(lc) == 0:
+        if lc is None:
             serializer.validated_data["layout_config"] = list(DEFAULT_MEETING_LAYOUT)
+        elif isinstance(lc, list) and len(lc) == 0:
+            serializer.validated_data["layout_config"] = list(DEFAULT_MEETING_LAYOUT)
+        elif isinstance(lc, dict):
+            blocks = lc.get("blocks")
+            if not isinstance(blocks, list) or len(blocks) == 0:
+                serializer.validated_data["layout_config"] = {
+                    **lc,
+                    "blocks": list(DEFAULT_MEETING_LAYOUT),
+                }
         raw_ids = serializer.validated_data.pop("participant_user_ids", None)
         if raw_ids is None:
             participant_user_ids: list[int] = []
