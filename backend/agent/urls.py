@@ -13,6 +13,7 @@ from .views import (
     FileUploadAnalyzeView,
     DecisionStatsView,
     DecisionRecentView,
+    DecisionPromoteView,
     AnomalyLatestView,
     WorkflowStepView,
     StepReorderView,
@@ -37,6 +38,7 @@ urlpatterns = [
     path('upload-analyze/', FileUploadAnalyzeView.as_view(), name='agent-upload-analyze'),
     path('decisions/stats/', DecisionStatsView.as_view(), name='agent-decision-stats'),
     path('decisions/recent/', DecisionRecentView.as_view(), name='agent-decision-recent'),
+    path('decisions/<int:decision_id>/promote/', DecisionPromoteView.as_view(), name='agent-decision-promote'),
     path('anomalies/latest/', AnomalyLatestView.as_view(), name='agent-anomaly-latest'),
     path('config/status/', AgentConfigStatusView.as_view(), name='agent-config-status'),
 ]

@@ -190,7 +190,7 @@ class DecisionViewSet(
     http_method_names = ["get", "post", "put", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
-        base = Decision.objects.filter(is_deleted=False).order_by("-updated_at")
+        base = Decision.objects.filter(is_deleted=False, is_pre_draft=False).order_by("-updated_at")
 
         if self.action == "list":
             base = base.select_related("project")

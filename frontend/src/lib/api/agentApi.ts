@@ -287,6 +287,11 @@ export const AgentAPI = {
     await api.delete(`/api/agent/data/reports/${fileId}/`);
   },
 
+  promoteDecision: async (decisionId: number) => {
+    const response = await api.post(`/api/agent/decisions/${decisionId}/promote/`);
+    return response.data;
+  },
+
   fetchDecisionStats: async () => {
     const response = await api.get('/api/agent/decisions/stats/');
     return response.data;

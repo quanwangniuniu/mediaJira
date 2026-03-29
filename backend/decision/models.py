@@ -46,6 +46,7 @@ class Decision(TimeStampedModel):
     is_reference_case = models.BooleanField(default=False)
     created_by_agent = models.BooleanField(default=False)
     agent_session_id = models.UUIDField(null=True, blank=True)
+    is_pre_draft = models.BooleanField(default=False)
     project = models.ForeignKey(
         Project,
         on_delete=models.CASCADE,

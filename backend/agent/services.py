@@ -1123,7 +1123,7 @@ class AgentOrchestrator:
 
     def create_decision_draft(self, analysis_result, workflow_run=None):
         """Create a Decision draft with Signals and Options from analysis."""
-        yield {"type": "text", "content": "Creating decision draft..."}
+        yield {"type": "text", "content": "Creating decision pre-draft..."}
 
         if workflow_run:
             workflow_run.status = 'creating_decision'
@@ -1148,6 +1148,7 @@ class AgentOrchestrator:
             author=self.user,
             created_by_agent=True,
             agent_session_id=self.session.id,
+            is_pre_draft=True,
         )
 
         # Create signals from anomalies

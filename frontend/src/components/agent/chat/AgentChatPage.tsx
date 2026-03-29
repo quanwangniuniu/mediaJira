@@ -71,7 +71,7 @@ function restoreMessage(m: AgentMessage): ChatMessage {
   } else if (m.message_type === "decision_draft" || m.data?.decision_id) {
     type = "decision_created"
     navigateTo = "decisions"
-    navigateLabel = "Go to Decisions"
+    navigateLabel = "Review Pre-Draft"
   } else if (m.message_type === "task_created" || m.data?.task_ids) {
     type = "tasks_created"
     navigateTo = "tasks"
@@ -521,7 +521,7 @@ export function AgentChatPage() {
             content: contentParts.join("\n"),
             type: "decision_created",
             navigateTo: "decisions",
-            navigateLabel: "Go to Decisions",
+            navigateLabel: "Review Pre-Draft",
             decisionId: decisionId ? Number(decisionId) : undefined,
           })
         }
@@ -622,7 +622,7 @@ export function AgentChatPage() {
             content: contentParts.join("\n"),
             type: "decision_created",
             navigateTo: "decisions",
-            navigateLabel: "Go to Decisions",
+            navigateLabel: "Review Pre-Draft",
             decisionId: decisionId ? Number(decisionId) : undefined,
           })
         }

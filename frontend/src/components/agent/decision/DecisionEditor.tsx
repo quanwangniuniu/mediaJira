@@ -63,6 +63,7 @@ interface DecisionListItem {
   risk_level: string
   author: string
   created_at: string
+  is_pre_draft?: boolean
 }
 
 const signalIcons = {
@@ -80,6 +81,7 @@ const riskColors: Record<string, string> = {
 const statusStyles: Record<string, string> = {
   predraft: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
   draft: "bg-muted/50 text-muted-foreground border-input",
+  pre_draft: "bg-violet-500/10 text-violet-400 border-violet-500/20",
   committed: "bg-blue-500/10 text-blue-400 border-blue-500/20",
   awaiting_approval: "bg-amber-500/10 text-amber-400 border-amber-500/20",
   reviewed: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
@@ -107,6 +109,7 @@ export function DecisionEditor() {
   // Editing state
   const [editingDecisionId, setEditingDecisionId] = useState<number | null>(null)
   const [editingStatus, setEditingStatus] = useState<string>("draft")
+  const [isPreDraft, setIsPreDraft] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const activeProject = useProjectStore((s) => s.activeProject)
 
@@ -179,6 +182,7 @@ export function DecisionEditor() {
     setSelectedOption("")
     setEditingDecisionId(d.id)
     setEditingStatus(d.status || "draft")
+    setIsPreDraft(d.is_pre_draft ?? false)
     setViewMode("edit")
 
     // Fetch full decision detail to populate context, reasoning, signals, options
@@ -357,7 +361,7 @@ export function DecisionEditor() {
       }
 
       await DecisionAPI.patchDraft(id!, payload, activeProject?.id)
-      toast.success("Draft saved")
+      toast.success(isPreDraft ? "Pre-draft saved" : "Draft saved")
       await refreshList()
       return id
     } catch (err: any) {
@@ -386,6 +390,23 @@ export function DecisionEditor() {
     }
   }
 
+  const submitAsDraft = async () => {
+    setIsSaving(true)
+    try {
+      const id = await saveDraft(true)
+      if (!id) return
+      await AgentAPI.promoteDecision(id)
+      toast.success("Pre-draft submitted as draft")
+      await refreshList()
+      setViewMode("list")
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || "Failed to promote"
+      toast.error(detail)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   // ─── Consume pendingDecisionId from context ───────────────────
 
   const { pendingDecisionId, setPendingDecisionId } = useAgentLayout()
@@ -396,7 +417,7 @@ export function DecisionEditor() {
     if (found) {
       loadDecision(found)
     } else {
-      loadDecision({ id: pendingDecisionId, title: "", status: "draft", risk_level: "", author: "", created_at: "" })
+      loadDecision({ id: pendingDecisionId, title: "", status: "draft", risk_level: "", author: "", created_at: "", is_pre_draft: true })
     }
     setPendingDecisionId(null)
   }, [pendingDecisionId, listLoading, decisionList])
@@ -452,7 +473,7 @@ export function DecisionEditor() {
             <div className="text-center py-8 text-muted-foreground text-sm">Loading decisions...</div>
           ) : decisionList.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground text-sm">
-              No decisions yet. Create one or run an AI analysis.
+              No decisions yet. Run an AI analysis to generate one.
             </div>
           ) : (
             <div className="space-y-2">
@@ -558,20 +579,31 @@ export function DecisionEditor() {
                 onClick={() => saveDraft()}
                 disabled={isSaving}
               >
-                {isSaving ? "Saving..." : "Save Draft"}
+                {isSaving ? "Saving..." : isPreDraft ? "Save as Pre-Draft" : "Save Draft"}
               </Button>
-              <Button
-                size="sm"
-                disabled={!allPassed || isSaving}
-                onClick={submitForReview}
-                className={cn(
-                  allPassed && !isSaving
-                    ? "bg-blue-600 hover:bg-blue-700 text-white"
-                    : "bg-input text-muted-foreground cursor-not-allowed"
-                )}
-              >
-                Submit for Review
-              </Button>
+              {isPreDraft ? (
+                <Button
+                  size="sm"
+                  disabled={isSaving}
+                  onClick={submitAsDraft}
+                  className="bg-violet-600 hover:bg-violet-700 text-white"
+                >
+                  Submit as Draft
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  disabled={!allPassed || isSaving}
+                  onClick={submitForReview}
+                  className={cn(
+                    allPassed && !isSaving
+                      ? "bg-blue-600 hover:bg-blue-700 text-white"
+                      : "bg-input text-muted-foreground cursor-not-allowed"
+                  )}
+                >
+                  Submit for Review
+                </Button>
+              )}
             </div>
           )}
         </div>
