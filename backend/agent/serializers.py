@@ -85,7 +85,7 @@ class ChatInputSerializer(serializers.Serializer):
     )
     file_id = serializers.UUIDField(required=False, allow_null=True)
     action = serializers.ChoiceField(
-        choices=['analyze', 'confirm_decision', 'create_tasks', 'generate_miro', 'start_follow_up', 'cancel_follow_up'],
+        choices=['analyze', 'confirm_decision', 'create_tasks', 'generate_miro', 'distribute_message', 'start_follow_up', 'cancel_follow_up'],
         required=False,
         allow_null=True,
     )

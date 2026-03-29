@@ -302,6 +302,17 @@ export const AgentAPI = {
     return response.data;
   },
 
+  getConfigStatus: async (): Promise<{
+    dify_api: boolean;
+    dify_chat: boolean;
+    dify_calendar: boolean;
+    dify_miro: boolean;
+    anthropic: boolean;
+  }> => {
+    const response = await api.get('/api/agent/config/status/');
+    return response.data;
+  },
+
   // ==================== Workflows ====================
 
   listWorkflows: async (): Promise<AgentWorkflowDefinition[]> => {
