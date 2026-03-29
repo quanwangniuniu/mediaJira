@@ -3,6 +3,7 @@ from django.urls import path, include
 from .views import (
     AgentSessionViewSet,
     AgentWorkflowDefinitionViewSet,
+    AgentConfigStatusView,
     ChatView,
     SpreadsheetListView,
     DataReportListView,
@@ -39,4 +40,5 @@ urlpatterns = [
     path('decisions/recent/', DecisionRecentView.as_view(), name='agent-decision-recent'),
     path('decisions/<int:decision_id>/promote/', DecisionPromoteView.as_view(), name='agent-decision-promote'),
     path('anomalies/latest/', AnomalyLatestView.as_view(), name='agent-anomaly-latest'),
+    path('config/status/', AgentConfigStatusView.as_view(), name='agent-config-status'),
 ]

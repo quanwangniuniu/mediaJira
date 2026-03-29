@@ -1,7 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-// useCallback removed — only used by batch manage
+import { useEffect, useState, useCallback } from "react"
 import {
   Plus,
   X,
@@ -14,8 +13,7 @@ import {
   FileText,
   Shield,
   ChevronLeft,
-  // Settings2,
-  // Trash2,
+  Trash2,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -26,12 +24,11 @@ import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
-// Manage batch delete removed
-// import { Checkbox } from "@/components/ui/checkbox"
-// import ConfirmDialog from "@/components/common/ConfirmDialog"
+import { Checkbox } from "@/components/ui/checkbox"
+import ConfirmDialog from "@/components/common/ConfirmDialog"
 import { AgentAPI } from "@/lib/api/agentApi"
 import { DecisionAPI } from "@/lib/api/decisionApi"
-// import { useBatchManage } from "@/hooks/useBatchManage"
+import { useBatchManage } from "@/hooks/useBatchManage"
 import { useProjectStore } from "@/lib/projectStore"
 import { useAgentLayout } from "@/components/agent/AgentLayoutContext"
 import toast from "react-hot-toast"
@@ -82,12 +79,22 @@ const riskColors: Record<string, string> = {
 }
 
 const statusStyles: Record<string, string> = {
+  predraft: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
   draft: "bg-muted/50 text-muted-foreground border-input",
   pre_draft: "bg-violet-500/10 text-violet-400 border-violet-500/20",
   committed: "bg-blue-500/10 text-blue-400 border-blue-500/20",
   awaiting_approval: "bg-amber-500/10 text-amber-400 border-amber-500/20",
   reviewed: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
   archived: "bg-purple-500/10 text-purple-400 border-purple-500/20",
+}
+
+const statusLabels: Record<string, string> = {
+  predraft: "Pre-Draft",
+  draft: "Draft",
+  committed: "Committed",
+  awaiting_approval: "Awaiting Approval",
+  reviewed: "Reviewed",
+  archived: "Archived",
 }
 
 // ─── Component ────────────────────────────────────────
@@ -97,24 +104,7 @@ export function DecisionEditor() {
   const [viewMode, setViewMode] = useState<"list" | "edit">("list")
   const [decisionList, setDecisionList] = useState<DecisionListItem[]>([])
   const [listLoading, setListLoading] = useState(true)
-  // Manage batch delete removed
-  // const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  //
-  // const batchDeleteFn = useCallback(async (id: string | number) => {
-  //   await DecisionAPI.deleteDecision(Number(id))
-  // }, [])
-  //
-  // const batchDeleteComplete = useCallback((deletedIds: (string | number)[]) => {
-  //   const idSet = new Set(deletedIds.map(Number))
-  //   setDecisionList((prev) => prev.filter((d) => !idSet.has(d.id)))
-  //   toast.success(`Deleted ${deletedIds.length} decision${deletedIds.length > 1 ? "s" : ""}`)
-  // }, [])
-  //
-  // const batch = useBatchManage({
-  //   items: decisionList.map((d) => ({ id: d.id })),
-  //   deleteFn: batchDeleteFn,
-  //   onDeleteComplete: batchDeleteComplete,
-  // })
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   // Editing state
   const [editingDecisionId, setEditingDecisionId] = useState<number | null>(null)
@@ -122,6 +112,25 @@ export function DecisionEditor() {
   const [isPreDraft, setIsPreDraft] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const activeProject = useProjectStore((s) => s.activeProject)
+
+  // Batch management for pre-draft decisions only
+  const predraftItems = decisionList.filter((d) => d.status === "predraft")
+
+  const batchDeleteFn = useCallback(async (id: string | number) => {
+    await DecisionAPI.deleteDecision(Number(id), activeProject?.id)
+  }, [activeProject?.id])
+
+  const batchDeleteComplete = useCallback((deletedIds: (string | number)[]) => {
+    const idSet = new Set(deletedIds.map(Number))
+    setDecisionList((prev) => prev.filter((d) => !idSet.has(d.id)))
+    toast.success(`Deleted ${deletedIds.length} decision${deletedIds.length > 1 ? "s" : ""}`)
+  }, [])
+
+  const batch = useBatchManage({
+    items: predraftItems.map((d) => ({ id: d.id })),
+    deleteFn: batchDeleteFn,
+    onDeleteComplete: batchDeleteComplete,
+  })
 
   // Form state
   const [title, setTitle] = useState("")
@@ -233,6 +242,19 @@ export function DecisionEditor() {
     } catch {
       // Keep what we have from the list item
     }
+  }
+
+  const createNew = () => {
+    setTitle("")
+    setContext("")
+    setReasoning("")
+    setSignals([])
+    setOptions([])
+    setSelectedOption("")
+    setPriority("medium")
+    setEditingDecisionId(null)
+    setEditingStatus("draft")
+    setViewMode("edit")
   }
 
   // ─── Validation ─────────────────────────────────────
@@ -385,9 +407,6 @@ export function DecisionEditor() {
     }
   }
 
-  const preDrafts = useMemo(() => decisionList.filter((d) => d.is_pre_draft), [decisionList])
-  const drafts = useMemo(() => decisionList.filter((d) => !d.is_pre_draft), [decisionList])
-
   // ─── Consume pendingDecisionId from context ───────────────────
 
   const { pendingDecisionId, setPendingDecisionId } = useAgentLayout()
@@ -415,7 +434,39 @@ export function DecisionEditor() {
               <h1 className="text-xl font-bold text-foreground">Decisions</h1>
               <p className="text-sm text-muted-foreground mt-1">View and manage advertising decisions</p>
             </div>
-            <div className="flex items-center gap-2" />
+            <div className="flex items-center gap-2">
+              {batch.isManaging ? (
+                <>
+                  <span className="text-xs text-muted-foreground">
+                    {batch.selectedCount} selected
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={batch.selectedCount === 0 || batch.isDeleting}
+                    onClick={() => setShowDeleteConfirm(true)}
+                  >
+                    <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                    Delete
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={batch.exitManageMode}>
+                    Cancel
+                  </Button>
+                </>
+              ) : (
+                <>
+                  {predraftItems.length > 0 && (
+                    <Button size="sm" variant="outline" onClick={batch.enterManageMode}>
+                      Manage Pre-Drafts
+                    </Button>
+                  )}
+                  <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={createNew}>
+                    <Plus className="w-3.5 h-3.5 mr-1.5" />
+                    New Decision
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
 
           {listLoading ? (
@@ -425,51 +476,35 @@ export function DecisionEditor() {
               No decisions yet. Run an AI analysis to generate one.
             </div>
           ) : (
-            <div className="space-y-4">
-              {/* Pre-drafts section */}
-              {preDrafts.length > 0 && (
-                <div className="space-y-2">
-                  <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Pre-Drafts</h2>
-                  {preDrafts.map((d) => (
+            <div className="space-y-2">
+              {decisionList.map((d) => {
+                const isPredraft = d.status === "predraft"
+                const isExiting = batch.isExiting(d.id)
+                return (
+                  <div
+                    key={d.id}
+                    className={cn(
+                      "flex items-center gap-2 transition-all duration-300",
+                      isExiting && "opacity-0 scale-95"
+                    )}
+                  >
+                    {batch.isManaging && isPredraft && (
+                      <Checkbox
+                        checked={batch.selectedIds.has(d.id)}
+                        onCheckedChange={() => batch.toggleSelect(d.id)}
+                      />
+                    )}
+                    {batch.isManaging && !isPredraft && (
+                      <div className="w-4" />
+                    )}
                     <Card
-                      key={d.id}
-                      className="bg-card border-border cursor-pointer transition-colors hover:border-input"
-                      onClick={() => loadDecision(d)}
-                    >
-                      <CardContent className="py-3 px-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <span className="text-xs text-muted-foreground/60 font-mono">#{d.id}</span>
-                            <span className="text-sm text-foreground">{d.title}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className={cn("text-[10px]", statusStyles.pre_draft)}>
-                              pre-draft
-                            </Badge>
-                            {d.risk_level && (
-                              <Badge variant="outline" className={cn("text-[10px]", riskColors[d.risk_level] || "")}>
-                                {d.risk_level}
-                              </Badge>
-                            )}
-                            <span className="text-xs text-muted-foreground">{d.author}</span>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
-
-              {/* Drafts section */}
-              {drafts.length > 0 && (
-                <div className="space-y-2">
-                  <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Drafts</h2>
-                  {drafts.map((d) => (
-                    <Card
-                      key={d.id}
-                      className="bg-card border-border cursor-pointer transition-colors hover:border-input"
+                      className="flex-1 bg-card border-border cursor-pointer transition-colors hover:border-input"
                       onClick={() => {
-                        window.location.href = `/decisions/${d.id}?project_id=${activeProject?.id || ""}`
+                        if (batch.isManaging && isPredraft) {
+                          batch.toggleSelect(d.id)
+                        } else if (!batch.isManaging) {
+                          loadDecision(d)
+                        }
                       }}
                     >
                       <CardContent className="py-3 px-4">
@@ -480,7 +515,7 @@ export function DecisionEditor() {
                           </div>
                           <div className="flex items-center gap-2">
                             <Badge variant="outline" className={cn("text-[10px]", statusStyles[d.status] || statusStyles.draft)}>
-                              {d.status}
+                              {statusLabels[d.status] || d.status}
                             </Badge>
                             {d.risk_level && (
                               <Badge variant="outline" className={cn("text-[10px]", riskColors[d.risk_level] || "")}>
@@ -492,18 +527,17 @@ export function DecisionEditor() {
                         </div>
                       </CardContent>
                     </Card>
-                  ))}
-                </div>
-              )}
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>
 
-        {/* Manage batch delete confirm dialog removed
         <ConfirmDialog
           isOpen={showDeleteConfirm}
-          title="Delete Decisions"
-          message={`Are you sure you want to delete ${batch.selectedCount} decision${batch.selectedCount > 1 ? "s" : ""}? This action cannot be undone.`}
+          title="Delete Pre-Draft Decisions"
+          message={`Are you sure you want to delete ${batch.selectedCount} pre-draft decision${batch.selectedCount > 1 ? "s" : ""}? This action cannot be undone.`}
           type="danger"
           confirmText="Delete"
           cancelText="Cancel"
@@ -513,7 +547,6 @@ export function DecisionEditor() {
           }}
           onCancel={() => setShowDeleteConfirm(false)}
         />
-        */}
       </div>
     )
   }
@@ -537,7 +570,7 @@ export function DecisionEditor() {
               </p>
             </div>
           </div>
-          {editingStatus === "draft" && (
+          {(editingStatus === "predraft" || editingStatus === "draft") && (
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"

@@ -26,7 +26,7 @@ export function RightPanel() {
       .catch(() => {})
   }, [])
 
-  // Listen for analysis-complete events from chat — new analysis resets dismissed alerts
+  // Listen for analysis-complete events from chat (session restore only)
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail
@@ -37,6 +37,32 @@ export function RightPanel() {
     }
     window.addEventListener("agent:analysis-complete", handler)
     return () => window.removeEventListener("agent:analysis-complete", handler)
+  }, [])
+
+  // Listen for individual anomaly additions from the AnomalyCard "+ Add" button.
+  // Converts AnomalyItem shape into the RightPanel anomaly shape.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const raw = (e as CustomEvent).detail
+      if (!raw) return
+      const mapped = {
+        type: raw.metric || raw.type || "",
+        severity: raw.severity || "info",
+        campaign: raw.campaign || "",
+        description: raw.description || "",
+        cost: typeof raw.current_value === "number" ? raw.current_value : 0,
+        roas: undefined as number | undefined,
+      }
+      setAnomalies((prev) => {
+        const exists = prev.some(
+          (a) => a.description === mapped.description && a.campaign === mapped.campaign
+        )
+        if (exists) return prev
+        return [...prev, mapped]
+      })
+    }
+    window.addEventListener("agent:add-alert", handler)
+    return () => window.removeEventListener("agent:add-alert", handler)
   }, [])
 
   const handleDecisionSelect = (decisionId: number) => {
