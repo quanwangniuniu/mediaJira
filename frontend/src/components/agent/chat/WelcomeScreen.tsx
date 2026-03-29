@@ -1,13 +1,10 @@
 "use client"
 
-import { BarChart3, Search, DollarSign } from "lucide-react"
+import { useRef } from "react"
+import { Upload } from "lucide-react"
 import { ChatInput } from "./ChatInput"
 
-const TEMPLATES = [
-  { label: "Analyze Report", icon: BarChart3, message: "Analyze this report for key insights" },
-  { label: "Find Anomalies", icon: Search, message: "Find anomalies in my campaign data" },
-  { label: "Budget Review", icon: DollarSign, message: "Review budget allocation and ROAS" },
-]
+const ACCEPTED_TYPES = ".csv,.xlsx,.xls"
 
 interface WelcomeScreenProps {
   onSend: (message: string) => void
@@ -16,6 +13,19 @@ interface WelcomeScreenProps {
 }
 
 export function WelcomeScreen({ onSend, onFileUpload, disabled }: WelcomeScreenProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    onFileUpload(file)
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
   return (
     <div className="flex h-full flex-col items-center justify-center px-4">
       <div className="w-full max-w-2xl space-y-8">
@@ -25,8 +35,30 @@ export function WelcomeScreen({ onSend, onFileUpload, disabled }: WelcomeScreenP
             What do you want to analyze today?
           </h1>
           <p className="text-sm text-muted-foreground">
-            Upload a CSV or Excel file, or ask a question to get started.
+            Upload a CSV or Excel file to start, or type a question below.
           </p>
+        </div>
+
+        {/* Primary upload CTA */}
+        <div className="flex flex-col items-center gap-2">
+          <button
+            onClick={handleUploadClick}
+            disabled={disabled}
+            className="flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+          >
+            <Upload className="h-4 w-4" />
+            Upload &amp; Analyze
+          </button>
+          <span className="text-xs text-muted-foreground">
+            Supported: CSV, XLSX, XLS (max 10 MB)
+          </span>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={ACCEPTED_TYPES}
+            className="hidden"
+            onChange={handleFileChange}
+          />
         </div>
 
         {/* Input */}
@@ -34,26 +66,8 @@ export function WelcomeScreen({ onSend, onFileUpload, disabled }: WelcomeScreenP
           onSend={onSend}
           onFileUpload={onFileUpload}
           disabled={disabled}
-          placeholder="Upload a file or type your question..."
+          placeholder="Or type your question..."
         />
-
-        {/* Quick templates */}
-        <div className="flex flex-wrap justify-center gap-3">
-          {TEMPLATES.map((tpl) => {
-            const Icon = tpl.icon
-            return (
-              <button
-                key={tpl.label}
-                onClick={() => onSend(tpl.message)}
-                disabled={disabled}
-                className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:border-primary/50 hover:bg-primary/5 disabled:opacity-50"
-              >
-                <Icon className="h-4 w-4 text-muted-foreground" />
-                {tpl.label}
-              </button>
-            )
-          })}
-        </div>
       </div>
     </div>
   )

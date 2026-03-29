@@ -334,6 +334,23 @@ class MessageService:
         ])
         
         logger.info(f"Created message {message.id} in chat {chat.id} by user {sender.id}")
+
+        # Route message to Agent Bot if it is a participant in this chat.
+        # Wrapped in try/except so this never breaks normal chat functionality.
+        try:
+            AGENT_BOT_EMAIL = 'agent-bot@system.local'
+            if sender.email != AGENT_BOT_EMAIL:
+                bot_participant = ChatParticipant.objects.filter(
+                    chat=chat,
+                    user__email=AGENT_BOT_EMAIL,
+                    is_active=True,
+                ).first()
+                if bot_participant:
+                    from agent.tasks import handle_chat_message_for_agent
+                    handle_chat_message_for_agent.delay(message.id)
+        except Exception:
+            logger.exception("Failed to route message to agent bot for message %s", message.id)
+
         return message
     
     @staticmethod

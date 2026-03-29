@@ -8,6 +8,13 @@ import AttachmentDisplay from './AttachmentDisplay';
 import LinkPreview from './LinkPreview';
 import { extractUrls } from '@/lib/api/linkPreviewApi';
 
+const AGENT_BOT_EMAIL = 'agent-bot@system.local';
+const AGENT_BOT_USERNAME = 'agent-bot';
+
+function isAgentBot(sender: { email?: string; username?: string }): boolean {
+  return sender.email === AGENT_BOT_EMAIL || sender.username === AGENT_BOT_USERNAME;
+}
+
 export default function MessageItem({
   message,
   isOwnMessage,
@@ -133,39 +140,47 @@ export default function MessageItem({
               {showSender && (
                 <div className={senderRowClass}>
                   <p className="text-xs font-medium text-gray-700 truncate max-w-[140px]" title={message.sender.username}>
-                    {message.sender.username}
+                    {isAgentBot(message.sender) ? 'AI Agent' : message.sender.username}
                   </p>
-                  {senderRole && (
+                  {isAgentBot(message.sender) ? (
+                    <span className="text-[10px] font-semibold bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded flex-shrink-0">
+                      AI
+                    </span>
+                  ) : senderRole ? (
                     <span
                       className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded truncate max-w-[140px]"
                       title={senderRole}
                     >
                       {senderRole}
                     </span>
-                  )}
+                  ) : null}
                 </div>
               )}
               
               {/* Message bubble with content */}
               {hasContent && (
-                <div className="inline-block w-fit max-w-full bg-gray-100 text-gray-900 rounded-lg px-4 py-2 break-words">
+                <div className={`inline-block w-fit max-w-full rounded-lg px-4 py-2 break-words ${
+                  isAgentBot(message.sender)
+                    ? 'bg-violet-50 text-gray-900 border border-violet-100'
+                    : 'bg-gray-100 text-gray-900'
+                }`}>
                   <p className="text-sm whitespace-pre-wrap">{messageContent}</p>
                 </div>
               )}
-              
+
               {/* Link Previews */}
               {hasUrls && (
                 <LinkPreview content={messageContent} />
               )}
-              
+
               {/* Attachments */}
               {hasAttachments && (
-                <AttachmentDisplay 
-                  attachments={message.attachments!} 
+                <AttachmentDisplay
+                  attachments={message.attachments!}
                   isOwnMessage={false}
                 />
               )}
-              
+
               {/* Timestamp */}
               <div className="flex items-center gap-1 mt-1 px-1">
                 <span className="text-xs text-gray-500">{formatTime(message.created_at)}</span>

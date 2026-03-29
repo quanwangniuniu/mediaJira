@@ -120,18 +120,27 @@ class DecisionDraftViewSet(
 
     def _ensure_editable(self, decision):
         if decision.status not in (
+            Decision.Status.PREDRAFT,
             Decision.Status.DRAFT,
             Decision.Status.AWAITING_APPROVAL,
         ):
             return invalid_state_response(
                 current_status=decision.status,
                 allowed_statuses=[
+                    Decision.Status.PREDRAFT,
                     Decision.Status.DRAFT,
                     Decision.Status.AWAITING_APPROVAL,
                 ],
                 suggested_action="Use GET /api/decisions/{id}/ for read-only view.",
             )
         return None
+
+    def perform_update(self, serializer):
+        instance = serializer.save(last_edited_by=self.request.user)
+        # Auto-promote PREDRAFT to DRAFT when user explicitly saves
+        if instance.status == Decision.Status.PREDRAFT:
+            instance.promote_to_draft()
+            instance.save()
 
     def retrieve(self, request, *args, **kwargs):
         decision = self.get_object()
@@ -516,15 +525,10 @@ class DecisionViewSet(
     @action(detail=True, methods=['post'])
     def commit(self, request, pk=None):
         decision = self.get_object()
-        if decision.is_pre_draft:
-            return Response(
-                {"detail": "Pre-draft must be promoted before committing."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if decision.status != Decision.Status.DRAFT:
+        if decision.status not in (Decision.Status.PREDRAFT, Decision.Status.DRAFT):
             return invalid_state_response(
                 current_status=decision.status,
-                allowed_statuses=[Decision.Status.DRAFT],
+                allowed_statuses=[Decision.Status.PREDRAFT, Decision.Status.DRAFT],
                 suggested_action=(
                     "Update the draft via PATCH /decisions/drafts/{decisionId} before committing."
                 ),
