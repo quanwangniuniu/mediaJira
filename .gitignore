@@ -24,3 +24,4 @@ docker-compose.dev.override.yml
 nul
 .claude/
 figma/
+CLAUDE.md

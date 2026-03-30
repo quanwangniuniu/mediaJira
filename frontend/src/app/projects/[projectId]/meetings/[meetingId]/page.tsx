@@ -25,8 +25,24 @@ import {
   ListTodo,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { DndContext, closestCenter, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core';
-import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  closestCorners,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
 import Layout from '@/components/layout/Layout';
@@ -329,6 +345,10 @@ function SortableNestedSection({
 }) {
   const { setNodeRef, attributes, listeners, transform, transition } = useSortable({
     id: `section:${section.id}`,
+    transition: {
+      duration: 200,
+      easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
+    },
   });
 
   return (
@@ -341,7 +361,7 @@ function SortableNestedSection({
       <div className="mb-3 flex w-full items-center gap-2 text-sm font-bold tracking-wider text-black uppercase">
         <button
           type="button"
-          className="cursor-grab rounded p-1 text-gray-300 opacity-0 transition-opacity group-hover/section:opacity-100 hover:text-gray-500 active:cursor-grabbing"
+          className="relative z-10 cursor-grab rounded p-1 text-gray-300 opacity-0 transition-opacity group-hover/section:opacity-100 hover:text-gray-500 active:cursor-grabbing"
           {...(attributes as React.HTMLAttributes<HTMLButtonElement>)}
           {...listeners}
           aria-label="Drag section"
@@ -396,6 +416,10 @@ function SortableNestedItem({
 }) {
   const { setNodeRef, attributes, listeners, transform, transition } = useSortable({
     id: `item:${item.id}`,
+    transition: {
+      duration: 200,
+      easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
+    },
   });
   const [editingText, setEditingText] = useState(false);
   const [editingDuration, setEditingDuration] = useState(false);
@@ -405,12 +429,12 @@ function SortableNestedItem({
       id={meetingAgendaItemDomId(sectionId, item.id)}
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className="group/item flex scroll-mt-32 items-center gap-2 px-1 py-1"
+      className="group/item flex scroll-mt-32 items-center gap-1.5 px-0.5 py-0.5"
       data-section-id={sectionId}
     >
       <button
         type="button"
-        className="cursor-grab rounded p-1 text-gray-300 opacity-0 transition-opacity group-hover/item:opacity-100 hover:text-gray-500 active:cursor-grabbing"
+        className="relative z-10 cursor-grab rounded p-1 text-gray-300 opacity-0 transition-opacity group-hover/item:opacity-100 hover:text-gray-500 active:cursor-grabbing"
         {...(attributes as React.HTMLAttributes<HTMLButtonElement>)}
         {...listeners}
         aria-label="Drag item"
@@ -526,6 +550,17 @@ export default function MeetingWorkspacePage() {
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [activeSectionDragId, setActiveSectionDragId] = useState<string | null>(null);
   const [activeItemDragId, setActiveItemDragId] = useState<string | null>(null);
+
+  /** Isolated sensors for nested agenda DnD (avoids cross-talk with AgendaTOC outline DndContext). */
+  const agendaNestedSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
   const [layoutSaving, setLayoutSaving] = useState(false);
   const [layoutSaveFeedback, setLayoutSaveFeedback] = useState<'idle' | 'saving' | 'saved'>('idle');
   const layoutSavedTimerRef = useRef<number | null>(null);
@@ -1663,27 +1698,71 @@ export default function MeetingWorkspacePage() {
 
     if (active.startsWith('item:')) {
       const activeItemId = active.replace('item:', '');
-      const overItemId = over.replace('item:', '');
-      setNestedSections((prev) => {
-        const fromSection = prev.find((s) => s.items.some((i) => i.id === activeItemId));
-        const toSection = prev.find((s) => s.items.some((i) => i.id === overItemId))
-          ?? (over.startsWith('section:') ? prev.find((s) => s.id === over.replace('section:', '')) : undefined);
-        if (!fromSection || !toSection) return prev;
-        const moving = fromSection.items.find((i) => i.id === activeItemId);
-        if (!moving) return prev;
 
-        const next = prev.map((section) => ({
-          ...section,
-          items: section.items.filter((i) => i.id !== activeItemId),
-        }));
-        const targetIndex = next.findIndex((s) => s.id === toSection.id);
-        if (targetIndex < 0) return prev;
-        const overIndex = next[targetIndex].items.findIndex((i) => i.id === overItemId);
-        const insertIndex = overIndex >= 0 ? overIndex : next[targetIndex].items.length;
-        next[targetIndex].items.splice(insertIndex, 0, moving);
+      if (over.startsWith('item:')) {
+        const overItemId = over.replace('item:', '');
+        const fromSection = findSectionByItemId(activeItemId);
+        const overSection = findSectionByItemId(overItemId);
+        if (!fromSection || !overSection) return;
+
+        if (fromSection.id === overSection.id) {
+          setNestedSections((prev) =>
+            prev.map((section) => {
+              if (section.id !== fromSection.id) return section;
+              const items = [...section.items];
+              const oldIndex = items.findIndex((i) => i.id === activeItemId);
+              const newIndex = items.findIndex((i) => i.id === overItemId);
+              if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return section;
+              return { ...section, items: arrayMove(items, oldIndex, newIndex) };
+            }),
+          );
+          setTemplateDirty(true);
+          return;
+        }
+
+        setNestedSections((prev) => {
+          const fromSectionInner = prev.find((s) => s.items.some((i) => i.id === activeItemId));
+          const toSectionInner = prev.find((s) => s.items.some((i) => i.id === overItemId));
+          if (!fromSectionInner || !toSectionInner) return prev;
+          const moving = fromSectionInner.items.find((i) => i.id === activeItemId);
+          if (!moving) return prev;
+
+          const next = prev.map((section) => ({
+            ...section,
+            items: section.items.filter((i) => i.id !== activeItemId),
+          }));
+          const targetIndex = next.findIndex((s) => s.id === toSectionInner.id);
+          if (targetIndex < 0) return prev;
+          const overIndex = next[targetIndex].items.findIndex((i) => i.id === overItemId);
+          const insertIndex = overIndex >= 0 ? overIndex : next[targetIndex].items.length;
+          next[targetIndex].items.splice(insertIndex, 0, moving);
+          return [...next];
+        });
         setTemplateDirty(true);
-        return [...next];
-      });
+        return;
+      }
+
+      if (over.startsWith('section:')) {
+        const targetSectionId = over.replace('section:', '');
+        setNestedSections((prev) => {
+          const fromSectionInner = prev.find((s) => s.items.some((i) => i.id === activeItemId));
+          const targetSectionInner = prev.find((s) => s.id === targetSectionId);
+          if (!fromSectionInner || !targetSectionInner) return prev;
+          const moving = fromSectionInner.items.find((i) => i.id === activeItemId);
+          if (!moving) return prev;
+          if (fromSectionInner.id === targetSectionInner.id) return prev;
+
+          const next = prev.map((section) => ({
+            ...section,
+            items: section.items.filter((i) => i.id !== activeItemId),
+          }));
+          const targetIndex = next.findIndex((s) => s.id === targetSectionId);
+          if (targetIndex < 0) return prev;
+          next[targetIndex].items.push(moving);
+          return [...next];
+        });
+        setTemplateDirty(true);
+      }
     }
   };
 
@@ -2093,7 +2172,8 @@ export default function MeetingWorkspacePage() {
                       >
                         <DndContext
                           id={`meeting-${meetingId}-agenda-nested-dnd`}
-                          collisionDetection={closestCenter}
+                          sensors={agendaNestedSensors}
+                          collisionDetection={closestCorners}
                           onDragStart={handleNestedDragStart}
                           onDragEnd={handleNestedDragEnd}
                           onDragCancel={() => {

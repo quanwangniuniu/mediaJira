@@ -3,13 +3,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
 import {
   DndContext,
+  KeyboardSensor,
   PointerSensor,
   closestCenter,
   useSensor,
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core';
-import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical } from 'lucide-react';
 
@@ -31,6 +37,23 @@ export function meetingAgendaSectionDomId(sectionId: string): string {
 
 export function meetingAgendaItemDomId(sectionId: string, itemId: string): string {
   return `meeting-agenda-item-${sectionId}-${itemId}`;
+}
+
+/**
+ * TOC outline rail uses its own sortable id namespace so ids never collide with the main
+ * workspace DndContext (`section:…` / `item:…`).
+ */
+const OUTLINE_SECTION_SORTABLE_PREFIX = 'outline-section:' as const;
+
+export function tocOutlineSectionSortableId(sectionId: string): string {
+  return `${OUTLINE_SECTION_SORTABLE_PREFIX}${sectionId}`;
+}
+
+function outlineToMainSectionSortableId(id: string): string {
+  if (id.startsWith(OUTLINE_SECTION_SORTABLE_PREFIX)) {
+    return `section:${id.slice(OUTLINE_SECTION_SORTABLE_PREFIX.length)}`;
+  }
+  return id;
 }
 
 const AGENDA_STRIP_SHOW_MS = 200;
@@ -245,7 +268,7 @@ function SortableSectionGroup({
   isDragging: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
-    id: `section:${section.id}`,
+    id: tocOutlineSectionSortableId(section.id),
   });
   const style = { transform: CSS.Transform.toString(transform), transition };
 
@@ -255,7 +278,7 @@ function SortableSectionGroup({
   const grip = (
     <button
       type="button"
-      className="cursor-grab rounded p-0.5 text-slate-400 hover:bg-slate-200/80 active:cursor-grabbing"
+      className="relative z-10 cursor-grab rounded p-0.5 text-slate-400 hover:bg-slate-200/80 active:cursor-grabbing"
       aria-label={`Drag to reorder: ${section.title}`}
       {...(attributes as HTMLAttributes<HTMLButtonElement>)}
       {...listeners}
@@ -335,9 +358,12 @@ function AgendaOutlineRail({ sections, meetingId, onSectionReorder, stripArmed }
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
     }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
 
-  const sectionIds = useMemo(() => sections.map((s) => `section:${s.id}`), [sections]);
+  const sectionIds = useMemo(() => sections.map((s) => tocOutlineSectionSortableId(s.id)), [sections]);
 
   const clearTocShowTimer = useCallback(() => {
     if (tocShowTimerRef.current != null) {
@@ -446,8 +472,8 @@ function AgendaOutlineRail({ sections, meetingId, onSectionReorder, stripArmed }
 
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveDragId(null);
-    const active = String(event.active.id ?? '');
-    const over = String(event.over?.id ?? '');
+    const active = outlineToMainSectionSortableId(String(event.active.id ?? ''));
+    const over = outlineToMainSectionSortableId(String(event.over?.id ?? ''));
     if (!active || !over || active === over) return;
     if (active.startsWith('section:') && over.startsWith('section:')) {
       onSectionReorder(active, over);
@@ -541,7 +567,7 @@ function AgendaOutlineRail({ sections, meetingId, onSectionReorder, stripArmed }
               >
                 <nav aria-label="Agenda sections">
                   <DndContext
-                    id={`meeting-${meetingId}-agenda-toc-dnd`}
+                    id={`meeting-${meetingId}-agenda-outline-rail-dnd`}
                     sensors={sensors}
                     collisionDetection={closestCenter}
                     onDragStart={(e) => setActiveDragId(String(e.active.id))}
@@ -571,7 +597,7 @@ function AgendaOutlineRail({ sections, meetingId, onSectionReorder, stripArmed }
                               .getElementById(meetingAgendaItemDomId(sectionId, itemId))
                               ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
                           }
-                          isDragging={activeDragId === `section:${section.id}`}
+                          isDragging={activeDragId === tocOutlineSectionSortableId(section.id)}
                         />
                       ))}
                     </SortableContext>
