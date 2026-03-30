@@ -684,5 +684,24 @@ class MessageCreateWithAttachmentsSerializer(ChatParticipantValidationMixin, ser
             if linked_count > 0 and not message.has_attachments:
                 message.has_attachments = True
                 message.save(update_fields=['has_attachments', 'updated_at'])
-        
+
+        # Route to Agent Bot if it is a participant in this chat
+        try:
+            AGENT_BOT_EMAIL = 'agent-bot@system.local'
+            sender = request.user
+            if sender.email != AGENT_BOT_EMAIL:
+                from .models import ChatParticipant
+                bot_participant = ChatParticipant.objects.filter(
+                    chat=message.chat,
+                    user__email=AGENT_BOT_EMAIL,
+                    is_active=True,
+                ).first()
+                if bot_participant:
+                    from agent.tasks import handle_chat_message_for_agent
+                    handle_chat_message_for_agent.delay(message.id)
+        except Exception:
+            logger.exception(
+                "Failed to route message to agent bot for message %s", message.id
+            )
+
         return message

@@ -287,6 +287,11 @@ export const AgentAPI = {
     await api.delete(`/api/agent/data/reports/${fileId}/`);
   },
 
+  promoteDecision: async (decisionId: number) => {
+    const response = await api.post(`/api/agent/decisions/${decisionId}/promote/`);
+    return response.data;
+  },
+
   fetchDecisionStats: async () => {
     const response = await api.get('/api/agent/decisions/stats/');
     return response.data;
@@ -299,6 +304,17 @@ export const AgentAPI = {
 
   fetchLatestAnomalies: async () => {
     const response = await api.get('/api/agent/anomalies/latest/');
+    return response.data;
+  },
+
+  getConfigStatus: async (): Promise<{
+    dify_api: boolean;
+    dify_chat: boolean;
+    dify_calendar: boolean;
+    dify_miro: boolean;
+    anthropic: boolean;
+  }> => {
+    const response = await api.get('/api/agent/config/status/');
     return response.data;
   },
 

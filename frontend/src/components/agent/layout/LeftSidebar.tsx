@@ -8,7 +8,6 @@ import {
 import { useAgentLayout, type AgentView } from "../AgentLayoutContext"
 import { cn } from "@/lib/utils"
 import { AgentAPI } from "@/lib/api/agentApi"
-import { SettingsPanel } from "./SettingsPanel"
 import { useBatchManage } from "@/hooks/useBatchManage"
 import ConfirmDialog from "@/components/common/ConfirmDialog"
 
@@ -43,7 +42,6 @@ function formatTimeAgo(iso: string): string {
 export function LeftSidebar() {
   const { activeView, setActiveView, openFloatingChat, floatingChat, isInSnapZone } = useAgentLayout()
   const [recentSessions, setRecentSessions] = useState<SessionItem[]>([])
-  const [showSettings, setShowSettings] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState("")
   const editInputRef = useRef<HTMLInputElement>(null)
@@ -327,11 +325,15 @@ export function LeftSidebar() {
 
       {/* Settings */}
       <div className="border-t border-border">
-        <div className="relative px-4 py-3">
-          <SettingsPanel isOpen={showSettings} onClose={() => setShowSettings(false)} />
+        <div className="px-4 py-3">
           <button
-            onClick={() => setShowSettings((prev) => !prev)}
-            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-card-foreground transition-colors"
+            onClick={() => setActiveView("settings")}
+            className={cn(
+              "flex items-center gap-2 text-sm transition-colors",
+              activeView === "settings"
+                ? "text-foreground"
+                : "text-muted-foreground hover:text-card-foreground"
+            )}
           >
             <Settings className="w-4 h-4" />
             <span>Settings</span>

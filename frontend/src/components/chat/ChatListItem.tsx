@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Users, User, ChevronDown, Trash2 } from 'lucide-react';
+import { Users, User, Bot, ChevronDown, Trash2 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 import type { ChatListItemProps } from '@/types/chat';
 import { useAuthStore } from '@/lib/authStore';
@@ -28,8 +28,10 @@ export default function ChatListItem({ chat, isActive, onClick, roleByUserId }: 
   };
   
   const otherParticipant = getOtherParticipant();
+  const isBot = otherParticipant?.user?.email === 'agent-bot@system.local'
+    || otherParticipant?.user?.username === 'agent-bot';
   const otherParticipantRole =
-    chat.type === 'private' && otherParticipant?.user?.id
+    chat.type === 'private' && otherParticipant?.user?.id && !isBot
       ? roleByUserId?.[otherParticipant.user.id]
       : undefined;
 
@@ -46,6 +48,7 @@ export default function ChatListItem({ chat, isActive, onClick, roleByUserId }: 
     if (chat.type === 'group') {
       return chat.name || 'Group Chat';
     }
+    if (isBot) return 'AI Agent';
     return otherParticipant?.user?.username || 'Private Chat';
   };
   
@@ -167,11 +170,15 @@ export default function ChatListItem({ chat, isActive, onClick, roleByUserId }: 
             {/* Avatar with Online Status */}
             <div className="flex-shrink-0 relative">
               <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                chat.type === 'group' 
-                  ? 'bg-gradient-to-br from-purple-500 to-purple-600' 
-                  : 'bg-gradient-to-br from-blue-500 to-blue-600'
+                isBot
+                  ? 'bg-gradient-to-br from-violet-500 to-violet-600'
+                  : chat.type === 'group'
+                    ? 'bg-gradient-to-br from-purple-500 to-purple-600'
+                    : 'bg-gradient-to-br from-blue-500 to-blue-600'
               } text-white font-semibold text-lg shadow-sm`}>
-                {chat.type === 'group' ? (
+                {isBot ? (
+                  <Bot className="w-6 h-6" />
+                ) : chat.type === 'group' ? (
                   <Users className="w-6 h-6" />
                 ) : getInitials() ? (
                   <span>{getInitials()}</span>
@@ -191,6 +198,11 @@ export default function ChatListItem({ chat, isActive, onClick, roleByUserId }: 
                   }`}>
                     {getChatName()}
                   </h3>
+                  {isBot && (
+                    <span className="text-[10px] font-semibold bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded flex-shrink-0">
+                      AI
+                    </span>
+                  )}
                   {chat.type === 'private' && otherParticipantRole && (
                     <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded flex-shrink-0">
                       {otherParticipantRole}
