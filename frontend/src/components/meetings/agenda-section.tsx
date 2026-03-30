@@ -35,7 +35,7 @@ export function AgendaSection({
   void onAddAgendaItem;
   void isDragging;
   return (
-    <section className="py-1">
+    <section className="overflow-visible py-1">
       <div className="mb-6 flex items-center justify-between">
         <h3 className="text-xl font-bold text-slate-900">Agenda</h3>
         <Button type="button" size="sm" variant="ghost" onClick={onUseTemplate} className="text-slate-700">

@@ -33,6 +33,11 @@ import Layout from '@/components/layout/Layout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { MeetingHeader } from '@/components/meetings/meeting-header';
 import { AgendaSection } from '@/components/meetings/agenda-section';
+import {
+  AgendaBlockWithOutlineRail,
+  meetingAgendaItemDomId,
+  meetingAgendaSectionDomId,
+} from '@/components/meetings/AgendaTOC';
 import { ArtifactsSection } from '@/components/meetings/artifacts-section';
 import { SortableBlock } from '@/components/meetings/SortableBlock';
 import { CustomBlock } from '@/components/meetings/CustomBlock';
@@ -306,6 +311,7 @@ function SortableAgendaRow({
 
 function SortableNestedSection({
   section,
+  scrollAnchorId,
   isEditingTitle,
   onStartEditTitle,
   onSaveTitle,
@@ -313,6 +319,8 @@ function SortableNestedSection({
   children,
 }: {
   section: NestedSection;
+  /** DOM id for outline scroll / scroll-spy (e.g. meetingAgendaSectionDomId). */
+  scrollAnchorId: string;
   isEditingTitle: boolean;
   onStartEditTitle: () => void;
   onSaveTitle: (title: string) => void;
@@ -325,9 +333,10 @@ function SortableNestedSection({
 
   return (
     <div
+      id={scrollAnchorId}
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className="group/section p-1"
+      className="group/section scroll-mt-32 p-1"
     >
       <div className="mb-3 flex w-full items-center gap-2 text-sm font-bold tracking-wider text-black uppercase">
         <button
@@ -393,9 +402,10 @@ function SortableNestedItem({
 
   return (
     <div
+      id={meetingAgendaItemDomId(sectionId, item.id)}
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className="group/item flex items-center gap-2 px-1 py-1"
+      className="group/item flex scroll-mt-32 items-center gap-2 px-1 py-1"
       data-section-id={sectionId}
     >
       <button
@@ -1625,6 +1635,20 @@ export default function MeetingWorkspacePage() {
     if (id.startsWith('item:')) setActiveItemDragId(id.replace('item:', ''));
   };
 
+  const reorderNestedSectionsFromSortableIds = (active: string, over: string) => {
+    if (!active.startsWith('section:') || !over.startsWith('section:')) return;
+    if (active === over) return;
+    const activeSectionId = active.replace('section:', '');
+    const overSectionId = over.replace('section:', '');
+    setNestedSections((prev) => {
+      const oldIndex = prev.findIndex((s) => s.id === activeSectionId);
+      const newIndex = prev.findIndex((s) => s.id === overSectionId);
+      if (oldIndex < 0 || newIndex < 0) return prev;
+      return arrayMove(prev, oldIndex, newIndex);
+    });
+    setTemplateDirty(true);
+  };
+
   const handleNestedDragEnd = (event: DragEndEvent) => {
     setActiveSectionDragId(null);
     setActiveItemDragId(null);
@@ -1633,15 +1657,7 @@ export default function MeetingWorkspacePage() {
     if (!active || !over || active === over) return;
 
     if (active.startsWith('section:') && over.startsWith('section:')) {
-      const activeSectionId = active.replace('section:', '');
-      const overSectionId = over.replace('section:', '');
-      setNestedSections((prev) => {
-        const oldIndex = prev.findIndex((s) => s.id === activeSectionId);
-        const newIndex = prev.findIndex((s) => s.id === overSectionId);
-        if (oldIndex < 0 || newIndex < 0) return prev;
-        setTemplateDirty(true);
-        return arrayMove(prev, oldIndex, newIndex);
-      });
+      reorderNestedSectionsFromSortableIds(active, over);
       return;
     }
 
@@ -2059,6 +2075,11 @@ export default function MeetingWorkspacePage() {
                         </div>
                       )}
                     >
+                      <AgendaBlockWithOutlineRail
+                        sections={nestedSections}
+                        meetingId={meetingId}
+                        onSectionReorder={reorderNestedSectionsFromSortableIds}
+                      >
                       <AgendaSection
                         orderedAgenda={orderedAgenda}
                         addingAgenda={addingAgenda}
@@ -2101,6 +2122,7 @@ export default function MeetingWorkspacePage() {
                                 <SortableNestedSection
                                   key={section.id}
                                   section={section}
+                                  scrollAnchorId={meetingAgendaSectionDomId(section.id)}
                                   isEditingTitle={editingSectionId === section.id}
                                   onStartEditTitle={() => setEditingSectionId(section.id)}
                                   onSaveTitle={(title) => saveSectionTitle(section.id, title)}
@@ -2152,6 +2174,7 @@ export default function MeetingWorkspacePage() {
                           </button>
                         </div>
                       </AgendaSection>
+                      </AgendaBlockWithOutlineRail>
                     </SortableBlock>
                   );
                 }

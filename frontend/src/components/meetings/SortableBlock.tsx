@@ -43,7 +43,7 @@ export function SortableBlock({
     <div
       ref={setNodeRef}
       style={style}
-      className={`group relative rounded-xl border border-transparent shadow-none transition-all duration-200 hover:border-slate-200 hover:shadow-sm ${actions ? 'pr-14' : ''} ${className}`}
+      className={`group relative overflow-visible rounded-xl border border-transparent shadow-none transition-all duration-200 hover:border-slate-200 hover:shadow-sm ${actions ? 'pr-14' : ''} ${className}`}
     >
       {showOverlineLayout ? (
         <div className="mb-2 flex items-center gap-1.5">
@@ -82,7 +82,7 @@ export function SortableBlock({
         </>
       )}
       {actions ? (
-        <div className="absolute top-2 right-2 z-10 flex gap-2 pointer-events-none opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+        <div className="absolute top-2 right-2 z-[5] flex gap-2 pointer-events-none opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
           {actions}
         </div>
       ) : null}

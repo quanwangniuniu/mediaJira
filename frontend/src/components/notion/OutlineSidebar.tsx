@@ -10,12 +10,17 @@ interface OutlineSidebarProps {
   onItemClick: (id: string) => void;
 }
 
-const MAX_PILLS = 30;
-const PILL_BG = 'rgba(55,53,47,0.18)';
-const PILL_ACTIVE = 'rgba(55,53,47,0.6)';
-const PILL_HOVER = 'rgba(55,53,47,0.35)';
+export const OUTLINE_MAX_PILLS = 30;
+export const PILL_BG = 'rgba(55,53,47,0.18)';
+export const PILL_ACTIVE = 'rgba(55,53,47,0.6)';
+export const PILL_HOVER = 'rgba(55,53,47,0.35)';
+export const PILL_PLACEHOLDER_BG = 'rgba(55,53,47,0.07)';
 /** Notion-style horizontal dashes: L1=16px, L2=12px, L3=8px */
-const PILL_WIDTH_BY_LEVEL = { 1: 16, 2: 12, 3: 8 } as const;
+export const PILL_WIDTH_BY_LEVEL = { 1: 16, 2: 12, 3: 8 } as const;
+export const PILL_TRANSITION =
+  'opacity 160ms cubic-bezier(0.4,0,0.2,1), background 160ms cubic-bezier(0.4,0,0.2,1)';
+
+const MAX_PILLS = OUTLINE_MAX_PILLS;
 
 export default function OutlineSidebar({
   variant,
@@ -63,7 +68,7 @@ export default function OutlineSidebar({
               className="h-[3px] rounded-full shrink-0 border-0 bg-transparent p-0 m-0"
               style={{
                 width: 10,
-                background: 'rgba(55,53,47,0.07)',
+                background: PILL_PLACEHOLDER_BG,
                 cursor: 'default',
               }}
             />
