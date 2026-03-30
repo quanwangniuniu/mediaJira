@@ -18,9 +18,18 @@ const config: StorybookConfig = {
   staticDirs: ['../public'],
   webpackFinal: async (config) => {
     if (config.resolve) {
+      // Strip `@` from the merged alias so it can be appended last. Otherwise the key
+      // order from Next's preset keeps `@` first; AliasPlugin then matches `@` before
+      // `@/lib/api/...` and loads the real API instead of Storybook mocks.
+      const rawAlias = config.resolve.alias;
+      const base =
+        rawAlias && typeof rawAlias === 'object' && !Array.isArray(rawAlias)
+          ? { ...(rawAlias as Record<string, string>) }
+          : {};
+      const { '@': _omitAt, ...restAlias } = base;
+
       config.resolve.alias = {
-        ...config.resolve.alias,
-        '@': path.resolve(__dirname, '../src'),
+        ...restAlias,
         '@/lib/api/facebookMetaPhotoApi': path.resolve(
           __dirname,
           '../src/stories/facebook-meta/mocks/facebookMetaPhotoApi.mock.ts'
@@ -33,10 +42,9 @@ const config: StorybookConfig = {
           __dirname,
           '../src/stories/mocks/nextNavigation.mock.ts'
         ),
-        '@/components/ui/Modal': path.resolve(
-          __dirname,
-          '../src/stories/components/StorybookModal.tsx'
-        ),
+        // Let `@` resolve `@/components/ui/Modal` → src/components/ui/Modal.js (the old
+        // StorybookModal.tsx path no longer exists and broke all stories that import Modal).
+        '@': path.resolve(__dirname, '../src'),
       };
     }
     return config;

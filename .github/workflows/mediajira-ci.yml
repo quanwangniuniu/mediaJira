@@ -409,15 +409,24 @@ jobs:
       #     curl -fsSL -X POST "$DEPLOY_WEBHOOK_URL" \
       #       -H "Content-Type: application/json" \
       #       -d '{"action": "deploy", "source": "github"}'
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-southeast-2 
-      - name: Trigger CodeDeploy
+      # - name: Configure AWS credentials
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      #     aws-region: ap-southeast-2 
+      # - name: Trigger CodeDeploy
+      #   run: |
+      #     ${{ secrets.AWS_BLUE_GREEN_DEPLOYMENT_CMD }}
+
+      - name: Trigger deploy (preview)
+        if: github.ref == 'refs/heads/prod-preview'
+        env:
+          DEPLOY_WEBHOOK_URL: ${{ secrets.MEDIAJIRA_DEPLOY_WEBHOOK_URL_PREVIEW }}
         run: |
-          ${{ secrets.AWS_BLUE_GREEN_DEPLOYMENT_CMD }}
+          curl -fsSL -X POST "$DEPLOY_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d '{"action": "deploy", "source": "github"}'
 
   notify:
     needs: [block, code_scan, image_scan, application_test, deploy]

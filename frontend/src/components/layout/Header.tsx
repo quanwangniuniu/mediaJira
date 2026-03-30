@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Bell, User, Settings, LogOut, HelpCircle, Globe } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import Image from 'next/image';
 
 interface HeaderProps {
   className?: string;
@@ -123,15 +124,20 @@ const Header: React.FC<HeaderProps> = ({
       <div className="px-6 py-4">
         <div className="flex items-center justify-between">
           {/* Logo */}
-          <div
-            className="flex items-center gap-3 cursor-pointer"
-            onClick={() => router.push('/')}
-          >
-            <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-              <div className="w-4 h-4 bg-white rounded-full"></div>
+          <div className="flex items-center">
+              <Image
+                    src="/homepage_logo_square.jpeg"
+                    alt="MediaJira Logo"
+                    width={278}
+                    height={69}
+                    className="h-16 w-auto"
+                    priority
+                  />
+              <h1 className="text-3xl font-bold">
+                <span className="text-blue-800">Media</span>
+                <span className="text-gray-900">Jira</span>
+              </h1>
             </div>
-            <span className="text-xl font-bold text-gray-900">MediaJira</span>
-          </div>
 
           {/* Search Bar */}
           <div className="flex-1 max-w-lg mx-8">

@@ -8,6 +8,8 @@ export const SPRING = {
 
 // Floating window dimensions
 export const FLOATING_SIZE = { width: 420, height: 560 }
+export const FLOATING_MIN_SIZE = { width: 360, height: 400 }
+export const FLOATING_MAX_SIZE = { width: 800, height: 900 }
 
 // Layout constants
 export const SIDEBAR_WIDTH = 240   // w-60

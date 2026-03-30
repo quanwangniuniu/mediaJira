@@ -13,7 +13,6 @@ interface FrameItemProps {
 export default function FrameItem({
   item,
   isSelected,
-  onSelect,
 }: FrameItemProps) {
   const backgroundColor = item.style?.backgroundColor || "#f3f4f6";
   const borderColor = item.style?.borderColor || isSelected ? "#3b82f6" : "#9ca3af";
@@ -22,17 +21,17 @@ export default function FrameItem({
 
   return (
     <div
+      data-hit-region="true"
       style={{
         width: "100%",
         height: "100%",
         border: `${borderWidth}px solid ${borderColor}`,
         backgroundColor: backgroundColor,
         borderRadius: "4px",
-        cursor: "pointer",
+        cursor: "inherit",
         position: "relative",
         overflow: "hidden",
       }}
-      onClick={onSelect}
     >
       {/* Frame label/title */}
       {label && (

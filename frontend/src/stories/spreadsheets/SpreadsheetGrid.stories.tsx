@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { expect, userEvent, within, waitFor, screen } from '@storybook/test';
-import { fireEvent } from '@testing-library/react';
+import { fireEvent } from '@testing-library/dom';
 import SpreadsheetGrid from '@/components/spreadsheets/SpreadsheetGrid';
 
 /** Unique sheetId per story so module-level caches don't leak between stories */
