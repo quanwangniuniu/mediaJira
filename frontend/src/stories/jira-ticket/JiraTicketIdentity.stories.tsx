@@ -1,9 +1,11 @@
-import React from "react"
-import JiraTicketKey from "../components/jira-ticket/JiraTicketKey"
-import JiraTicketSummary from "../components/jira-ticket/JiraTicketSummary"
-import JiraTicketTypeIcon from "../components/jira-ticket/JiraTicketTypeIcon"
+import type { Meta, StoryObj } from "@storybook/react";
+import { expect, userEvent, within } from "@storybook/test";
+import React from "react";
+import JiraTicketKey from "@/components/jira-ticket/JiraTicketKey";
+import JiraTicketSummary from "@/components/jira-ticket/JiraTicketSummary";
+import JiraTicketTypeIcon from "@/components/jira-ticket/JiraTicketTypeIcon";
 
-const meta = {
+const meta: Meta = {
   title: "Jira Ticket/Identity",
   parameters: {
     layout: "centered",
@@ -19,8 +21,11 @@ const meta = {
     },
   },
   tags: ["autodocs"],
-}
-export default meta
+};
+
+export default meta;
+
+type Story = StoryObj;
 
 const JiraTicketHeader = ({
   type,
@@ -28,12 +33,12 @@ const JiraTicketHeader = ({
   summary,
   startInEdit = false,
 }: {
-  type: "task" | "bug" | "story" | "custom"
-  jiraTicketKey: string
-  summary: string
-  startInEdit?: boolean
+  type: "task" | "bug" | "story" | "custom";
+  jiraTicketKey: string;
+  summary: string;
+  startInEdit?: boolean;
 }) => {
-  const [value, setValue] = React.useState(summary)
+  const [value, setValue] = React.useState(summary);
 
   return (
     <div className="w-full max-w-2xl space-y-3">
@@ -47,10 +52,10 @@ const JiraTicketHeader = ({
         startInEdit={startInEdit}
       />
     </div>
-  )
-}
+  );
+};
 
-export const Default = {
+export const Default: Story = {
   render: () => (
     <JiraTicketHeader
       type="task"
@@ -58,9 +63,16 @@ export const Default = {
       summary="Create Jira ticket identity components"
     />
   ),
-}
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("SCRUM-2")).toBeInTheDocument();
+    await expect(
+      canvas.getByText("Create Jira ticket identity components")
+    ).toBeInTheDocument();
+  },
+};
 
-export const LongMultilineSummary = {
+export const LongMultilineSummary: Story = {
   render: () => (
     <JiraTicketHeader
       type="story"
@@ -70,9 +82,13 @@ export const LongMultilineSummary = {
       }
     />
   ),
-}
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText(/Support long, multiline summaries/)).toBeInTheDocument();
+  },
+};
 
-export const EditingState = {
+export const EditingState: Story = {
   render: () => (
     <JiraTicketHeader
       type="bug"
@@ -81,9 +97,17 @@ export const EditingState = {
       startInEdit
     />
   ),
-}
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const field = canvas.getByRole("textbox");
+    await userEvent.clear(field);
+    await userEvent.type(field, "Updated summary for Storybook");
+    await userEvent.keyboard("{Enter}");
+    await expect(canvas.getByText("Updated summary for Storybook")).toBeInTheDocument();
+  },
+};
 
-export const DifferentJiraTicketTypes = {
+export const DifferentJiraTicketTypes: Story = {
   render: () => (
     <div className="space-y-6">
       <JiraTicketHeader
@@ -108,4 +132,9 @@ export const DifferentJiraTicketTypes = {
       />
     </div>
   ),
-}
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("OPS-14")).toBeInTheDocument();
+    await expect(canvas.getByText("BUG-7")).toBeInTheDocument();
+  },
+};
