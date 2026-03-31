@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { expect, fn, userEvent, within } from "@storybook/test";
 import React, { useState } from "react";
 import JiraBoardView from "@/components/jira-ticket/JiraBoardView";
 
@@ -116,7 +117,11 @@ const tasksByType = {
   ],
 };
 
-function JiraBoardStory() {
+function JiraBoardStory({
+  onCreateTask,
+}: {
+  onCreateTask: (workTypeKey?: string, summaryPrefill?: string) => void;
+}) {
   const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
   const [editingSummary, setEditingSummary] = useState("");
 
@@ -183,7 +188,7 @@ function JiraBoardStory() {
       <JiraBoardView
         boardColumns={boardColumns}
         tasksByType={tasksByType}
-        onCreateTask={() => console.log("Create task")}
+        onCreateTask={onCreateTask}
         onTaskClick={() => {}}
         getTicketKey={getTicketKey}
         getBoardTypeIcon={getBoardTypeIcon}
@@ -202,5 +207,54 @@ function JiraBoardStory() {
 }
 
 export const Default: Story = {
-  render: () => <JiraBoardStory />,
+  args: {
+    onCreateTask: fn(),
+  },
+  render: (args) => (
+    <JiraBoardStory onCreateTask={args.onCreateTask ?? fn()} />
+  ),
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    const creates = canvas.getAllByRole("button", { name: /^create$/i });
+    await userEvent.click(creates[0]);
+    await expect(args.onCreateTask).toHaveBeenCalled();
+  },
 };
+
+/** Open filters and narrow by work type so non-matching columns show empty copy. */
+export const FilteredByWorkType: Story = {
+  args: {
+    onCreateTask: fn(),
+  },
+  render: (args) => (
+    <JiraBoardStory onCreateTask={args.onCreateTask ?? fn()} />
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: /filter/i }));
+    // Labels are not wired to <select> in JiraBoardView; target by default option text.
+    const workTypeSelect = await canvas.findByDisplayValue("All work types");
+    await userEvent.selectOptions(workTypeSelect, "report");
+    await expect(canvas.getByText("Create Q4 marketing report")).toBeInTheDocument();
+    await expect(canvas.getByText("No budget requests")).toBeInTheDocument();
+  },
+};
+
+/** Filter by assignee (uses approver display in board). */
+export const FilteredByAssignee: Story = {
+  args: {
+    onCreateTask: fn(),
+  },
+  render: (args) => (
+    <JiraBoardStory onCreateTask={args.onCreateTask ?? fn()} />
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: /filter/i }));
+    const assigneeSelect = await canvas.findByDisplayValue("All assignees");
+    await userEvent.selectOptions(assigneeSelect, "alex");
+    await expect(canvas.getByText("Create wallet integration")).toBeInTheDocument();
+  },
+};
+
+
