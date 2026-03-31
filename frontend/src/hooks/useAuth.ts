@@ -75,22 +75,25 @@ export default function useAuth() {
     }
   };
 
-  // Register function (unchanged from original)
   const register = async (userData: RegisterRequest): Promise<ApiResponse<RegisterResponse>> => {
     try {
-      const response = await authAPI.register(userData);
-      
-      // Registration returns 201 with message, not token
-      // User needs to verify email before logging in
-      return { success: true, data: response };
+      await authAPI.register(userData);
+
+      // Auto-login via the store's login action (same path as manual login)
+      const loginResult = await storeLogin(userData.email, userData.password);
+
+      if (loginResult.success) {
+        router.push('/campaigns');
+        return { success: true };
+      }
+
+      return { success: false, error: loginResult.error };
     } catch (error: any) {
       let message = 'Registration failed';
-      
-      // Backend returns 400 for all validation errors, differentiate by message content
+
       if (error.response?.status === 400) {
         const errorMsg = error.response.data?.error || '';
-        
-        // Provide user-friendly messages based on backend error messages
+
         if (errorMsg.includes('Missing fields')) {
           message = 'Please fill in all required fields (username, email, and password)';
         } else if (errorMsg.includes('Password too short')) {
@@ -105,7 +108,7 @@ export default function useAuth() {
       } else {
         message = error.response?.data?.error || 'Registration failed';
       }
-      
+
       toast.error(message);
       return { success: false, error: message };
     }

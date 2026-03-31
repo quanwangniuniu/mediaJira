@@ -109,7 +109,22 @@ class RegisterView(APIView):
             )
             UserRole.objects.get_or_create(user=user, role=default_role)
 
-        return Response({"message": "User registered successfully. Account is ready to use."}, status=201)
+        # Auto-login: generate JWT tokens so the frontend can log in immediately
+        refresh = RefreshToken.for_user(user)
+        profile_data = UserProfileSerializer(user, context={'request': request}).data
+        custom_access_token = generate_organization_access_token(user)
+
+        response_data = {
+            "message": "User registered successfully. Account is ready to use.",
+            "token": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": profile_data,
+        }
+
+        if custom_access_token:
+            response_data["organization_access_token"] = custom_access_token
+
+        return Response(response_data, status=201)
     
 class VerifyEmailView(APIView):
     def get(self, request):
