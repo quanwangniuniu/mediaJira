@@ -621,10 +621,10 @@ class DecisionFieldCompatibilityTests(TestCase):
         decision = self._create_decision()
         self.assertIn(decision.confidence, [1, 2, 3, 4, 5])
 
-    def test_decision_status_is_draft(self):
+    def test_decision_status_is_predraft(self):
         from decision.models import Decision
         decision = self._create_decision()
-        self.assertEqual(decision.status, Decision.Status.DRAFT)
+        self.assertEqual(decision.status, Decision.Status.PREDRAFT)
 
     def test_decision_project_linked(self):
         decision = self._create_decision()
@@ -766,7 +766,7 @@ class DecisionFieldCompatibilityTests(TestCase):
         """
         from decision.models import Decision
         decision = self._create_decision()
-        self.assertEqual(decision.status, Decision.Status.DRAFT)
+        self.assertEqual(decision.status, Decision.Status.PREDRAFT)
 
         # Should not raise ValidationError
         try:

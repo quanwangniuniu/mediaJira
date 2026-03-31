@@ -33,8 +33,20 @@ export function ChatInput({ onSend, onFileUpload, disabled, placeholder, helperT
     const file = e.target.files?.[0]
     if (!file) return
 
+    // Validate extension explicitly (browser accept can be bypassed)
+    const ext = file.name.split(".").pop()?.toLowerCase()
+    const allowedExts = ["csv", "xlsx", "xls"]
+    if (!ext || !allowedExts.includes(ext)) {
+      setFileError(
+        `Unsupported file type "${ext ? `.${ext}` : "unknown"}". Accepted formats: CSV, XLSX, XLS`
+      )
+      if (fileInputRef.current) fileInputRef.current.value = ""
+      return
+    }
+
     if (file.size > MAX_FILE_SIZE) {
-      setFileError("File too large (max 10MB)")
+      setFileError(`File too large (${formatFileSize(file.size)}). Maximum size: 10 MB`)
+      if (fileInputRef.current) fileInputRef.current.value = ""
       return
     }
 
@@ -130,6 +142,7 @@ export function ChatInput({ onSend, onFileUpload, disabled, placeholder, helperT
           accept={ACCEPTED_TYPES}
           className="hidden"
           onChange={handleFileSelect}
+          title="Upload CSV, XLSX, or XLS file (max 10 MB)"
         />
 
         {/* Text input */}

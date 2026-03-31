@@ -24,7 +24,7 @@ export default function useAuth() {
       const result = await storeLogin(credentials.email, credentials.password);
 
       if (result.success) {
-        router.push('/campaigns');
+        router.push('/tasks');
         return { success: true };
       }
 

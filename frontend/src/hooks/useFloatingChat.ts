@@ -12,11 +12,12 @@ import {
 
 /**
  * Hook managing floating chat drag state, snap-zone detection,
- * position calculations, and resize handling.
+ * position calculations, resize handling, and custom sizing.
  */
 export function useFloatingChat() {
   const { floatingChat, isRightPanelOpen, closeFloatingChat, setIsInSnapZone } = useAgentLayout()
   const [position, setPosition] = useState(() => getFloatingPosition(true))
+  const [customSize, setCustomSize] = useState<{ width: number; height: number } | null>(null)
   const isDragging = useRef(false)
 
   // Recalculate position on resize or right-panel toggle
@@ -30,6 +31,8 @@ export function useFloatingChat() {
     const handleResize = () => {
       if (floatingChat.mode === "floating") {
         setPosition(getFloatingPosition(isRightPanelOpen))
+        // Reset custom size so default recalculates for new viewport
+        setCustomSize(null)
       }
     }
 
@@ -46,14 +49,18 @@ export function useFloatingChat() {
     }
   }, [floatingChat.mode, isRightPanelOpen])
 
+  // Resolve actual floating size (custom or default)
+  const floatingWidth = customSize?.width ?? FLOATING_SIZE.width
+  const floatingHeight = customSize?.height ?? FLOATING_SIZE.height
+
   // Get the target animation values based on mode
   const getAnimateTarget = useCallback(() => {
     if (floatingChat.mode === "floating") {
       return {
         x: position.x,
         y: position.y,
-        width: FLOATING_SIZE.width,
-        height: FLOATING_SIZE.height,
+        width: floatingWidth,
+        height: floatingHeight,
         borderRadius: 12,
         opacity: 1,
         scale: 1,
@@ -93,7 +100,7 @@ export function useFloatingChat() {
       opacity: 0,
       scale: 0.3,
     }
-  }, [floatingChat.mode, floatingChat.originRect, position, isRightPanelOpen])
+  }, [floatingChat.mode, floatingChat.originRect, position, isRightPanelOpen, floatingWidth, floatingHeight])
 
   // Get the initial (entry) animation values
   const getInitialValues = useCallback(() => {
@@ -152,17 +159,19 @@ export function useFloatingChat() {
         closeFloatingChat()
       }
     } else {
-      // Stay at dropped position — update position state
+      // Stay at dropped position — use actual width for centering
       setPosition({
-        x: info.point.x - FLOATING_SIZE.width / 2,
+        x: info.point.x - floatingWidth / 2,
         y: info.point.y - 20, // offset for title bar grab
       })
     }
     setIsInSnapZone(false)
-  }, [closeFloatingChat, setIsInSnapZone])
+  }, [closeFloatingChat, setIsInSnapZone, floatingWidth])
 
   return {
     position,
+    customSize,
+    setCustomSize,
     getAnimateTarget,
     getInitialValues,
     dragConstraints,

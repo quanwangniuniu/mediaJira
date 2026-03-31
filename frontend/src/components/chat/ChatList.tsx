@@ -1,10 +1,17 @@
 'use client';
 
+import { useMemo } from 'react';
 import { Plus } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import type { ChatListProps } from '@/types/chat';
+import type { ChatListProps, Chat } from '@/types/chat';
 import ChatListItem from './ChatListItem';
 import EmptyChatState from './EmptyChatState';
+
+const AGENT_BOT_EMAIL = 'agent-bot@system.local';
+
+function isBotChat(chat: Chat): boolean {
+  return chat.participants?.some(p => p.user.email === AGENT_BOT_EMAIL) ?? false;
+}
 
 export default function ChatList({
   chats,
@@ -13,15 +20,24 @@ export default function ChatList({
   onCreateChat,
   roleByUserId,
 }: ChatListProps) {
+  // Pin bot chats to the top of the list
+  const sortedChats = useMemo(() => {
+    return [...chats].sort((a, b) => {
+      const aBot = isBotChat(a) ? 0 : 1;
+      const bBot = isBotChat(b) ? 0 : 1;
+      return aBot - bBot;
+    });
+  }, [chats]);
+
   return (
     <div className="flex flex-col h-full">
       {/* Chat List */}
       <ScrollArea className="flex-1">
-        {chats.length === 0 ? (
+        {sortedChats.length === 0 ? (
           <EmptyChatState onCreateChat={onCreateChat} />
         ) : (
           <div className="divide-y divide-gray-100">
-            {chats.map((chat) => (
+            {sortedChats.map((chat) => (
               <ChatListItem
                 key={chat.id}
                 chat={chat}

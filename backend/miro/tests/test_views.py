@@ -5,7 +5,7 @@ from rest_framework import status
 import uuid
 
 from core.models import Project, ProjectMember, Organization
-from miro.models import Board, BoardItem, BoardRevision
+from miro.models import Board, BoardItem, BoardRevision, BoardAccess
 
 User = get_user_model()
 
@@ -238,6 +238,80 @@ class BoardAPITest(TestCase):
         payload = {"title": "Updated Title"}
 
         response = self.client.patch(url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_get_latest_project_board_prefers_access_record(self):
+        """Latest project board prefers per-user access record over default ordering."""
+        older_board = Board.objects.create(
+            project=self.project,
+            title="Older Board",
+            share_token="token323456789012345678",
+        )
+        newer_board = Board.objects.create(
+            project=self.project,
+            title="Newer Board",
+            share_token="token423456789012345678",
+        )
+        BoardAccess.objects.create(
+            user=self.user,
+            project=self.project,
+            board=older_board,
+        )
+
+        response = self.client.get(f"/api/miro/projects/{self.project.id}/latest-board/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["board"]["id"], str(older_board.id))
+        self.assertNotEqual(response.data["board"]["id"], str(newer_board.id))
+
+    def test_get_latest_project_board_fallback_to_recent_board(self):
+        """Latest endpoint falls back to most recently updated board when no access record."""
+        older_board = Board.objects.create(
+            project=self.project,
+            title="Older Board",
+            share_token="token523456789012345678",
+        )
+        newer_board = Board.objects.create(
+            project=self.project,
+            title="Newer Board",
+            share_token="token623456789012345678",
+        )
+        self.assertNotEqual(older_board.id, newer_board.id)
+
+        response = self.client.get(f"/api/miro/projects/{self.project.id}/latest-board/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["board"]["id"], str(newer_board.id))
+
+    def test_mark_board_access_updates_record(self):
+        """Marking access persists latest board for user/project."""
+        board = Board.objects.create(
+            project=self.project,
+            title="Tracked Board",
+            share_token="token723456789012345678",
+        )
+
+        response = self.client.post(f"/api/miro/boards/{board.id}/access/", format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["board_id"], str(board.id))
+        self.assertEqual(response.data["project_id"], self.project.id)
+        self.assertIn("last_accessed_at", response.data)
+
+        access = BoardAccess.objects.get(user=self.user, project=self.project)
+        self.assertEqual(access.board_id, board.id)
+
+    def test_mark_board_access_denied_for_non_member(self):
+        """Non-members cannot mark board access."""
+        other_project = Project.objects.create(
+            name="Other Project",
+            organization=self.organization,
+            owner=self.other_user,
+        )
+        other_board = Board.objects.create(
+            project=other_project,
+            title="Other Board",
+            share_token="token823456789012345678",
+        )
+
+        response = self.client.post(f"/api/miro/boards/{other_board.id}/access/", format="json")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 

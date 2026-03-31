@@ -13,7 +13,6 @@ interface ShapeItemProps {
 export default function ShapeItem({
   item,
   isSelected,
-  onSelect,
 }: ShapeItemProps) {
   const shapeType = item.style?.shapeType || "rect";
   const backgroundColor = item.style?.backgroundColor || "#ffffff";
@@ -45,7 +44,7 @@ export default function ShapeItem({
 
     if (shapeType === "rect") {
       return (
-        <div style={baseStyle}>
+        <div data-hit-region="true" style={baseStyle}>
           {content && (
             <div style={{ padding: "4px", wordBreak: "break-word", textAlign: "center" }}>
               {content}
@@ -57,7 +56,7 @@ export default function ShapeItem({
 
     if (shapeType === "roundRect") {
       return (
-        <div style={{ ...baseStyle, borderRadius: "8px" }}>
+        <div data-hit-region="true" style={{ ...baseStyle, borderRadius: "8px" }}>
           {content && (
             <div style={{ padding: "4px", wordBreak: "break-word", textAlign: "center" }}>
               {content}
@@ -69,7 +68,7 @@ export default function ShapeItem({
 
     if (shapeType === "ellipse") {
       return (
-        <div style={{ ...baseStyle, borderRadius: "50%" }}>
+        <div data-hit-region="true" style={{ ...baseStyle, borderRadius: "50%" }}>
           {content && (
             <div style={{ padding: "4px", wordBreak: "break-word", textAlign: "center" }}>
               {content}
@@ -83,6 +82,7 @@ export default function ShapeItem({
       // Diamond using CSS clip-path
       return (
         <div
+          data-hit-region="true"
           style={{
             ...baseStyle,
             clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)",
@@ -100,7 +100,7 @@ export default function ShapeItem({
 
     // Default to rect
     return (
-      <div style={baseStyle}>
+      <div data-hit-region="true" style={baseStyle}>
         {content && (
           <div style={{ padding: "4px", wordBreak: "break-word", textAlign: "center" }}>
             {content}
@@ -116,9 +116,8 @@ export default function ShapeItem({
         width: "100%",
         height: "100%",
         border: isSelected ? "2px solid #3b82f6" : "none",
-        cursor: "pointer",
+        cursor: "inherit",
       }}
-      onClick={onSelect}
     >
       <div style={containerStyle}>{renderShape()}</div>
     </div>

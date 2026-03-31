@@ -12,6 +12,7 @@ User = get_user_model()
 
 class Decision(TimeStampedModel):
     class Status(models.TextChoices):
+        PREDRAFT = 'PREDRAFT', 'Pre-Draft'
         DRAFT = 'DRAFT', 'Draft'
         AWAITING_APPROVAL = 'AWAITING_APPROVAL', 'Awaiting Approval'
         COMMITTED = 'COMMITTED', 'Committed'
@@ -45,6 +46,7 @@ class Decision(TimeStampedModel):
     is_reference_case = models.BooleanField(default=False)
     created_by_agent = models.BooleanField(default=False)
     agent_session_id = models.UUIDField(null=True, blank=True)
+    is_pre_draft = models.BooleanField(default=False)
     project = models.ForeignKey(
         Project,
         on_delete=models.CASCADE,
@@ -166,9 +168,14 @@ class Decision(TimeStampedModel):
         if errors:
             raise ValidationError(errors)
 
+    @transition(field=status, source=Status.PREDRAFT, target=Status.DRAFT)
+    def promote_to_draft(self):
+        """Promote an agent-created pre-draft to a full draft."""
+        pass
+
     @transition(
         field=status,
-        source=Status.DRAFT,
+        source=[Status.PREDRAFT, Status.DRAFT],
         target=Status.COMMITTED,
         conditions=[lambda self: not self._compute_requires_approval()],
     )
@@ -180,7 +187,7 @@ class Decision(TimeStampedModel):
 
     @transition(
         field=status,
-        source=Status.DRAFT,
+        source=[Status.PREDRAFT, Status.DRAFT],
         target=Status.AWAITING_APPROVAL,
         conditions=[lambda self: self._compute_requires_approval()],
     )

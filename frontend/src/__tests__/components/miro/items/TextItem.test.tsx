@@ -120,14 +120,10 @@ describe('TextItem Component', () => {
   });
 
   describe('Interaction', () => {
-    test('calls onSelect when clicked', () => {
-      const onSelect = jest.fn();
-      render(<TextItem {...defaultProps} onSelect={onSelect} />);
-      
-      const container = screen.getByText('Test Text').parentElement;
-      fireEvent.click(container!);
-      
-      expect(onSelect).toHaveBeenCalled();
+    test('renders a hit region for selection', () => {
+      render(<TextItem {...defaultProps} />);
+      const hit = screen.getByText('Test Text');
+      expect(hit).toHaveAttribute('data-hit-region', 'true');
     });
   });
 });

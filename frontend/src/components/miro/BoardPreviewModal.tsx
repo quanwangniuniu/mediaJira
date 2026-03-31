@@ -270,7 +270,23 @@ export default function BoardPreviewModal({
                     linear-gradient(to right, #e5e7eb 1px, transparent 1px),
                     linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)
                   `,
-                  backgroundSize: `${20 * viewport.zoom}px ${20 * viewport.zoom}px`,
+                  backgroundSize: (() => {
+                    const BASE_CELL_WORLD = 20;
+                    const MIN_CELL_PX = 16;
+                    const MAX_CELL_PX = 40;
+                    let cellWorld = BASE_CELL_WORLD;
+                    let cellPx = cellWorld * viewport.zoom;
+                    while (cellPx > MAX_CELL_PX) {
+                      cellWorld /= 2;
+                      cellPx /= 2;
+                    }
+                    while (cellPx < MIN_CELL_PX) {
+                      cellWorld *= 2;
+                      cellPx *= 2;
+                    }
+                    return `${cellPx}px ${cellPx}px`;
+                  })(),
+                  backgroundPosition: `${viewport.x}px ${viewport.y}px`,
                 }}
               />
 

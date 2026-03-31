@@ -87,7 +87,7 @@ export interface SSEEvent {
 
 // ==================== Chat Request ====================
 
-export type AgentAction = 'analyze' | 'confirm_decision' | 'create_tasks' | 'generate_miro' | 'start_follow_up' | 'cancel_follow_up';
+export type AgentAction = 'analyze' | 'confirm_decision' | 'create_tasks' | 'generate_miro' | 'distribute_message' | 'start_follow_up' | 'cancel_follow_up';
 
 export interface CalendarContextPayload {
   type: 'calendar' | 'event';
@@ -178,6 +178,14 @@ export interface RecommendedTask {
   type: string;
   summary: string;
   priority: 'HIGH' | 'MEDIUM' | 'LOW';
+}
+
+// ==================== Workflow Step State ====================
+
+export interface WorkflowStepState {
+  analysisComplete: boolean;
+  decisionCreated: boolean;
+  tasksCreated: boolean;
 }
 
 // ==================== Workflow Types ====================

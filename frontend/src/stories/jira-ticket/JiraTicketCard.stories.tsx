@@ -1,13 +1,16 @@
-import React from "react"
-import { MoreHorizontal, Plus } from "lucide-react"
+import type { Meta, StoryObj } from "@storybook/react";
+import { expect, userEvent, within } from "@storybook/test";
+import React from "react";
+import { MoreHorizontal, Plus } from "lucide-react";
 import JiraTicketCard, {
   JiraTicketCardBody,
   JiraTicketCardFooter,
   JiraTicketCardHeader,
-} from "../components/jira-ticket/JiraTicketCard"
+} from "@/components/jira-ticket/JiraTicketCard";
 
-const meta = {
+const meta: Meta<typeof JiraTicketCard> = {
   title: "Jira Ticket/Card",
+  component: JiraTicketCard,
   parameters: {
     layout: "centered",
     chromatic: {
@@ -22,10 +25,13 @@ const meta = {
     },
   },
   tags: ["autodocs"],
-}
-export default meta
+};
 
-export const Default = {
+export default meta;
+
+type Story = StoryObj<typeof JiraTicketCard>;
+
+export const Default: Story = {
   render: () => (
     <JiraTicketCard className="w-[560px]">
       <JiraTicketCardHeader>Description</JiraTicketCardHeader>
@@ -38,9 +44,14 @@ export const Default = {
       <JiraTicketCardFooter>Last updated 2 days ago</JiraTicketCardFooter>
     </JiraTicketCard>
   ),
-}
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Description")).toBeInTheDocument();
+    await expect(canvas.getByText(/Last updated 2 days ago/)).toBeInTheDocument();
+  },
+};
 
-export const WithHeaderActions = {
+export const WithHeaderActions: Story = {
   render: () => (
     <JiraTicketCard className="w-[560px]">
       <JiraTicketCardHeader>
@@ -73,9 +84,14 @@ export const WithHeaderActions = {
       <JiraTicketCardFooter>3 of 5 complete</JiraTicketCardFooter>
     </JiraTicketCard>
   ),
-}
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: /add/i }));
+    await userEvent.click(canvas.getByRole("button", { name: /more actions/i }));
+  },
+};
 
-export const CompactVariant = {
+export const CompactVariant: Story = {
   render: () => (
     <JiraTicketCard className="w-[560px]">
       <JiraTicketCardHeader className="px-3 py-2 text-sm">
@@ -91,9 +107,13 @@ export const CompactVariant = {
       </JiraTicketCardFooter>
     </JiraTicketCard>
   ),
-}
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Activity")).toBeInTheDocument();
+  },
+};
 
-export const WithoutFooter = {
+export const WithoutFooter: Story = {
   render: () => (
     <JiraTicketCard className="w-[560px]">
       <JiraTicketCardHeader>Attachments</JiraTicketCardHeader>
@@ -104,9 +124,13 @@ export const WithoutFooter = {
       </JiraTicketCardBody>
     </JiraTicketCard>
   ),
-}
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByText(/updated/i)).not.toBeInTheDocument();
+  },
+};
 
-export const EmptyPlaceholder = {
+export const EmptyPlaceholder: Story = {
   render: () => (
     <JiraTicketCard className="w-[560px]">
       <JiraTicketCardHeader>Description</JiraTicketCardHeader>
@@ -115,4 +139,8 @@ export const EmptyPlaceholder = {
       </JiraTicketCardBody>
     </JiraTicketCard>
   ),
-}
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText(/add a description/i)).toBeInTheDocument();
+  },
+};

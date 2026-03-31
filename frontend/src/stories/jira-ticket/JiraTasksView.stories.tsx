@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { expect, fn, userEvent, within } from "@storybook/test";
 import React, { useState } from "react";
 import JiraTasksView, {
   JiraTaskItem,
@@ -205,16 +206,16 @@ const mockTimelineTasks: TaskData[] = [
   },
 ];
 
-// Shared state for controlled components
 function JiraTasksWithState({
   initialMode = "list",
+  onTaskClick,
 }: {
   initialMode?: JiraTasksViewMode;
+  onTaskClick?: (task: JiraTaskItem) => void;
 }) {
   const [viewMode, setViewMode] = useState<JiraTasksViewMode>(initialMode);
   const [searchValue, setSearchValue] = useState("");
 
-  // Mock filtered tasks for list and timeline views
   const filteredTasks = mockTasks.filter(
     (task) =>
       !searchValue ||
@@ -232,11 +233,11 @@ function JiraTasksWithState({
           searchValue={searchValue}
           onSearchChange={setSearchValue}
           searchPlaceholder="Search tasks..."
-          onTaskClick={(task) => console.log("Open task:", task)}
+          onTaskClick={onTaskClick}
           renderTimeline={() => (
             <TimelineViewComponent
               tasks={mockTimelineTasks}
-              onTaskClick={(task) => console.log("Task clicked:", task)}
+              onTaskClick={() => {}}
               reloadTasks={async () => {}}
               onCreateTask={() => {}}
               currentUser={{
@@ -277,11 +278,35 @@ function JiraTasksWithSearch() {
 }
 
 export const ListView: Story = {
-  render: () => <JiraTasksWithState initialMode="list" />,
+  args: {
+    onTaskClick: fn(),
+  },
+  render: (args) => (
+    <JiraTasksWithState
+      initialMode="list"
+      onTaskClick={args.onTaskClick ?? fn()}
+    />
+  ),
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    const list = canvas.getByRole("listbox", { name: /task list/i });
+    await userEvent.click(
+      within(list).getByRole("option", { name: /SAM1-10/i })
+    );
+    await expect(canvas.getByTestId("task-detail-panel")).toBeInTheDocument();
+    await userEvent.click(canvas.getByTestId("task-open-button"));
+    await expect(args.onTaskClick).toHaveBeenCalled();
+  },
 };
 
 export const TimelineViewStory: Story = {
   render: () => <JiraTasksWithState initialMode="timeline" />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByTestId("view-button-list"));
+    await expect(canvas.getByRole("listbox", { name: /task list/i })).toBeInTheDocument();
+    await userEvent.click(canvas.getByTestId("view-button-timeline"));
+  },
 };
 
 export const Empty: Story = {
@@ -297,12 +322,77 @@ export const Empty: Story = {
       </div>
     </div>
   ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("No tasks to show.")).toBeInTheDocument();
+  },
 };
 
 export const WithSearch: Story = {
   render: () => <JiraTasksWithSearch />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const search = canvas.getByPlaceholderText(/search tasks/i);
+    await userEvent.click(search);
+    await userEvent.clear(search);
+    await userEvent.type(search, "alert");
+    await expect(
+      canvas.getByRole("option", { name: /SAM1-9/i })
+    ).toBeInTheDocument();
+  },
+};
+
+/** Matches tasks page error when `tasksError` is set (`frontend/src/app/tasks/page.js`). */
+const SAMPLE_TASKS_ERROR_MESSAGE = "Failed to fetch tasks";
+
+export const WithPageError: Story = {
+  render: () => (
+    <div className="min-h-screen bg-[#f8f9fb] px-6 py-6">
+      <div className="mx-auto max-w-6xl">
+        <div className="text-center py-8">
+          <p className="text-red-600">
+            Error loading tasks: {SAMPLE_TASKS_ERROR_MESSAGE}
+          </p>
+          <button
+            type="button"
+            onClick={() => {}}
+            className="mt-2 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByText(
+        `Error loading tasks: ${SAMPLE_TASKS_ERROR_MESSAGE}`
+      )
+    ).toBeInTheDocument();
+    await expect(
+      canvas.getByRole("button", { name: /^retry$/i })
+    ).toBeInTheDocument();
+  },
 };
 
 export const Default: Story = {
-  render: () => <JiraTasksWithState initialMode="list" />,
+  args: {
+    onTaskClick: fn(),
+  },
+  render: (args) => (
+    <JiraTasksWithState
+      initialMode="list"
+      onTaskClick={args.onTaskClick ?? fn()}
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const search = canvas.getByPlaceholderText(/search tasks/i);
+    await userEvent.type(search, "report");
+    await expect(canvas.getByRole("option", { name: /SAM1-7/i })).toBeInTheDocument();
+    await userEvent.click(canvas.getByTestId("view-button-timeline"));
+    await userEvent.click(canvas.getByTestId("view-button-list"));
+  },
 };

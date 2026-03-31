@@ -28,33 +28,41 @@ export const useTaskData = () => {
     undefined,
   );
 
+  // Agent ingest/telemetry calls are best-effort debugging helpers.
+  // When the local ingest service is not running, these requests will fail and
+  // spam DevTools with `ERR_CONNECTION_REFUSED`, hurting UX (e.g. "flashing"
+  // detail pages due to repeated re-renders).
+  const ENABLE_INGEST = false;
+
   // Get all tasks with optional filters
   const fetchTasks = useCallback(
     async (params?: TaskFetchParams) => {
       // Record the last request parameters
       setLastParams(params || undefined);
       // #region agent log
-      fetch(
-        "http://127.0.0.1:7242/ingest/d1c5a812-8fba-4f4b-91ec-d69ecfc99679",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            runId: "usetaskdata-project-debug-v1",
-            hypothesisId: "H1",
-            location: "useTaskData.ts:fetchTasks:entry",
-            message: "fetchTasks called with params",
-            data: {
-              hasParams: Boolean(params),
-              project_id: params?.project_id ?? null,
-              include_subtasks: params?.include_subtasks ?? null,
-              all_projects: params?.all_projects ?? null,
-              type: params?.type ?? null,
-            },
-            timestamp: Date.now(),
-          }),
-        },
-      ).catch(() => {});
+      if (ENABLE_INGEST) {
+        fetch(
+          "http://127.0.0.1:7242/ingest/d1c5a812-8fba-4f4b-91ec-d69ecfc99679",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              runId: "usetaskdata-project-debug-v1",
+              hypothesisId: "H1",
+              location: "useTaskData.ts:fetchTasks:entry",
+              message: "fetchTasks called with params",
+              data: {
+                hasParams: Boolean(params),
+                project_id: params?.project_id ?? null,
+                include_subtasks: params?.include_subtasks ?? null,
+                all_projects: params?.all_projects ?? null,
+                type: params?.type ?? null,
+              },
+              timestamp: Date.now(),
+            }),
+          },
+        ).catch(() => {});
+      }
       // #endregion
 
       try {
@@ -72,21 +80,24 @@ export const useTaskData = () => {
 
           if (nextUrl) {
             // #region agent log
-            fetch(
-              "http://127.0.0.1:7242/ingest/d1c5a812-8fba-4f4b-91ec-d69ecfc99679",
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  runId: "usetaskdata-project-debug-v1",
-                  hypothesisId: "H3",
-                  location: "useTaskData.ts:fetchTasks:nextUrlRequest",
-                  message: "Requesting paginated next URL",
-                  data: { nextUrl, page },
-                  timestamp: Date.now(),
-                }),
-              },
-            ).catch(() => {});
+            if (ENABLE_INGEST) {
+              fetch(
+                "http://127.0.0.1:7242/ingest/d1c5a812-8fba-4f4b-91ec-d69ecfc99679",
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    runId: "usetaskdata-project-debug-v1",
+                    hypothesisId: "H3",
+                    location:
+                      "useTaskData.ts:fetchTasks:nextUrlRequest",
+                    message: "Requesting paginated next URL",
+                    data: { nextUrl, page },
+                    timestamp: Date.now(),
+                  }),
+                },
+              ).catch(() => {});
+            }
             // #endregion
             // If we have a next URL, use it directly
             response = await api.get(nextUrl);
@@ -94,26 +105,29 @@ export const useTaskData = () => {
             // Otherwise, use TaskAPI with params and page number
             const requestParams = { ...params, page };
             // #region agent log
-            fetch(
-              "http://127.0.0.1:7242/ingest/d1c5a812-8fba-4f4b-91ec-d69ecfc99679",
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  runId: "usetaskdata-project-debug-v1",
-                  hypothesisId: "H2",
-                  location: "useTaskData.ts:fetchTasks:firstPageRequest",
-                  message: "Requesting tasks with TaskAPI.getTasks",
-                  data: {
-                    page,
-                    project_id: requestParams.project_id ?? null,
-                    include_subtasks: requestParams.include_subtasks ?? null,
-                    all_projects: requestParams.all_projects ?? null,
-                  },
-                  timestamp: Date.now(),
-                }),
-              },
-            ).catch(() => {});
+            if (ENABLE_INGEST) {
+              fetch(
+                "http://127.0.0.1:7242/ingest/d1c5a812-8fba-4f4b-91ec-d69ecfc99679",
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    runId: "usetaskdata-project-debug-v1",
+                    hypothesisId: "H2",
+                    location: "useTaskData.ts:fetchTasks:firstPageRequest",
+                    message: "Requesting tasks with TaskAPI.getTasks",
+                    data: {
+                      page,
+                      project_id: requestParams.project_id ?? null,
+                      include_subtasks:
+                        requestParams.include_subtasks ?? null,
+                      all_projects: requestParams.all_projects ?? null,
+                    },
+                    timestamp: Date.now(),
+                  }),
+                },
+              ).catch(() => {});
+            }
             // #endregion
             response = await TaskAPI.getTasks(requestParams);
           }
@@ -123,29 +137,29 @@ export const useTaskData = () => {
             responseData.results ||
             (Array.isArray(responseData) ? responseData : []);
           // #region agent log
-          fetch(
-            "http://127.0.0.1:7242/ingest/d1c5a812-8fba-4f4b-91ec-d69ecfc99679",
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                runId: "usetaskdata-project-debug-v1",
-                hypothesisId: "H4",
-                location: "useTaskData.ts:fetchTasks:responseParsed",
-                message: "Parsed tasks response page",
-                data: {
-                  page,
-                  hasResultsField: Boolean(
-                    responseData && responseData.results,
-                  ),
-                  isArrayResponse: Array.isArray(responseData),
-                  parsedTaskCount: Array.isArray(tasks) ? tasks.length : -1,
-                  next: responseData?.next ?? null,
-                },
-                timestamp: Date.now(),
-              }),
-            },
-          ).catch(() => {});
+          if (ENABLE_INGEST) {
+            fetch(
+              "http://127.0.0.1:7242/ingest/d1c5a812-8fba-4f4b-91ec-d69ecfc99679",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  runId: "usetaskdata-project-debug-v1",
+                  hypothesisId: "H4",
+                  location: "useTaskData.ts:fetchTasks:responseParsed",
+                  message: "Parsed tasks response page",
+                  data: {
+                    page,
+                    hasResultsField: Boolean(responseData && responseData.results),
+                    isArrayResponse: Array.isArray(responseData),
+                    parsedTaskCount: Array.isArray(tasks) ? tasks.length : -1,
+                    next: responseData?.next ?? null,
+                  },
+                  timestamp: Date.now(),
+                }),
+              },
+            ).catch(() => {});
+          }
           // #endregion
           allTasks = allTasks.concat(tasks);
 
@@ -161,29 +175,31 @@ export const useTaskData = () => {
         return allTasks;
       } catch (err) {
         // #region agent log
-        fetch(
-          "http://127.0.0.1:7242/ingest/d1c5a812-8fba-4f4b-91ec-d69ecfc99679",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              runId: "usetaskdata-project-debug-v1",
-              hypothesisId: "H5",
-              location: "useTaskData.ts:fetchTasks:catch",
-              message: "fetchTasks threw error",
-              data: {
-                message: (err as any)?.message ?? null,
-                status: (err as any)?.response?.status ?? null,
-                responseDetail:
-                  (err as any)?.response?.data?.detail ??
-                  (err as any)?.response?.data?.message ??
-                  null,
-                responseDataType: typeof (err as any)?.response?.data,
-              },
-              timestamp: Date.now(),
-            }),
-          },
-        ).catch(() => {});
+        if (ENABLE_INGEST) {
+          fetch(
+            "http://127.0.0.1:7242/ingest/d1c5a812-8fba-4f4b-91ec-d69ecfc99679",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                runId: "usetaskdata-project-debug-v1",
+                hypothesisId: "H5",
+                location: "useTaskData.ts:fetchTasks:catch",
+                message: "fetchTasks threw error",
+                data: {
+                  message: (err as any)?.message ?? null,
+                  status: (err as any)?.response?.status ?? null,
+                  responseDetail:
+                    (err as any)?.response?.data?.detail ??
+                    (err as any)?.response?.data?.message ??
+                    null,
+                  responseDataType: typeof (err as any)?.response?.data,
+                },
+                timestamp: Date.now(),
+              }),
+            },
+          ).catch(() => {});
+        }
         // #endregion
         console.error("Backend fetch failed:", err);
         setError(err);

@@ -13,12 +13,12 @@ interface StickyNoteItemProps {
 export default function StickyNoteItem({
   item,
   isSelected,
-  onSelect,
 }: StickyNoteItemProps) {
   const backgroundColor = item.style.backgroundColor || "#fef08a"; // Yellow sticky note
 
   return (
     <div
+      data-hit-region="true"
       style={{
         width: "100%",
         height: "100%",
@@ -28,7 +28,6 @@ export default function StickyNoteItem({
         boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
         borderRadius: "4px",
       }}
-      onClick={onSelect}
     >
       <div
         style={{
