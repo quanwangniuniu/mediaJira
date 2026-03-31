@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
+import { createPortal, flushSync } from 'react-dom';
 import {
   DndContext,
   KeyboardSensor,
@@ -21,15 +22,26 @@ import { GripVertical } from 'lucide-react';
 
 import type { NestedAgendaTemplateSection } from '@/lib/meetings/meetingTemplates';
 import {
-  OUTLINE_MAX_PILLS,
   PILL_ACTIVE,
   PILL_BG,
   PILL_HOVER,
-  PILL_PLACEHOLDER_BG,
   PILL_TRANSITION,
   PILL_WIDTH_BY_LEVEL,
 } from '@/components/notion/OutlineSidebar';
 import { cn } from '@/lib/utils';
+
+class NoDndPointerSensor extends PointerSensor {
+  static activators = [
+    {
+      eventName: 'onPointerDown' as const,
+      handler: ({ nativeEvent }: React.PointerEvent<Element>) => {
+        const target = nativeEvent.target as HTMLElement | null;
+        if (!target) return true;
+        return !target.closest('[data-no-dnd="true"]');
+      },
+    },
+  ];
+}
 
 export function meetingAgendaSectionDomId(sectionId: string): string {
   return `meeting-agenda-section-${sectionId}`;
@@ -56,17 +68,15 @@ function outlineToMainSectionSortableId(id: string): string {
   return id;
 }
 
-/** Delay before showing pills strip after hovering Agenda block */
-const AGENDA_STRIP_SHOW_MS = 150;
-/** Delay before hiding pills strip after leaving Agenda block */
-const AGENDA_STRIP_HIDE_MS = 300;
-/** Delay before showing TOC card after hovering pills */
-const TOC_CARD_SHOW_MS = 80;
-/** Delay before hiding TOC card after leaving pills/card */
-const TOC_CARD_HIDE_MS = 200;
-
 /** Top margin for scroll-spy active section detection */
 const SCROLL_SPY_TOP_MARGIN = 128;
+
+/** Height of the pills container */
+const PILLS_CONTAINER_HEIGHT = 200;
+/** Height of the TOC card (approximate max) */
+const TOC_CARD_HEIGHT = 360;
+/** Padding from block edges */
+const EDGE_PADDING = 24;
 
 const LIST_TRANSITION = 'background 160ms cubic-bezier(0.4, 0, 0.2, 1), border-color 160ms cubic-bezier(0.4, 0, 0.2, 1)';
 const BAR_TRANSITION = 'background 160ms cubic-bezier(0.4, 0, 0.2, 1)';
@@ -105,8 +115,7 @@ export function buildAgendaOutlineEntries(sections: NestedAgendaTemplateSection[
 
 /**
  * Notion-style pills column.
- * Each pill represents an outline entry (section or item).
- * Active section is highlighted, hover state shows intermediate color.
+ * Shows a compact vertical line of pills representing outline entries.
  */
 function AgendaOutlinePills({
   entries,
@@ -114,19 +123,24 @@ function AgendaOutlinePills({
   hoveredId,
   setHoveredId,
   onEntryClick,
+  onAnyPillClick,
 }: {
   entries: AgendaOutlineEntry[];
   activeSectionId: string | null;
   hoveredId: string | null;
   setHoveredId: (id: string | null) => void;
   onEntryClick: (entry: AgendaOutlineEntry) => void;
+  onAnyPillClick?: () => void;
 }) {
-  // Only show pills for actual entries, up to OUTLINE_MAX_PILLS
-  const pillsSlice = entries.slice(0, OUTLINE_MAX_PILLS);
-  const placeholderCount = Math.max(0, OUTLINE_MAX_PILLS - pillsSlice.length);
+  // Limit pills to a reasonable number for compact display
+  const maxPills = Math.min(entries.length, 15);
+  const pillsSlice = entries.slice(0, maxPills);
 
   return (
-    <div className="flex h-[min(50vh,320px)] w-full flex-col items-end justify-between py-2">
+    <div
+      className="flex flex-col items-end justify-between gap-1 py-2"
+      style={{ height: PILLS_CONTAINER_HEIGHT }}
+    >
       {pillsSlice.map((entry) => {
         const level = entry.level;
         const isActive =
@@ -146,32 +160,22 @@ function AgendaOutlinePills({
               background: pillColor,
               transition: PILL_TRANSITION,
             }}
-            onClick={() => onEntryClick(entry)}
+            onClick={() => {
+              onAnyPillClick?.();
+              onEntryClick(entry);
+            }}
             onMouseEnter={() => setHoveredId(entry.id)}
             onMouseLeave={() => setHoveredId(null)}
             aria-label={entry.label}
           />
         );
       })}
-      {/* Placeholder pills for visual consistency */}
-      {Array.from({ length: placeholderCount }, (_, i) => (
-        <span
-          key={`placeholder-${i}`}
-          className="m-0 h-[3px] shrink-0 rounded-full"
-          style={{
-            width: 10,
-            background: PILL_PLACEHOLDER_BG,
-          }}
-          aria-hidden
-        />
-      ))}
     </div>
   );
 }
 
 /**
  * Row in the TOC list card.
- * Displays section/item label with active indicator bar.
  */
 function AgendaListStyleRow({
   label,
@@ -256,7 +260,6 @@ function AgendaListStyleRow({
 
 /**
  * Sortable section group in the TOC list.
- * Includes drag handle for reordering sections via TOC.
  */
 function SortableSectionGroup({
   section,
@@ -341,22 +344,40 @@ export type AgendaOutlineRailProps = {
   sections: NestedAgendaTemplateSection[];
   meetingId: number;
   onSectionReorder: (activeSortableId: string, overSortableId: string) => void;
-  stripArmed: boolean;
+  refreshContainerRect: () => void;
+  /** Mouse Y position relative to the Agenda block */
+  mouseY: number;
+  /** Height of the Agenda block */
+  blockHeight: number;
+  /** Whether the trigger area is being hovered */
+  isHovering: boolean;
+  /** Container rect for portal positioning */
+  containerRect: DOMRect | null;
 };
 
 /**
  * The outline rail component that appears on the right side of the Agenda block.
- * Shows pills on hover, expands to full TOC list on pill hover.
+ * Pills and TOC card follow the mouse position. Card opens on click.
  */
-function AgendaOutlineRail({ sections, meetingId, onSectionReorder, stripArmed }: AgendaOutlineRailProps) {
+function AgendaOutlineRail({
+  sections,
+  meetingId,
+  onSectionReorder,
+  refreshContainerRect,
+  mouseY,
+  blockHeight,
+  isHovering,
+  containerRect,
+}: AgendaOutlineRailProps) {
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const [hoveredPillId, setHoveredPillId] = useState<string | null>(null);
   const [hoveredListId, setHoveredListId] = useState<string | null>(null);
-  const [tocOpen, setTocOpen] = useState(false);
+  const [isCardOpen, setIsCardOpen] = useState(false);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
-  const tocShowTimerRef = useRef<number | null>(null);
-  const tocHideTimerRef = useRef<number | null>(null);
-  const railRef = useRef<HTMLDivElement>(null);
+
+  // Refs for click-outside detection
+  const pillsContainerRef = useRef<HTMLDivElement>(null);
+  const tocCardRef = useRef<HTMLDivElement>(null);
 
   const outlineEntries = useMemo(() => buildAgendaOutlineEntries(sections), [sections]);
 
@@ -371,9 +392,29 @@ function AgendaOutlineRail({ sections, meetingId, onSectionReorder, stripArmed }
     return map;
   }, [sections, outlineEntries]);
 
-  // Isolated DndContext sensors with distance constraint to prevent conflict with main workspace
+  // Calculate pills position - follow mouse Y with boundary clamping
+  const pillsOffsetY = useMemo(() => {
+    const halfPillsHeight = PILLS_CONTAINER_HEIGHT / 2;
+    const minY = EDGE_PADDING;
+    const maxY = blockHeight - PILLS_CONTAINER_HEIGHT - EDGE_PADDING;
+    // Center pills around mouse position
+    const targetY = mouseY - halfPillsHeight;
+    return Math.max(minY, Math.min(targetY, maxY));
+  }, [mouseY, blockHeight]);
+
+  // Calculate TOC card position - follow mouse Y with boundary clamping
+  const tocOffsetY = useMemo(() => {
+    const halfTocHeight = TOC_CARD_HEIGHT / 2;
+    const minY = EDGE_PADDING;
+    const maxY = Math.max(minY, blockHeight - TOC_CARD_HEIGHT - EDGE_PADDING);
+    // Center TOC around mouse position
+    const targetY = mouseY - halfTocHeight;
+    return Math.max(minY, Math.min(targetY, maxY));
+  }, [mouseY, blockHeight]);
+
+  // Isolated DndContext sensors
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(NoDndPointerSensor, {
       activationConstraint: { distance: 8 },
     }),
     useSensor(KeyboardSensor, {
@@ -383,59 +424,40 @@ function AgendaOutlineRail({ sections, meetingId, onSectionReorder, stripArmed }
 
   const sectionIds = useMemo(() => sections.map((s) => tocOutlineSectionSortableId(s.id)), [sections]);
 
-  const clearTocShowTimer = useCallback(() => {
-    if (tocShowTimerRef.current != null) {
-      window.clearTimeout(tocShowTimerRef.current);
-      tocShowTimerRef.current = null;
-    }
-  }, []);
-
-  const clearTocHideTimer = useCallback(() => {
-    if (tocHideTimerRef.current != null) {
-      window.clearTimeout(tocHideTimerRef.current);
-      tocHideTimerRef.current = null;
-    }
-  }, []);
-
-  const openToc = useCallback(() => {
-    clearTocHideTimer();
-    clearTocShowTimer();
-    setTocOpen(true);
-  }, [clearTocHideTimer, clearTocShowTimer]);
-
-  const scheduleOpenToc = useCallback(() => {
-    clearTocHideTimer();
-    clearTocShowTimer();
-    tocShowTimerRef.current = window.setTimeout(() => {
-      tocShowTimerRef.current = null;
-      setTocOpen(true);
-    }, TOC_CARD_SHOW_MS);
-  }, [clearTocHideTimer, clearTocShowTimer]);
-
-  const scheduleCloseToc = useCallback(() => {
-    clearTocShowTimer();
-    clearTocHideTimer();
-    tocHideTimerRef.current = window.setTimeout(() => {
-      tocHideTimerRef.current = null;
-      setTocOpen(false);
-    }, TOC_CARD_HIDE_MS);
-  }, [clearTocShowTimer, clearTocHideTimer]);
-
-  useEffect(() => {
-    if (!stripArmed) {
-      clearTocShowTimer();
-      clearTocHideTimer();
-      setTocOpen(false);
-    }
-  }, [stripArmed, clearTocShowTimer, clearTocHideTimer]);
-
-  useEffect(
-    () => () => {
-      clearTocShowTimer();
-      clearTocHideTimer();
+  // Toggle card open/close on pills click
+  const handlePillsPointerDownCapture = useCallback(
+    (e: React.PointerEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      flushSync(() => {
+        refreshContainerRect();
+      });
+      setIsCardOpen((prev) => !prev);
     },
-    [clearTocShowTimer, clearTocHideTimer],
+    [refreshContainerRect],
   );
+
+  // Close card when clicking outside
+  useEffect(() => {
+    if (!isCardOpen) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      // Check if click is outside both pills and TOC card
+      const isOutsidePills = pillsContainerRef.current && !pillsContainerRef.current.contains(target);
+      const isOutsideCard = tocCardRef.current && !tocCardRef.current.contains(target);
+
+      if (isOutsidePills && isOutsideCard) {
+        setIsCardOpen(false);
+      }
+    };
+
+    // Use capture phase to handle clicks before other handlers
+    document.addEventListener('mousedown', handleClickOutside, true);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside, true);
+    };
+  }, [isCardOpen]);
 
   const scrollToTarget = useCallback((entry: AgendaOutlineEntry) => {
     if (entry.scrollTarget.type === 'section') {
@@ -499,92 +521,79 @@ function AgendaOutlineRail({ sections, meetingId, onSectionReorder, stripArmed }
     }
   };
 
-  const onTriggerEnter = useCallback(() => {
-    if (!stripArmed) return;
-    scheduleOpenToc();
-  }, [stripArmed, scheduleOpenToc]);
-
-  const onTriggerLeave = useCallback(() => {
-    scheduleCloseToc();
-  }, [scheduleCloseToc]);
-
   if (sections.length === 0) return null;
 
   return (
-    <aside
-      ref={railRef}
-      className={cn(
-        'absolute right-0 top-0 bottom-0 w-5 overflow-visible',
-        'transition-opacity duration-200 ease-out',
-        stripArmed ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0',
-      )}
-      onMouseEnter={onTriggerEnter}
-      onMouseLeave={onTriggerLeave}
-    >
-      {/* Sticky container for pills and TOC card - stays centered in viewport */}
+    <>
+      {/* Pills indicator - follows mouse Y position, positioned near trigger area */}
       <div
-        className="sticky z-30 w-full overflow-visible"
-        style={{ top: '50%', transform: 'translateY(-50%)' }}
+        ref={pillsContainerRef}
+        data-no-dnd="true"
+        className={cn(
+          'absolute z-[100] w-10 cursor-pointer pointer-events-auto transition-all duration-150 ease-out active:scale-95',
+          isHovering || isCardOpen ? 'opacity-100' : 'opacity-60',
+        )}
+        style={{
+          top: pillsOffsetY,
+          right: '-32px', // Keep clickable zone aligned with trigger strip
+          transition: 'top 120ms ease-out, opacity 150ms ease-out',
+        }}
+        onPointerDownCapture={handlePillsPointerDownCapture}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsCardOpen((prev) => !prev);
+          }
+        }}
+        aria-expanded={isCardOpen}
+        aria-label="Toggle agenda table of contents"
       >
         <div
-          tabIndex={stripArmed ? 0 : -1}
-          role="button"
-          aria-label="Agenda outline"
-          aria-expanded={tocOpen}
-          aria-haspopup="true"
-          onKeyDown={(e) => {
-            if (!stripArmed) return;
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              openToc();
-            }
-            if (e.key === 'Escape') {
-              e.preventDefault();
-              (e.target as HTMLElement).blur();
-              scheduleCloseToc();
-            }
-          }}
-          onFocus={() => stripArmed && openToc()}
-          onBlur={(e) => {
-            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-              scheduleCloseToc();
-            }
-          }}
           className={cn(
-            'relative flex w-full flex-col outline-none',
-            'focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white',
+            'flex w-full flex-col items-end pr-1 transition-transform duration-150 ease-out',
+            isCardOpen && '-translate-x-1',
           )}
         >
-          {/* Pills rail — Notion-style outline indicator */}
-          <div
-            className={cn(
-              'flex w-full flex-col items-end pr-1 transition-transform duration-200 ease-out',
-              tocOpen && '-translate-x-0.5',
-            )}
-          >
-            <AgendaOutlinePills
-              entries={outlineEntries}
-              activeSectionId={activeSectionId}
-              hoveredId={hoveredPillId}
-              setHoveredId={setHoveredPillId}
-              onEntryClick={scrollToTarget}
-            />
-          </div>
+          <AgendaOutlinePills
+            entries={outlineEntries}
+            activeSectionId={activeSectionId}
+            hoveredId={hoveredPillId}
+            setHoveredId={setHoveredPillId}
+            onAnyPillClick={() => setIsCardOpen(true)}
+            onEntryClick={scrollToTarget}
+          />
+        </div>
+      </div>
 
-          {/* TOC List card — appears on pill hover */}
+      {/* TOC List card - rendered via Portal with fixed positioning */}
+      {typeof document !== 'undefined' &&
+        createPortal(
           <div
-            className="absolute right-full top-1/2 z-40 mr-2 w-56 max-w-[calc(100vw-2rem)]"
+            ref={tocCardRef}
+            className={cn(
+              'fixed z-[9999] w-56',
+              'transition-all duration-150 ease-out',
+            )}
             style={{
-              transform: tocOpen ? 'translate(0, -50%)' : 'translate(12px, -50%)',
-              opacity: tocOpen ? 1 : 0,
-              pointerEvents: tocOpen ? 'auto' : 'none',
+              // Position card to the left of the pills, using viewport coordinates
+              top: containerRect ? containerRect.top + tocOffsetY : 0,
+              left: containerRect ? containerRect.right - 240 : 0, // 240 = card width (224px) + gap
+              opacity: isCardOpen ? 1 : 0,
+              transform: isCardOpen ? 'translateX(0)' : 'translateX(8px)',
+              pointerEvents: isCardOpen ? 'auto' : 'none',
               transition: CARD_SHELL_TRANSITION,
             }}
-            onMouseEnter={() => stripArmed && openToc()}
-            onMouseLeave={onTriggerLeave}
           >
             <div
-              className="max-h-[min(480px,calc(100vh-8rem))] overflow-y-auto overscroll-contain rounded-lg border border-slate-200/80 bg-white py-1 shadow-lg"
+              className={cn(
+                'rounded-lg border border-slate-200/80 bg-white py-1 shadow-lg',
+                // Hide scrollbar but keep scrollable
+                'max-h-[360px] overflow-y-auto',
+                '[&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]',
+              )}
               style={{ boxShadow: '0 4px 24px rgba(15, 23, 42, 0.08)' }}
             >
               <nav aria-label="Agenda sections">
@@ -624,10 +633,10 @@ function AgendaOutlineRail({ sections, meetingId, onSectionReorder, stripArmed }
                 </DndContext>
               </nav>
             </div>
-          </div>
-        </div>
-      </div>
-    </aside>
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 
@@ -640,7 +649,7 @@ export type AgendaBlockWithOutlineRailProps = {
 
 /**
  * Wrapper component that adds the outline rail to the Agenda block.
- * Handles hover detection for the entire Agenda area to arm/disarm the pills strip.
+ * Tracks mouse position for the following pills indicator.
  */
 export function AgendaBlockWithOutlineRail({
   children,
@@ -648,50 +657,47 @@ export function AgendaBlockWithOutlineRail({
   meetingId,
   onSectionReorder,
 }: AgendaBlockWithOutlineRailProps) {
-  const [stripArmed, setStripArmed] = useState(false);
-  const agendaShowTimerRef = useRef<number | null>(null);
-  const agendaHideTimerRef = useRef<number | null>(null);
+  const [isHovering, setIsHovering] = useState(false);
+  const [mouseY, setMouseY] = useState(0);
+  const [blockHeight, setBlockHeight] = useState(400);
+  const [containerRect, setContainerRect] = useState<DOMRect | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
 
-  const clearAgendaShowTimer = useCallback(() => {
-    if (agendaShowTimerRef.current != null) {
-      window.clearTimeout(agendaShowTimerRef.current);
-      agendaShowTimerRef.current = null;
-    }
+  const refreshContainerRect = useCallback(() => {
+    if (!containerRef.current) return;
+    setContainerRect(containerRef.current.getBoundingClientRect());
   }, []);
 
-  const clearAgendaHideTimer = useCallback(() => {
-    if (agendaHideTimerRef.current != null) {
-      window.clearTimeout(agendaHideTimerRef.current);
-      agendaHideTimerRef.current = null;
-    }
+  // Track mouse position within the trigger area and update container rect
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const relativeY = e.clientY - rect.top;
+    setMouseY(relativeY);
+    setContainerRect(rect);
   }, []);
 
-  const onAgendaEnter = useCallback(() => {
-    clearAgendaHideTimer();
-    if (stripArmed) return;
-    if (agendaShowTimerRef.current != null) return;
-    agendaShowTimerRef.current = window.setTimeout(() => {
-      agendaShowTimerRef.current = null;
-      setStripArmed(true);
-    }, AGENDA_STRIP_SHOW_MS);
-  }, [clearAgendaHideTimer, stripArmed]);
+  // Update block height on mount and resize
+  useEffect(() => {
+    const updateHeight = () => {
+      if (containerRef.current) {
+        setBlockHeight(containerRef.current.offsetHeight);
+        setContainerRect(containerRef.current.getBoundingClientRect());
+      }
+    };
+    updateHeight();
+    window.addEventListener('resize', updateHeight);
+    return () => window.removeEventListener('resize', updateHeight);
+  }, []);
 
-  const onAgendaLeave = useCallback(() => {
-    clearAgendaShowTimer();
-    clearAgendaHideTimer();
-    agendaHideTimerRef.current = window.setTimeout(() => {
-      agendaHideTimerRef.current = null;
-      setStripArmed(false);
-    }, AGENDA_STRIP_HIDE_MS);
-  }, [clearAgendaShowTimer, clearAgendaHideTimer]);
-
-  useEffect(
-    () => () => {
-      clearAgendaShowTimer();
-      clearAgendaHideTimer();
-    },
-    [clearAgendaShowTimer, clearAgendaHideTimer],
-  );
+  // Also update height when sections change (content might change height)
+  useEffect(() => {
+    if (containerRef.current) {
+      setBlockHeight(containerRef.current.offsetHeight);
+      setContainerRect(containerRef.current.getBoundingClientRect());
+    }
+  }, [sections]);
 
   if (sections.length === 0) {
     return <div className="min-w-0 flex-1 overflow-visible">{children}</div>;
@@ -699,16 +705,35 @@ export function AgendaBlockWithOutlineRail({
 
   return (
     <div
-      className="group/agenda relative min-w-0 overflow-visible pr-6"
-      onMouseEnter={onAgendaEnter}
-      onMouseLeave={onAgendaLeave}
+      ref={containerRef}
+      className="group/agenda relative min-w-0 overflow-visible"
     >
+      {/* Main content */}
       <div className="min-w-0 flex-1 overflow-visible">{children}</div>
+
+      {/* Full-height invisible trigger area - extends beyond container to reach SortableBlock edge */}
+      <div
+        ref={triggerRef}
+        className="absolute top-0 bottom-0 w-10 z-20"
+        style={{ right: '-32px' }} // Extends past the px-8 padding of SortableBlock
+        onMouseEnter={() => {
+          setIsHovering(true);
+          refreshContainerRect();
+        }}
+        onMouseLeave={() => setIsHovering(false)}
+        onMouseMove={handleMouseMove}
+      />
+
+      {/* Pills and TOC card */}
       <AgendaOutlineRail
         sections={sections}
         meetingId={meetingId}
         onSectionReorder={onSectionReorder}
-        stripArmed={stripArmed}
+        refreshContainerRect={refreshContainerRect}
+        mouseY={mouseY}
+        blockHeight={blockHeight}
+        isHovering={isHovering}
+        containerRect={containerRect}
       />
     </div>
   );

@@ -102,14 +102,17 @@ export function MeetingHeader({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur();
                 }}
+                placeholder="Please enter the name of the meeting"
                 className="h-8 min-w-[320px] border-none bg-transparent px-0 text-xl leading-tight font-bold text-slate-900 outline-none"
               />
             ) : (
               <h1
-                className="cursor-text truncate text-xl leading-tight font-bold text-slate-900"
+                className={`cursor-text truncate text-xl leading-tight font-bold ${
+                  title.trim() ? 'text-slate-900' : 'text-slate-400'
+                }`}
                 onClick={() => setEditingTitle(true)}
               >
-                {title}
+                {title.trim() || 'Please enter the name of the meeting'}
               </h1>
             )}
             <div className="relative">
@@ -155,11 +158,17 @@ export function MeetingHeader({
                 if (next !== objective) onObjectiveSave(next);
                 setEditingObjective(false);
               }}
+              placeholder="Please enter the description of the meeting"
               className="h-8 w-full border-none bg-transparent px-0 text-lg text-slate-500 outline-none"
             />
           ) : (
-            <p className="cursor-text text-xl leading-snug text-slate-500" onClick={() => setEditingObjective(true)}>
-              {objective || 'Click to add objective'}
+            <p
+              className={`cursor-text text-xl leading-snug ${
+                objective.trim() ? 'text-slate-500' : 'text-slate-400'
+              }`}
+              onClick={() => setEditingObjective(true)}
+            >
+              {objective.trim() || 'Please enter the description of the meeting'}
             </p>
           )}
         </div>

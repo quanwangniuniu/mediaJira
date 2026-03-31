@@ -2062,9 +2062,9 @@ export default function MeetingWorkspacePage() {
     }
 
     return (
-      <div className="flex w-full gap-0 overflow-hidden">
+      <div className="flex w-full gap-0 overflow-x-clip overflow-y-visible">
         <motion.div
-          className="min-w-0"
+          className="min-w-0 overflow-visible"
           animate={{ width: isSidebarOpen ? 'calc(100% - 350px)' : '100%' }}
           transition={{ type: 'spring', stiffness: 500, damping: 30 }}
         >
