@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import AuthFormWrapper from '../../components/auth/AuthFormWrapper';
 import AuthFeedback from '../../components/auth/AuthFeedback';
 import AuthFields from '../../components/auth/AuthFields';
 import AuthSubmit from '../../components/auth/AuthSubmit';
 import useAuth from '../../hooks/useAuth';
+import { useAuthStore } from '../../lib/authStore';
 import { validateLoginForm, hasValidationErrors } from '../../utils/validation';
 import { LoginRequest, FormValidation } from '../../types/auth';
 import { LOGIN_ERROR_MESSAGES, isNetworkError } from '../../lib/authMessages';
@@ -15,7 +17,9 @@ import toast, { Toaster } from 'react-hot-toast';
 const SAVED_LOGIN_EMAIL_KEY = 'saved-login-email';
 
 function LoginPageContent() {
+  const router = useRouter();
   const { login } = useAuth();
+  const { initialized, loading: authLoading, isAuthenticated } = useAuthStore();
   const [formData, setFormData] = useState<LoginRequest>({
     email: '',
     password: ''
@@ -34,6 +38,13 @@ function LoginPageContent() {
       // ignore storage failures (private mode, disabled storage, etc.)
     }
   }, []);
+
+  useEffect(() => {
+    if (!initialized || authLoading) return;
+    if (isAuthenticated) {
+      router.replace('/campaigns');
+    }
+  }, [authLoading, initialized, isAuthenticated, router]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -196,6 +207,10 @@ function LoginPageContent() {
 
   // Disable submit button if form has validation errors (excluding general errors)
   const formHasValidationErrors = hasValidationErrors(errors);
+
+  if (initialized && isAuthenticated) {
+    return null;
+  }
 
   return (
     <>
