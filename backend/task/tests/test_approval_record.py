@@ -90,7 +90,7 @@ class ApprovalRecordModelTest(TestCase):
         self.assertEqual(records[0], self.approval_record)  # step_number=1
         self.assertEqual(records[1], approval_record2)      # step_number=2
 
-
+# SMP-501: revision round tracking and approval history preservation
 class RevisionRoundTrackingTest(TestCase):
     """Test cases for SMP-501: revision round tracking and approval history preservation"""
 
