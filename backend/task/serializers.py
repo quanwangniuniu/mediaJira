@@ -45,6 +45,9 @@ class TaskSerializer(serializers.ModelSerializer):
     can_lock = serializers.SerializerMethodField()
     approvals_summary = serializers.SerializerMethodField()
     content_type = serializers.SerializerMethodField()
+    # Revision tracking fields for SMP-501
+    revision_round = serializers.IntegerField(read_only=True)
+    revision_label = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -55,6 +58,8 @@ class TaskSerializer(serializers.ModelSerializer):
             'content_type', 'object_id', 'start_date', 'due_date',
             'is_subtask', 'parent_relationship', 'order_in_project',
             'anomaly_status', 'approval_chain_progress',
+            # Revision tracking fields for SMP-501
+            'revision_round', 'revision_label',
             'can_lock', 'approvals_summary',
             'create_as_draft', 'draft_payload',
         ]
@@ -62,6 +67,7 @@ class TaskSerializer(serializers.ModelSerializer):
             'id', 'status', 'owner', 'content_type', 'object_id',
             'is_subtask', 'parent_relationship', 'anomaly_status',
             'approval_chain_progress', 'can_lock', 'approvals_summary',
+            'revision_round', 'revision_label', # SMP-501
         ]
 
     def get_content_type(self, obj):
@@ -160,6 +166,12 @@ class TaskSerializer(serializers.ModelSerializer):
             'next_approver': UserSummarySerializer(next_step.approver).data if next_step else None,
             'steps': steps,
         }
+
+    def get_revision_label(self, obj):
+        """Return human-readable revision label for the task"""
+        if obj.revision_round == 0:
+            return "Initial Submission"
+        return f"Revision {obj.revision_round}"
 
     def get_can_lock(self, obj):
         """
@@ -516,14 +528,26 @@ class TaskForwardSerializer(serializers.Serializer):
 class ApprovalRecordSerializer(serializers.ModelSerializer):
     """Serializer for ApprovalRecord model"""
     approved_by = UserSummarySerializer(read_only=True)
+    # Computed field: converts revision_round integer to human-readable label
+    revision_label = serializers.SerializerMethodField()
     
     class Meta:
         model = ApprovalRecord
         fields = [
             'id', 'approved_by', 'is_approved', 'comment',
-            'decided_time', 'step_number'
+            'decided_time', 'step_number',
+            # Revision tracking fields added for SMP-501
+            'revision_round', 'revision_label',
+            'resubmitted_after_reject', 'has_rejection_history'
         ]
         read_only_fields = ['id', 'approved_by', 'step_number', 'decided_time']
+
+    def get_revision_label(self, obj):
+        """Return human-readable revision label, e.g. 'Revision 2' or 'Initial Submission'"""
+        if obj.revision_round == 0:
+            return "Initial Submission"
+        return f"Revision {obj.revision_round}"
+            
 
 
 class TaskCommentSerializer(serializers.ModelSerializer):
