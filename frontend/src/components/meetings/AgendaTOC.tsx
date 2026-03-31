@@ -56,18 +56,22 @@ function outlineToMainSectionSortableId(id: string): string {
   return id;
 }
 
-const AGENDA_STRIP_SHOW_MS = 200;
-const AGENDA_STRIP_HIDE_MS = 280;
-const TOC_CARD_SHOW_MS = 120;
-const TOC_CARD_HIDE_MS = 260;
+/** Delay before showing pills strip after hovering Agenda block */
+const AGENDA_STRIP_SHOW_MS = 150;
+/** Delay before hiding pills strip after leaving Agenda block */
+const AGENDA_STRIP_HIDE_MS = 300;
+/** Delay before showing TOC card after hovering pills */
+const TOC_CARD_SHOW_MS = 80;
+/** Delay before hiding TOC card after leaving pills/card */
+const TOC_CARD_HIDE_MS = 200;
 
+/** Top margin for scroll-spy active section detection */
 const SCROLL_SPY_TOP_MARGIN = 128;
-const STICKY_TOP = 'top-28';
 
 const LIST_TRANSITION = 'background 160ms cubic-bezier(0.4, 0, 0.2, 1), border-color 160ms cubic-bezier(0.4, 0, 0.2, 1)';
 const BAR_TRANSITION = 'background 160ms cubic-bezier(0.4, 0, 0.2, 1)';
 const CARD_SHELL_TRANSITION =
-  'opacity 200ms cubic-bezier(0.4, 0, 0.2, 1), transform 200ms cubic-bezier(0.4, 0, 0.2, 1)';
+  'opacity 180ms cubic-bezier(0.4, 0, 0.2, 1), transform 180ms cubic-bezier(0.4, 0, 0.2, 1)';
 
 export type AgendaOutlineEntry = {
   id: string;
@@ -99,6 +103,11 @@ export function buildAgendaOutlineEntries(sections: NestedAgendaTemplateSection[
   return out;
 }
 
+/**
+ * Notion-style pills column.
+ * Each pill represents an outline entry (section or item).
+ * Active section is highlighted, hover state shows intermediate color.
+ */
 function AgendaOutlinePills({
   entries,
   activeSectionId,
@@ -112,59 +121,58 @@ function AgendaOutlinePills({
   setHoveredId: (id: string | null) => void;
   onEntryClick: (entry: AgendaOutlineEntry) => void;
 }) {
+  // Only show pills for actual entries, up to OUTLINE_MAX_PILLS
   const pillsSlice = entries.slice(0, OUTLINE_MAX_PILLS);
+  const placeholderCount = Math.max(0, OUTLINE_MAX_PILLS - pillsSlice.length);
 
   return (
-    <div
-      className="flex h-full w-full flex-col items-end justify-between"
-      style={{ paddingTop: '2vh', paddingBottom: '22vh' }}
-    >
-      {Array.from({ length: OUTLINE_MAX_PILLS }, (_, i) => {
-        const entry = pillsSlice[i];
-        if (entry) {
-          const level = entry.level;
-          const isActive =
-            entry.scrollTarget.type === 'section'
-              ? activeSectionId === entry.scrollTarget.sectionId
-              : activeSectionId === entry.scrollTarget.sectionId;
-          const isHovered = hoveredId === entry.id && !isActive;
-          const pillColor = isActive ? PILL_ACTIVE : isHovered ? PILL_HOVER : PILL_BG;
-          const w = PILL_WIDTH_BY_LEVEL[level as 1 | 2 | 3] ?? PILL_WIDTH_BY_LEVEL[1];
-          return (
-            <button
-              key={entry.id}
-              type="button"
-              className="m-0 h-[3px] shrink-0 cursor-pointer rounded-full border-0 bg-transparent p-0"
-              style={{
-                width: w,
-                background: pillColor,
-                transition: PILL_TRANSITION,
-              }}
-              onClick={() => onEntryClick(entry)}
-              onMouseEnter={() => setHoveredId(entry.id)}
-              onMouseLeave={() => setHoveredId(null)}
-              aria-label={entry.label}
-            />
-          );
-        }
+    <div className="flex h-[min(50vh,320px)] w-full flex-col items-end justify-between py-2">
+      {pillsSlice.map((entry) => {
+        const level = entry.level;
+        const isActive =
+          entry.scrollTarget.type === 'section'
+            ? activeSectionId === entry.scrollTarget.sectionId
+            : activeSectionId === entry.scrollTarget.sectionId;
+        const isHovered = hoveredId === entry.id && !isActive;
+        const pillColor = isActive ? PILL_ACTIVE : isHovered ? PILL_HOVER : PILL_BG;
+        const w = PILL_WIDTH_BY_LEVEL[level as 1 | 2 | 3] ?? PILL_WIDTH_BY_LEVEL[1];
         return (
           <button
-            key={`placeholder-${i}`}
+            key={entry.id}
             type="button"
-            disabled
-            className="m-0 h-[3px] shrink-0 cursor-default rounded-full border-0 bg-transparent p-0"
+            className="m-0 h-[3px] shrink-0 cursor-pointer rounded-full border-0 bg-transparent p-0"
             style={{
-              width: 10,
-              background: PILL_PLACEHOLDER_BG,
+              width: w,
+              background: pillColor,
+              transition: PILL_TRANSITION,
             }}
-            aria-hidden
+            onClick={() => onEntryClick(entry)}
+            onMouseEnter={() => setHoveredId(entry.id)}
+            onMouseLeave={() => setHoveredId(null)}
+            aria-label={entry.label}
           />
         );
       })}
+      {/* Placeholder pills for visual consistency */}
+      {Array.from({ length: placeholderCount }, (_, i) => (
+        <span
+          key={`placeholder-${i}`}
+          className="m-0 h-[3px] shrink-0 rounded-full"
+          style={{
+            width: 10,
+            background: PILL_PLACEHOLDER_BG,
+          }}
+          aria-hidden
+        />
+      ))}
     </div>
   );
 }
 
+/**
+ * Row in the TOC list card.
+ * Displays section/item label with active indicator bar.
+ */
 function AgendaListStyleRow({
   label,
   level,
@@ -246,6 +254,10 @@ function AgendaListStyleRow({
   );
 }
 
+/**
+ * Sortable section group in the TOC list.
+ * Includes drag handle for reordering sections via TOC.
+ */
 function SortableSectionGroup({
   section,
   index,
@@ -332,6 +344,10 @@ export type AgendaOutlineRailProps = {
   stripArmed: boolean;
 };
 
+/**
+ * The outline rail component that appears on the right side of the Agenda block.
+ * Shows pills on hover, expands to full TOC list on pill hover.
+ */
 function AgendaOutlineRail({ sections, meetingId, onSectionReorder, stripArmed }: AgendaOutlineRailProps) {
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const [hoveredPillId, setHoveredPillId] = useState<string | null>(null);
@@ -340,6 +356,7 @@ function AgendaOutlineRail({ sections, meetingId, onSectionReorder, stripArmed }
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const tocShowTimerRef = useRef<number | null>(null);
   const tocHideTimerRef = useRef<number | null>(null);
+  const railRef = useRef<HTMLDivElement>(null);
 
   const outlineEntries = useMemo(() => buildAgendaOutlineEntries(sections), [sections]);
 
@@ -354,6 +371,7 @@ function AgendaOutlineRail({ sections, meetingId, onSectionReorder, stripArmed }
     return map;
   }, [sections, outlineEntries]);
 
+  // Isolated DndContext sensors with distance constraint to prevent conflict with main workspace
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
@@ -434,6 +452,7 @@ function AgendaOutlineRail({ sections, meetingId, onSectionReorder, stripArmed }
       ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
 
+  // Scroll spy: detect which section is currently in view
   const updateActiveFromScroll = useCallback(() => {
     if (sections.length === 0) {
       setActiveSectionId(null);
@@ -493,117 +512,117 @@ function AgendaOutlineRail({ sections, meetingId, onSectionReorder, stripArmed }
 
   return (
     <aside
+      ref={railRef}
       className={cn(
-        'group/trigger relative w-4 shrink-0 self-stretch overflow-visible',
+        'absolute right-0 top-0 bottom-0 w-5 overflow-visible',
         'transition-opacity duration-200 ease-out',
         stripArmed ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0',
       )}
       onMouseEnter={onTriggerEnter}
       onMouseLeave={onTriggerLeave}
     >
-      <div className={cn('sticky z-30 w-full overflow-visible', STICKY_TOP)}>
-        <div className="relative flex h-full min-h-[120px] w-full flex-col items-stretch">
+      {/* Sticky container for pills and TOC card - stays centered in viewport */}
+      <div
+        className="sticky z-30 w-full overflow-visible"
+        style={{ top: '50%', transform: 'translateY(-50%)' }}
+      >
+        <div
+          tabIndex={stripArmed ? 0 : -1}
+          role="button"
+          aria-label="Agenda outline"
+          aria-expanded={tocOpen}
+          aria-haspopup="true"
+          onKeyDown={(e) => {
+            if (!stripArmed) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              openToc();
+            }
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              (e.target as HTMLElement).blur();
+              scheduleCloseToc();
+            }
+          }}
+          onFocus={() => stripArmed && openToc()}
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+              scheduleCloseToc();
+            }
+          }}
+          className={cn(
+            'relative flex w-full flex-col outline-none',
+            'focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white',
+          )}
+        >
+          {/* Pills rail — Notion-style outline indicator */}
           <div
-            tabIndex={stripArmed ? 0 : -1}
-            role="button"
-            aria-label="Agenda outline"
-            aria-expanded={tocOpen}
-            aria-haspopup="true"
-            onKeyDown={(e) => {
-              if (!stripArmed) return;
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                openToc();
-              }
-              if (e.key === 'Escape') {
-                e.preventDefault();
-                (e.target as HTMLElement).blur();
-                scheduleCloseToc();
-              }
-            }}
-            onFocus={() => stripArmed && openToc()}
-            onBlur={(e) => {
-              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-                scheduleCloseToc();
-              }
-            }}
             className={cn(
-              'relative flex h-full min-h-0 w-full flex-col outline-none',
-              'focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white',
+              'flex w-full flex-col items-end pr-1 transition-transform duration-200 ease-out',
+              tocOpen && '-translate-x-0.5',
             )}
           >
-            {/* Pills rail — Notion OutlineSidebar pills */}
-            <div
-              className={cn(
-                'flex min-h-0 w-full flex-1 flex-col items-end transition-transform duration-200 ease-out',
-                'group-hover/trigger:-translate-x-0.5 group-focus-within/trigger:-translate-x-0.5',
-                tocOpen && '-translate-x-0.5',
-              )}
-            >
-              <AgendaOutlinePills
-                entries={outlineEntries}
-                activeSectionId={activeSectionId}
-                hoveredId={hoveredPillId}
-                setHoveredId={setHoveredPillId}
-                onEntryClick={scrollToTarget}
-              />
-            </div>
+            <AgendaOutlinePills
+              entries={outlineEntries}
+              activeSectionId={activeSectionId}
+              hoveredId={hoveredPillId}
+              setHoveredId={setHoveredPillId}
+              onEntryClick={scrollToTarget}
+            />
+          </div>
 
-            {/* List card — Notion OutlineSidebar list + dnd */}
+          {/* TOC List card — appears on pill hover */}
+          <div
+            className="absolute right-full top-1/2 z-40 mr-2 w-56 max-w-[calc(100vw-2rem)]"
+            style={{
+              transform: tocOpen ? 'translate(0, -50%)' : 'translate(12px, -50%)',
+              opacity: tocOpen ? 1 : 0,
+              pointerEvents: tocOpen ? 'auto' : 'none',
+              transition: CARD_SHELL_TRANSITION,
+            }}
+            onMouseEnter={() => stripArmed && openToc()}
+            onMouseLeave={onTriggerLeave}
+          >
             <div
-              className="absolute right-full top-1/2 z-40 mr-1 w-56 max-w-[calc(100vw-2rem)]"
-              style={{
-                transform: tocOpen ? 'translate(-4px, -50%)' : 'translate(8px, -50%)',
-                opacity: tocOpen ? 1 : 0,
-                pointerEvents: tocOpen ? 'auto' : 'none',
-                transition: CARD_SHELL_TRANSITION,
-              }}
-              onMouseEnter={() => stripArmed && openToc()}
-              onMouseLeave={onTriggerLeave}
+              className="max-h-[min(480px,calc(100vh-8rem))] overflow-y-auto overscroll-contain rounded-lg border border-slate-200/80 bg-white py-1 shadow-lg"
+              style={{ boxShadow: '0 4px 24px rgba(15, 23, 42, 0.08)' }}
             >
-              <div
-                className="max-h-[min(480px,calc(100vh-8rem))] overflow-y-auto overscroll-contain rounded-lg border border-slate-200/80 bg-white py-1 shadow-lg"
-                style={{ boxShadow: '0 4px 24px rgba(15, 23, 42, 0.08)' }}
-              >
-                <nav aria-label="Agenda sections">
-                  <DndContext
-                    id={`meeting-${meetingId}-agenda-outline-rail-dnd`}
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragStart={(e) => setActiveDragId(String(e.active.id))}
-                    onDragEnd={(e) => {
-                      handleDragEnd(e);
-                    }}
-                    onDragCancel={() => setActiveDragId(null)}
-                  >
-                    <SortableContext items={sectionIds} strategy={verticalListSortingStrategy}>
-                      {sections.map((section, index) => (
-                        <SortableSectionGroup
-                          key={section.id}
-                          section={section}
-                          index={index}
-                          outlineEntriesForSection={entriesBySection.get(section.id) ?? []}
-                          activeSectionId={activeSectionId}
-                          hoveredListId={hoveredListId}
-                          setHoveredListId={setHoveredListId}
-                          onNavigateSection={(id) =>
-                            document.getElementById(meetingAgendaSectionDomId(id))?.scrollIntoView({
-                              behavior: 'smooth',
-                              block: 'start',
-                            })
-                          }
-                          onNavigateItem={(sectionId, itemId) =>
-                            document
-                              .getElementById(meetingAgendaItemDomId(sectionId, itemId))
-                              ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                          }
-                          isDragging={activeDragId === tocOutlineSectionSortableId(section.id)}
-                        />
-                      ))}
-                    </SortableContext>
-                  </DndContext>
-                </nav>
-              </div>
+              <nav aria-label="Agenda sections">
+                <DndContext
+                  id={`meeting-${meetingId}-agenda-outline-rail-dnd`}
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragStart={(e) => setActiveDragId(String(e.active.id))}
+                  onDragEnd={handleDragEnd}
+                  onDragCancel={() => setActiveDragId(null)}
+                >
+                  <SortableContext items={sectionIds} strategy={verticalListSortingStrategy}>
+                    {sections.map((section, index) => (
+                      <SortableSectionGroup
+                        key={section.id}
+                        section={section}
+                        index={index}
+                        outlineEntriesForSection={entriesBySection.get(section.id) ?? []}
+                        activeSectionId={activeSectionId}
+                        hoveredListId={hoveredListId}
+                        setHoveredListId={setHoveredListId}
+                        onNavigateSection={(id) =>
+                          document.getElementById(meetingAgendaSectionDomId(id))?.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start',
+                          })
+                        }
+                        onNavigateItem={(sectionId, itemId) =>
+                          document
+                            .getElementById(meetingAgendaItemDomId(sectionId, itemId))
+                            ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                        }
+                        isDragging={activeDragId === tocOutlineSectionSortableId(section.id)}
+                      />
+                    ))}
+                  </SortableContext>
+                </DndContext>
+              </nav>
             </div>
           </div>
         </div>
@@ -619,6 +638,10 @@ export type AgendaBlockWithOutlineRailProps = {
   onSectionReorder: (activeSortableId: string, overSortableId: string) => void;
 };
 
+/**
+ * Wrapper component that adds the outline rail to the Agenda block.
+ * Handles hover detection for the entire Agenda area to arm/disarm the pills strip.
+ */
 export function AgendaBlockWithOutlineRail({
   children,
   sections,
@@ -676,7 +699,7 @@ export function AgendaBlockWithOutlineRail({
 
   return (
     <div
-      className="group/agenda relative flex min-w-0 gap-0 overflow-visible"
+      className="group/agenda relative min-w-0 overflow-visible pr-6"
       onMouseEnter={onAgendaEnter}
       onMouseLeave={onAgendaLeave}
     >

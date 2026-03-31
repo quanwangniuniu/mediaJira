@@ -1128,10 +1128,17 @@ export default function MeetingWorkspacePage() {
       if (tpl && !tpl.meetingType) {
         applySidebarTemplate(tpl);
       } else {
-        setBlocks(DEFAULT_WORKSPACE_BLOCKS);
-        setNestedSections(getNestedTemplateForMeetingType(trimmed));
+        const newBlocks = DEFAULT_WORKSPACE_BLOCKS;
+        const newNestedSections = getNestedTemplateForMeetingType(trimmed);
+        setBlocks(newBlocks);
+        setNestedSections(newNestedSections);
         setActiveTemplateId(trimmed);
         setTemplateDirty(false);
+        // Reset baseline so save buttons don't show immediately after type change
+        setWorkspaceBaseline({
+          blocks: JSON.parse(JSON.stringify(newBlocks)),
+          nestedSections: JSON.parse(JSON.stringify(newNestedSections)),
+        });
         await applyTemplateIfAgendaEmpty(trimmed);
       }
       toast.success('Meeting type updated');
@@ -1169,10 +1176,17 @@ export default function MeetingWorkspacePage() {
 
   const handleTemplateSelect = async (meetingType: string) => {
     setIsSidebarOpen(true);
-    setBlocks(DEFAULT_WORKSPACE_BLOCKS);
-    setNestedSections(getNestedTemplateForMeetingType(meetingType));
+    const newBlocks = DEFAULT_WORKSPACE_BLOCKS;
+    const newNestedSections = getNestedTemplateForMeetingType(meetingType);
+    setBlocks(newBlocks);
+    setNestedSections(newNestedSections);
     setActiveTemplateId(meetingType);
     setTemplateDirty(false);
+    // Reset baseline so save buttons don't show immediately after template switch
+    setWorkspaceBaseline({
+      blocks: JSON.parse(JSON.stringify(newBlocks)),
+      nestedSections: JSON.parse(JSON.stringify(newNestedSections)),
+    });
     if (meeting?.meeting_type !== meetingType) await handleMeetingTypeChange(meetingType);
     await applyTemplateIfAgendaEmpty(meetingType);
     toast.success('Template applied');
@@ -1192,6 +1206,8 @@ export default function MeetingWorkspacePage() {
     setActiveTemplateId('create-template');
     setTemplateDirty(false);
     setNestedSections([]);
+    // Reset baseline so save buttons don't show immediately
+    setWorkspaceBaseline({ blocks: [], nestedSections: [] });
     toast('Canvas cleared. Add modules from the sidebar or add a block below.', { icon: 'ℹ️' });
   };
 
@@ -1222,6 +1238,7 @@ export default function MeetingWorkspacePage() {
     }
 
     setBlocks(layoutBlocks);
+    const finalNestedSections = layoutNestedSections ?? [];
     if (layoutNestedSections) {
       // Use a truthy id to prevent the "default single section" sync effect from overwriting our draft.
       setActiveTemplateId(tpl.id);
@@ -1230,6 +1247,11 @@ export default function MeetingWorkspacePage() {
       setActiveTemplateId(null);
     }
     setTemplateDirty(false);
+    // Reset baseline so save buttons don't show immediately after template switch
+    setWorkspaceBaseline({
+      blocks: JSON.parse(JSON.stringify(layoutBlocks)),
+      nestedSections: JSON.parse(JSON.stringify(finalNestedSections)),
+    });
     const expectedMeetingType = customTemplateMeetingTypeValue(tpl.id);
     const priorMeetingType = meeting?.meeting_type;
     void (async () => {

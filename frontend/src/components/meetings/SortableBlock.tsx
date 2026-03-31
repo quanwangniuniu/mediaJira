@@ -43,7 +43,7 @@ export function SortableBlock({
     <div
       ref={setNodeRef}
       style={style}
-      className={`group relative overflow-visible rounded-xl border border-transparent shadow-none transition-all duration-200 hover:border-slate-200 hover:shadow-sm ${actions ? 'pr-14' : ''} ${className}`}
+      className={`group relative overflow-visible rounded-xl border border-transparent shadow-none transition-all duration-200 hover:border-slate-200 hover:shadow-sm px-8 py-6 ${actions ? 'pr-14' : ''} ${className}`}
     >
       {showOverlineLayout ? (
         <div className="mb-2 flex items-center gap-1.5">
@@ -61,7 +61,7 @@ export function SortableBlock({
                 <GripVertical className="h-3 w-3" strokeWidth={2} />
               </button>
             ))}
-          <span className="text-[10px] font-medium uppercase tracking-widest text-slate-400">
+          <span className="text-[10px] font-medium uppercase tracking-widest text-slate-400 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
             {overlineLabel}
           </span>
         </div>
@@ -71,7 +71,7 @@ export function SortableBlock({
           {!hideDefaultHandle ? (
             <button
               type="button"
-              className="absolute top-3 left-3 z-10 cursor-grab rounded-md p-1.5 text-slate-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-slate-50 active:cursor-grabbing"
+              className="absolute top-6 left-3 z-10 cursor-grab rounded-md p-1.5 text-slate-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-slate-50 active:cursor-grabbing"
               aria-label="Drag block"
               {...(attributes as HTMLAttributes<HTMLButtonElement>)}
               {...listeners}
@@ -82,7 +82,7 @@ export function SortableBlock({
         </>
       )}
       {actions ? (
-        <div className="absolute top-2 right-2 z-[5] flex gap-2 pointer-events-none opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+        <div className="absolute top-5 right-5 z-[5] flex gap-2 pointer-events-none opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
           {actions}
         </div>
       ) : null}
