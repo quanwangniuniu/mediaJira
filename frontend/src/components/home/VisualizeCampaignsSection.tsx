@@ -39,7 +39,7 @@ export default function VisualizeCampaignsSection({ onRedirectToLogin }: Visuali
             <div className="bg-white rounded-2xl shadow-2xl pt-3 pl-3 pr-0 pb-32 relative z-20 lg:-ml-40 lg:mt-8 w-full max-w-xl">
               {/* Top Bar */}
               <div className="flex items-center justify-between mb-1 pt-0">
-                <h4 className="text-base font-bold text-gray-900">MediaJira - Advertising Projects</h4>
+                <h4 className="text-base font-bold text-gray-900">Marketing Simplified - Advertising Projects</h4>
                 <div className="flex items-center gap-1.5 text-xs text-gray-600 border border-gray-300 rounded-lg px-2 py-1">
                   <span>Color: Channel</span>
                   <ChevronDown className="w-3 h-3" />
@@ -154,7 +154,7 @@ export default function VisualizeCampaignsSection({ onRedirectToLogin }: Visuali
               <div className="bg-white rounded-sm overflow-visible">
                 {/* Top Bar */}
                 <div className="bg-white border-b border-gray-200 px-2 py-1 flex items-center justify-between">
-                  <h4 className="text-[8px] font-semibold text-gray-900">MediaJira - Advertising Projects</h4>
+                  <h4 className="text-[8px] font-semibold text-gray-900">Marketing Simplified - Advertising Projects</h4>
                   <div className="flex items-center gap-0.5 text-[7px] text-gray-600 border border-gray-300 rounded px-1 py-0.5">
                     <span>Color: Channel</span>
                     <ChevronDown className="w-2 h-2" />

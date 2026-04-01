@@ -10,8 +10,8 @@ export default function FooterSection() {
             {/* Logo and Email */}
             <div className="mb-4 md:mb-0 md:ml-32">
               <h3 className="text-2xl font-bold mb-2 text-left">
-                <span className="text-blue-600">Media</span>
-                <span className="text-gray-900">Jira</span>
+                <span className="text-blue-600">Marketing</span>
+                <span className="text-gray-900"> Simplified</span>
               </h3>
               <p className="text-gray-600 mb-6 text-left">One platform.<br />Every stage.</p>
               <div className="relative w-fit mt-10">
@@ -77,8 +77,8 @@ export default function FooterSection() {
           {/* Logo and Email */}
           <div className="mb-8 text-center">
             <h3 className="text-2xl font-bold mb-2">
-              <span className="text-blue-600">Media</span>
-              <span className="text-gray-900">Jira</span>
+              <span className="text-blue-600">Marketing</span>
+              <span className="text-gray-900"> Simplified</span>
             </h3>
             <p className="text-gray-600 mb-10">One platform. Every stage.</p>
             <div className="relative w-full max-w-sm mx-auto mt-10">
@@ -137,7 +137,7 @@ export default function FooterSection() {
 
           {/* Copyright */}
           <div className="text-center pt-6 border-t border-gray-200">
-            <p className="text-xs text-gray-500">© 2025 MediaJira. All rights reserved.</p>
+            <p className="text-xs text-gray-500">© 2026 Marketing Simplified. All rights reserved.</p>
           </div>
         </div>
       </footer>
