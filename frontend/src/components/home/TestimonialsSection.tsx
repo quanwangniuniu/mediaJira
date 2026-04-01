@@ -14,10 +14,10 @@ export default function TestimonialsSection({ onRedirectToLogin, onGetStartedCli
           <div className="text-center mb-16">
             <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
               What teams love about<br />
-              MediaJira?
+              Marketing Simplified?
             </h2>
             <p className="text-lg text-gray-600 mx-auto text-center">
-              From setup to reporting, MediaJira helps teams stay aligned, efficient, and confident in every campaign.
+              From setup to reporting, Marketing Simplified helps teams stay aligned, efficient, and confident in every campaign.
             </p>
           </div>
 
@@ -192,7 +192,7 @@ export default function TestimonialsSection({ onRedirectToLogin, onGetStartedCli
               </h2>
               <p className="text-base text-gray-700 mb-6 leading-relaxed">
                 From setup to optimization,<br />
-                MediaJira keeps your campaigns moving effortlessly.
+                Marketing Simplified keeps your campaigns moving effortlessly.
               </p>
             </div>
 
@@ -270,10 +270,10 @@ export default function TestimonialsSection({ onRedirectToLogin, onGetStartedCli
             <div className="text-center pt-6">
               <h2 className="text-2xl font-bold text-gray-900 mb-4 leading-tight">
                 What teams love about<br />
-                MediaJira?
+                Marketing Simplified?
               </h2>
               <p className="text-base text-gray-700 mb-6 leading-relaxed">
-                From setup to reporting, MediaJira helps teams stay aligned, efficient, and confident in every campaign.
+                From setup to reporting, Marketing Simplified helps teams stay aligned, efficient, and confident in every campaign.
               </p>
             </div>
 

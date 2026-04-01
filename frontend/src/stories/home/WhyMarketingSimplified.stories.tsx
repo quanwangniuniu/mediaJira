@@ -1,8 +1,8 @@
 import React from 'react';
-import WhyMediaJiraSection from '../../components/home/WhyMediaJiraSection';
+import WhyMarketingSimplifiedSection from '../../components/home/WhyMarketingSimplifiedSection';
 
 const meta = {
-  title: 'Home/WhyMediaJira',
+  title: 'Home/WhyMarketingSimplified',
   parameters: {
     layout: 'fullscreen',
     chromatic: {
@@ -11,7 +11,7 @@ const meta = {
     },
     docs: {
       description: {
-        component: 'Why MediaJira section with desktop and mobile layouts.',
+        component: 'Why Marketing Simplified section with desktop and mobile layouts.',
       },
     },
   },
@@ -23,7 +23,7 @@ export default meta;
 export const Default = {
   render: () => (
     <div>
-      <WhyMediaJiraSection />
+      <WhyMarketingSimplifiedSection />
     </div>
   ),
 };

@@ -53,7 +53,7 @@ export default function OrganizationPlans() {
           }`}>
           <div className='flex flex-col'>
             <div className='w-full md:w-10/12 lg:w-6/12 mb-[clamp(3*1rem,((3-((5-3)/(90-20)*20))*1rem+((5-3)/(90-20))*100vw),5*1rem)]'>
-              <p className='text-xl text-gray-700 font-normal'>Build with Media Jira campaign management platform — free to start, and upgrade anytime to unlock advanced features.</p>
+              <p className='text-xl text-gray-700 font-normal'>Build with Marketing Simplified campaign management platform — free to start, and upgrade anytime to unlock advanced features.</p>
             </div>
           </div>
 

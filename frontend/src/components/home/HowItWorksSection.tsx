@@ -17,7 +17,7 @@ export default function HowItWorksSection({ onGetStartedClick }: HowItWorksSecti
             </h2>
             <p className="text-lg text-gray-600 max-w-2xl mx-auto">
               From setup to optimization,<br />
-              MediaJira keeps your campaigns moving effortlessly.
+              Marketing Simplified keeps your campaigns moving effortlessly.
             </p>
           </div>
 
@@ -117,7 +117,7 @@ export default function HowItWorksSection({ onGetStartedClick }: HowItWorksSecti
               </h2>
               <p className="text-base text-gray-700 mb-6 leading-relaxed">
                 From setup to optimization,<br />
-                MediaJira keeps your campaigns moving effortlessly.
+                Marketing Simplified keeps your campaigns moving effortlessly.
               </p>
             </div>
 
@@ -195,10 +195,10 @@ export default function HowItWorksSection({ onGetStartedClick }: HowItWorksSecti
             <div className="text-center pt-6">
               <h2 className="text-2xl font-bold text-gray-900 mb-4 leading-tight">
                 What teams love about<br />
-                MediaJira?
+                Marketing Simplified?
               </h2>
               <p className="text-base text-gray-700 mb-6 leading-relaxed">
-                From setup to reporting, MediaJira helps teams stay aligned, efficient, and confident in every campaign.
+                From setup to reporting, Marketing Simplified helps teams stay aligned, efficient, and confident in every campaign.
               </p>
             </div>
 
