@@ -612,3 +612,45 @@ class NotificationSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "user", "read_at", "created_at", "updated_at"]
+
+# SMP-407
+from .models import CalendarEvent
+
+class CalendarEventSerializer(serializers.ModelSerializer):
+    """
+    Read-only serializer for system-derived CalendarEvent.
+    These events are auto-generated from Decisions and Tasks.
+    """
+
+    # 暴露源实体的 ID，供前端点击跳转使用 Expose the ID of the source entity for front-end click and jump use
+    decision_id = serializers.IntegerField(
+        source='decision.id',
+        read_only=True,
+        allow_null=True,
+    )
+    task_id = serializers.IntegerField(
+        source='task.id',
+        read_only=True,
+        allow_null=True,
+    )
+    review_id = serializers.IntegerField(
+        source='review.id',
+        read_only=True,
+        allow_null=True,
+    )
+
+    class Meta:
+        model = CalendarEvent
+        fields = [
+            'id',
+            'event_type',    # decision / task / decision_review
+            'title',
+            'start_time',
+            'end_time',
+            'decision_id',   # For front-end jump
+            'task_id',       # For front-end jump
+            'review_id',     # For front-end jump
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = fields  # All read only, no write operations allowed

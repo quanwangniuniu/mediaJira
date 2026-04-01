@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ('core', '0001_initial'),
         ('task', '0005_alter_approvalrecord_options_and_more'),
-        ('decision', '0005_alter_decisionstatetransition_from_status_and_more'),
+        ('decision', '0004_merge_predraft_migrations'),
         ('calendars', '0002_initial'),
     ]
 
