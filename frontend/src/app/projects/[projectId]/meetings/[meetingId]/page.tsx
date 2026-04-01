@@ -1405,14 +1405,12 @@ export default function MeetingWorkspacePage() {
       const tid = t.id;
       if (tid == null || linked.has(`task:${tid}`)) continue;
       const summary = (t.summary ?? '').trim();
-      const description = (t.description ?? '').trim();
-      const hay = `${summary} ${description}`.toLowerCase();
+      const hay = summary.toLowerCase();
       if (hay.includes(term)) {
         hits.push({
           kind: 'task',
           id: tid,
           title: summary || `Task #${tid}`,
-          subtitle: description ? description.slice(0, 120) + (description.length > 120 ? '…' : '') : undefined,
         });
       }
     }
