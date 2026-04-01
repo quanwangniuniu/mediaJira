@@ -151,7 +151,7 @@ export function LeftSidebar() {
       {/* Project Header */}
       <div className="px-4 py-4 border-b border-border">
         <a href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-          <span className="text-lg font-bold text-foreground">MediaJira</span>
+          <span className="text-lg font-bold text-foreground">Marketing Simplified</span>
           <span className="relative flex h-2 w-2" title="Connected">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />

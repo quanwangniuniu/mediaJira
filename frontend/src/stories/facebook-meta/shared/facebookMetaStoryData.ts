@@ -9,7 +9,7 @@ export const baseCreatives: AdCreative[] = [
     object_story_spec: {
       link_data: {
         name: "Spring Collection 2026",
-        link: "https://mediajira.com/spring",
+        link: "https://marketingsimplified.com/spring",
         message: "Fresh arrivals with limited-time pricing.",
       },
     },
@@ -22,7 +22,7 @@ export const baseCreatives: AdCreative[] = [
     object_story_spec: {
       link_data: {
         name: "Growth Webinar Registration",
-        link: "https://mediajira.com/webinar",
+        link: "https://marketingsimplified.com/webinar",
         message: "Register now and reserve your seat.",
       },
     },
@@ -34,8 +34,8 @@ export const baseCreatives: AdCreative[] = [
     call_to_action_type: "LEARN_MORE",
     object_story_spec: {
       link_data: {
-        name: "Why Teams Switch to MediaJira",
-        link: "https://mediajira.com/why",
+        name: "Why Teams Switch to Marketing Simplified",
+        link: "https://marketingsimplified.com/why",
         message: "Resolve approval bottlenecks faster.",
       },
     },

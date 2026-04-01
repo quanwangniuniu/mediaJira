@@ -83,7 +83,7 @@ const steps: WizardStep[] = [
   },
   {
     id: 'useCases',
-    title: 'What Will You Use MediaJira For?',
+    title: 'What Will You Use Marketing Simplified For?',
     description: 'Select the workflows you want to streamline.',
   },
   {
