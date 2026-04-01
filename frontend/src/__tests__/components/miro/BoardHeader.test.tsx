@@ -193,6 +193,23 @@ describe('BoardHeader Component', () => {
     });
   });
 
+  describe('Undo/Redo Buttons', () => {
+    test('renders undo/redo when handlers provided', () => {
+      render(
+        <BoardHeader
+          {...defaultProps}
+          onUndo={jest.fn()}
+          onRedo={jest.fn()}
+          canUndo={true}
+          canRedo={false}
+        />
+      );
+      expect(screen.getByTitle('Undo (Cmd/Ctrl+Z)')).toBeInTheDocument();
+      expect(screen.getByTitle('Redo (Cmd+Shift+Z / Ctrl+Y)')).toBeInTheDocument();
+      expect(screen.getByTitle('Redo (Cmd+Shift+Z / Ctrl+Y)')).toBeDisabled();
+    });
+  });
+
   describe('Navigation', () => {
     test('back button calls router.back', () => {
       const mockBack = jest.fn();

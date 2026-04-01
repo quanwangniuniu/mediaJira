@@ -158,18 +158,6 @@ export default function MessagePageContent() {
               onSelectProject={handleSelectProject}
             />
           </div>
-          
-          <div className="flex items-center gap-2">
-            {/* New Chat Button */}
-            <button
-              onClick={handleCreateChat}
-              disabled={!selectedProjectId}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              <span>New Chat</span>
-            </button>
-          </div>
         </div>
         
         {/* Search Bar */}
@@ -235,13 +223,6 @@ export default function MessagePageContent() {
                 <p className="text-gray-500 text-sm max-w-sm">
                   Choose a chat from the list or start a new conversation with your team members.
                 </p>
-                <button
-                  onClick={handleCreateChat}
-                  className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  Start New Chat
-                </button>
               </div>
             </div>
           ) : (

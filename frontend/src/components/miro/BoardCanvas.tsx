@@ -5,17 +5,24 @@ import { BoardItem } from "@/lib/api/miroApi";
 import { Viewport } from "./hooks/useBoardViewport";
 import { useItemDrag } from "./hooks/useItemDrag";
 import { useItemResize } from "./hooks/useItemResize";
+import { useLineEndpointDrag } from "./hooks/useLineEndpointDrag";
 import { useFreehandDrawing } from "./hooks/useFreehandDrawing";
 import BoardItemContainer from "./items/BoardItemContainer";
 import InlineContentEditor from "./InlineContentEditor";
 import { TOOL_DND_MIME, ToolOptions, ToolType } from "./hooks/useToolDnD";
+import { getSelectionBounds } from "./utils/selectionBounds";
+import {
+  anchorWorldPoint,
+  itemSupportsConnectAnchors,
+  type AnchorSide,
+} from "./utils/connectorLayout";
 
 interface BoardCanvasProps {
   viewport: Viewport;
   items: BoardItem[];
-  selectedItemId: string | null;
+  selectedItemIds: string[];
   activeTool: ToolType;
-  onItemSelect: (itemId: string | null) => void;
+  onItemSelect: (itemId: string | null, options?: { shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean }) => void;
   onItemUpdate: (itemId: string, updates: Partial<BoardItem>) => void;
   onItemUpdateOptimistic: (itemId: string, updates: Partial<BoardItem>) => () => void;
   onItemUpdateAsync: (itemId: string, updates: Partial<BoardItem>, rollback: () => void) => Promise<BoardItem>;
@@ -23,8 +30,17 @@ interface BoardCanvasProps {
   onPanUpdate: (x: number, y: number) => void;
   onPanEnd: () => void;
   onZoom: (mouseX: number, mouseY: number, delta: number) => void;
+  onPanBy: (dx: number, dy: number) => void;
   onItemCreate?: (toolType: ToolType, worldX: number, worldY: number, options?: ToolOptions) => void;
   onFreehandCreate?: (data: { x: number; y: number; width: number; height: number; style: { svgPath: string; strokeColor: string; strokeWidth: number } }) => void;
+  onLinkedConnectorCreate?: (payload: {
+    fromItemId: string;
+    toItemId: string;
+    fromAnchor: AnchorSide;
+    toAnchor: AnchorSide;
+  }) => void;
+  onItemsBatchUpdate?: (updates: Array<{ id: string } & Partial<BoardItem>>) => void;
+  onEraseItem?: (itemId: string) => void;
   width: number;
   height: number;
   canvasRef: React.RefObject<HTMLDivElement>;
@@ -37,7 +53,7 @@ interface BoardCanvasProps {
 export default function BoardCanvas({
   viewport,
   items,
-  selectedItemId,
+  selectedItemIds,
   activeTool,
   onItemSelect,
   onItemUpdate,
@@ -47,14 +63,38 @@ export default function BoardCanvas({
   onPanUpdate,
   onPanEnd,
   onZoom,
+  onPanBy,
   onItemCreate,
   onFreehandCreate,
+  onLinkedConnectorCreate,
+  onItemsBatchUpdate,
+  onEraseItem,
   width,
   height,
   canvasRef,
   brushSettings,
 }: BoardCanvasProps) {
   const isPanningRef = useRef(false);
+  const [marqueeRect, setMarqueeRect] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null);
+  const groupDragStartRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+
+  const [connectionDraft, setConnectionDraft] = useState<{
+    fromItemId: string;
+    fromAnchor: AnchorSide;
+    fromWorld: { x: number; y: number };
+  } | null>(null);
+  const [draftPointerWorld, setDraftPointerWorld] = useState<{ x: number; y: number } | null>(null);
+  const connectionDraftRef = useRef<{
+    fromItemId: string;
+    fromAnchor: AnchorSide;
+    fromWorld: { x: number; y: number };
+  } | null>(null);
+
+  const cancelConnectionDraft = useCallback(() => {
+    connectionDraftRef.current = null;
+    setConnectionDraft(null);
+    setDraftPointerWorld(null);
+  }, []);
   
   // Inline editing state
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -78,17 +118,11 @@ export default function BoardCanvas({
       return;
     }
 
-    // Optimistic update
-    const rollback = onItemUpdateOptimistic(editingItemId, { content: draftContent });
-
-    // Async update
-    onItemUpdateAsync(editingItemId, { content: draftContent }, rollback).catch((err) => {
-      console.error("Failed to persist content edit:", err);
-    });
+    onItemUpdate(editingItemId, { content: draftContent });
 
     setEditingItemId(null);
     setDraftContent("");
-  }, [editingItemId, draftContent, items, onItemUpdateOptimistic, onItemUpdateAsync]);
+  }, [editingItemId, draftContent, items, onItemUpdate]);
 
   // Cancel editing (discard changes)
   const cancelEditing = useCallback(() => {
@@ -102,6 +136,8 @@ export default function BoardCanvas({
     endDrag,
     getOverridePosition,
     isDragging,
+    draggingItemId,
+    dragTick,
   } = useItemDrag();
 
   const {
@@ -112,6 +148,21 @@ export default function BoardCanvas({
     isResizing,
   } = useItemResize();
 
+  const {
+    startDrag: startLineEndpointDrag,
+    updateDrag: updateLineEndpointDrag,
+    endDrag: endLineEndpointDrag,
+    getOverride: getLineEndpointOverride,
+    lineEndpointDragTick,
+  } = useLineEndpointDrag();
+
+  const handleLineEndpointDragEnd = useCallback(() => {
+    const result = endLineEndpointDrag();
+    if (!result) return;
+    const { id, x, y, width, height, rotation } = result;
+    onItemUpdate(id, { x, y, width, height, rotation });
+  }, [endLineEndpointDrag, onItemUpdate]);
+
   // Compute editor screen position for editing item
   const editorRect = useMemo(() => {
     if (!editingItemId || !canvasRef.current) return null;
@@ -120,8 +171,18 @@ export default function BoardCanvas({
     if (!editingItem) return null;
 
     const canvasRect = canvasRef.current.getBoundingClientRect();
-    const overridePosition = getOverridePosition(editingItemId);
-    const overrideSize = getOverrideSize(editingItemId, viewport.zoom, editingItem.type);
+    const lineOv = getLineEndpointOverride(editingItemId);
+    const overridePosition = lineOv
+      ? { x: lineOv.x as number, y: lineOv.y as number }
+      : getOverridePosition(editingItemId);
+    const overrideSize = lineOv
+      ? {
+          x: lineOv.x as number,
+          y: lineOv.y as number,
+          width: lineOv.width as number,
+          height: lineOv.height as number,
+        }
+      : getOverrideSize(editingItemId, viewport.zoom, editingItem.type);
 
     const itemX = overrideSize?.x ?? overridePosition?.x ?? editingItem.x;
     const itemY = overrideSize?.y ?? overridePosition?.y ?? editingItem.y;
@@ -141,7 +202,16 @@ export default function BoardCanvas({
       width: screenWidth,
       height: screenHeight,
     };
-  }, [editingItemId, items, viewport, canvasRef, getOverridePosition, getOverrideSize]);
+  }, [
+    editingItemId,
+    items,
+    viewport,
+    canvasRef,
+    getOverridePosition,
+    getOverrideSize,
+    getLineEndpointOverride,
+    lineEndpointDragTick,
+  ]);
 
   // Viewport culling: only render visible items
   // Sort items so that frames render first, then their children render on top
@@ -217,25 +287,39 @@ export default function BoardCanvas({
     });
   }, [items, viewport, width, height]);
 
+  // Trackpad: two-finger scroll pans via deltaX/deltaY; pinch-zoom (e.g. macOS) often sends
+  // ctrlKey+wheel, which we treat as zoom-at-cursor. Brush/freehand is unaffected (separate handlers).
   // Handle mouse wheel zoom (native listener, non-passive so preventDefault works)
   useEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
 
     const wheelHandler = (e: WheelEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target?.closest(
+          "input, textarea, select, [contenteditable='true'], input[type='range'], [data-radix-scroll-area-viewport], [data-radix-popover-content], [role='dialog']"
+        )
+      ) {
+        return;
+      }
       e.preventDefault();
 
       const rect = el.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
 
-      const zoomDelta = -e.deltaY * 0.001;
-      onZoom(mouseX, mouseY, zoomDelta);
+      if (e.ctrlKey) {
+        const zoomDelta = -e.deltaY * 0.001;
+        onZoom(mouseX, mouseY, zoomDelta);
+        return;
+      }
+      onPanBy(e.deltaX, e.deltaY);
     };
 
     el.addEventListener("wheel", wheelHandler, { passive: false });
     return () => el.removeEventListener("wheel", wheelHandler as any);
-  }, [onZoom]);
+  }, [onZoom, onPanBy]);
 
   // Convert screen coordinates to world coordinates
   const screenToWorld = useCallback(
@@ -258,6 +342,77 @@ export default function BoardCanvas({
     },
     [viewport]
   );
+
+  // screenToWorld expects coordinates relative to the canvas element (same space as viewport.x/y).
+  // e.clientX/Y are viewport coordinates — offset by the canvas bounding rect first.
+  const clientToWorld = useCallback(
+    (clientX: number, clientY: number) => {
+      const el = canvasRef.current;
+      if (!el) {
+        return screenToWorld(clientX, clientY);
+      }
+      const rect = el.getBoundingClientRect();
+      return screenToWorld(clientX - rect.left, clientY - rect.top);
+    },
+    [canvasRef, screenToWorld]
+  );
+
+  const handleConnectAnchorPointerDown = useCallback(
+    (itemId: string, anchor: AnchorSide, e: React.PointerEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const item = items.find((i) => i.id === itemId);
+      if (!item) return;
+      const fromWorld = anchorWorldPoint(item, anchor);
+      const draft = { fromItemId: itemId, fromAnchor: anchor, fromWorld };
+      connectionDraftRef.current = draft;
+      setConnectionDraft(draft);
+      const w = clientToWorld(e.clientX, e.clientY);
+      setDraftPointerWorld(w);
+
+      const move = (ev: PointerEvent) => {
+        const p = clientToWorld(ev.clientX, ev.clientY);
+        setDraftPointerWorld(p);
+      };
+      const up = (ev: PointerEvent) => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+        const d = connectionDraftRef.current;
+        cancelConnectionDraft();
+        if (!d || !onLinkedConnectorCreate) return;
+        // Use elementsFromPoint so we can "see through" connector strokes/overlays
+        // and still hit the anchor underneath.
+        const els = typeof document.elementsFromPoint === "function"
+          ? document.elementsFromPoint(ev.clientX, ev.clientY)
+          : [document.elementFromPoint(ev.clientX, ev.clientY)].filter(Boolean) as Element[];
+        const h =
+          (els
+            .map((el) => (el as HTMLElement | null)?.closest?.("[data-connect-anchor]") as HTMLElement | null)
+            .find(Boolean) as HTMLElement | undefined) ?? null;
+        if (h) {
+          const toId = h.getAttribute("data-item-id");
+          const toAnchor = h.getAttribute("data-anchor") as AnchorSide | null;
+          if (toId && toAnchor && toId !== d.fromItemId) {
+            onLinkedConnectorCreate({
+              fromItemId: d.fromItemId,
+              fromAnchor: d.fromAnchor,
+              toItemId: toId,
+              toAnchor,
+            });
+          }
+        }
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+    },
+    [items, clientToWorld, onLinkedConnectorCreate, cancelConnectionDraft]
+  );
+
+  useEffect(() => {
+    if (activeTool !== "connect" && connectionDraftRef.current) {
+      cancelConnectionDraft();
+    }
+  }, [activeTool, cancelConnectionDraft]);
 
   // Freehand drawing hook
   const {
@@ -294,7 +449,12 @@ export default function BoardCanvas({
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       const targetEl = e.target as HTMLElement | null;
-      const isBackground = !targetEl?.closest?.('[data-board-item="true"]');
+      const isItemInteractionTarget = Boolean(
+        targetEl?.closest?.(
+          '.resize-handle, .connect-anchor-handle, .line-endpoint-handle, [data-hit-region="true"]'
+        )
+      );
+      const isBackground = !isItemInteractionTarget;
 
       // If we're editing content, only clicking the canvas background should commit.
       // Clicking inside the editor (or on items) should NOT immediately commit.
@@ -319,18 +479,27 @@ export default function BoardCanvas({
         e.preventDefault();
         return;
       }
-      
+
+      if (activeTool === "connect" && isBackground) {
+        onItemSelect(null);
+        e.preventDefault();
+        return;
+      }
+
       if (isBackground) {
-        // In select mode, clicking background should clear selection (and allow drag-to-pan immediately).
-        if (activeTool === "select") {
-          onItemSelect(null);
+        // Background interaction: in select mode, clicking empty space should not affect selection.
+        // Multi-select uses background drag to start marquee.
+        if (activeTool === "multi_select") {
+          const world = clientToWorld(e.clientX, e.clientY);
+          setMarqueeRect({ startX: world.x, startY: world.y, currentX: world.x, currentY: world.y });
+          return;
         }
         isPanningRef.current = true;
         onPanStart(e.clientX, e.clientY);
         e.preventDefault();
       }
     },
-    [editingItemId, commitEditing, isDragging, activeTool, onItemSelect, onPanStart, handleFreehandMouseDown]
+    [editingItemId, commitEditing, isDragging, activeTool, onItemSelect, onPanStart, handleFreehandMouseDown, clientToWorld]
   );
 
   const handleMouseMove = useCallback(
@@ -343,8 +512,12 @@ export default function BoardCanvas({
       if (isPanningRef.current) {
         onPanUpdate(e.clientX, e.clientY);
       }
+      if (marqueeRect) {
+        const world = clientToWorld(e.clientX, e.clientY);
+        setMarqueeRect((prev) => (prev ? { ...prev, currentX: world.x, currentY: world.y } : prev));
+      }
     },
-    [onPanUpdate, handleFreehandMouseMove]
+    [onPanUpdate, handleFreehandMouseMove, marqueeRect, clientToWorld]
   );
 
   const handleMouseUp = useCallback(
@@ -358,8 +531,30 @@ export default function BoardCanvas({
         isPanningRef.current = false;
         onPanEnd();
       }
+      if (marqueeRect) {
+        const end = clientToWorld(e.clientX, e.clientY);
+        const minX = Math.min(marqueeRect.startX, end.x);
+        const maxX = Math.max(marqueeRect.startX, end.x);
+        const minY = Math.min(marqueeRect.startY, end.y);
+        const maxY = Math.max(marqueeRect.startY, end.y);
+        const selected = items
+          .filter((item) => !item.is_deleted)
+          .filter((item) => {
+            const itemRight = item.x + item.width;
+            const itemBottom = item.y + item.height;
+            return itemRight >= minX && item.x <= maxX && itemBottom >= minY && item.y <= maxY;
+          })
+          .map((item) => item.id);
+        if (selected.length > 0) {
+          onItemSelect(selected[0]);
+          selected.slice(1).forEach((id) => onItemSelect(id, { shiftKey: true }));
+        } else {
+          onItemSelect(null);
+        }
+        setMarqueeRect(null);
+      }
     },
-    [onPanEnd, handleFreehandMouseUp]
+    [onPanEnd, handleFreehandMouseUp, marqueeRect, items, onItemSelect, clientToWorld]
   );
 
   // Handle canvas click (deselect)
@@ -367,9 +562,9 @@ export default function BoardCanvas({
     (e: React.MouseEvent<HTMLDivElement>) => {
       const targetEl = e.target as HTMLElement | null;
       const isBackground = !targetEl?.closest?.('[data-board-item="true"]');
-      if (isBackground) onItemSelect(null);
+      if (isBackground && activeTool !== "multi_select") onItemSelect(null);
     },
-    [onItemSelect]
+    [onItemSelect, activeTool]
   );
 
   // Handle drop to create item
@@ -473,14 +668,8 @@ export default function BoardCanvas({
         : result.newHeight,
           };
 
-    // Optimistic update
-    const rollback = onItemUpdateOptimistic(result.itemId, updates);
-
-    // Async PATCH
-    onItemUpdateAsync(result.itemId, updates, rollback).catch((err) => {
-      console.error('Failed to persist item resize:', err);
-    });
-  }, [endResize, onItemUpdateOptimistic, onItemUpdateAsync, items]);
+    onItemUpdate(result.itemId, updates);
+  }, [endResize, items, onItemUpdate]);
 
   // Handle item drag commit (optimistic update + async PATCH)
   const handleItemDragEnd = useCallback(() => {
@@ -498,6 +687,23 @@ export default function BoardCanvas({
     };
 
     // If item is a frame, move all its children with it
+    if (selectedItemIds.length > 1 && selectedItemIds.includes(result.itemId) && onItemsBatchUpdate) {
+      const selectedSet = new Set(selectedItemIds);
+      const original = groupDragStartRef.current;
+      const baseStart = original.get(result.itemId) ?? { x: movedItem.x, y: movedItem.y };
+      const deltaX = result.newX - baseStart.x;
+      const deltaY = result.newY - baseStart.y;
+      const updates = items
+        .filter((i) => selectedSet.has(i.id))
+        .map((i) => {
+          const start = original.get(i.id) ?? { x: i.x, y: i.y };
+          return { id: i.id, x: start.x + deltaX, y: start.y + deltaY };
+        });
+      onItemsBatchUpdate(updates);
+      groupDragStartRef.current.clear();
+      return;
+    }
+
     if (movedItem.type === 'frame') {
       const deltaX = result.newX - movedItem.x;
       const deltaY = result.newY - movedItem.y;
@@ -507,42 +713,19 @@ export default function BoardCanvas({
         (i) => i.parent_item_id === movedItem.id && !i.is_deleted
       );
 
-      // Optimistically update frame position
-      const frameRollback = onItemUpdateOptimistic(result.itemId, {
-        x: result.newX,
-        y: result.newY,
-      });
-
-      // Optimistically update all children and collect rollbacks
-      const childRollbacksMap = new Map<string, () => void>();
-      childItems.forEach((child) => {
-        const childRollback = onItemUpdateOptimistic(child.id, {
+      const updates = [
+        { id: movedItem.id, x: result.newX, y: result.newY },
+        ...childItems.map((child) => ({
+          id: child.id,
           x: child.x + deltaX,
           y: child.y + deltaY,
-        });
-        childRollbacksMap.set(child.id, childRollback);
-      });
-
-      // Async update frame
-      onItemUpdateAsync(result.itemId, {
-        x: result.newX,
-        y: result.newY,
-      }, frameRollback).catch((err) => {
-        console.error('Failed to persist frame move:', err);
-      });
-
-      // Async update all children
-      childItems.forEach((child) => {
-        const childRollback = childRollbacksMap.get(child.id);
-        if (!childRollback) return;
-        
-        onItemUpdateAsync(child.id, {
-          x: child.x + deltaX,
-          y: child.y + deltaY,
-        }, childRollback).catch((err) => {
-          console.error(`Failed to persist child ${child.id} move:`, err);
-        });
-      });
+        })),
+      ];
+      if (onItemsBatchUpdate) {
+        onItemsBatchUpdate(updates);
+      } else {
+        updates.forEach(({ id, ...update }) => onItemUpdate(id, update));
+      }
     } else {
       // For non-frame items, check if they're inside a frame
       const containingFrame = findContainingFrame(newItemData);
@@ -551,23 +734,46 @@ export default function BoardCanvas({
       // Only update parent if it changed
       const needsParentUpdate = movedItem.parent_item_id !== newParentId;
       
-      // Optimistically update position
-      const positionRollback = onItemUpdateOptimistic(result.itemId, {
+      onItemUpdate(result.itemId, {
         x: result.newX,
         y: result.newY,
         ...(needsParentUpdate && { parent_item_id: newParentId }),
-      });
-
-      // Async update
-      onItemUpdateAsync(result.itemId, {
-        x: result.newX,
-        y: result.newY,
-        ...(needsParentUpdate && { parent_item_id: newParentId }),
-      }, positionRollback).catch((err) => {
-        console.error('Failed to persist item move:', err);
       });
     }
-  }, [endDrag, onItemUpdateOptimistic, onItemUpdateAsync, items, findContainingFrame]);
+  }, [endDrag, items, findContainingFrame, selectedItemIds, onItemsBatchUpdate, onItemUpdate]);
+
+  const handleItemSelectFromContainer = useCallback(
+    (itemId: string, event?: { shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean }) => {
+      const additive = Boolean(event?.shiftKey || event?.metaKey || event?.ctrlKey);
+      // If we already have a multi-selection and the user clicks any selected item without modifiers,
+      // keep the selection intact so they can drag the whole group.
+      if (!additive && selectedItemIds.length > 1 && selectedItemIds.includes(itemId)) {
+        return;
+      }
+      groupDragStartRef.current.clear();
+      onItemSelect(itemId, event);
+    },
+    [onItemSelect, selectedItemIds]
+  );
+
+  const handleItemDragStart = useCallback(
+    (itemId: string, itemX: number, itemY: number, worldX: number, worldY: number) => {
+      if (selectedItemIds.length > 1 && selectedItemIds.includes(itemId)) {
+        const selectedSet = new Set(selectedItemIds);
+        groupDragStartRef.current = new Map(
+          items
+            .filter((i) => selectedSet.has(i.id))
+            .map((i) => [i.id, { x: i.x, y: i.y }] as const)
+        );
+      } else {
+        groupDragStartRef.current.clear();
+      }
+      startDrag(itemId, itemX, itemY, worldX, worldY);
+    },
+    [items, selectedItemIds, startDrag]
+  );
+
+  const selectionBounds = useMemo(() => getSelectionBounds(items, selectedItemIds), [items, selectedItemIds]);
 
   const canvasStyle: React.CSSProperties = {
     transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
@@ -575,10 +781,41 @@ export default function BoardCanvas({
     willChange: "transform",
   };
 
+  const gridStyle = useMemo(() => {
+    const BASE_CELL_WORLD = 20;
+    const MIN_CELL_PX = 16;
+    const MAX_CELL_PX = 40;
+
+    let cellWorld = BASE_CELL_WORLD;
+    let cellPx = cellWorld * viewport.zoom;
+
+    while (cellPx > MAX_CELL_PX) {
+      cellWorld /= 2;
+      cellPx /= 2;
+    }
+    while (cellPx < MIN_CELL_PX) {
+      cellWorld *= 2;
+      cellPx *= 2;
+    }
+
+    return {
+      backgroundImage: `
+        linear-gradient(to right, #e5e7eb 1px, transparent 1px),
+        linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)
+      `,
+      backgroundSize: `${cellPx}px ${cellPx}px`,
+      backgroundPosition: `${viewport.x}px ${viewport.y}px`,
+    } satisfies React.CSSProperties;
+  }, [viewport.x, viewport.y, viewport.zoom]);
+
   return (
     <div
       ref={canvasRef}
-      className="relative w-full h-full overflow-hidden bg-gray-50 cursor-grab active:cursor-grabbing"
+      className={`relative w-full h-full overflow-hidden bg-gray-50 ${
+        activeTool === "eraser" || activeTool === "connect"
+          ? "cursor-crosshair"
+          : "cursor-grab active:cursor-grabbing"
+      }`}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
@@ -590,13 +827,7 @@ export default function BoardCanvas({
       {/* Grid background */}
       <div
         className="canvas-background absolute inset-0"
-        style={{
-          backgroundImage: `
-            linear-gradient(to right, #e5e7eb 1px, transparent 1px),
-            linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)
-          `,
-          backgroundSize: `${20 * viewport.zoom}px ${20 * viewport.zoom}px`,
-        }}
+        style={gridStyle}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
       />
@@ -608,27 +839,103 @@ export default function BoardCanvas({
       >
         {/* Render visible items */}
         {visibleItems.map((item) => {
-          const overridePosition = getOverridePosition(item.id);
-          const overrideSize = getOverrideSize(item.id, viewport.zoom, item.type);
+          const lineOv = getLineEndpointOverride(item.id);
+          const posOv = getOverridePosition(item.id);
+          const sizeOv = getOverrideSize(item.id, viewport.zoom, item.type);
+          const overridePosition = lineOv
+            ? { x: lineOv.x as number, y: lineOv.y as number }
+            : posOv;
+          const overrideSize = lineOv
+            ? {
+                x: lineOv.x as number,
+                y: lineOv.y as number,
+                width: lineOv.width as number,
+                height: lineOv.height as number,
+              }
+            : sizeOv;
+          const overrideRotation =
+            lineOv?.rotation !== undefined && lineOv.rotation !== null
+              ? lineOv.rotation
+              : undefined;
           const isEditing = editingItemId === item.id;
+          const canLineEndpoints =
+            (item.type === "line" || (item.type === "connector" && !item.style?.connection)) &&
+            selectedItemIds.length === 1 &&
+            selectedItemIds.includes(item.id);
+
+          // If we're dragging one of multiple selected items, apply the same delta to all selected items
+          // so they move together during the drag (not only on commit).
+          const groupDragOverride = (() => {
+            if (!isDragging) return null;
+            if (selectedItemIds.length <= 1) return null;
+            if (!draggingItemId) return null;
+            if (!selectedItemIds.includes(draggingItemId)) return null;
+            if (!selectedItemIds.includes(item.id)) return null;
+
+            // dragTick is intentionally referenced so this re-evaluates during the rAF loop.
+            void dragTick;
+
+            const original = groupDragStartRef.current;
+            if (original.size === 0) return null;
+            const baseStart = original.get(draggingItemId);
+            const draggedPos = getOverridePosition(draggingItemId);
+            if (!baseStart || !draggedPos) return null;
+
+            const deltaX = draggedPos.x - baseStart.x;
+            const deltaY = draggedPos.y - baseStart.y;
+
+            const start = original.get(item.id);
+            if (!start) return null;
+            return { x: start.x + deltaX, y: start.y + deltaY };
+          })();
+
+          const finalOverridePosition = groupDragOverride ?? overridePosition;
           return (
             <BoardItemContainer
             key={item.id}
             item={item}
               viewport={viewport}
               canvasRef={canvasRef}
-            isSelected={selectedItemId === item.id}
-              overridePosition={overridePosition}
+            isSelected={selectedItemIds.includes(item.id)}
+              selectionCount={selectedItemIds.length}
+              overridePosition={finalOverridePosition}
               overrideSize={overrideSize}
+              overrideRotation={overrideRotation}
               activeTool={activeTool}
+              onEraseItem={onEraseItem}
+              onLineEndpointDragStart={
+                canLineEndpoints
+                  ? (endpoint) => startLineEndpointDrag(item, endpoint)
+                  : undefined
+              }
+              onLineEndpointDragMove={canLineEndpoints ? updateLineEndpointDrag : undefined}
+              onLineEndpointDragEnd={canLineEndpoints ? handleLineEndpointDragEnd : undefined}
               // Allow dragging items with any tool (freehand tool handles background drawing separately)
               // Only disable dragging when editing item content
-              disableDrag={isEditing}
-              disableResize={isEditing}
-            onSelect={() => onItemSelect(item.id)}
+              disableDrag={
+                isEditing || (item.type === "connector" && Boolean(item.style?.connection))
+              }
+              disableResize={
+                isEditing || (item.type === "connector" && Boolean(item.style?.connection))
+              }
+              showConnectAnchors={
+                (activeTool === "connect" || connectionDraft !== null) &&
+                itemSupportsConnectAnchors(item.type)
+              }
+              showLinkedConnectorEndpoints={
+                (activeTool === "connect" || connectionDraft !== null) &&
+                item.type === "connector" &&
+                Boolean(item.style?.connection)
+              }
+              onConnectAnchorPointerDown={
+                activeTool === "connect" || connectionDraft !== null
+                  ? handleConnectAnchorPointerDown
+                  : undefined
+              }
+            onSelect={(event) => handleItemSelectFromContainer(item.id, event)}
             onUpdate={(updates) => onItemUpdate(item.id, updates)}
               onRequestEdit={() => startEditing(item)}
-              onDragStart={startDrag}
+              onDragStart={handleItemDragStart}
               onDragMove={updateDrag}
               onDragEnd={handleItemDragEnd}
               onResizeStart={startResize}
@@ -637,7 +944,68 @@ export default function BoardCanvas({
           />
           );
         })}
+        {connectionDraft && draftPointerWorld && (() => {
+          const x1 = connectionDraft.fromWorld.x;
+          const y1 = connectionDraft.fromWorld.y;
+          const x2 = draftPointerWorld.x;
+          const y2 = draftPointerWorld.y;
+          const minX = Math.min(x1, x2) - 4;
+          const minY = Math.min(y1, y2) - 4;
+          const maxX = Math.max(x1, x2) + 4;
+          const maxY = Math.max(y1, y2) + 4;
+          const w = Math.max(maxX - minX, 8);
+          const h = Math.max(maxY - minY, 8);
+          return (
+            <svg
+              style={{
+                position: "absolute",
+                left: minX,
+                top: minY,
+                width: w,
+                height: h,
+                pointerEvents: "none",
+                zIndex: 50,
+                overflow: "visible",
+              }}
+            >
+              <line
+                x1={x1 - minX}
+                y1={y1 - minY}
+                x2={x2 - minX}
+                y2={y2 - minY}
+                stroke="#3b82f6"
+                strokeWidth={2 / viewport.zoom}
+              />
+            </svg>
+          );
+        })()}
       </div>
+
+      {selectionBounds && selectedItemIds.length > 1 && (
+        <div
+          className="absolute border-2 border-blue-500/80 pointer-events-none"
+          style={{
+            left: selectionBounds.x * viewport.zoom + viewport.x,
+            top: selectionBounds.y * viewport.zoom + viewport.y,
+            width: selectionBounds.width * viewport.zoom,
+            height: selectionBounds.height * viewport.zoom,
+            zIndex: 60,
+          }}
+        />
+      )}
+
+      {marqueeRect && (
+        <div
+          className="absolute border border-blue-500 bg-blue-100/20 pointer-events-none"
+          style={{
+            left: Math.min(marqueeRect.startX, marqueeRect.currentX) * viewport.zoom + viewport.x,
+            top: Math.min(marqueeRect.startY, marqueeRect.currentY) * viewport.zoom + viewport.y,
+            width: Math.abs(marqueeRect.currentX - marqueeRect.startX) * viewport.zoom,
+            height: Math.abs(marqueeRect.currentY - marqueeRect.startY) * viewport.zoom,
+            zIndex: 70,
+          }}
+        />
+      )}
 
       {/* Freehand draft overlay (in screen coordinates, not world) */}
       {freehandDraft.length > 0 && brushSettings && (

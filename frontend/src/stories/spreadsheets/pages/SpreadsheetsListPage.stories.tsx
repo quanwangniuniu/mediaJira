@@ -3,7 +3,6 @@ import { expect, userEvent, within, screen, waitFor } from '@storybook/test';
 import { useState } from 'react';
 import Link from 'next/link';
 import { AlertCircle, ArrowLeft, FileSpreadsheet, Loader2, Plus, Search, Trash2 } from 'lucide-react';
-import CreateSpreadsheetModal from '@/components/spreadsheets/CreateSpreadsheetModal';
 import type { SpreadsheetData } from '@/types/spreadsheet';
 import type { ProjectData } from '@/lib/api/projectApi';
 
@@ -59,16 +58,20 @@ function SpreadsheetsListPageContent({
             <ArrowLeft className="h-4 w-4" />
             Back to Projects
           </Link>
-          <div className="flex items-center justify-between gap-3 text-sm uppercase tracking-wide text-blue-700">
-            <div className="flex items-center gap-3">
-              <div className="h-6 w-6 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
-                <FileSpreadsheet className="h-4 w-4" />
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
+            <div>
+              <h1 className="text-2xl font-semibold text-gray-900">{project?.name ?? 'Project'}</h1>
+              <div className="mt-1 flex items-center gap-2 text-sm uppercase tracking-wide text-blue-700">
+                <div className="h-6 w-6 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
+                  <FileSpreadsheet className="h-4 w-4" />
+                </div>
+                Spreadsheets
               </div>
-              Spreadsheets
             </div>
             <button
+              type="button"
               onClick={onCreateClick}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 text-sm font-semibold"
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 text-sm font-semibold shrink-0"
             >
               <Plus className="h-4 w-4" />
               Create Spreadsheet
@@ -125,7 +128,6 @@ function SpreadsheetsListPageContent({
                           </div>
                           <div>
                             <div className="font-medium text-gray-900 truncate">{s.name}</div>
-                            <div className="text-sm text-gray-500 truncate">{project?.name || 'Project'}</div>
                           </div>
                         </div>
                       </td>
@@ -170,7 +172,7 @@ const meta: Meta<typeof SpreadsheetsListPageContent> = {
     docs: {
       description: {
         component:
-          'List of spreadsheets for the selected project. Includes search, Create Spreadsheet button, and table with name, updated date, and delete action. Click a row to open the spreadsheet.',
+          'List of spreadsheets for the selected project. Includes project title, search, Create Spreadsheet button, and table with name, updated date, and delete action. Click a row to open the spreadsheet.',
       },
     },
   },
@@ -217,32 +219,24 @@ export const SearchSpreadsheets: Story = {
     chromatic: { disableSnapshot: true },
     docs: {
       description: {
-        story: 'Table of spreadsheets; Create opens modal; search filters by name.',
+        story: 'Table of spreadsheets; Create starts a new spreadsheet with an auto-generated name; search filters by name.',
       },
     },
   },
   render: () => {
     const [search, setSearch] = useState('');
-    const [createOpen, setCreateOpen] = useState(false);
     return (
-      <>
-        <SpreadsheetsListPageContent
-          spreadsheets={mockSpreadsheets}
-          project={project}
-          loading={false}
-          error={null}
-          searchQuery={search}
-          onSearchChange={setSearch}
-          onCreateClick={() => setCreateOpen(true)}
-          onSpreadsheetClick={() => {}}
-          onDeleteClick={() => {}}
-        />
-        <CreateSpreadsheetModal
-          isOpen={createOpen}
-          onClose={() => setCreateOpen(false)}
-          onSubmit={async () => setCreateOpen(false)}
-        />
-      </>
+      <SpreadsheetsListPageContent
+        spreadsheets={mockSpreadsheets}
+        project={project}
+        loading={false}
+        error={null}
+        searchQuery={search}
+        onSearchChange={setSearch}
+        onCreateClick={() => {}}
+        onSpreadsheetClick={() => {}}
+        onDeleteClick={() => {}}
+      />
     );
   },
   play: async ({ canvasElement }) => {

@@ -9,6 +9,7 @@ import FreehandItem from "./FreehandItem";
 import FrameItem from "./FrameItem";
 import ConnectorItem from "./ConnectorItem";
 import LineItem from "./LineItem";
+import EmojiItem from "./EmojiItem";
 
 interface BoardItemRendererProps {
   item: BoardItem;
@@ -45,6 +46,8 @@ export default function BoardItemRenderer({
       return <ConnectorItem {...commonProps} />;
     case "freehand":
       return <FreehandItem {...commonProps} />;
+    case "emoji":
+      return <EmojiItem {...commonProps} />;
     default:
       return (
         <div

@@ -57,7 +57,7 @@ function GoogleCallbackPage() {
             toast.success('Login successful!');
             
             // Redirect to campaigns immediately (no delay needed)
-            router.push('/campaigns');
+            router.push('/tasks');
             return;
             
           } catch (decodeError) {

@@ -7,11 +7,14 @@ import { cn } from "@/lib/utils"
 import { AGENT_MESSAGES } from "@/lib/agentMessages"
 import { AnomalyCard } from "./AnomalyCard"
 import { DecisionCard } from "./DecisionCard"
+import { FollowUpCard } from "./FollowUpCard"
+import { MiroGenerateCard } from "./MiroGenerateCard"
+import { DistributeMessageCard } from "./DistributeMessageCard"
 import { TaskListCard } from "./TaskListCard"
-import type { AnomalyItem, SuggestedDecision, RecommendedTask } from "@/types/agent"
+import type { AnomalyItem, SuggestedDecision, RecommendedTask, WorkflowStepState } from "@/types/agent"
 import { StepProgress, type StepProgressItem } from "./StepProgress"
 
-export type ChatMessageType = "text" | "analysis" | "file_uploaded" | "decision_created" | "tasks_created" | "step_progress" | "error" | "calendar_invite"
+export type ChatMessageType = "text" | "analysis" | "file_uploaded" | "decision_created" | "tasks_created" | "miro_status" | "step_progress" | "error" | "calendar_invite"
 
 export interface ChatMessage {
   id: string
@@ -25,6 +28,10 @@ export interface ChatMessage {
   fileName?: string
   navigateTo?: string
   navigateLabel?: string
+  navigateDisabled?: boolean
+  navigateHref?: string
+  eventType?: string
+  workflowRunId?: string
   decisionId?: number
   stepProgress?: StepProgressItem[]
 }
@@ -33,9 +40,21 @@ interface MessageListProps {
   messages: ChatMessage[]
   onAction?: (action: string) => void
   onNavigate?: (view: string, message?: ChatMessage) => void
+  latestAnalysisMessageId?: string | null
+  showFollowUpToggle?: boolean
+  followUpActive?: boolean
+  stepState?: WorkflowStepState
 }
 
-export function MessageList({ messages, onAction, onNavigate }: MessageListProps) {
+export function MessageList({
+  messages,
+  onAction,
+  onNavigate,
+  latestAnalysisMessageId,
+  showFollowUpToggle,
+  followUpActive,
+  stepState,
+}: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -102,6 +121,7 @@ export function MessageList({ messages, onAction, onNavigate }: MessageListProps
                 size="sm"
                 variant="outline"
                 className="gap-2"
+                disabled={message.navigateDisabled}
                 onClick={() => onNavigate?.(message.navigateTo!, message)}
               >
                 {message.navigateLabel}
@@ -117,12 +137,14 @@ export function MessageList({ messages, onAction, onNavigate }: MessageListProps
               </div>
             )}
 
-            {/* Analysis result cards */}
+
+            {/* Analysis result cards — progressive gating */}
             {message.anomalies && message.anomalies.length > 0 && (
               <AnomalyCard anomalies={message.anomalies} />
             )}
 
-            {message.suggestedDecision && (
+            {/* DecisionCard: show when analysis complete and decision not yet created (or no stepState = backward compat) */}
+            {message.suggestedDecision && (!stepState || (stepState.analysisComplete && !stepState.decisionCreated)) && (
               <DecisionCard
                 decision={message.suggestedDecision}
                 onCreateDecision={() => onAction?.("confirm_decision")}
@@ -130,10 +152,27 @@ export function MessageList({ messages, onAction, onNavigate }: MessageListProps
               />
             )}
 
-            {message.recommendedTasks && message.recommendedTasks.length > 0 && (
+            {/* TaskListCard: show when decision created and tasks not yet created (or no stepState = backward compat) */}
+            {message.recommendedTasks && message.recommendedTasks.length > 0 && (!stepState || (stepState.decisionCreated && !stepState.tasksCreated)) && (
               <TaskListCard
                 tasks={message.recommendedTasks}
                 onCreateAll={() => onAction?.("create_tasks")}
+              />
+            )}
+
+            {/* MiroGenerateCard + DistributeMessageCard + FollowUpCard: show after tasks created (or no stepState = backward compat) */}
+            {message.recommendedTasks && message.recommendedTasks.length > 0 && (!stepState || stepState.tasksCreated) && (
+              <MiroGenerateCard onGenerate={() => onAction?.("generate_miro")} />
+            )}
+
+            {message.recommendedTasks && message.recommendedTasks.length > 0 && (!stepState || stepState.tasksCreated) && (
+              <DistributeMessageCard onDistribute={() => onAction?.("distribute_message")} />
+            )}
+
+            {showFollowUpToggle && message.id === latestAnalysisMessageId && (!stepState || stepState.tasksCreated) && (
+              <FollowUpCard
+                active={followUpActive}
+                onToggle={() => onAction?.(followUpActive ? "cancel_follow_up" : "start_follow_up")}
               />
             )}
           </div>

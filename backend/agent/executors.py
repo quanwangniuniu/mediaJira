@@ -154,11 +154,13 @@ class CreateDecisionExecutor(BaseStepExecutor):
                 reasoning=suggested.get('reasoning', ''),
                 risk_level=suggested.get('risk_level', 'MEDIUM'),
                 confidence=suggested.get('confidence', 3),
+                status=Decision.Status.PREDRAFT,
                 project=project,
                 project_seq=max_seq + 1,
                 author=user,
                 created_by_agent=True,
                 agent_session_id=self.orchestrator.session.id,
+                is_pre_draft=True,
             )
 
             for anomaly in analysis.get('anomalies', []):
@@ -248,8 +250,7 @@ class CreateTasksExecutor(BaseStepExecutor):
                 created_ids.append(task.id)
 
             self.workflow_run.created_tasks = created_ids
-            self.workflow_run.status = 'completed'
-            self.workflow_run.save(update_fields=['created_tasks', 'status'])
+            self.workflow_run.save(update_fields=['created_tasks'])
 
             return StepResult(
                 success=True,
@@ -265,6 +266,82 @@ class CreateTasksExecutor(BaseStepExecutor):
             )
         except Exception as e:
             logger.exception("CreateTasksExecutor failed")
+            return StepResult(success=False, error=str(e))
+
+
+class GenerateMiroSnapshotExecutor(BaseStepExecutor):
+    """Generate a validated Miro snapshot from workflow context via Dify."""
+
+    def execute(self, input_data):
+        from .miro_generation import (
+            build_miro_generation_context_from_run,
+            call_dify_miro_generator,
+        )
+
+        try:
+            context = build_miro_generation_context_from_run(
+                session=self.orchestrator.session,
+                workflow_run=self.workflow_run,
+            )
+            snapshot = call_dify_miro_generator(
+                context,
+                user_id=str(self.orchestrator.user.id),
+            )
+
+            self.workflow_run.miro_snapshot = snapshot
+            self.workflow_run.save(update_fields=['miro_snapshot'])
+
+            return StepResult(
+                success=True,
+                output_data={**input_data, 'miro_snapshot': snapshot},
+                sse_events=[{
+                    'type': 'miro_snapshot_generated',
+                    'content': 'Generated Miro snapshot from workflow results.',
+                    'data': {'item_count': len(snapshot.get('items', []))},
+                }],
+            )
+        except Exception as e:
+            logger.exception("GenerateMiroSnapshotExecutor failed")
+            return StepResult(success=False, error=str(e))
+
+
+class CreateMiroBoardExecutor(BaseStepExecutor):
+    """Create a persisted Miro board from a validated snapshot."""
+
+    def execute(self, input_data):
+        from .miro_board_service import create_board_from_snapshot
+
+        snapshot = input_data.get('miro_snapshot') or self.workflow_run.miro_snapshot
+        if not snapshot:
+            return StepResult(success=False, error='No miro_snapshot available for board creation')
+
+        try:
+            board, persisted_snapshot = create_board_from_snapshot(
+                project=self.orchestrator.project,
+                session=self.orchestrator.session,
+                workflow_run=self.workflow_run,
+                snapshot=snapshot,
+            )
+
+            self.workflow_run.miro_board = board
+            self.workflow_run.miro_snapshot = persisted_snapshot
+            self.workflow_run.save(update_fields=['miro_board', 'miro_snapshot'])
+
+            return StepResult(
+                success=True,
+                output_data={
+                    **input_data,
+                    'miro_snapshot': persisted_snapshot,
+                    'miro_board_id': str(board.id),
+                },
+                sse_events=[{
+                    'type': 'miro_board_created',
+                    'content': f'Miro board created: {board.title}',
+                    'data': {'board_id': str(board.id)},
+                }],
+            )
+        except Exception as e:
+            logger.exception("CreateMiroBoardExecutor failed")
             return StepResult(success=False, error=str(e))
 
 
@@ -329,6 +406,8 @@ EXECUTOR_REGISTRY = {
     'call_llm': CallLLMExecutor,
     'create_decision': CreateDecisionExecutor,
     'create_tasks': CreateTasksExecutor,
+    'generate_miro_snapshot': GenerateMiroSnapshotExecutor,
+    'create_miro_board': CreateMiroBoardExecutor,
     'await_confirmation': AwaitConfirmationExecutor,
     'custom_api': CustomAPIExecutor,
 }

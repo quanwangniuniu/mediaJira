@@ -13,7 +13,6 @@ interface FreehandItemProps {
 export default function FreehandItem({
   item,
   isSelected,
-  onSelect,
 }: FreehandItemProps) {
   const svgPath = item.style?.svgPath || "";
   const strokeColor = item.style?.strokeColor || "#000000";
@@ -25,9 +24,8 @@ export default function FreehandItem({
         width: "100%",
         height: "100%",
         border: isSelected ? "2px solid #3b82f6" : "none",
-        cursor: "pointer",
+        cursor: "inherit",
       }}
-      onClick={onSelect}
     >
       <svg
         width="100%"
@@ -35,6 +33,17 @@ export default function FreehandItem({
         style={{ display: "block" }}
         preserveAspectRatio="none"
       >
+        {/* Invisible thicker hit stroke for easier selection */}
+        <path
+          data-hit-region="true"
+          d={svgPath}
+          fill="none"
+          stroke="transparent"
+          strokeWidth={Math.max(12, strokeWidth * 3)}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          pointerEvents="stroke"
+        />
         <path
           d={svgPath}
           fill="none"
@@ -43,6 +52,7 @@ export default function FreehandItem({
           strokeLinecap="round"
           strokeLinejoin="round"
           shapeRendering="geometricPrecision"
+          pointerEvents="none"
         />
       </svg>
     </div>

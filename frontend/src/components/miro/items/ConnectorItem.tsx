@@ -13,18 +13,19 @@ interface ConnectorItemProps {
 export default function ConnectorItem({
   item,
   isSelected,
-  onSelect,
 }: ConnectorItemProps) {
   const strokeColor = item.style?.strokeColor || "#111827";
   const strokeWidth = item.style?.strokeWidth || 4;
   const strokeDasharray = item.style?.strokeDasharray;
   const width = item.width || 200;
   const height = item.height || 20;
+  const linkedPath = typeof item.style?.svgPath === "string" ? item.style.svgPath : null;
+  const isLinked = Boolean(item.style?.connection && linkedPath);
 
   // Arrow marker ID (unique per item)
   const markerId = `connectorArrow-${item.id}`;
 
-  // Line goes from left edge to right edge, centered vertically
+  // Line goes from left edge to right edge, centered vertically (free / arrow tool)
   const lineY = height / 2;
 
   const content = item.content || "";
@@ -35,10 +36,9 @@ export default function ConnectorItem({
         width: "100%",
         height: "100%",
         border: isSelected ? "2px solid #3b82f6" : "none",
-        cursor: "pointer",
+        cursor: "inherit",
         position: "relative",
       }}
-      onClick={onSelect}
     >
       <svg width="100%" height="100%" style={{ display: "block" }}>
         {/* Arrow marker definition */}
@@ -57,15 +57,27 @@ export default function ConnectorItem({
           </marker>
         </defs>
 
-        {/* Line with arrow */}
+        {/* Linked: curved path in local box coords; free: straight horizontal */}
+        {/* Invisible thicker hit stroke for easier selection */}
         <path
-          d={`M 0 ${lineY} L ${width} ${lineY}`}
+          data-hit-region="true"
+          d={isLinked ? linkedPath! : `M 0 ${lineY} L ${width} ${lineY}`}
+          fill="none"
+          stroke="transparent"
+          strokeWidth={Math.max(12, strokeWidth * 3)}
+          strokeLinecap="round"
+          strokeDasharray={strokeDasharray}
+          pointerEvents="stroke"
+        />
+        <path
+          d={isLinked ? linkedPath! : `M 0 ${lineY} L ${width} ${lineY}`}
           fill="none"
           stroke={strokeColor}
           strokeWidth={strokeWidth}
           strokeLinecap="round"
           strokeDasharray={strokeDasharray}
           markerEnd={`url(#${markerId})`}
+          pointerEvents="none"
         />
       </svg>
       {/* Content text above the line */}

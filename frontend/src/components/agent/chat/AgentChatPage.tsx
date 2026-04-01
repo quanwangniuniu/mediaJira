@@ -5,11 +5,27 @@ import { useAgentLayout, type AgentView } from "@/components/agent/AgentLayoutCo
 import { WelcomeScreen } from "./WelcomeScreen"
 import { MessageList, type ChatMessage } from "./MessageList"
 import { ChatInput } from "./ChatInput"
+import { ActionBar } from "./ActionBar"
 import { AgentAPI } from "@/lib/api/agentApi"
-import type { SSEEvent, AgentAction, AgentMessage, AnalysisResult } from "@/types/agent"
+import type { SSEEvent, AgentAction, AgentMessage, AnalysisResult, WorkflowStepState } from "@/types/agent"
 import { AGENT_MESSAGES } from "@/lib/agentMessages"
-import { WorkflowSelector } from "./WorkflowSelector"
 import type { StepProgressItem } from "./StepProgress"
+
+function getPendingMiroWorkflowRunIds(messages: ChatMessage[]): string[] {
+  const completedOrFailed = new Set(
+    messages
+      .filter((message) =>
+        message.workflowRunId &&
+        (message.eventType === "miro_board_created" || message.eventType === "miro_generation_failed")
+      )
+      .map((message) => message.workflowRunId as string)
+  )
+
+  return messages
+    .filter((message) => message.eventType === "miro_generation_started" && message.workflowRunId)
+    .map((message) => message.workflowRunId as string)
+    .filter((workflowRunId) => !completedOrFailed.has(workflowRunId))
+}
 
 /** Broadcast anomalies from restored messages to RightPanel Alerts. */
 function broadcastRestoredAnomalies(messages: AgentMessage[]) {
@@ -29,16 +45,33 @@ function restoreMessage(m: AgentMessage): ChatMessage {
   let type: ChatMessage["type"] = "text"
   let navigateTo: string | undefined
   let navigateLabel: string | undefined
-  const isFollowUpPrompt = m.message_type === "confirmation_request"
+  let navigateDisabled = false
+  let navigateHref: string | undefined
+  const isFollowUpPrompt = m.message_type === "follow_up_prompt"
+
+
+  const eventType = m.data?.event_type
 
   if (m.message_type === "calendar_invite") {
     type = "calendar_invite"
+  } else if (eventType === "miro_generation_started") {
+    type = "miro_status"
+    navigateTo = "miro"
+    navigateLabel = "Generating Miro..."
+    navigateDisabled = true
+  } else if (eventType === "miro_board_created" && m.data?.board_id) {
+    type = "miro_status"
+    navigateTo = "miro"
+    navigateLabel = "Open Miro"
+    navigateHref = `/miro/${m.data.board_id}`
+  } else if (eventType === "miro_generation_failed") {
+    type = "error"
   } else if (m.data?.anomalies) {
     type = "analysis"
   } else if (m.message_type === "decision_draft" || m.data?.decision_id) {
     type = "decision_created"
     navigateTo = "decisions"
-    navigateLabel = "Go to Decisions"
+    navigateLabel = "Review Pre-Draft"
   } else if (m.message_type === "task_created" || m.data?.task_ids) {
     type = "tasks_created"
     navigateTo = "tasks"
@@ -56,6 +89,10 @@ function restoreMessage(m: AgentMessage): ChatMessage {
     recommendedTasks: m.data?.recommended_tasks,
     navigateTo,
     navigateLabel,
+    navigateDisabled,
+    navigateHref,
+    eventType,
+    workflowRunId: m.data?.workflow_run_id,
     decisionId: m.data?.decision_id ? Number(m.data.decision_id) : undefined,
   }
 }
@@ -97,8 +134,14 @@ export function AgentChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [hasStarted, setHasStarted] = useState(false)
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null)
   const [stepProgress, setStepProgress] = useState<StepProgressItem[]>([])
+  const [stepState, setStepState] = useState<WorkflowStepState>({
+    analysisComplete: false,
+    decisionCreated: false,
+    tasksCreated: false,
+  })
+  const [followUpAvailable, setFollowUpAvailable] = useState(false)
+  const [followUpStarted, setFollowUpStarted] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const [pendingCalendarPreload] = useState<CalendarPreload | null>(buildCalendarPreload)
   // Persist calendar context for the lifetime of this session so follow-up messages
@@ -114,24 +157,14 @@ export function AgentChatPage() {
   }, [sessionCalendarContext])
 
   const handleSendMessageRef = useRef<typeof handleSendMessage | null>(null)
-  const latestMessage = messages[messages.length - 1]
-  const isAwaitingFollowUp = Boolean(
-    latestMessage &&
-    latestMessage.role === "assistant" &&
-    latestMessage.isFollowUpPrompt &&
-    !isStreaming
-  )
+  const isAwaitingFollowUp = followUpStarted && !isStreaming
   const inputPlaceholder = isAwaitingFollowUp
     ? "Ask one follow-up question about the analysis, or include an exact username/email for forwarding..."
     : "Ask about your data or upload a file..."
   const inputHelperText = isAwaitingFollowUp
     ? "You can send one follow-up message now. Ask for an explanation, a short report, or forwarding to specific project members."
     : undefined
-
-  // Abort SSE on unmount
-  useEffect(() => {
-    return () => { abortRef.current?.abort() }
-  }, [])
+  const latestAnalysisMessageId = [...messages].reverse().find((message) => message.type === "analysis")?.id ?? null
 
   const setSessionId = useCallback((id: string | null) => {
     setSessionIdState(id)
@@ -142,27 +175,72 @@ export function AgentChatPage() {
     }
   }, [])
 
+  const applySessionState = useCallback((session: Awaited<ReturnType<typeof AgentAPI.getSession>>) => {
+    setSessionId(String(session.id))
+    setHasStarted(true)
+    setMessages(session.messages.map(restoreMessage))
+    setFollowUpAvailable(Boolean(session.follow_up_available))
+    setFollowUpStarted(Boolean(session.follow_up_started))
+    broadcastRestoredAnomalies(session.messages)
+    // Derive step state from restored messages
+    const restoredStepState: WorkflowStepState = {
+      analysisComplete: false,
+      decisionCreated: false,
+      tasksCreated: false,
+    }
+    for (const m of session.messages) {
+      if (m.data?.anomalies) restoredStepState.analysisComplete = true
+      if (m.message_type === "decision_draft" || m.data?.decision_id) restoredStepState.decisionCreated = true
+      if (m.message_type === "task_created" || m.data?.task_ids) restoredStepState.tasksCreated = true
+    }
+    setStepState(restoredStepState)
+  }, [setSessionId])
+
+  const refreshFollowUpState = useCallback(async (id: string) => {
+    try {
+      const session = await AgentAPI.getSession(id)
+      setFollowUpAvailable(Boolean(session.follow_up_available))
+      setFollowUpStarted(Boolean(session.follow_up_started))
+    } catch {
+      // ignore refresh failures; next restore/poll can retry
+    }
+  }, [])
+
+  // Abort SSE on unmount
+  useEffect(() => {
+    return () => { abortRef.current?.abort() }
+  }, [])
+
+  useEffect(() => {
+    if (!sessionId) return
+    const pendingWorkflowRunIds = getPendingMiroWorkflowRunIds(messages)
+    if (pendingWorkflowRunIds.length === 0) return
+
+    const intervalId = window.setInterval(async () => {
+      try {
+        const session = await AgentAPI.getSession(sessionId)
+        setMessages(session.messages.map(restoreMessage))
+        setFollowUpAvailable(Boolean(session.follow_up_available))
+        setFollowUpStarted(Boolean(session.follow_up_started))
+      } catch {
+        // ignore polling failures; next cycle can retry
+      }
+    }, 5000)
+
+    return () => window.clearInterval(intervalId)
+  }, [sessionId, messages])
+
   // Restore session on mount
   useEffect(() => {
     const storedId = sessionStorage.getItem("agent-session-id")
     if (storedId) {
       AgentAPI.getSession(storedId)
-        .then((session) => {
-          setSessionIdState(String(session.id))
-          setHasStarted(true)
-          setMessages(session.messages.map(restoreMessage))
-          broadcastRestoredAnomalies(session.messages)
-          // Restore calendar context for this session if available
-          const storedCtx = sessionStorage.getItem("agent-session-calendar-context")
-          if (storedCtx) {
-            try { setSessionCalendarContext(JSON.parse(storedCtx)) } catch {}
-          }
-        })
+        .then((session) => applySessionState(session))
         .catch(() => {
           sessionStorage.removeItem("agent-session-id")
         })
     }
-  }, [])
+  }, [applySessionState])
 
   // Listen for sidebar events
   useEffect(() => {
@@ -174,6 +252,9 @@ export function AgentChatPage() {
       setSessionCalendarContext(null)
       setHasStarted(false)
       setIsStreaming(false)
+      setFollowUpAvailable(false)
+      setFollowUpStarted(false)
+      setStepState({ analysisComplete: false, decisionCreated: false, tasksCreated: false })
       abortRef.current?.abort()
     }
 
@@ -183,10 +264,7 @@ export function AgentChatPage() {
 
       try {
         const session = await AgentAPI.getSession(detail.sessionId)
-        setSessionId(String(session.id))
-        setHasStarted(true)
-        setMessages(session.messages.map(restoreMessage))
-        broadcastRestoredAnomalies(session.messages)
+        applySessionState(session)
       } catch {
         // Session not found — stay on welcome
       }
@@ -198,7 +276,7 @@ export function AgentChatPage() {
       window.removeEventListener("agent:new-chat", handleNewChat)
       window.removeEventListener("agent:load-session", handleLoadSession)
     }
-  }, [])
+  }, [applySessionState])
 
   /** Append a new message and return its id */
   const addMessage = useCallback((msg: ChatMessage) => {
@@ -256,6 +334,9 @@ export function AgentChatPage() {
         } else if (event.type === "analysis") {
           contentParts.push(event.content || "")
           analysisData = (event.data as unknown as AnalysisResult) || null
+          setFollowUpAvailable(true)
+          setFollowUpStarted(false)
+          setStepState((prev) => ({ ...prev, analysisComplete: true }))
           updateMessage(aiMsgId, {
             content: contentParts.join("\n"),
             type: "analysis",
@@ -263,14 +344,17 @@ export function AgentChatPage() {
             suggestedDecision: analysisData?.suggested_decision,
             recommendedTasks: analysisData?.recommended_tasks,
           })
-          // Broadcast to RightPanel Alerts
-          if (analysisData?.anomalies) {
-            window.dispatchEvent(new CustomEvent("agent:analysis-complete", {
-              detail: { anomalies: analysisData.anomalies }
-            }))
-          }
+          // Individual anomalies are added to the right panel via the
+          // AnomalyCard "+ Add" button — no auto-broadcast on new analysis.
         } else if (event.type === "confirmation_request") {
           contentParts.push(event.content || "")
+          updateMessage(aiMsgId, {
+            content: contentParts.join("\n"),
+          })
+        } else if (event.type === "follow_up_prompt") {
+          contentParts.push(event.content || "")
+          setFollowUpAvailable(false)
+          setFollowUpStarted(true)
           updateMessage(aiMsgId, {
             content: contentParts.join("\n"),
             isFollowUpPrompt: true,
@@ -283,6 +367,7 @@ export function AgentChatPage() {
           if (sid) {
             setSessionId(sid)
             window.dispatchEvent(new CustomEvent("agent:sessions-changed"))
+            void refreshFollowUpState(sid)
           }
         }
       },
@@ -291,10 +376,13 @@ export function AgentChatPage() {
         setIsStreaming(false)
       },
       () => {
+        if (sessionId) {
+          void refreshFollowUpState(sessionId)
+        }
         setIsStreaming(false)
       }
     )
-  }, [sessionId, addMessage, updateMessage])
+  }, [sessionId, addMessage, updateMessage, setSessionId, refreshFollowUpState])
 
   /** Handle text message send */
   const handleSendMessage = useCallback(async (text: string, calendarContext?: Record<string, unknown>) => {
@@ -338,7 +426,6 @@ export function AgentChatPage() {
       sid!,
       {
         message: text,
-        workflow_id: selectedWorkflowId || undefined,
         ...(effectiveCalendarContext ? { calendar_context: effectiveCalendarContext as any } : {}),
       },
       (event: SSEEvent) => {
@@ -408,42 +495,63 @@ export function AgentChatPage() {
           return
         }
 
-        if (event.content) {
+        if (event.content && event.type !== "miro_status" && event.type !== "follow_up_prompt") {
           contentParts.push(event.content)
           updateMessage(aiMsgId, { content: contentParts.join("\n") })
         }
 
         if (event.type === "analysis" && event.data) {
           const data = event.data as unknown as AnalysisResult
+          setFollowUpAvailable(true)
+          setFollowUpStarted(false)
+          setStepState((prev) => ({ ...prev, analysisComplete: true }))
           updateMessage(aiMsgId, {
             type: "analysis",
             anomalies: data.anomalies,
             suggestedDecision: data.suggested_decision,
             recommendedTasks: data.recommended_tasks,
           })
-          // Broadcast to RightPanel Alerts
-          if (data.anomalies) {
-            window.dispatchEvent(new CustomEvent("agent:analysis-complete", {
-              detail: { anomalies: data.anomalies }
-            }))
-          }
+          // Individual anomalies are added to the right panel via the
+          // AnomalyCard "+ Add" button — no auto-broadcast on new analysis.
         }
         if (event.type === "decision_draft" && event.data) {
           const decisionId = event.data?.decision_id
+          setStepState((prev) => ({ ...prev, decisionCreated: true }))
           updateMessage(aiMsgId, {
             content: contentParts.join("\n"),
             type: "decision_created",
             navigateTo: "decisions",
-            navigateLabel: "Go to Decisions",
+            navigateLabel: "Review Pre-Draft",
             decisionId: decisionId ? Number(decisionId) : undefined,
           })
         }
         if (event.type === "task_created" && event.data) {
+          setStepState((prev) => ({ ...prev, tasksCreated: true }))
           updateMessage(aiMsgId, {
             content: contentParts.join("\n"),
             type: "tasks_created",
             navigateTo: "tasks",
             navigateLabel: "Go to Tasks",
+          })
+        }
+        if (event.type === "miro_status") {
+          updateMessage(aiMsgId, {
+            content: event.content || "Miro board generation started in background.",
+            type: "miro_status",
+            navigateTo: "miro",
+            navigateLabel: "Generating Miro...",
+            navigateDisabled: true,
+            eventType: "miro_generation_started",
+            workflowRunId: event.data?.workflow_run_id,
+          })
+        }
+        if (event.type === "follow_up_prompt") {
+          contentParts.push(event.content || "")
+          setFollowUpAvailable(false)
+          setFollowUpStarted(true)
+          updateMessage(aiMsgId, {
+            content: contentParts.join("\n"),
+            isFollowUpPrompt: true,
           })
         }
       },
@@ -452,6 +560,9 @@ export function AgentChatPage() {
         setIsStreaming(false)
       },
       () => {
+        if (sid) {
+          void refreshFollowUpState(String(sid))
+        }
         // Attach final step progress to the message
         setStepProgress((prev) => {
           if (prev.length > 0) {
@@ -467,7 +578,7 @@ export function AgentChatPage() {
         setIsStreaming(false)
       }
     )
-  }, [sessionId, selectedWorkflowId, sessionCalendarContext, addMessage, updateMessage])
+  }, [sessionId, sessionCalendarContext, addMessage, updateMessage, setSessionId, refreshFollowUpState])
 
   // Keep ref always pointing to the latest handleSendMessage
   handleSendMessageRef.current = handleSendMessage
@@ -479,6 +590,10 @@ export function AgentChatPage() {
     const actionMap: Record<string, AgentAction> = {
       confirm_decision: "confirm_decision",
       create_tasks: "create_tasks",
+      generate_miro: "generate_miro",
+      distribute_message: "distribute_message",
+      start_follow_up: "start_follow_up",
+      cancel_follow_up: "cancel_follow_up",
     }
     const agentAction = actionMap[action]
     if (!agentAction) return
@@ -495,27 +610,49 @@ export function AgentChatPage() {
       (event: SSEEvent) => {
         if (event.type === "done") return
 
-        if (event.content) {
+        if (event.content && event.type !== "miro_status" && event.type !== "follow_up_prompt") {
           contentParts.push(event.content)
           updateMessage(aiMsgId, { content: contentParts.join("\n") })
         }
 
         if (event.type === "decision_draft") {
           const decisionId = event.data?.decision_id
+          setStepState((prev) => ({ ...prev, decisionCreated: true }))
           updateMessage(aiMsgId, {
             content: contentParts.join("\n"),
             type: "decision_created",
             navigateTo: "decisions",
-            navigateLabel: "Go to Decisions",
+            navigateLabel: "Review Pre-Draft",
             decisionId: decisionId ? Number(decisionId) : undefined,
           })
         }
         if (event.type === "task_created") {
+          setStepState((prev) => ({ ...prev, tasksCreated: true }))
           updateMessage(aiMsgId, {
             content: contentParts.join("\n"),
             type: "tasks_created",
             navigateTo: "tasks",
             navigateLabel: "Go to Tasks",
+          })
+        }
+        if (event.type === "miro_status") {
+          updateMessage(aiMsgId, {
+            content: event.content || "Miro board generation started in background.",
+            type: "miro_status",
+            navigateTo: "miro",
+            navigateLabel: "Generating Miro...",
+            navigateDisabled: true,
+            eventType: "miro_generation_started",
+            workflowRunId: event.data?.workflow_run_id,
+          })
+        }
+        if (event.type === "follow_up_prompt") {
+          contentParts.push(event.content || "")
+          setFollowUpAvailable(false)
+          setFollowUpStarted(true)
+          updateMessage(aiMsgId, {
+            content: contentParts.join("\n"),
+            isFollowUpPrompt: true,
           })
         }
       },
@@ -524,10 +661,11 @@ export function AgentChatPage() {
         setIsStreaming(false)
       },
       () => {
+        void refreshFollowUpState(sessionId)
         setIsStreaming(false)
       }
     )
-  }, [sessionId, addMessage, updateMessage])
+  }, [sessionId, addMessage, updateMessage, refreshFollowUpState])
 
   // Auto-send calendar context message when arriving from calendar/event page (once only).
   // Uses a module-level flag + ref to handleSendMessage so this effect only fires on mount
@@ -552,20 +690,18 @@ export function AgentChatPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <MessageList messages={messages} onAction={handleAction} onNavigate={(view, msg) => {
+      <MessageList messages={messages} onAction={handleAction} latestAnalysisMessageId={latestAnalysisMessageId} showFollowUpToggle={followUpAvailable || followUpStarted} followUpActive={followUpStarted} stepState={stepState} onNavigate={(view, msg) => {
+        if (msg?.navigateHref && typeof window !== "undefined") {
+          window.location.href = msg.navigateHref
+          return
+        }
         setActiveView(view as AgentView)
         if (floatingChat.mode === "maximized") toggleMaximize()
         if (view === "decisions" && msg?.decisionId) {
           setPendingDecisionId(msg.decisionId)
         }
       }} />
-      <div className="flex items-center gap-2 px-4 pb-1">
-        <WorkflowSelector
-          selectedId={selectedWorkflowId}
-          onSelect={setSelectedWorkflowId}
-          disabled={isStreaming}
-        />
-      </div>
+      <ActionBar stepState={stepState} onAction={handleAction} disabled={isStreaming} />
       <ChatInput
         onSend={handleSendMessage}
         onFileUpload={handleFileUpload}
