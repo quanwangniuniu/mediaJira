@@ -121,11 +121,35 @@ jobs:
             exit 1
           fi
 
-      - name: Run migration checks and apply migrations
+      # Mirror `application_test` in mediajira-ci.yml: (1) migration check + full migrate with
+      # `backend.ci_settings`, (2) same per-app chain as "Run backend tests in containerized environment",
+      # then a final full migrate so the whole graph (e.g. calendars, stripe_meta) stays applied.
+      - name: Run migration checks and backend tests (Postgres)
         run: |
-          docker compose exec backend sh -c "
+          docker compose --profile ci exec -T backend sh -c "
+            echo 'Checking for missing migrations...' &&
             python manage.py makemigrations --check --dry-run --settings=backend.ci_settings &&
+            echo 'Applying migrations...' &&
             python manage.py migrate --noinput --settings=backend.ci_settings
+          "
+
+      - name: Apply per-app migrations (same as application_test backend tests step)
+        run: |
+          docker compose --profile ci exec -T backend sh -c "
+            echo 'Running migrations...' &&
+            python manage.py makemigrations core&&
+            python manage.py migrate core&&
+            python manage.py makemigrations access_control&&
+            python manage.py migrate access_control&&
+          # python manage.py makemigrations authentication&&
+          # python manage.py migrate authentication&&
+            python manage.py makemigrations teams&&
+            python manage.py migrate teams&&
+            python manage.py makemigrations user_preferences&&
+            python manage.py migrate user_preferences&&
+            echo 'Ensuring full migration graph (all apps)...' &&
+            python manage.py migrate --noinput --settings=backend.ci_settings &&
+            echo 'Migrations finished.'
           "
 
       - name: Wait for app on localhost
@@ -139,8 +163,8 @@ jobs:
             sleep 2
           done
           echo "Timeout waiting for nginx/frontend"
-          docker compose logs nginx --tail 80 || true
-          docker compose logs frontend --tail 80 || true
+          docker compose --profile ci logs nginx --tail 80 || true
+          docker compose --profile ci logs frontend --tail 80 || true
           exit 1
 
       - name: Set up Node
@@ -168,6 +192,16 @@ jobs:
           path: frontend/.lighthouseci/
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Docker compose logs (on failure)
+        if: failure()
+        run: |
+          echo "=== docker compose ps ==="
+          docker compose --profile ci ps -a || true
+          echo "=== backend (last 250 lines) ==="
+          docker compose --profile ci logs backend --tail 250 || true
+          echo "=== nginx (last 120 lines) ==="
+          docker compose --profile ci logs nginx --tail 120 || true
 
       - name: Cleanup containers
         if: always()
