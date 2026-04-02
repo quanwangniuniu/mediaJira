@@ -4,6 +4,11 @@
  * - Used by `lhci-ensure-project.cjs` (orchestration before `lhci autorun`).
  * - Used by `lhci-puppeteer-login.cjs` for env + base URL only (`getBaseUrl`, `getCredentials`).
  *
+ * Stripe / DB: `/auth/register/` and `/auth/login/` return `UserProfileSerializer`, which nests
+ * `OrganizationSerializer` and reads `plan_id` via `stripe_meta.models.Subscription` and `Plan`.
+ * CI must apply `stripe_meta` migrations before Lighthouse runs; missing `stripe_meta` tables
+ * surface as 500s on those endpoints (not only on `/api/core/projects/`).
+ *
  * Base URL: `LHCI_API_BASE` or `LHCI_BASE_URL` (default `http://localhost`) — keep in sync with `lighthouserc.js` `base`.
  */
 const DEFAULT_BASE = 'http://localhost';
