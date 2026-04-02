@@ -156,14 +156,13 @@ jobs:
             echo 'Migrations finished.'
           "
 
-      # POST /api/core/projects/ calls ensure_project_calendar → calendars.Calendar (needs calendars_* tables).
-      # Register creates Organization → stripe_meta signal expects Plan named "Free" (seed via init_plans; no seed migration in repo).
-      - name: LHCI DB prerequisites (calendars + default Stripe plans)
+      # Schema: prior migrate steps already apply all installed apps (including calendars/stripe_meta when present).
+      # Do not run `migrate calendars` here — it raises CommandError on branches without that app label.
+      # Seed default plans for org signals; touch Calendar only if the calendars app is installed.
+      - name: LHCI DB prerequisites (init_plans + smoke check)
         run: |
-          docker compose --profile ci exec -T backend python manage.py migrate calendars --noinput --settings=backend.ci_settings
-          docker compose --profile ci exec -T backend python manage.py migrate stripe_meta --noinput --settings=backend.ci_settings
           docker compose --profile ci exec -T backend python manage.py init_plans --settings=backend.ci_settings
-          docker compose --profile ci exec -T backend python manage.py shell --settings=backend.ci_settings -c "from calendars.models import Calendar; from stripe_meta.models import Plan; Calendar.objects.count(); assert Plan.objects.filter(name='Free').exists(); print('LHCI DB prerequisites OK')"
+          docker compose --profile ci exec -T backend python manage.py shell --settings=backend.ci_settings -c "from django.apps import apps; from stripe_meta.models import Plan; assert Plan.objects.filter(name='Free').exists(), 'Free plan missing after init_plans'; __import__('calendars.models').Calendar.objects.count() if apps.is_installed('calendars') else None; print('LHCI DB prerequisites OK')"
 
       - name: Wait for app on localhost
         run: |
