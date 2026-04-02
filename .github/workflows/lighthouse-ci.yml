@@ -137,20 +137,27 @@ jobs:
         run: |
           docker compose --profile ci exec -T backend sh -c "
             echo 'Running migrations...' &&
-            python manage.py makemigrations core &&
-            python manage.py migrate core &&
-            python manage.py makemigrations access_control &&
-            python manage.py migrate access_control &&
-            python manage.py makemigrations teams &&
-            python manage.py migrate teams &&
-            python manage.py makemigrations user_preferences &&
-            python manage.py migrate user_preferences &&
-            python manage.py makemigrations stripe_meta &&
-            python manage.py migrate stripe_meta &&
+            python manage.py makemigrations core&&
+            python manage.py migrate core&&
+            python manage.py makemigrations access_control&&
+            python manage.py migrate access_control&&
+            python manage.py makemigrations teams&&
+            python manage.py migrate teams&&
+            python manage.py makemigrations user_preferences&&
+            python manage.py migrate user_preferences&&
             echo 'Ensuring full migration graph (all apps)...' &&
             python manage.py migrate --noinput --settings=backend.ci_settings &&
             echo 'Migrations finished.'
           "
+
+      # POST /api/core/projects/ calls ensure_project_calendar → calendars.Calendar (needs calendars_* tables).
+      # Register creates Organization → stripe_meta signal expects Plan named "Free" (seed via init_plans; no seed migration in repo).
+      - name: LHCI DB prerequisites (calendars + default Stripe plans)
+        run: |
+          docker compose --profile ci exec -T backend python manage.py migrate calendars --noinput --settings=backend.ci_settings
+          docker compose --profile ci exec -T backend python manage.py migrate stripe_meta --noinput --settings=backend.ci_settings
+          docker compose --profile ci exec -T backend python manage.py init_plans --settings=backend.ci_settings
+          docker compose --profile ci exec -T backend python manage.py shell --settings=backend.ci_settings -c "from calendars.models import Calendar; from stripe_meta.models import Plan; Calendar.objects.count(); assert Plan.objects.filter(name='Free').exists(); print('LHCI DB prerequisites OK')"
 
       - name: Wait for app on localhost
         run: |
@@ -163,8 +170,6 @@ jobs:
             sleep 2
           done
           echo "Timeout waiting for nginx/frontend"
-          docker compose --profile ci logs nginx --tail 80 || true
-          docker compose --profile ci logs frontend --tail 80 || true
           docker compose --profile ci logs nginx --tail 80 || true
           docker compose --profile ci logs frontend --tail 80 || true
           exit 1
@@ -194,16 +199,6 @@ jobs:
           path: frontend/.lighthouseci/
           if-no-files-found: warn
           retention-days: 14
-
-      - name: Docker compose logs (on failure)
-        if: failure()
-        run: |
-          echo "=== docker compose ps ==="
-          docker compose --profile ci ps -a || true
-          echo "=== backend (last 250 lines) ==="
-          docker compose --profile ci logs backend --tail 250 || true
-          echo "=== nginx (last 120 lines) ==="
-          docker compose --profile ci logs nginx --tail 120 || true
 
       - name: Docker compose logs (on failure)
         if: failure()
