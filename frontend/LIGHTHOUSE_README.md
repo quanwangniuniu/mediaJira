@@ -100,6 +100,8 @@ Open **`frontend/.lighthouseci/report-dashboard.html`**.
 - Secrets: **`LHCI_AUTH_EMAIL`**, **`LHCI_AUTH_PASSWORD`** (repo **Settings → Secrets and variables → Actions**).
 - Artifact: **`lighthouse-reports-<sha>`** — extract and open **`report-dashboard.html`**.
 - **Fork PRs** usually have no secrets; authenticated runs may fail.
+- On **failure**, the workflow prints **`docker compose` ps** plus **backend** and **nginx** logs so you can see Django tracebacks. Locally, scripts log **`[lhci]`** lines to stderr (URL, status, content-type); set **`LHCI_VERBOSE=1`** to include response body snippets (no passwords logged).
+- Migrations mirror **`application_test`** in **`mediajira-ci.yml`**: global **`migrate`** with **`backend.ci_settings`**, then per-app **`makemigrations` / `migrate`** for **`core`**, **`access_control`**, **`teams`**, **`user_preferences`** so tables like **`core_customuser`** exist before LHCI calls the API.
 
 ---
 
