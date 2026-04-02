@@ -1536,14 +1536,20 @@ function TasksPageContent() {
       const existingTask = { id: draftEditingTaskId };
       setContentType(config?.contentType || "");
 
-      const createdObject = await createTaskTypeObject(taskData.type, existingTask);
+      // Check if type-specific object already exists (e.g. resubmit after rejection).
+      // The backend rejects duplicate creation, so skip create + link when object_id is set.
+      const taskResp = await TaskAPI.getTask(draftEditingTaskId);
+      const hasLinkedObject = taskResp?.data?.object_id;
 
-      if (createdObject && config?.contentType) {
-        await TaskAPI.linkTask(
-          existingTask.id,
-          config.contentType,
-          createdObject.id.toString(),
-        );
+      if (!hasLinkedObject) {
+        const createdObject = await createTaskTypeObject(taskData.type, existingTask);
+        if (createdObject && config?.contentType) {
+          await TaskAPI.linkTask(
+            existingTask.id,
+            config.contentType,
+            createdObject.id.toString(),
+          );
+        }
       }
 
       await TaskAPI.submitTask(draftEditingTaskId);

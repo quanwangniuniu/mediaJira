@@ -1,16 +1,16 @@
 import React from 'react';
 
-export default function WhyMediaJiraSection() {
+export default function WhyMarketingSimplifiedSection() {
   return (
     <>
-      {/* Why MediaJira Section */}
+      {/* Why Marketing Simplified Section */}
       <section className="hidden md:block py-20 px-6 bg-white">
         <div className="max-w-4xl mx-auto">
           <h2 className="text-4xl md:text-5xl font-bold text-center text-gray-900 mb-4">
-            Why MediaJira?
+            Why Marketing Simplified?
           </h2>
           <p className="text-center text-gray-600 mb-16 text-lg">
-            MediaJira turns these challenges into a streamlined, end-to-end solution.
+            Marketing Simplified turns these challenges into a streamlined, end-to-end solution.
           </p>
 
           {/* Persona Cards */}
@@ -94,14 +94,14 @@ export default function WhyMediaJiraSection() {
         </div>
       </section>
 
-      {/* Why MediaJira Section - Mobile */}
+      {/* Why Marketing Simplified Section - Mobile */}
       <section className="block md:hidden py-12 px-6 bg-white">
         <div className="max-w-4xl mx-auto">
           <h2 className="text-3xl md:text-5xl font-bold text-center text-gray-900 mb-3 md:mb-4">
-            Why MediaJira?
+            Why Marketing Simplified?
           </h2>
           <p className="text-center text-gray-600 mb-8 md:mb-15 text-base md:text-lg">
-            MediaJira turns these challenges into a streamlined, end-to-end solution.
+            Marketing Simplified turns these challenges into a streamlined, end-to-end solution.
           </p>
 
           {/* Persona Cards - Vertical layout on mobile */}

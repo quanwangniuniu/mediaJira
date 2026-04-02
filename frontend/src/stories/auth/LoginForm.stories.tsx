@@ -27,8 +27,8 @@ const meta = {
       <div
         onClickCapture={(event) => {
           const target = event.target as HTMLElement | null;
-          const clickable = target?.closest?.('a, button');
-          if (clickable) {
+          const link = target?.closest?.('a');
+          if (link) {
             event.preventDefault();
             event.stopPropagation();
           }

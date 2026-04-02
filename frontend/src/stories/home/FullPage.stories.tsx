@@ -12,7 +12,7 @@ import TestimonialsSection from '../../components/home/TestimonialsSection';
 import UnifiedNotificationsSection from '../../components/home/UnifiedNotificationsSection';
 import UserPermissionSection from '../../components/home/UserPermissionSection';
 import VisualizeCampaignsSection from '../../components/home/VisualizeCampaignsSection';
-import WhyMediaJiraSection from '../../components/home/WhyMediaJiraSection';
+import WhyMarketingSimplifiedSection from '../../components/home/WhyMarketingSimplifiedSection';
 
 const mockRouter = {
   back: () => {},
@@ -70,7 +70,7 @@ export const Default = {
               onRedirectToLogin={redirectToLogin}
             />
             <HeroSection onGetStartedClick={handleGetStartedClick} />
-            <WhyMediaJiraSection />
+            <WhyMarketingSimplifiedSection />
             <UserPermissionSection onRedirectToLogin={redirectToLogin} />
             <SmartWorkflowSection onRedirectToLogin={redirectToLogin} />
             <VisualizeCampaignsSection onRedirectToLogin={redirectToLogin} />

@@ -298,7 +298,7 @@ export default function SmartWorkflowSection({ onRedirectToLogin }: SmartWorkflo
                   <div className="whitespace-nowrap">one seamless workflow.</div>
                 </h3>
                 <p className="text-lg text-gray-600 mb-8 max-w-md text-right">
-                  From creative reviews to budget approvals and campaign execution, MediaJira automates task transitions so your team stays perfectly aligned.
+                  From creative reviews to budget approvals and campaign execution, Marketing Simplified automates task transitions so your team stays perfectly aligned.
                 </p>
                 <button
                   onClick={onRedirectToLogin}
@@ -322,7 +322,7 @@ export default function SmartWorkflowSection({ onRedirectToLogin }: SmartWorkflo
                 Connect every stage in one seamless workflow.
               </h2>
               <p className="text-base text-gray-700 mb-6 leading-relaxed">
-                MediaJira automates task transitions so your team stays perfectly aligned.
+                Marketing Simplified automates task transitions so your team stays perfectly aligned.
               </p>
               <div className="flex justify-end">
                 <button className="px-6 py-1.5 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition text-sm font-medium">

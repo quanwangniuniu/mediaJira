@@ -85,6 +85,10 @@ interface ApprovalRecord {
   step_number: number;
   decided_time: string;
   role_name?: string | null;
+  // SMP-501: revision tracking fields
+  revision_round?: number;
+  revision_label?: string;
+  resubmitted_after_reject?: boolean;
 }
 
 interface ClientCommunicationData
@@ -2567,6 +2571,12 @@ export default function TaskDetail({
                           <p className="text-xs text-gray-900">
                             {record.comment}
                           </p>
+                          {/* SMP-501: Show revision label if task has been resubmitted */}
+                          {record.revision_label && record.revision_label !== "Initial Submission" && (
+                            <span className="inline-block mt-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                              {record.revision_label}
+                            </span>
+                          )}
                         </div>
                       </div>
                     ))
