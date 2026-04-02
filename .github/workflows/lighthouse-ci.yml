@@ -121,24 +121,34 @@ jobs:
             exit 1
           fi
 
-      # Match `application_test` in mediajira-ci.yml: global migrate, then per-app migrate so `core`
-      # (e.g. core_customuser) and related apps are applied before HTTP (same sequence as backend tests step).
-      - name: Run migration checks and apply migrations
+      # Mirror `application_test` in mediajira-ci.yml: (1) migration check + full migrate with
+      # `backend.ci_settings`, (2) same per-app chain as "Run backend tests in containerized environment",
+      # then a final full migrate so the whole graph (e.g. calendars, stripe_meta) stays applied.
+      - name: Run migration checks and backend tests (Postgres)
         run: |
           docker compose --profile ci exec -T backend sh -c "
             echo 'Checking for missing migrations...' &&
             python manage.py makemigrations --check --dry-run --settings=backend.ci_settings &&
-            echo 'Applying migrations (global)...' &&
+            echo 'Applying migrations...' &&
+            python manage.py migrate --noinput --settings=backend.ci_settings
+          "
+
+      - name: Apply per-app migrations (same as application_test backend tests step)
+        run: |
+          docker compose --profile ci exec -T backend sh -c "
+            echo 'Running migrations...' &&
+            python manage.py makemigrations core&&
+            python manage.py migrate core&&
+            python manage.py makemigrations access_control&&
+            python manage.py migrate access_control&&
+          # python manage.py makemigrations authentication&&
+          # python manage.py migrate authentication&&
+            python manage.py makemigrations teams&&
+            python manage.py migrate teams&&
+            python manage.py makemigrations user_preferences&&
+            python manage.py migrate user_preferences&&
+            echo 'Ensuring full migration graph (all apps)...' &&
             python manage.py migrate --noinput --settings=backend.ci_settings &&
-            echo 'Applying per-app migrations (same as mediajira-ci application_test)...' &&
-            python manage.py makemigrations core &&
-            python manage.py migrate core &&
-            python manage.py makemigrations access_control &&
-            python manage.py migrate access_control &&
-            python manage.py makemigrations teams &&
-            python manage.py migrate teams &&
-            python manage.py makemigrations user_preferences &&
-            python manage.py migrate user_preferences &&
             echo 'Migrations finished.'
           "
 
