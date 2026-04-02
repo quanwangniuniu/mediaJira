@@ -165,6 +165,8 @@ jobs:
           echo "Timeout waiting for nginx/frontend"
           docker compose --profile ci logs nginx --tail 80 || true
           docker compose --profile ci logs frontend --tail 80 || true
+          docker compose --profile ci logs nginx --tail 80 || true
+          docker compose --profile ci logs frontend --tail 80 || true
           exit 1
 
       - name: Set up Node
@@ -192,6 +194,16 @@ jobs:
           path: frontend/.lighthouseci/
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Docker compose logs (on failure)
+        if: failure()
+        run: |
+          echo "=== docker compose ps ==="
+          docker compose --profile ci ps -a || true
+          echo "=== backend (last 250 lines) ==="
+          docker compose --profile ci logs backend --tail 250 || true
+          echo "=== nginx (last 120 lines) ==="
+          docker compose --profile ci logs nginx --tail 120 || true
 
       - name: Docker compose logs (on failure)
         if: failure()

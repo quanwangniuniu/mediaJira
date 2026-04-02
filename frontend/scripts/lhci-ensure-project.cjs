@@ -41,6 +41,10 @@ async function ensureProject() {
   const base = getBaseUrl();
   const projectName = process.env.LHCI_PROJECT_NAME || DEFAULT_PROJECT_NAME;
 
+  process.stderr.write(
+    `[lhci] ensure-project: apiBase=${base} projectName=${projectName}\n`
+  );
+
   await registerUserIfNotExists(base, creds.email, creds.password);
   const token = await loginWithApi(base, creds.email, creds.password);
 
