@@ -121,11 +121,25 @@ jobs:
             exit 1
           fi
 
+      # Match `application_test` in mediajira-ci.yml: global migrate, then per-app migrate so `core`
+      # (e.g. core_customuser) and related apps are applied before HTTP (same sequence as backend tests step).
       - name: Run migration checks and apply migrations
         run: |
-          docker compose exec backend sh -c "
+          docker compose --profile ci exec -T backend sh -c "
+            echo 'Checking for missing migrations...' &&
             python manage.py makemigrations --check --dry-run --settings=backend.ci_settings &&
-            python manage.py migrate --noinput --settings=backend.ci_settings
+            echo 'Applying migrations (global)...' &&
+            python manage.py migrate --noinput --settings=backend.ci_settings &&
+            echo 'Applying per-app migrations (same as mediajira-ci application_test)...' &&
+            python manage.py makemigrations core &&
+            python manage.py migrate core &&
+            python manage.py makemigrations access_control &&
+            python manage.py migrate access_control &&
+            python manage.py makemigrations teams &&
+            python manage.py migrate teams &&
+            python manage.py makemigrations user_preferences &&
+            python manage.py migrate user_preferences &&
+            echo 'Migrations finished.'
           "
 
       - name: Wait for app on localhost
@@ -139,8 +153,8 @@ jobs:
             sleep 2
           done
           echo "Timeout waiting for nginx/frontend"
-          docker compose logs nginx --tail 80 || true
-          docker compose logs frontend --tail 80 || true
+          docker compose --profile ci logs nginx --tail 80 || true
+          docker compose --profile ci logs frontend --tail 80 || true
           exit 1
 
       - name: Set up Node
