@@ -1,14 +1,92 @@
 /**
- * After `lhci autorun`, reads `.lighthouseci/manifest.json` and writes `.lighthouseci/index.html`
- * — one page listing every audited URL with category scores and links to each full Lighthouse HTML report.
+ * After `lhci autorun`, reads `.lighthouseci/manifest.json` and writes the **dashboard** HTML
+ * — one page listing every audited URL with category scores and links to each full Lighthouse report.
+ *
+ * Default dashboard filename: **`report-dashboard.html`** (or **`report-<prefix>-dashboard.html`** when
+ * `LHCI_REPORT_PREFIX` is set). Override with **`LHCI_DASHBOARD_FILENAME`** (with or without `.html`).
+ * Unless **`LHCI_DASHBOARD_WRITE_INDEX=0`**, the same content is also written to **`index.html`** for
+ * compatibility with tools that expect that path.
+ *
+ * Each run also copies the canonical report files to **readable names**: `report-<slug>.html` (and
+ * `report-<slug>.json`) in the same folder, derived from the audited URL (e.g. `report-home.html`,
+ * `report-spreadsheet.html`, `report-tasks-project-22.html`). The dashboard links to these files.
+ *
+ * Optional env:
+ * - `LHCI_REPORT_PREFIX` — prepended to each report basename and to the default dashboard name
+ * - `LHCI_DASHBOARD_FILENAME` — full dashboard basename (e.g. `lighthouse-summary` → `lighthouse-summary.html`)
+ * - `LHCI_DASHBOARD_WRITE_INDEX=0` — do not write `index.html`
+ * - `LHCI_CLEANUP_LHR=1` — delete intermediate `lhr-*.html` / `lhr-*.json` in `.lighthouseci/` (not referenced by manifest)
  *
  * Lighthouse does not support merging multiple URLs into a single native Lighthouse report; this is the usual workaround.
  */
 const fs = require('fs');
 const path = require('path');
 
-const manifestPath = path.join(process.cwd(), '.lighthouseci', 'manifest.json');
-const outPath = path.join(process.cwd(), '.lighthouseci', 'index.html');
+const outDir = path.join(process.cwd(), '.lighthouseci');
+const manifestPath = path.join(outDir, 'manifest.json');
+
+/**
+ * @param {string} prefix — sanitized prefix or empty
+ * @returns {string} absolute path to dashboard HTML
+ */
+function resolveDashboardPath(prefix) {
+  const custom = process.env.LHCI_DASHBOARD_FILENAME;
+  if (custom) {
+    const base = path.basename(String(custom).trim()).replace(/\.html$/i, '');
+    const safe = base.replace(/[^a-z0-9-]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'dashboard';
+    return path.join(outDir, `${safe}.html`);
+  }
+  const base = prefix ? `report-${prefix}-dashboard` : 'report-dashboard';
+  return path.join(outDir, `${base}.html`);
+}
+
+/**
+ * @param {string} urlStr
+ * @returns {string} filesystem-safe slug
+ */
+function urlToReportSlug(urlStr) {
+  const u = new URL(urlStr);
+  const pathname = u.pathname.replace(/\/$/, '') || '/';
+
+  if (pathname === '/') {
+    return 'home';
+  }
+
+  let slug = pathname.replace(/^\//, '').replace(/\//g, '-');
+
+  const projectId = u.searchParams.get('project_id');
+  if (projectId) {
+    slug += `-project-${projectId}`;
+  }
+
+  const view = u.searchParams.get('view');
+  if (view && slug.includes('tasks')) {
+    slug += `-view-${view}`;
+  }
+
+  slug = slug
+    .replace(/[^a-z0-9-]+/gi, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .toLowerCase();
+
+  return slug || 'page';
+}
+
+/**
+ * @param {string} slug
+ * @param {Set<string>} used
+ */
+function uniqueSlug(slug, used) {
+  let s = slug;
+  let n = 2;
+  while (used.has(s)) {
+    s = `${slug}-${n}`;
+    n += 1;
+  }
+  used.add(s);
+  return s;
+}
 
 function esc(s) {
   return String(s)
@@ -22,13 +100,34 @@ function pct(score) {
   return `${Math.round(score * 100)}`;
 }
 
+function cleanupIntermediateLhr() {
+  if (process.env.LHCI_CLEANUP_LHR !== '1') {
+    return;
+  }
+  let n = 0;
+  try {
+    const names = fs.readdirSync(outDir);
+    for (const name of names) {
+      if (/^lhr-\d+\.(html|json)$/.test(name)) {
+        fs.unlinkSync(path.join(outDir, name));
+        n += 1;
+      }
+    }
+    if (n > 0) {
+      process.stderr.write(`lhci-build-dashboard: removed ${n} intermediate lhr-* file(s)\n`);
+    }
+  } catch (err) {
+    process.stderr.write(`lhci-build-dashboard: cleanup skipped (${err && err.message})\n`);
+  }
+}
+
 function main() {
   if (!fs.existsSync(manifestPath)) {
     process.stderr.write(`lhci-build-dashboard: no ${manifestPath} (run lhci autorun first).\n`);
     process.exit(0);
   }
 
-  /** @type {Array<{ url: string, isRepresentativeRun: boolean, htmlPath: string, summary: Record<string, number> }>} */
+  /** @type {Array<{ url: string, isRepresentativeRun: boolean, htmlPath: string, jsonPath?: string, summary: Record<string, number> }>} */
   let manifest;
   try {
     manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
@@ -37,14 +136,45 @@ function main() {
     process.exit(1);
   }
 
+  const prefix = process.env.LHCI_REPORT_PREFIX
+    ? String(process.env.LHCI_REPORT_PREFIX).replace(/[^a-z0-9-]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+    : '';
+
+  const usedSlugs = new Set();
   const rows = manifest
     .filter((e) => e.isRepresentativeRun)
     .map((e) => {
-      const dir = path.dirname(outPath);
-      const href = path.relative(dir, e.htmlPath).split(path.sep).join('/');
+      const baseSlug = urlToReportSlug(e.url);
+      const slug = uniqueSlug(baseSlug, usedSlugs);
+      const baseName = prefix ? `report-${prefix}-${slug}` : `report-${slug}`;
+      const htmlDest = path.join(outDir, `${baseName}.html`);
+      const jsonDest = path.join(outDir, `${baseName}.json`);
+
+      try {
+        if (e.htmlPath && fs.existsSync(e.htmlPath)) {
+          fs.copyFileSync(e.htmlPath, htmlDest);
+        }
+        if (e.jsonPath && fs.existsSync(e.jsonPath)) {
+          fs.copyFileSync(e.jsonPath, jsonDest);
+        }
+      } catch (err) {
+        process.stderr.write(`lhci-build-dashboard: copy failed for ${e.url}: ${err && err.message}\n`);
+      }
+
+      const href = path.relative(outDir, htmlDest).split(path.sep).join('/');
       const sum = e.summary || {};
-      return { url: e.url, href, sum };
+      return {
+        url: e.url,
+        href,
+        reportFile: `${baseName}.html`,
+        sum,
+      };
     });
+
+  cleanupIntermediateLhr();
+
+  const dashboardPath = resolveDashboardPath(prefix);
+  const dashboardBasename = path.basename(dashboardPath);
 
   const body = `<!DOCTYPE html>
 <html lang="en">
@@ -61,11 +191,12 @@ function main() {
     td.num { text-align: right; font-variant-numeric: tabular-nums; }
     a { color: #1a73e8; }
     .hint { color: #5f6368; font-size: 0.8125rem; margin-top: 1rem; }
+    code { font-size: 0.8125rem; background: #f5f5f5; padding: 0.1rem 0.35rem; border-radius: 3px; }
   </style>
 </head>
 <body>
   <h1>Lighthouse CI — audited URLs</h1>
-  <p class="hint">Open an individual report for full audits and opportunities. Scores are 0–100.</p>
+  <p class="hint">Open an individual report for full audits and opportunities. Scores are 0–100. This summary: <code>${esc(dashboardBasename)}</code>. Per-URL copies: <code>report-*.html</code> in this folder.</p>
   <table>
     <thead>
       <tr>
@@ -86,7 +217,7 @@ ${rows
         <td class="num">${pct(r.sum.accessibility)}</td>
         <td class="num">${pct(r.sum['best-practices'])}</td>
         <td class="num">${pct(r.sum.seo)}</td>
-        <td><a href="${esc(r.href)}">Open</a></td>
+        <td><a href="${esc(r.href)}">${esc(r.reportFile)}</a></td>
       </tr>`
   )
   .join('\n')}
@@ -96,8 +227,14 @@ ${rows
 </html>
 `;
 
-  fs.writeFileSync(outPath, body, 'utf8');
-  process.stdout.write(`lhci-build-dashboard: wrote ${outPath}\n`);
+  fs.writeFileSync(dashboardPath, body, 'utf8');
+  process.stdout.write(`lhci-build-dashboard: wrote ${dashboardPath} (${rows.length} report link(s))\n`);
+
+  if (process.env.LHCI_DASHBOARD_WRITE_INDEX !== '0') {
+    const indexPath = path.join(outDir, 'index.html');
+    fs.writeFileSync(indexPath, body, 'utf8');
+    process.stdout.write(`lhci-build-dashboard: mirrored ${indexPath}\n`);
+  }
 }
 
 main();

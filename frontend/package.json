@@ -18,7 +18,7 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:cypress": "cypress run",
     "test:e2e:cypress:open": "cypress open",
-    "lighthouse:local": "lhci autorun && node scripts/lhci-build-dashboard.cjs"
+    "lighthouse:local": "node scripts/lhci-run.cjs"
   },
   "lint-staged": {
     "*.js": [

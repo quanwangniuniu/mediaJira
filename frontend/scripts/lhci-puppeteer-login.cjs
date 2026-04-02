@@ -1,13 +1,18 @@
 /**
- * Lighthouse CI puppeteerScript — logs in via /login so Zustand persist populates `auth-storage`.
+ * Lighthouse CI `puppeteerScript` — logs in via /login so Zustand persist populates `auth-storage`.
  * Runs before each audited URL; login runs once per `lhci` process (same browser as Lighthouse).
  *
- * Set LHCI_AUTH_EMAIL and LHCI_AUTH_PASSWORD for authenticated audits. If either is unset, skips (public-only).
- * Optional: LHCI_BASE_URL (default http://localhost) — must match lighthouserc.js `base`.
+ * This file is **browser-only** (Puppeteer). Shared env + base URL come from `lhci-lib.cjs`.
+ * API registration/login/project setup runs in `lhci-ensure-project.cjs` before `lhci autorun`.
+ *
+ * Credentials: LHCI_AUTH_EMAIL + LHCI_AUTH_PASSWORD.
+ * Base URL: LHCI_BASE_URL or LHCI_API_BASE (see lhci-lib.cjs).
+ *
+ * Project-scoped URLs use LHCI_TEST_PROJECT_ID from lhci-ensure-project (prerequisite script runs before autorun).
  *
  * LHCI requires this hook so Lighthouse attaches to the same Puppeteer browser (CDP port).
  */
-const base = process.env.LHCI_BASE_URL || 'http://localhost';
+const { getBaseUrl, getCredentials } = require('./lhci-lib.cjs');
 
 let sessionReady = false;
 
@@ -15,11 +20,9 @@ let sessionReady = false;
  * @param {import('puppeteer').Browser} browser
  * @param {{ url: string, options: unknown }} _context
  */
-module.exports = async function lhciPuppeteerAuth(browser, _context) {
-  const email = process.env.LHCI_AUTH_EMAIL;
-  const password = process.env.LHCI_AUTH_PASSWORD;
-
-  if (!email || !password) {
+module.exports = async function lhciPuppeteerLogin(browser, _context) {
+  const creds = getCredentials();
+  if (!creds) {
     return;
   }
 
@@ -27,9 +30,10 @@ module.exports = async function lhciPuppeteerAuth(browser, _context) {
     return;
   }
 
+  const base = getBaseUrl();
   const page = await browser.newPage();
   try {
-    const loginUrl = `${base.replace(/\/$/, '')}/login`;
+    const loginUrl = `${base}/login`;
     await page.goto(loginUrl, { waitUntil: 'load', timeout: 90_000 });
 
     await page.waitForSelector('input[name="email"]', { visible: true, timeout: 30_000 });
@@ -42,8 +46,8 @@ module.exports = async function lhciPuppeteerAuth(browser, _context) {
       el.value = '';
     });
 
-    await page.type('input[name="email"]', email, { delay: 5 });
-    await page.type('input[name="password"]', password, { delay: 5 });
+    await page.type('input[name="email"]', creds.email, { delay: 5 });
+    await page.type('input[name="password"]', creds.password, { delay: 5 });
 
     await page.click('form button[type="submit"]');
 
