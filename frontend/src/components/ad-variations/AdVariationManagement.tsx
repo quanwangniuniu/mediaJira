@@ -1767,12 +1767,12 @@ function VariationSidePanel({
   const googlePreviewAd: GoogleAd = {
     name: variation.name,
     type: "RESPONSIVE_DISPLAY_AD",
-    final_urls: ["https://mediajira.com"],
+    final_urls: ["https://marketingsimplified.com"],
     responsive_display_ad: {
       headlines: [{ text: headlineText || variation.name }],
       long_headline: { text: headlineText || variation.name },
       descriptions: [{ text: bodyText || "Add ad copy to preview." }],
-      business_name: "MediaJira",
+      business_name: "Marketing Simplified",
       marketing_images: livePreviewUrl ? [{ asset: livePreviewUrl, url: livePreviewUrl }] : [],
       square_marketing_images: livePreviewUrl ? [{ asset: livePreviewUrl, url: livePreviewUrl }] : [],
       logo_images: logoUrl ? [{ asset: logoUrl, url: logoUrl }] : [],
@@ -1952,7 +1952,7 @@ function VariationSidePanel({
                   </div>
                   <div className="mt-3">
                     <p className="text-xs font-semibold text-gray-800">{headlineText || "Headline"}</p>
-                    <p className="text-[11px] text-gray-400">mediajira.com</p>
+                    <p className="text-[11px] text-gray-400">marketingsimplified.com</p>
                   </div>
                 </>
               )}
@@ -1974,7 +1974,7 @@ function VariationSidePanel({
                       creative={tiktokCreative}
                       identity={
                         logoUrl
-                          ? { avatarUrl: logoUrl, displayName: "MediaJira Ads", sponsored: true }
+                          ? { avatarUrl: logoUrl, displayName: "Marketing Simplified Ads", sponsored: true }
                           : undefined
                       }
                       text={bodyText}

@@ -20,7 +20,7 @@ function PlansPageContent() {
             <div className="flex items-center">
               <div className="flex-shrink-0">
                 <Link href="/">
-                  <h1 className="text-2xl font-bold text-indigo-600 cursor-pointer">MediaJira</h1>
+                  <h1 className="text-2xl font-bold text-indigo-600 cursor-pointer">Marketing Simplified</h1>
                 </Link>
               </div>
             </div>
@@ -48,7 +48,7 @@ function PlansPageContent() {
       <footer className="bg-gray-800 mt-auto">
         <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
           <div className="text-center">
-            <h3 className="text-2xl font-bold text-white">MediaJira</h3>
+            <h3 className="text-2xl font-bold text-white">Marketing Simplified</h3>
             <p className="mt-2 text-gray-400">Professional campaign management platform</p>
             <div className="mt-8 flex justify-center space-x-6">
               <Link href="/campaigns" className="text-gray-400 hover:text-white">Campaigns</Link>

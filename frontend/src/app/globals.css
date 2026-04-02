@@ -525,3 +525,14 @@ hr {
 .spreadsheet-scroll-container::-webkit-scrollbar-thumb:hover {
   background: #64748b;
 }
+
+/* Edge / IE: hidden native reveal & clear buttons */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}
+/* Some WebKit credential decorations */
+input[type="password"]::-webkit-credentials-auto-fill-button,
+input[type="password"]::-webkit-textfield-decoration-container {
+  display: none !important;
+}

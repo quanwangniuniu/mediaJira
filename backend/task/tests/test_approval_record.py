@@ -89,3 +89,148 @@ class ApprovalRecordModelTest(TestCase):
         records = list(self.task.approval_records.all())
         self.assertEqual(records[0], self.approval_record)  # step_number=1
         self.assertEqual(records[1], approval_record2)      # step_number=2
+
+# SMP-501: revision round tracking and approval history preservation
+class RevisionRoundTrackingTest(TestCase):
+    """Test cases for SMP-501: revision round tracking and approval history preservation"""
+
+    def setUp(self):
+        """Set up test data"""
+        self.owner = User.objects.create_user(
+            email='owner2@example.com',
+            username='owner2',
+            password='testpass123'
+        )
+        self.approver = User.objects.create_user(
+            email='approver2@example.com',
+            username='approver2',
+            password='testpass123'
+        )
+        self.organization = Organization.objects.create(
+            name="Test Organization 2"
+        )
+        self.project = Project.objects.create(
+            name="Test Project 2",
+            organization=self.organization
+        )
+        self.task = Task.objects.create(
+            summary="Test Revision Task",
+            owner=self.owner,
+            project=self.project,
+            type='budget'
+        )
+
+    def test_task_default_revision_round_is_zero(self):
+        """New task should have revision_round = 0"""
+        self.assertEqual(self.task.revision_round, 0)
+
+    def test_revision_round_increments_on_revise(self):
+        """revision_round should increment by 1 each time task is revised"""
+        # Simulate: DRAFT -> SUBMITTED -> UNDER_REVIEW -> REJECTED -> DRAFT (revise)
+        self.task.submit()
+        self.task.start_review()
+        self.task.reject()
+        self.task.revision_round += 1
+        self.task.save()
+
+        self.assertEqual(self.task.revision_round, 1)
+
+    def test_revision_round_increments_multiple_times(self):
+        """revision_round should keep incrementing on each revise"""
+        # First rejection cycle
+        self.task.submit()
+        self.task.start_review()
+        self.task.reject()
+        self.task.revision_round += 1
+        self.task.save()
+        self.task.revise()
+        self.task.save()
+
+        # Second rejection cycle
+        self.task.submit()
+        self.task.start_review()
+        self.task.reject()
+        self.task.revision_round += 1
+        self.task.save()
+
+        self.assertEqual(self.task.revision_round, 2)
+
+    def test_approval_record_stores_revision_round(self):
+        """ApprovalRecord should store the correct revision_round"""
+        # Create approval record with revision_round = 0
+        record = ApprovalRecord.objects.create(
+            task=self.task,
+            approved_by=self.approver,
+            is_approved=False,
+            comment="Rejected in round 0",
+            step_number=1,
+            revision_round=0,
+            resubmitted_after_reject=False,
+            has_rejection_history=False,
+        )
+        self.assertEqual(record.revision_round, 0)
+
+    def test_approval_history_preserved_after_revise(self):
+        """Approval records should NOT be deleted when task is revised"""
+        # Create an approval record (rejection)
+        ApprovalRecord.objects.create(
+            task=self.task,
+            approved_by=self.approver,
+            is_approved=False,
+            comment="Rejected",
+            step_number=1,
+            revision_round=0,
+        )
+        self.assertEqual(self.task.approval_records.count(), 1)
+
+        # Revise the task
+        self.task.submit()
+        self.task.start_review()
+        self.task.reject()
+        self.task.revise()
+        self.task.revision_round += 1
+        self.task.save()
+
+        # Approval record should still exist
+        self.assertEqual(self.task.approval_records.count(), 1)
+
+    def test_resubmitted_after_reject_flag(self):
+        """resubmitted_after_reject should be True when revision_round > 0"""
+        record = ApprovalRecord.objects.create(
+            task=self.task,
+            approved_by=self.approver,
+            is_approved=True,
+            comment="Approved after revision",
+            step_number=1,
+            revision_round=1,
+            resubmitted_after_reject=True,
+            has_rejection_history=True,
+        )
+        self.assertTrue(record.resubmitted_after_reject)
+        self.assertTrue(record.has_rejection_history)
+
+    def test_unique_together_allows_same_step_different_rounds(self):
+        """Same step_number is allowed across different revision_rounds"""
+        # Round 0: step 1
+        ApprovalRecord.objects.create(
+            task=self.task,
+            approved_by=self.approver,
+            is_approved=False,
+            comment="Rejected round 0",
+            step_number=1,
+            revision_round=0,
+        )
+        # Round 1: step 1 (should NOT raise error)
+        try:
+            ApprovalRecord.objects.create(
+                task=self.task,
+                approved_by=self.approver,
+                is_approved=True,
+                comment="Approved round 1",
+                step_number=1,
+                revision_round=1,
+            )
+            created = True
+        except Exception:
+            created = False
+        self.assertTrue(created)

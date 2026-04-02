@@ -62,8 +62,8 @@ const translations: Record<Language, Record<string, string>> = {
     'user.switch_to_english': 'Switch to English',
     
     // Footer translations
-    'footer.version': 'MediaJira v2.0',
-    'footer.copyright': '© 2024 Your Company',
+    'footer.version': 'Marketing Simplified v2.0',
+    'footer.copyright': '© 2026 Marketing Simplified',
   },
   zh: {
     // Sidebar translations
@@ -114,8 +114,8 @@ const translations: Record<Language, Record<string, string>> = {
     'user.switch_to_english': '切换到英文',
     
     // Footer translations
-    'footer.version': 'MediaJira v2.0',
-    'footer.copyright': '© 2024 您的公司',
+    'footer.version': 'Marketing Simplified v2.0',
+    'footer.copyright': '© 2026 Marketing Simplified',
   },
 };
 

@@ -29,15 +29,15 @@ export default function HeaderSection({
              <div className="flex items-center">
               <Image
                     src="/homepage_logo_square.jpeg"
-                    alt="MediaJira Logo"
+                    alt="Marketing Simplified Logo"
                     width={278}
                     height={69}
                     className="h-16 w-auto"
                     priority
                   />
               <h1 className="text-3xl font-bold">
-                <span className="text-blue-800">Media</span>
-                <span className="text-gray-900">Jira</span>
+                <span className="text-blue-800">Marketing</span>
+                <span className="text-gray-900"> Simplified</span>
               </h1>
             </div>
             <nav className="hidden lg:flex gap-6">
@@ -89,15 +89,15 @@ export default function HeaderSection({
         <div className="flex items-center">
               <Image
                     src="/homepage_logo_square.jpeg"
-                    alt="MediaJira Logo"
+                    alt="Marketing Simplified Logo"
                     width={278}
                     height={69}
                     className="h-16 w-auto"
                     priority
                   />
               <h1 className="text-2xl font-bold">
-                <span className="text-blue-800">Media</span>
-                <span className="text-gray-900">Jira</span>
+                <span className="text-blue-800">Marketing</span>
+                <span className="text-gray-900"> Simplified</span>
               </h1>
             </div>
           <MobileMenu />
