@@ -143,7 +143,12 @@ export function WeekView({
   };
 
   return (
-    <div className="flex h-full flex-col rounded-3xl bg-white shadow-sm">
+    <div
+      className="flex h-full flex-col rounded-3xl bg-white shadow-sm"
+      // Expose stable E2E hooks for the active view without relying on utility classes.
+      data-testid="calendar-week-view"
+      aria-label="Week calendar view"
+    >
       <div className="relative z-0 grid grid-cols-[60px_repeat(7,minmax(0,1fr))] bg-white text-xs font-medium text-gray-500">
         <div className="relative px-2 py-2 text-gray-400 before:absolute before:bottom-0 before:right-0 before:block before:h-px before:w-3 before:bg-gray-100 before:content-[''] after:absolute after:bottom-0 after:right-0 after:block after:h-4 after:w-px after:bg-gray-100 after:content-['']" />
         {days.map((day) => (
@@ -196,6 +201,12 @@ export function WeekView({
                   <button
                     key={hour}
                     type="button"
+                    // Slot hooks let E2E tests create events from a predictable target.
+                    data-testid="calendar-week-slot"
+                    aria-label={`Create event on ${format(
+                      slotStart,
+                      "EEEE, MMMM d 'at' h:mm a",
+                    )}`}
                     className="h-12 w-full border-b border-gray-100 bg-white text-left hover:bg-blue-50 flex flex-col"
                     onClick={(e) => {
                       const rect = e.currentTarget.getBoundingClientRect();
@@ -226,6 +237,9 @@ export function WeekView({
                   <button
                     key={event.id + event.start_datetime}
                     type="button"
+                    // Event cards need a durable selector because their layout can shift with time.
+                    data-testid="calendar-event-card"
+                    aria-label={`Open event ${event.title || "(No title)"}`}
                     onClick={(e) => {
                       if (suppressClick) {
                         e.preventDefault();
@@ -381,7 +395,12 @@ export function DayView({
   };
 
   return (
-    <div className="flex flex-col rounded-xl bg-white">
+    <div
+      className="flex flex-col rounded-xl bg-white"
+      // Match the week view hooks so tests can assert the active calendar mode consistently.
+      data-testid="calendar-day-view"
+      aria-label="Day calendar view"
+    >
       <div className="relative z-0 grid grid-cols-[60px_minmax(0,1fr)] bg-white text-xs font-medium text-gray-500">
         <div className="relative px-2 py-2 text-gray-400 before:absolute before:bottom-0 before:right-0 before:block before:h-px before:w-3 before:bg-gray-100 before:content-[''] after:absolute after:bottom-0 after:right-0 after:block after:h-2 after:w-px after:bg-gray-100 after:content-['']" />
         <div className="flex flex-col px-2 py-2 border-b">
@@ -417,6 +436,12 @@ export function DayView({
               <button
                 key={hour}
                 type="button"
+                // Day slots are used by E2E tests to open the create-event dialog.
+                data-testid="calendar-day-slot"
+                aria-label={`Create event on ${format(
+                  slotStart,
+                  "EEEE, MMMM d 'at' h:mm a",
+                )}`}
                 className="h-12 w-full border-b border-gray-100 bg-white text-left hover:bg-blue-50"
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
@@ -444,6 +469,9 @@ export function DayView({
               <button
                 key={event.id + event.start_datetime}
                 type="button"
+                // Reuse the same selector as week view so event-open tests stay view-agnostic.
+                data-testid="calendar-event-card"
+                aria-label={`Open event ${event.title || "(No title)"}`}
                 onClick={(e) => {
                   if (suppressClick) {
                     e.preventDefault();
@@ -558,7 +586,11 @@ export function MonthView({
   const today = new Date();
 
   return (
-    <div className="flex h-full flex-col rounded-xl bg-white">
+    <div
+      className="flex h-full flex-col rounded-xl bg-white"
+      data-testid="calendar-month-view"
+      aria-label="Month calendar view"
+    >
       <div className="flex items-center justify-between px-4 py-2 text-sm font-semibold text-gray-700">
         {isLoading && <span className="text-xs text-gray-400">Loading…</span>}
         {error && <span className="text-xs text-red-500">Failed to load events.</span>}
