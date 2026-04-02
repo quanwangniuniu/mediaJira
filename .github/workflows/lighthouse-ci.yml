@@ -124,11 +124,9 @@ jobs:
       # Mirror `application_test` in mediajira-ci.yml: (1) migration check + full migrate with
       # `backend.ci_settings`, (2) same per-app chain as "Run backend tests in containerized environment",
       # then a final full migrate so the whole graph (e.g. calendars, stripe_meta) stays applied.
-      # LHCI scripts call `/auth/register` + `/auth/login`; responses include organization `plan_id`
-      # from stripe_meta — see `frontend/scripts/lhci-lib.cjs` header and the step below.
       - name: Run migration checks and backend tests (Postgres)
         run: |
-          docker compose exec backend sh -c "
+          docker compose --profile ci exec -T backend sh -c "
             echo 'Checking for missing migrations...' &&
             python manage.py makemigrations --check --dry-run --settings=backend.ci_settings &&
             echo 'Applying migrations...' &&
@@ -152,16 +150,6 @@ jobs:
             echo 'Ensuring full migration graph (all apps)...' &&
             python manage.py migrate --noinput --settings=backend.ci_settings &&
             echo 'Migrations finished.'
-          "
-
-      # LHCI hits `/auth/register` and `/auth/login` before `POST /api/core/projects/`. Auth JSON
-      # includes organization.plan_id via stripe_meta.Subscription / Plan (authentication serializers).
-      # Explicit migrate + ORM query fails fast if tables are missing (clearer than a 500 in Node).
-      - name: Ensure stripe_meta ready for LHCI auth responses
-        run: |
-          docker compose --profile ci exec -T backend sh -c "
-            python manage.py migrate stripe_meta --noinput --settings=backend.ci_settings &&
-            python manage.py shell --settings=backend.ci_settings -c 'from stripe_meta.models import Plan; Plan.objects.count()'
           "
 
       - name: Wait for app on localhost
