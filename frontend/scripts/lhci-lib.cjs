@@ -8,6 +8,32 @@
  */
 const DEFAULT_BASE = 'http://localhost';
 
+/**
+ * @param {string} email
+ */
+function maskEmail(email) {
+  if (!email || !email.includes('@')) return '(invalid email)';
+  const [local, domain] = email.split('@');
+  const safeLocal = local.length <= 1 ? '*' : `${local[0]}***`;
+  return `${safeLocal}@${domain}`;
+}
+
+/**
+ * @param {string} msg
+ */
+function lhciInfo(msg) {
+  process.stderr.write(`[lhci] ${msg}\n`);
+}
+
+/**
+ * @param {string} msg
+ */
+function lhciVerbose(msg) {
+  if (process.env.LHCI_VERBOSE === '1') {
+    process.stderr.write(`[lhci] ${msg}\n`);
+  }
+}
+
 function getBaseUrl() {
   const raw = process.env.LHCI_API_BASE || process.env.LHCI_BASE_URL || DEFAULT_BASE;
   return raw.replace(/\/$/, '');
@@ -30,8 +56,10 @@ function buildUsernameFromEmail(email) {
  * @param {string} password
  */
 async function registerUserIfNotExists(baseUrl, email, password) {
+  const registerUrl = `${baseUrl}/auth/register/`;
   const username = buildUsernameFromEmail(email);
-  const res = await fetch(`${baseUrl}/auth/register/`, {
+  lhciInfo(`register: POST ${registerUrl} (user=${maskEmail(email)}, username=${username})`);
+  const res = await fetch(registerUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -40,7 +68,10 @@ async function registerUserIfNotExists(baseUrl, email, password) {
     body: JSON.stringify({ email, password, username }),
   });
 
+  const contentType = res.headers.get('content-type') || '(none)';
+
   if (res.status === 201) {
+    lhciInfo(`register: 201 Created (content-type: ${contentType})`);
     return;
   }
 
@@ -57,9 +88,14 @@ async function registerUserIfNotExists(baseUrl, email, password) {
     res.status === 400 &&
     (String(errMsg).includes('already registered') || String(errMsg).includes('Email already'))
   ) {
+    lhciInfo('register: email already registered (400), continuing');
     return;
   }
 
+  lhciInfo(
+    `register: failed status=${res.status} content-type=${contentType} (if 500 HTML: check backend container logs for Python traceback)`
+  );
+  lhciVerbose(`register: response body (first 800 chars): ${text.slice(0, 800)}`);
   throw new Error(`LHCI register failed ${res.status}: ${text.slice(0, 500)}`);
 }
 
@@ -79,7 +115,9 @@ function getCredentials() {
  * @returns {Promise<string>} JWT access token
  */
 async function loginWithApi(baseUrl, email, password) {
-  const res = await fetch(`${baseUrl}/auth/login/`, {
+  const loginUrl = `${baseUrl}/auth/login/`;
+  lhciInfo(`login: POST ${loginUrl} (user=${maskEmail(email)})`);
+  const res = await fetch(loginUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -88,16 +126,24 @@ async function loginWithApi(baseUrl, email, password) {
     body: JSON.stringify({ email, password }),
   });
 
+  const contentType = res.headers.get('content-type') || '(none)';
+
   if (!res.ok) {
     const text = await res.text();
+    lhciInfo(
+      `login: failed status=${res.status} content-type=${contentType} (if 500 HTML: check backend container logs)`
+    );
+    lhciVerbose(`login: response body (first 800 chars): ${text.slice(0, 800)}`);
     throw new Error(`LHCI login failed ${res.status}: ${text.slice(0, 500)}`);
   }
 
   /** @type {{ token?: string }} */
   const data = await res.json();
   if (!data.token) {
+    lhciInfo('login: response OK but missing token field');
     throw new Error('LHCI login response missing token');
   }
+  lhciInfo('login: ok (token received)');
   return data.token;
 }
 
@@ -131,6 +177,8 @@ async function findProjectByName(baseUrl, token, projectName) {
     const res = await fetch(nextUrl, { headers });
     if (!res.ok) {
       const text = await res.text();
+      lhciInfo(`list projects: failed status=${res.status} url=${nextUrl}`);
+      lhciVerbose(`list projects: body (first 500 chars): ${text.slice(0, 500)}`);
       throw new Error(`LHCI list projects failed ${res.status}: ${text.slice(0, 500)}`);
     }
     /** @type {{ results?: Array<{ id: number; name: string }>; next?: string | null }} */
@@ -164,6 +212,8 @@ async function createProject(baseUrl, token, projectName) {
 
   if (!createRes.ok) {
     const text = await createRes.text();
+    lhciInfo(`create project: failed status=${createRes.status}`);
+    lhciVerbose(`create project: body (first 800 chars): ${text.slice(0, 800)}`);
     throw new Error(`LHCI create project failed ${createRes.status}: ${text.slice(0, 800)}`);
   }
 

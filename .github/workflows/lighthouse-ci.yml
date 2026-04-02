@@ -169,6 +169,16 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      - name: Docker compose logs (on failure)
+        if: failure()
+        run: |
+          echo "=== docker compose ps ==="
+          docker compose --profile ci ps -a || true
+          echo "=== backend (last 250 lines) ==="
+          docker compose --profile ci logs backend --tail 250 || true
+          echo "=== nginx (last 120 lines) ==="
+          docker compose --profile ci logs nginx --tail 120 || true
+
       - name: Cleanup containers
         if: always()
         run: |
