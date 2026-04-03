@@ -132,6 +132,54 @@ function getTotalPlainTextLength(editor: HTMLDivElement): number {
   return total;
 }
 
+/** Concatenate all text-node content in document order (same model as getTotalPlainTextLength). */
+function getEditorPlainText(editor: HTMLDivElement): string {
+  const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+  const parts: string[] = [];
+  let n = walker.nextNode();
+  while (n) {
+    parts.push(n.textContent ?? '');
+    n = walker.nextNode();
+  }
+  return parts.join('');
+}
+
+/**
+ * Given old and new plain text, return a function that maps an offset in the old
+ * text to the corresponding offset in the new text.
+ *
+ * Assumes a single contiguous edit region (the common case for keystroke-level
+ * collaborative edits). Works correctly for insert, delete, and replace.
+ */
+function computeOffsetTransform(oldPlain: string, newPlain: string): (offset: number) => number {
+  if (oldPlain === newPlain) return (o) => o;
+
+  let prefixLen = 0;
+  const minLen = Math.min(oldPlain.length, newPlain.length);
+  while (prefixLen < minLen && oldPlain[prefixLen] === newPlain[prefixLen]) {
+    prefixLen++;
+  }
+
+  let suffixLen = 0;
+  const maxSuffix = minLen - prefixLen;
+  while (
+    suffixLen < maxSuffix &&
+    oldPlain[oldPlain.length - 1 - suffixLen] === newPlain[newPlain.length - 1 - suffixLen]
+  ) {
+    suffixLen++;
+  }
+
+  const oldEditEnd = oldPlain.length - suffixLen;
+  const newEditEnd = newPlain.length - suffixLen;
+  const delta = newEditEnd - oldEditEnd;
+
+  return (offset: number): number => {
+    if (offset <= prefixLen) return offset;
+    if (offset >= oldEditEnd) return offset + delta;
+    return prefixLen;
+  };
+}
+
 /**
  * Document-order plain text offset before (container, offset).
  * Must match the TreeWalker + per-node length model used by resolveTextNodeAtOffset (not Range#toString().length).
@@ -433,18 +481,62 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
     const preserveSelection = editor !== null && document.activeElement === editor;
     const saved = preserveSelection ? getPlainTextSelectionState(editor) : null;
 
+    const oldPlain = editor ? getEditorPlainText(editor) : '';
+
     latestContentRef.current = next;
     setContent(next);
 
     if (editor && editor.innerHTML !== next) {
       suppressContentSyncRef.current = true;
-      remoteCaretLayoutCacheRef.current = {};
       editor.innerHTML = next;
+
+      let transform: (offset: number) => number = (o) => o;
+      try {
+        const newPlain = getEditorPlainText(editor);
+        transform = computeOffsetTransform(oldPlain, newPlain);
+      } catch {
+        /* keep identity transform on failure */
+      }
+
+      setRemoteCursors((prev) => {
+        if (Object.keys(prev).length === 0) return prev;
+        const adjusted: Record<string, RemoteCursor> = {};
+        for (const [key, cursor] of Object.entries(prev)) {
+          adjusted[key] = {
+            ...cursor,
+            cursorOffset: typeof cursor.cursorOffset === 'number' ? transform(cursor.cursorOffset) : cursor.cursorOffset,
+            selectionStart: typeof cursor.selectionStart === 'number' ? transform(cursor.selectionStart) : cursor.selectionStart,
+            selectionEnd: typeof cursor.selectionEnd === 'number' ? transform(cursor.selectionEnd) : cursor.selectionEnd,
+            selectionRects: [],
+          };
+        }
+        return adjusted;
+      });
+
+      const lastOut = lastOutgoingCursorRef.current;
+      if (lastOut) {
+        lastOutgoingCursorRef.current = {
+          ...lastOut,
+          offset: transform(lastOut.offset),
+          x: lastOut.x,
+          y: lastOut.y,
+          selectionStart: typeof lastOut.selectionStart === 'number' ? transform(lastOut.selectionStart) : lastOut.selectionStart,
+          selectionEnd: typeof lastOut.selectionEnd === 'number' ? transform(lastOut.selectionEnd) : lastOut.selectionEnd,
+          selectionRects: [],
+        };
+      }
+
+      remoteCaretLayoutCacheRef.current = {};
       bumpRemoteCursorOverlay();
+
       if (saved) {
+        const adjustedSaved: PlainTextSelectionState = {
+          anchor: transform(saved.anchor),
+          focus: transform(saved.focus),
+        };
         requestAnimationFrame(() => {
           if (editorRef.current !== editor) return;
-          restorePlainTextSelectionState(editor, saved);
+          restorePlainTextSelectionState(editor, adjustedSaved);
           editor.focus();
           requestAnimationFrame(() => {
             ensureSelectionAnchoredInEditor(editor);
