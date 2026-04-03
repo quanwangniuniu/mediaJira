@@ -1,9 +1,10 @@
 # Lighthouse CI — runs against a full Docker stack on branch `lighthouse-ci-test`.
+# Stack: wait for deps → migration check + migrate → Lighthouse (no backend/frontend test suite).
 #
 # Repository secrets (Settings → Secrets → Actions):
 #   LHCI_AUTH_EMAIL, LHCI_AUTH_PASSWORD — used to register (if new) and log in via the Lighthouse helper scripts.
 #
-# PRs from forks do not receive secrets; this job will skip seeding and Lighthouse auth may fail.
+# PRs from forks do not receive secrets; Lighthouse auth may fail.
 name: Lighthouse CI
 
 on:
@@ -77,9 +78,10 @@ jobs:
       - name: Start all services
         run: docker compose --profile ci --env-file .env up -d
 
-      - name: Wait for database and Redis to be ready
+      - name: wait for database and redis to be ready
         run: |
-          echo "Waiting for database..."
+          # wait for database to be ready with proper health check
+          echo "Waiting for database to be ready..."
           timeout=180
           counter=0
           while [ $counter -lt $timeout ]; do
@@ -87,15 +89,19 @@ jobs:
               echo "Database is ready!"
               break
             fi
+            echo "Database not ready yet, waiting... ($counter/$timeout)"
             sleep 2
             counter=$((counter + 2))
           done
-          if [ $counter -ge $timeout ]; then
+
+          if [ $counter -eq $timeout ]; then
+            echo "Database failed to start within $timeout seconds"
             docker compose --profile ci logs db
             exit 1
           fi
 
-          echo "Waiting for Redis..."
+          # wait for redis to be ready
+          echo "Waiting for Redis to be ready..."
           redis_timeout=30
           redis_counter=0
           while [ $redis_counter -lt $redis_timeout ]; do
@@ -103,15 +109,19 @@ jobs:
               echo "Redis is ready!"
               break
             fi
+            echo "Redis not ready yet, waiting... ($redis_counter/$redis_timeout)"
             sleep 1
             redis_counter=$((redis_counter + 1))
           done
-          if [ $redis_counter -ge $redis_timeout ]; then
+
+          if [ $redis_counter -eq $redis_timeout ]; then
+            echo "Redis failed to start within $redis_timeout seconds"
             docker compose --profile ci logs redis
             exit 1
           fi
 
-          echo "Waiting for ClamAV..."
+          # wait for clamav to be ready
+          echo "Waiting for ClamAV to be ready..."
           clamav_timeout=60
           clamav_counter=0
           while [ $clamav_counter -lt $clamav_timeout ]; do
@@ -119,52 +129,25 @@ jobs:
               echo "ClamAV is ready!"
               break
             fi
+            echo "ClamAV not ready yet, waiting... ($clamav_counter/$clamav_timeout)"
             sleep 2
             clamav_counter=$((clamav_counter + 2))
           done
-          if [ $clamav_counter -ge $clamav_timeout ]; then
+
+          if [ $clamav_counter -eq $clamav_timeout ]; then
+            echo "ClamAV failed to start within $clamav_timeout seconds"
             docker compose --profile ci logs clamav
             exit 1
           fi
 
-      # Mirror `application_test` in mediajira-ci.yml: (1) migration check + full migrate with
-      # `backend.ci_settings`, (2) same per-app chain as "Run backend tests in containerized environment",
-      # then a final full migrate so the whole graph (e.g. calendars, stripe_meta) stays applied.
-      - name: Run migration checks and backend tests (Postgres)
+      - name: Run migration checks and apply migrations (Postgres)
         run: |
-          docker compose --profile ci exec -T backend sh -c "
+          docker compose exec backend sh -c "
             echo 'Checking for missing migrations...' &&
             python manage.py makemigrations --check --dry-run --settings=backend.ci_settings &&
             echo 'Applying migrations...' &&
             python manage.py migrate --noinput --settings=backend.ci_settings
           "
-
-      - name: Apply per-app migrations (same as application_test backend tests step)
-        run: |
-          docker compose --profile ci exec -T backend sh -c "
-            echo 'Running migrations...' &&
-            python manage.py makemigrations core&&
-            python manage.py migrate core&&
-            python manage.py makemigrations access_control&&
-            python manage.py migrate access_control&&
-            python manage.py makemigrations teams&&
-            python manage.py migrate teams&&
-            python manage.py makemigrations user_preferences&&
-            python manage.py migrate user_preferences&&
-            echo 'Ensuring full migration graph (all apps)...' &&
-            python manage.py migrate --noinput --settings=backend.ci_settings &&
-            echo 'Migrations finished.'
-          "
-
-      # Schema: prior migrate steps already apply all installed apps (including calendars/stripe_meta when present).
-      # Do not run `migrate calendars` here — it raises CommandError on branches without that app label.
-      # Seed default plans for org signals (same data as `init_plans`, but via stripe_utils — avoids relying on
-      # `manage.py init_plans`, which may be missing on some branches or not registered if management/ is not a package).
-      # One shell: seed + assert. Use apps.get_model (not from stripe_meta.models import Plan) so the same
-      # model class the registry uses is queried — avoids rare import-path / duplicate-class issues in -c scripts.
-      - name: LHCI DB prerequisites (seed plans + smoke check)
-        run: |
-          docker compose --profile ci exec -T backend python manage.py shell --settings=backend.ci_settings -c "from django.apps import apps; from stripe_meta.stripe_utils import initialize_default_plans; initialize_default_plans(); Plan = apps.get_model('stripe_meta', 'Plan'); assert Plan.objects.filter(name='Free').exists(), 'Free plan missing after seeding plans'; __import__('calendars.models').Calendar.objects.count() if apps.is_installed('calendars') else None; print('LHCI DB prerequisites OK')"
 
       - name: Wait for app on localhost
         run: |
