@@ -1184,15 +1184,6 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
           <span className={connected ? 'text-green-600' : 'text-amber-600'}>
             {connected ? 'Realtime connected' : 'Realtime reconnecting...'}
           </span>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={saving}
-            onClick={() => void persistViaHttp(content)}
-          >
-            {saving ? 'Saving...' : 'Save'}
-          </Button>
         </div>
       </div>
 
