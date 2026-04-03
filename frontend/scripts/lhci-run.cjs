@@ -4,13 +4,30 @@
  */
 require('./lhci-env.cjs').loadLhciEnv();
 
+const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { ensureProject } = require('./lhci-ensure-project.cjs');
 
 const cwd = path.join(__dirname, '..');
+// Absolute path — must match outputDir in lighthouserc.js and lhci-build-dashboard.cjs.
+const outDir = path.join(__dirname, '..', '.lighthouseci');
+
+/**
+ * Wipe the output directory before every run so reports from previous runs
+ * do not accumulate alongside the new ones.
+ */
+function clearOutputDir() {
+  if (fs.existsSync(outDir)) {
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+  fs.mkdirSync(outDir, { recursive: true });
+  process.stderr.write(`[lhci] cleared output dir: ${outDir}\n`);
+}
 
 async function main() {
+  clearOutputDir();
+
   try {
     await ensureProject();
   } catch (err) {

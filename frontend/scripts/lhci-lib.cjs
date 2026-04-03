@@ -6,8 +6,8 @@
  *
  * Stripe / DB: `/auth/register/` and `/auth/login/` return `UserProfileSerializer`, which nests
  * `OrganizationSerializer` and reads `plan_id` via `stripe_meta.models.Subscription` and `Plan`.
- * CI must apply `stripe_meta` migrations before Lighthouse runs; missing `stripe_meta` tables
- * surface as 500s on those endpoints (not only on `/api/core/projects/`).
+ * `POST /api/core/projects/` runs `ensure_project_calendar` → needs `calendars` tables.
+ * New organizations expect a seeded `Plan` named "Free" (`stripe_meta.signals`); CI seeds via `init_plans`.
  *
  * Base URL: `LHCI_API_BASE` or `LHCI_BASE_URL` (default `http://localhost`) — keep in sync with `lighthouserc.js` `base`.
  */

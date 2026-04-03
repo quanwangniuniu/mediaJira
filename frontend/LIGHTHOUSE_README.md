@@ -1,19 +1,17 @@
-# Lighthouse — MediaJira internal guide
+# Lighthouse — Marketing Simplified internal guide
 
-Lab-based performance and quality audits for the **Next.js** app. This doc covers **what we audit**, **where outputs live**, **targets**, **how to run and read results**, and **what to fix first**.
+Lab-based performance and quality audits for the **Next.js** app.
 
-**Prerequisites:** **Node 18.x** (align with CI); Chrome/Chromium for Lighthouse.
+**Prerequisites:** Node 20, Chrome/Chromium (bundled with Puppeteer via `npm ci`).
 
 ---
 
-## 1. Audit approach
+## 1. What we audit
 
-### What we measure
+- **Tool:** Lighthouse CI (`@lhci/cli`) running **desktop** audits (`preset: "desktop"` in [`lighthouserc.js`](./lighthouserc.js)) — ~1350×940 viewport, simulated dense 4G.
+- **Assertions:** All thresholds are `warn` severity in `lighthouserc.js` — sub-threshold scores are reported but do **not** fail the job.
 
-- **Lighthouse CI (LHCI)** runs **desktop** audits (`preset: "desktop"` in [`lighthouserc.js`](./lighthouserc.js)): ~1350×940 viewport, simulated dense 4G. Scores are **lab** only (not CrUX / field data).
-- **Category gates** are defined in [`lighthouserc.js`](./lighthouserc.js) under `ci.assert.assertions` — currently **`warn`** severity so sub-threshold scores **do not fail** the job but should be reviewed. Open that file for exact **minScore** values.
-
-### Key pages (URL list)
+### Audited pages
 
 | Area | Path | Notes |
 |------|------|--------|
@@ -21,118 +19,145 @@ Lab-based performance and quality audits for the **Next.js** app. This doc cover
 | Spreadsheet | `/spreadsheet` | Heavy client surface |
 | Projects | `/projects` | List / navigation |
 | Decisions | `/decisions` | List |
-| Project spreadsheets | `/projects/{id}/spreadsheets` | Only if `LHCI_TEST_PROJECT_ID` is set |
-| Tasks | `/tasks?view=list&project_id={id}` | Only if `LHCI_TEST_PROJECT_ID` is set |
+| Project spreadsheets | `/projects/{id}/spreadsheets` | Only when `LHCI_TEST_PROJECT_ID` is set |
+| Tasks | `/tasks?view=list&project_id={id}` | Only when `LHCI_TEST_PROJECT_ID` is set |
 
-To change the list, edit **`url`** / **`base`** in [`lighthouserc.js`](./lighthouserc.js). **`http://localhost`** implies port **80**.
-
-### Environment setup
-
-| Topic | Requirement |
-|--------|-------------|
-| **Local stack** | App at **`http://localhost`** (port **80**). LHCI does **not** start Next.js — use Docker Compose (**80:80**) or a reverse proxy. |
-| **Auth (optional)** | `LHCI_AUTH_EMAIL`, `LHCI_AUTH_PASSWORD` — API register/login + Puppeteer `/login` → `auth-storage`. See [`scripts/lhci-ensure-project.cjs`](./scripts/lhci-ensure-project.cjs), [`scripts/lhci-puppeteer-login.cjs`](./scripts/lhci-puppeteer-login.cjs). |
-| **Project URLs** | `lhci-ensure-project` sets `LHCI_TEST_PROJECT_ID`, or set it manually. Default project name: **`LHCI Test Project`** (`LHCI_PROJECT_NAME`). |
-| **Other env** | `LHCI_API_BASE` / `LHCI_BASE_URL` if not `http://localhost`. `lhci-env.cjs` merges repo **`.env`** and **`frontend/.env`** (shell wins). |
+To change the list edit `url` / `base` in [`lighthouserc.js`](./lighthouserc.js).
 
 ---
 
-## 2. Where reports are and what they contain
+## 2. Report outputs
 
-After **`npm run lighthouse:local`** from **`frontend/`**, outputs live under **`frontend/.lighthouseci/`** (gitignored):
+After `npm run lighthouse:local` from `frontend/`, all outputs are in **`frontend/.lighthouseci/`** (gitignored). The directory is wiped at the start of each run so there is no accumulation from previous runs.
 
-| Output | Purpose |
-|--------|---------|
-| **`report-dashboard.html`** | Index of all audited URLs + category scores. Mirrored as **`index.html`** unless `LHCI_DASHBOARD_WRITE_INDEX=0`. |
-| **`report-<slug>.html`** | Readable per-URL HTML (e.g. `report-home.html`). |
-| **`manifest.json`** | Run list for tooling. |
-| Per-URL **`.html` / `.json`** | Full Lighthouse report + LHR JSON. |
-
-Each artifact is a **lab snapshot** (throttling + desktop profile). Use for **regressions and opportunities**, not as a guarantee of real-user metrics.
+| File | Purpose |
+|------|---------|
+| `report-dashboard.html` | Summary table — all URLs, category scores, links. Mirrored as `index.html`. |
+| `report-<slug>.html` / `.json` | Full per-URL Lighthouse report (e.g. `report-home.html`). |
+| `manifest.json` | Run metadata for tooling. |
+| `assertion-results.json` | Per-assertion pass/warn/fail detail. |
 
 ---
 
-## 3. Acceptable ranges (core metrics — lab)
-
-Internal guidance only; lab variance is normal. Prefer **before/after** on the same setup.
-
-| Metric | Good | Needs improvement | Poor | Notes |
-|--------|------|-------------------|------|--------|
-| **LCP** | ≤ 2.5 s | 2.5–4.0 s | > 4.0 s | Largest Contentful Paint |
-| **CLS** | ≤ 0.1 | 0.1–0.25 | > 0.25 | Cumulative Layout Shift |
-| **TBT** | ≤ 200 ms | 200–600 ms | > 600 ms | Total Blocking Time (main thread) |
-| **FCP** | ≤ 1.8 s | 1.8–3.0 s | > 3.0 s | First Contentful Paint |
-
----
-
-## 4. How to prioritize optimization work
-
-1. **Impact** — Fix routes that matter most (home, spreadsheet, project/task flows).
-2. **Big gaps** — Large drops in **Performance** (LCP, TBT) and **Accessibility** before minor SEO tweaks.
-3. **Opportunities** — In each HTML report, use **Opportunities** / **Diagnostics** (render-blocking, unused JS, images, long tasks).
-4. **Consistency** — If one URL regresses, compare others on the same build before blaming one change.
-5. **Field data** — After lab wins, validate with **RUM / CrUX** in production when available.
-
----
-
-## 5. How to run audits
-
-### Local
+## 3. How to run locally
 
 ```bash
-# Repo: stack on http://localhost:80, then:
 cd frontend
 npm ci
-export LHCI_AUTH_EMAIL="..."    # optional
+export LHCI_AUTH_EMAIL="you@example.com"    # optional — enables authenticated URL audits
 export LHCI_AUTH_PASSWORD="..."
 npm run lighthouse:local
+# Open frontend/.lighthouseci/report-dashboard.html
 ```
 
-Open **`frontend/.lighthouseci/report-dashboard.html`**.
+What `npm run lighthouse:local` does:
+1. Clears `frontend/.lighthouseci/`
+2. Registers/logs in the LHCI test user via the API
+3. Finds or creates `LHCI_PROJECT_NAME` (default: `LHCI Test Project`) → sets `LHCI_TEST_PROJECT_ID`
+4. Runs `lhci autorun` (collect → assert → upload to filesystem)
+5. Builds `report-dashboard.html` and cleans up intermediate LHCI files
 
-**Direct CLI** (skips ensure + dashboard): `npx lhci autorun` then optionally `node scripts/lhci-build-dashboard.cjs`.
+**Direct CLI** (bypasses step 1–3 and the dashboard): `npx lhci autorun`
 
-**Host-only:** If Next listens on **80**, same URLs apply; otherwise change **`base`** in [`lighthouserc.js`](./lighthouserc.js) (e.g. `http://localhost:3000`).
+**Auth env vars:**
 
-### GitHub Actions
+| Variable | Purpose |
+|----------|---------|
+| `LHCI_AUTH_EMAIL` | Registers (if new) and logs in via `/auth/register/` and `/auth/login/` |
+| `LHCI_AUTH_PASSWORD` | Password for the above |
+| `LHCI_TEST_PROJECT_ID` | Skip project lookup — use this project ID directly |
+| `LHCI_PROJECT_NAME` | Name of the project to find or create (default: `LHCI Test Project`) |
+| `LHCI_API_BASE` / `LHCI_BASE_URL` | Override base URL if not `http://localhost` |
+| `LHCI_VERBOSE=1` | Print response body snippets to stderr for debugging (no passwords logged) |
 
-- Workflow: [`.github/workflows/lighthouse-ci.yml`](../.github/workflows/lighthouse-ci.yml) — **push/PR** to **`lighthouse-ci-test`** (see file for changes).
-- Secrets: **`LHCI_AUTH_EMAIL`**, **`LHCI_AUTH_PASSWORD`** (repo **Settings → Secrets and variables → Actions**).
-- Artifact: **`lighthouse-reports-<sha>`** — extract and open **`report-dashboard.html`**.
-- **Fork PRs** usually have no secrets; authenticated runs may fail.
-- On **failure**, the workflow prints **`docker compose` ps** plus **backend** and **nginx** logs so you can see Django tracebacks. Locally, scripts log **`[lhci]`** lines to stderr (URL, status, content-type); set **`LHCI_VERBOSE=1`** to include response body snippets (no passwords logged).
-- Migrations mirror **`application_test`** in **`mediajira-ci.yml`**: global **`migrate`** with **`backend.ci_settings`**, then per-app **`makemigrations` / `migrate`** for **`core`**, **`access_control`**, **`teams`**, **`user_preferences`** so tables like **`core_customuser`** exist before LHCI calls the API.
-
----
-
-## 6. How to interpret reports
-
-- **Category scores** — Summaries; use **numeric metrics** (LCP s, CLS, TBT ms) for decisions.
-- **Trace / filmstrip** — Main-thread work and load sequence.
-- **Variance** — CI vs local differ; compare **trends** and **PR vs main**, not single absolutes.
-- **Login page in report** — Auth failed (`auth-storage` / env). **Zustand** key: **`auth-storage`** ([`src/lib/authStore.ts`](./src/lib/authStore.ts)).
+`lhci-env.cjs` auto-merges repo-root `.env` and `frontend/.env` before any other script runs (shell / CI env takes priority).
 
 ---
 
-## 7. Common remediation strategies
+## 4. GitHub Actions
+
+- **Workflow:** [`.github/workflows/lighthouse-ci.yml`](../.github/workflows/lighthouse-ci.yml) — triggers on push or PR to `lighthouse-ci-test`.
+- **Secrets:** `LHCI_AUTH_EMAIL`, `LHCI_AUTH_PASSWORD` — set in repo **Settings → Secrets and variables → Actions**.
+- **Artifact:** `lighthouse-reports-<sha>` — download and open `report-dashboard.html`.
+- **Fork PRs** have no access to secrets; authenticated URL audits will fail.
+- **On failure** the workflow prints `docker compose ps`, backend logs, and nginx logs so Django tracebacks are visible.
+
+---
+
+## 5. CI design decisions
+
+### Migrations: no `--settings=backend.ci_settings`
+
+Migrations run without the `--settings` flag, using the default `backend.settings`. `ci_settings.py` does `from .settings import *`, but `settings.py` defines `__all__ = ('celery_app',)`, which means `import *` only imports `celery_app` — `INSTALLED_APPS` is never loaded. Django then sees zero apps, applies no migrations, and tables like `core_customuser` are never created.
+
+### Migrations: no `makemigrations --check`
+
+`makemigrations --check --dry-run` exits with code 1 whenever any app has model changes without a committed migration file. On feature branches this is common (e.g. `agent`, `chat`, `decision`, `miro`). That gate belongs in the main CI quality pipeline. For Lighthouse we just need a working database, so we run `makemigrations --noinput` to auto-generate any missing files inside the ephemeral container, then `--merge --noinput` to resolve any multi-head conflicts, then `migrate`.
+
+### Artifact upload: `include-hidden-files: true`
+
+`actions/upload-artifact` defaults `include-hidden-files` to `false`, which silently skips any directory whose name starts with `.`. Because the output directory is `.lighthouseci` (dot-prefixed), without this flag the upload reports "No files were found" even though the files exist.
+
+### `outputDir` uses an absolute path
+
+`lighthouserc.js` sets `outputDir: path.join(__dirname, '.lighthouseci')` instead of `"./.lighthouseci"`. On CI runners, LHCI can inherit a process `cwd` of `$GITHUB_WORKSPACE` (the repo root) rather than `frontend/`, which would resolve a relative path to the wrong location.
+
+### Node 24 opt-in
+
+`FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` is set at the workflow level. `actions/setup-node@v6`, `actions/upload-artifact@v6`, `docker/setup-buildx-action@v4`, and `docker/build-push-action@v7` already bundle Node 24 natively; the env var covers any transitive action that still ships a Node 20 binary ahead of GitHub's June 2026 forced migration.
+
+---
+
+## 6. Acceptable metric ranges (lab — internal guidance)
+
+Lab variance is normal. Prefer **before/after** comparisons on the same setup over single absolutes.
+
+| Metric | Good | Needs improvement | Poor |
+|--------|------|-------------------|------|
+| **LCP** | ≤ 2.5 s | 2.5–4.0 s | > 4.0 s |
+| **CLS** | ≤ 0.1 | 0.1–0.25 | > 0.25 |
+| **TBT** | ≤ 200 ms | 200–600 ms | > 600 ms |
+| **FCP** | ≤ 1.8 s | 1.8–3.0 s | > 3.0 s |
+
+---
+
+## 7. Reading reports
+
+- **Category scores** are summaries. Use the **numeric metrics** (LCP, CLS, TBT, FCP) for decisions.
+- **Opportunities / Diagnostics** in each HTML report show the highest-impact fixes.
+- **Variance** — CI and local scores routinely differ, even for the same code. Key reasons:
+  - **CPU speed.** Both environments use the same *simulated* 4G throttling, but Lighthouse's CPU throttling is applied as a *multiplier* on top of the host CPU. GitHub Actions runners are shared VMs with slower and more variable CPUs than a typical dev machine, so TBT and overall Performance scores are consistently lower on CI.
+  - **Cold Docker build.** On CI the images are built fresh and started from scratch; locally Docker layers and filesystem caches are usually warm, making asset serving faster.
+  - **Resource contention.** CI runners share host resources with other jobs. CPU spikes from unrelated processes increase main-thread blocking time and depress Performance scores.
+
+  Because of this, treat absolute scores as environment-specific — compare **CI run vs CI run** (e.g. PR vs main) and **local run vs local run**, not one against the other.
+- **Login page in report** — auth failed. Check `LHCI_AUTH_EMAIL` / `LHCI_AUTH_PASSWORD` and that the Zustand key `auth-storage` (`src/lib/authStore.ts`) is being set by the Puppeteer login script.
+
+---
+
+## 8. Prioritising optimisation work
+
+1. **Impact first** — home, spreadsheet, and project/task flows matter most.
+2. **Big gaps** — large Performance drops (LCP, TBT) before minor SEO tweaks.
+3. **Opportunities** — render-blocking resources, unused JS, image sizing, long tasks.
+4. **Consistency** — if one URL regresses, compare others on the same build before blaming a single change.
+5. **Field validation** — after lab wins, validate with RUM / CrUX in production.
+
+---
+
+## 9. Common fixes
 
 | Theme | Actions |
 |-------|---------|
-| **LCP** | LCP image priority, dimensions, formats; TTFB/server path; avoid blocking above-the-fold JS. |
-| **CLS** | Reserve space for media/fonts/embeds; avoid late layout inserts without reserved space. |
-| **TBT / long tasks** | Code-splitting, defer non-critical JS, review third parties. |
-| **Accessibility** | Contrast, labels, focus, ARIA — fix listed audits in order. |
-| **Best practices** | Per report (HTTPS, errors, image ratios, cookies, etc.). |
-
----
-
-## 8. Quick checks without LHCI
-
-- **Chrome DevTools → Lighthouse** on a single URL (ad-hoc; not the same URL list as CI unless you match manually).
+| **LCP** | Prioritise the LCP image (`fetchpriority="high"`), correct dimensions/format, reduce TTFB, avoid blocking above-the-fold JS. |
+| **CLS** | Reserve space for images, fonts, and embeds; avoid late layout inserts without reserved space. |
+| **TBT / long tasks** | Code-splitting, defer non-critical JS, audit third-party scripts. |
+| **Accessibility** | Fix contrast, add labels, ensure keyboard focus order, correct ARIA usage. |
+| **Best practices** | HTTPS, no console errors, correct image aspect ratios, no vulnerable libraries. |
 
 ---
 
 ## See also
 
-- [`docs/lighthouse-auditing-integration-plan.md`](../docs/lighthouse-auditing-integration-plan.md)
-- [`docs/lighthouse-integration-remaining-steps.md`](../docs/lighthouse-integration-remaining-steps.md)
+- [`lighthouserc.js`](./lighthouserc.js) — URL list, thresholds, Puppeteer script, output config
+- [`scripts/lhci-run.cjs`](./scripts/lhci-run.cjs) — orchestration entry point

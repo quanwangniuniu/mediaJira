@@ -1,10 +1,6 @@
-# Lighthouse CI — runs against a full Docker stack on branch `lighthouse-ci-test`.
-# Stack: wait for deps → migration check + migrate → Lighthouse (no backend/frontend test suite).
-#
-# Repository secrets (Settings → Secrets → Actions):
-#   LHCI_AUTH_EMAIL, LHCI_AUTH_PASSWORD — used to register (if new) and log in via the Lighthouse helper scripts.
-#
-# PRs from forks do not receive secrets; Lighthouse auth may fail.
+# Lighthouse CI — push/PR to `lighthouse-ci-test`.
+# Secrets required: LHCI_AUTH_EMAIL, LHCI_AUTH_PASSWORD (Settings → Secrets → Actions).
+# See frontend/LIGHTHOUSE_README.md for full setup and design notes.
 name: Lighthouse CI
 
 on:
@@ -20,6 +16,10 @@ concurrency:
 permissions:
   contents: read
 
+# Force all JS actions onto the Node 24 runtime.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   lighthouse:
     runs-on: ubuntu-latest
@@ -31,10 +31,10 @@ jobs:
           fetch-depth: 1
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build backend image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./backend
           tags: mediajira-backend:${{ github.sha }}
@@ -43,7 +43,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build frontend image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./frontend
           tags: mediajira-frontend:${{ github.sha }}
@@ -67,8 +67,6 @@ jobs:
           CELERY_RESULT_BACKEND=redis://redis:6379/0
           CLAMAV_HOST=clamav
           CLAMAV_PORT=3310
-          # Backend entrypoint uses opentelemetry-instrument; image lacks otlp_proto_grpc exporter.
-          # Without these, startup logs show RuntimeError for otlp_proto_grpc (Daphne still runs).
           OTEL_SDK_DISABLED=true
           OTEL_TRACES_EXPORTER=none
           OTEL_METRICS_EXPORTER=none
@@ -78,99 +76,65 @@ jobs:
       - name: Start all services
         run: docker compose --profile ci --env-file .env up -d
 
-      - name: wait for database and redis to be ready
+      - name: Wait for database, Redis and ClamAV
         run: |
-          # wait for database to be ready with proper health check
-          echo "Waiting for database to be ready..."
+          echo "Waiting for database..."
           timeout=180
           counter=0
           while [ $counter -lt $timeout ]; do
             if docker compose --profile ci exec -T db pg_isready -U postgres > /dev/null 2>&1; then
-              echo "Database is ready!"
+              echo "Database ready."
               break
             fi
-            echo "Database not ready yet, waiting... ($counter/$timeout)"
             sleep 2
             counter=$((counter + 2))
           done
-
           if [ $counter -eq $timeout ]; then
-            echo "Database failed to start within $timeout seconds"
             docker compose --profile ci logs db
             exit 1
           fi
 
-          # wait for redis to be ready
-          echo "Waiting for Redis to be ready..."
+          echo "Waiting for Redis..."
           redis_timeout=30
           redis_counter=0
           while [ $redis_counter -lt $redis_timeout ]; do
             if docker compose --profile ci exec -T redis redis-cli ping > /dev/null 2>&1; then
-              echo "Redis is ready!"
+              echo "Redis ready."
               break
             fi
-            echo "Redis not ready yet, waiting... ($redis_counter/$redis_timeout)"
             sleep 1
             redis_counter=$((redis_counter + 1))
           done
-
           if [ $redis_counter -eq $redis_timeout ]; then
-            echo "Redis failed to start within $redis_timeout seconds"
             docker compose --profile ci logs redis
             exit 1
           fi
 
-          # wait for clamav to be ready
-          echo "Waiting for ClamAV to be ready..."
+          echo "Waiting for ClamAV..."
           clamav_timeout=60
           clamav_counter=0
           while [ $clamav_counter -lt $clamav_timeout ]; do
             if docker compose --profile ci exec -T clamav clamdscan --version > /dev/null 2>&1; then
-              echo "ClamAV is ready!"
+              echo "ClamAV ready."
               break
             fi
-            echo "ClamAV not ready yet, waiting... ($clamav_counter/$clamav_timeout)"
             sleep 2
             clamav_counter=$((clamav_counter + 2))
           done
-
           if [ $clamav_counter -eq $clamav_timeout ]; then
-            echo "ClamAV failed to start within $clamav_timeout seconds"
             docker compose --profile ci logs clamav
             exit 1
           fi
 
-      # Root-cause fix: do NOT pass --settings=backend.ci_settings here.
-      # ci_settings uses `from .settings import *`, but settings.py defines
-      # __all__ = ('celery_app',) so import-* only brings in celery_app —
-      # INSTALLED_APPS is never imported. Django then falls back to its
-      # global default (INSTALLED_APPS=[]), sees zero apps, and outputs
-      # "Apply all migrations: (none)" without creating any tables.
-      # Omitting --settings lets manage.py use its own default (backend.settings)
-      # which loads INSTALLED_APPS correctly via decouple.config().
-      #
-      # `makemigrations --check --dry-run` is intentionally removed: it exits 1
-      # whenever any app has model changes without a committed migration file
-      # (e.g. agent, chat, decision, miro on feature branches). That gate belongs
-      # in the main CI quality pipeline, not here. For Lighthouse we just need a
-      # working database, so we auto-generate any missing files inside the
-      # container (they are not committed) then apply everything.
-      # `--merge --no-input` also resolves any multi-head conflicts so migrate
-      # never fails with "multiple leaf nodes".
+      # Run without --settings=backend.ci_settings — see LIGHTHOUSE_README.md § CI design decisions.
       - name: Run migrations (Postgres)
         run: |
           docker compose exec backend sh -c "
-            echo 'Auto-generating any missing migration files...' &&
             python manage.py makemigrations --noinput &&
-            echo 'Merging any migration conflicts...' &&
             python manage.py makemigrations --merge --noinput &&
-            echo 'Applying all migrations...' &&
             python manage.py migrate --noinput
           "
 
-      # Seed default Plans (Free/Pro/Ultimate) required by stripe_meta.signals
-      # when a new Organisation is created during LHCI user registration.
-      # stripe_meta has no data migration, so we seed after migrate.
       - name: Seed default plans (Free/Pro/Ultimate)
         run: |
           docker compose exec backend python manage.py shell -c \
@@ -178,22 +142,18 @@ jobs:
 
       - name: Verify backend is ready
         run: |
-          echo "Verifying backend health..."
           for i in $(seq 1 30); do
             if docker compose --profile ci exec -T backend python manage.py shell -c "from django.contrib.auth.models import User; print('DB OK')" > /dev/null 2>&1; then
-              echo "Backend database connection verified!"
+              echo "Backend ready."
               exit 0
             fi
-            echo "Backend not ready yet, waiting... ($i/30)"
             sleep 2
           done
-          echo "Backend verification failed"
           docker compose --profile ci logs backend --tail 100
           exit 1
 
       - name: Wait for app on localhost
         run: |
-          echo "Waiting for http://localhost/ ..."
           for i in $(seq 1 90); do
             if curl -fsS --max-time 5 http://localhost/ > /dev/null 2>&1; then
               echo "OK"
@@ -201,13 +161,12 @@ jobs:
             fi
             sleep 2
           done
-          echo "Timeout waiting for nginx/frontend"
           docker compose --profile ci logs nginx --tail 80 || true
           docker compose --profile ci logs frontend --tail 80 || true
           exit 1
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: npm
@@ -223,36 +182,21 @@ jobs:
           npm ci
           npm run lighthouse:local
 
-      - name: List Lighthouse output (debug)
-        if: always()
-        run: |
-          echo "=== frontend/.lighthouseci/ ==="
-          ls -la frontend/.lighthouseci/ 2>/dev/null || echo "(directory not found)"
-          echo "=== searching workspace for any .lighthouseci dir ==="
-          find "$GITHUB_WORKSPACE" -maxdepth 4 -name ".lighthouseci" -type d 2>/dev/null || true
-
       - name: Upload Lighthouse reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: lighthouse-reports-${{ github.sha }}
           path: frontend/.lighthouseci/
           if-no-files-found: warn
           retention-days: 14
-          # .lighthouseci is a hidden directory (dot-prefixed). upload-artifact@v4
-          # defaults include-hidden-files to false and silently skips hidden dirs,
-          # which is why the upload showed "No files were found" even though the
-          # debug step confirmed the directory and files existed.
           include-hidden-files: true
 
       - name: Docker compose logs (on failure)
         if: failure()
         run: |
-          echo "=== docker compose ps ==="
           docker compose --profile ci ps -a || true
-          echo "=== backend (last 250 lines) ==="
           docker compose --profile ci logs backend --tail 250 || true
-          echo "=== nginx (last 120 lines) ==="
           docker compose --profile ci logs nginx --tail 120 || true
 
       - name: Cleanup containers
