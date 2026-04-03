@@ -856,6 +856,7 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
 
   useEffect(() => {
     const onSelectionChange = () => {
+      if (saveTimerRef.current) return;
       if (cursorTimerRef.current) {
         window.clearTimeout(cursorTimerRef.current);
       }
@@ -866,8 +867,6 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
     document.addEventListener('selectionchange', onSelectionChange);
     return () => {
       document.removeEventListener('selectionchange', onSelectionChange);
-      // Do not send is_active:false here: React Strict Mode remount would flash-remove
-      // remote cursors; server disconnect already broadcasts inactive via MeetingDocumentConsumer.
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -900,8 +899,7 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
     cursorHeartbeatTimerRef.current = window.setInterval(() => {
       const editor = editorRef.current;
       if (!editor) return;
-      // Keep broadcasting while this tab is open: focus is often on the format toolbar,
-      // not the contenteditable; otherwise peers' TTL drops our cursor after ~10s.
+      if (saveTimerRef.current) return;
       sendCursorUpdateRef.current(true);
     }, CURSOR_HEARTBEAT_MS);
 
@@ -931,6 +929,7 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
   const scheduleSave = () => {
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
     saveTimerRef.current = window.setTimeout(() => {
+      saveTimerRef.current = null;
       const ws = wsRef.current;
       if (ws && ws.readyState === WebSocket.OPEN) {
         if (httpPersistTimerRef.current) {
@@ -1235,9 +1234,8 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
             latestContentRef.current = next;
             setContent(next);
             scheduleSave();
-            sendCursorUpdate(true);
           }}
-          onKeyUp={() => sendCursorUpdate(true)}
+          onKeyUp={() => { if (!saveTimerRef.current) sendCursorUpdate(true); }}
           onMouseUp={() => sendCursorUpdate(true)}
           onFocus={() => {
             const el = editorRef.current;
