@@ -11,7 +11,8 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from rest_framework_simplejwt.tokens import RefreshToken
-from .serializers import UserProfileSerializer
+from .serializers import UserProfileSerializer, OrganizationTokenRefreshSerializer
+from .services import refresh_organization_access_token
 from core.models import Team, Organization, Role
 from access_control.models import UserRole
 from stripe_meta.permissions import generate_organization_access_token
@@ -213,6 +214,21 @@ class LoginView(APIView):
             response_data['organization_access_token'] = custom_access_token
         
         return Response(response_data, status=status.HTTP_200_OK)
+
+
+class OrganizationTokenRefreshView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            new_token = refresh_organization_access_token(request.user)
+        except ValidationError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = OrganizationTokenRefreshSerializer(
+            {"organization_access_token": new_token}
+        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 class SsoRedirectView(APIView):
     """

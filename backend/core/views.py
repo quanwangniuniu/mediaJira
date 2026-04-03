@@ -36,6 +36,7 @@ from core.utils.invitations import accept_invitation, create_project_invitation,
 from core.utils.kpi_suggestions import get_kpi_suggestions
 from core.utils.project_calendars import (
     ensure_project_calendar,
+    soft_delete_project_calendars,
 )
 
 logger = logging.getLogger(__name__)
@@ -308,6 +309,12 @@ class ProjectViewSet(viewsets.ModelViewSet):
         ensure_project_calendar(project)
 
         return project
+
+    def perform_destroy(self, instance):
+        """Delete project and soft-delete related calendars."""
+        with transaction.atomic():
+            soft_delete_project_calendars(instance)
+            instance.delete()
 
     @action(detail=True, methods=['post'])
     def set_active(self, request, pk=None):
