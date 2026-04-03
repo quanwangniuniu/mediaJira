@@ -4,11 +4,11 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth.models import AnonymousUser
 
-from core.models import ProjectMember
 from meetings.models import Meeting
 from meetings.services import (
     get_or_create_meeting_document,
     update_meeting_document_content,
+    user_has_meeting_document_access,
 )
 
 
@@ -254,11 +254,7 @@ class MeetingDocumentConsumer(AsyncWebsocketConsumer):
             meeting = Meeting.objects.select_related("project").get(id=meeting_id)
         except Meeting.DoesNotExist:
             return False
-        return ProjectMember.objects.filter(
-            user_id=user_id,
-            project_id=meeting.project_id,
-            is_active=True,
-        ).exists()
+        return user_has_meeting_document_access(user_id, meeting)
 
     @database_sync_to_async
     def _get_document_snapshot(self, meeting_id: int):

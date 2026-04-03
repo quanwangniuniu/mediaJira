@@ -269,4 +269,40 @@ class TestMeetingAPI(TestCase):
         doc = MeetingDocument.objects.get(meeting=meeting)
         self.assertEqual(doc.last_edited_by_id, self.user_a.id)
 
+    def test_meeting_document_get_allowed_for_participant_without_project_membership(self):
+        meeting = Meeting.objects.create(
+            project=self.project_a,
+            title="Invited only",
+            meeting_type="planning",
+            objective="X",
+        )
+        user_c = CustomUser.objects.create_user(
+            email="user_c@example.com",
+            password="password",
+            username="user_c",
+        )
+        ParticipantLink.objects.create(meeting=meeting, user=user_c)
+        url = f"/api/v1/projects/{self.project_a.id}/meetings/{meeting.id}/document/"
+        self.client.force_authenticate(user=user_c)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["meeting"], meeting.id)
+
+    def test_meeting_document_forbidden_without_member_or_participant_link(self):
+        meeting = Meeting.objects.create(
+            project=self.project_a,
+            title="Private doc",
+            meeting_type="planning",
+            objective="Y",
+        )
+        user_c = CustomUser.objects.create_user(
+            email="user_d@example.com",
+            password="password",
+            username="user_d",
+        )
+        url = f"/api/v1/projects/{self.project_a.id}/meetings/{meeting.id}/document/"
+        self.client.force_authenticate(user=user_c)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
 

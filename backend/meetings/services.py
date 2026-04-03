@@ -2,7 +2,19 @@ from typing import Iterable, List
 
 from django.db import transaction
 
-from meetings.models import AgendaItem, MeetingDocument
+from core.models import ProjectMember
+from meetings.models import AgendaItem, Meeting, MeetingDocument, ParticipantLink
+
+
+def user_has_meeting_document_access(user_id: int, meeting: Meeting) -> bool:
+    """Project member (active) or explicit meeting participant may load/sync the meeting document."""
+    if ProjectMember.objects.filter(
+        user_id=user_id,
+        project_id=meeting.project_id,
+        is_active=True,
+    ).exists():
+        return True
+    return ParticipantLink.objects.filter(meeting_id=meeting.id, user_id=user_id).exists()
 
 
 def reorder_agenda_items(meeting_id: int, items: Iterable[dict]) -> List[AgendaItem]:

@@ -51,8 +51,9 @@ const CURSOR_HEARTBEAT_MS = 600;
 /** Keep generous: heartbeats may pause briefly during toolbar clicks / focus moves. */
 const CURSOR_TTL_MS = 45000;
 
-function presenceKeyFromMessage(userId: number, clientId?: string | null): string {
-  return typeof clientId === 'string' && clientId.trim() ? clientId.trim() : `u:${userId}`;
+/** One remote caret per user. Using client_id as key caused duplicate cursors (same user: doc-xxx vs u:id). */
+function remotePresenceKey(userId: number): string {
+  return `u:${userId}`;
 }
 
 /** Collapsed ranges often return wrong rects at line breaks; pick topmost valid rect or measure one character. */
@@ -119,6 +120,136 @@ function clientPointToEditorOverlay(editor: HTMLDivElement, clientX: number, cli
   };
 }
 
+/** Plain-text length in document order; must match offset space used by resolveTextNodeAtOffset. */
+function getTotalPlainTextLength(editor: HTMLDivElement): number {
+  const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+  let total = 0;
+  let n = walker.nextNode();
+  while (n) {
+    total += (n.textContent ?? '').length;
+    n = walker.nextNode();
+  }
+  return total;
+}
+
+/**
+ * Document-order plain text offset before (container, offset).
+ * Must match the TreeWalker + per-node length model used by resolveTextNodeAtOffset (not Range#toString().length).
+ */
+function getPlainTextOffsetBeforePosition(editor: HTMLDivElement, container: Node, offset: number): number {
+  const endPoint = document.createRange();
+  try {
+    endPoint.setStart(container, offset);
+    endPoint.collapse(true);
+  } catch {
+    return 0;
+  }
+
+  let total = 0;
+  const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+  let textNode = walker.nextNode() as Text | null;
+
+  while (textNode) {
+    const len = (textNode.textContent ?? '').length;
+    const nodeStart = document.createRange();
+    nodeStart.setStart(textNode, 0);
+    nodeStart.collapse(true);
+    const nodeEnd = document.createRange();
+    nodeEnd.setStart(textNode, len);
+    nodeEnd.collapse(true);
+
+    if (endPoint.compareBoundaryPoints(Range.START_TO_START, nodeEnd) > 0) {
+      total += len;
+      textNode = walker.nextNode() as Text | null;
+      continue;
+    }
+
+    if (endPoint.compareBoundaryPoints(Range.START_TO_START, nodeStart) <= 0) {
+      break;
+    }
+
+    if (container === textNode) {
+      total += Math.max(0, Math.min(offset, len));
+      break;
+    }
+
+    const measure = document.createRange();
+    measure.setStart(textNode, 0);
+    measure.setEnd(container, offset);
+    total += measure.toString().length;
+    break;
+  }
+
+  return total;
+}
+
+/** Map plain-text offset → DOM position; same ordering as getPlainTextOffsetBeforePosition / getTotalPlainTextLength. */
+function resolveTextNodeAtOffset(editor: HTMLDivElement, targetOffset: number): { node: Node; offset: number } | null {
+  const target = Math.max(0, targetOffset);
+  const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+  let consumed = 0;
+  let textNode = walker.nextNode();
+
+  while (textNode) {
+    const text = textNode.textContent ?? '';
+    const nextConsumed = consumed + text.length;
+    if (target <= nextConsumed) {
+      return { node: textNode, offset: Math.max(0, Math.min(target - consumed, text.length)) };
+    }
+    consumed = nextConsumed;
+    textNode = walker.nextNode();
+  }
+
+  if (editor.lastChild) {
+    const fallbackOffset =
+      editor.lastChild.nodeType === Node.TEXT_NODE
+        ? (editor.lastChild.textContent ?? '').length
+        : editor.lastChild.childNodes.length;
+    return { node: editor.lastChild, offset: fallbackOffset };
+  }
+
+  return null;
+}
+
+type PlainTextSelectionState = { anchor: number; focus: number };
+
+function getPlainTextSelectionState(editor: HTMLDivElement): PlainTextSelectionState | null {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return null;
+  if (!sel.anchorNode || !sel.focusNode) return null;
+  if (!editor.contains(sel.anchorNode) || !editor.contains(sel.focusNode)) return null;
+  try {
+    const anchor = getPlainTextOffsetBeforePosition(editor, sel.anchorNode, sel.anchorOffset);
+    const focus = getPlainTextOffsetBeforePosition(editor, sel.focusNode, sel.focusOffset);
+    return { anchor, focus };
+  } catch {
+    return null;
+  }
+}
+
+function restorePlainTextSelectionState(editor: HTMLDivElement, state: PlainTextSelectionState): void {
+  const sel = window.getSelection();
+  if (!sel) return;
+  const total = getTotalPlainTextLength(editor);
+  const clamp = (n: number) => Math.max(0, Math.min(n, total));
+  const a = clamp(state.anchor);
+  const f = clamp(state.focus);
+  const start = Math.min(a, f);
+  const end = Math.max(a, f);
+  const startPos = resolveTextNodeAtOffset(editor, start);
+  const endPos = resolveTextNodeAtOffset(editor, end);
+  if (!startPos || !endPos) return;
+  const range = document.createRange();
+  try {
+    range.setStart(startPos.node, startPos.offset);
+    range.setEnd(endPos.node, endPos.offset);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  } catch {
+    // ignore
+  }
+}
+
 /** WS / JSON may deliver numbers as strings depending on proxies or serializers. */
 function parseWsFiniteNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -144,13 +275,52 @@ function parseWsOptionalInt(value: unknown): number | null {
   return r;
 }
 
-function cursorColorForPresence(presenceKey: string, userId: number): string {
-  const palette = ['#2563eb', '#7c3aed', '#0891b2', '#059669', '#dc2626', '#d97706', '#db2777'];
-  let h = userId;
+/** Distinct color per user (hue on the wheel); avoids 7-color palette collisions for multiple editors. */
+function cursorColorForUser(userId: number, presenceKey: string): string {
+  let hash = userId >>> 0;
   for (let i = 0; i < presenceKey.length; i += 1) {
-    h = (h * 31 + presenceKey.charCodeAt(i)) >>> 0;
+    hash = (hash * 31 + presenceKey.charCodeAt(i)) >>> 0;
   }
-  return palette[h % palette.length];
+  const hue = hash % 360;
+  const sat = 58 + (hash % 22);
+  const light = 40 + (hash % 12);
+  return hslToHex(hue, sat, light);
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  const hh = ((h % 360) + 360) % 360;
+  const sf = Math.max(0, Math.min(100, s)) / 100;
+  const lf = Math.max(0, Math.min(100, l)) / 100;
+  const c = (1 - Math.abs(2 * lf - 1)) * sf;
+  const x = c * (1 - Math.abs(((hh / 60) % 2) - 1));
+  const m = lf - c / 2;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  if (hh < 60) {
+    r = c;
+    g = x;
+  } else if (hh < 120) {
+    r = x;
+    g = c;
+  } else if (hh < 180) {
+    g = c;
+    b = x;
+  } else if (hh < 240) {
+    g = x;
+    b = c;
+  } else if (hh < 300) {
+    r = x;
+    b = c;
+  } else {
+    r = c;
+    b = x;
+  }
+  const to = (v: number) =>
+    Math.round(Math.max(0, Math.min(255, (v + m) * 255)))
+      .toString(16)
+      .padStart(2, '0');
+  return `#${to(r)}${to(g)}${to(b)}`;
 }
 
 function selectionHighlightBackground(hexColor: string): string {
@@ -161,6 +331,54 @@ function selectionHighlightBackground(hexColor: string): string {
   const b = parseInt(m[3], 16);
   return `rgba(${r},${g},${b},0.2)`;
 }
+
+function isNodeInsideEditor(editor: HTMLDivElement, n: Node | null): boolean {
+  return Boolean(n && (n === editor || editor.contains(n)));
+}
+
+/**
+ * Focus can land on contenteditable while Selection has no range or anchor outside (Tab, WS innerHTML, Strict Mode).
+ * Without this we broadcast cursor_offset 0 forever and peers see a dead caret at the top-left.
+ */
+function ensureSelectionAnchoredInEditor(editor: HTMLDivElement): void {
+  if (document.activeElement !== editor) return;
+  const sel = window.getSelection();
+  if (!sel) return;
+  if (sel.rangeCount > 0 && isNodeInsideEditor(editor, sel.anchorNode)) return;
+
+  const total = getTotalPlainTextLength(editor);
+  const pos = resolveTextNodeAtOffset(editor, total);
+  try {
+    if (pos) {
+      const range = document.createRange();
+      range.setStart(pos.node, pos.offset);
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      return;
+    }
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  } catch {
+    try {
+      editor.focus();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+type LastOutgoingCursor = {
+  offset: number;
+  x: number;
+  y: number;
+  selectionStart?: number;
+  selectionEnd?: number;
+  selectionRects: Array<{ left: number; top: number; width: number; height: number }>;
+};
 
 export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
   const token = useAuthStore((state) => state.token);
@@ -186,8 +404,16 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
   const cursorSeenAtRef = useRef<Record<string, number>>({});
   const [scrollLayoutTick, setScrollLayoutTick] = useState(0);
   const sendCursorUpdateRef = useRef<(isActive?: boolean) => void>(() => {});
+  const lastOutgoingCursorRef = useRef<LastOutgoingCursor | null>(null);
+  /** When DOM just changed, getCursorXYFromOffset can fail for one frame; avoid falling back to 0,0 x/y. */
+  const remoteCaretLayoutCacheRef = useRef<Record<number, { left: number; top: number }>>({});
 
   const wsPath = useMemo(() => `/ws/meetings/${meetingId}/document/`, [meetingId]);
+
+  const bumpRemoteCursorOverlay = () => {
+    queueMicrotask(() => setScrollLayoutTick((t) => t + 1));
+    requestAnimationFrame(() => setScrollLayoutTick((t) => t + 1));
+  };
 
   useEffect(() => {
     lastSyncedAtRef.current = lastSyncedAt;
@@ -198,11 +424,28 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
   }, [content]);
 
   const applyRemoteContent = (next: string) => {
+    const editor = editorRef.current;
+    const preserveSelection = editor !== null && document.activeElement === editor;
+    const saved = preserveSelection ? getPlainTextSelectionState(editor) : null;
+
     latestContentRef.current = next;
     setContent(next);
-    const editor = editorRef.current;
     if (editor && editor.innerHTML !== next) {
+      remoteCaretLayoutCacheRef.current = {};
       editor.innerHTML = next;
+      bumpRemoteCursorOverlay();
+      if (saved) {
+        requestAnimationFrame(() => {
+          if (editorRef.current !== editor) return;
+          restorePlainTextSelectionState(editor, saved);
+          editor.focus();
+          requestAnimationFrame(() => {
+            ensureSelectionAnchoredInEditor(editor);
+            sendCursorUpdateRef.current(true);
+            bumpRemoteCursorOverlay();
+          });
+        });
+      }
     }
   };
 
@@ -219,7 +462,23 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
     const editor = editorRef.current;
     if (!editor) return;
     if (editor.innerHTML === content) return;
+    const preserveSelection = document.activeElement === editor;
+    const saved = preserveSelection ? getPlainTextSelectionState(editor) : null;
+    remoteCaretLayoutCacheRef.current = {};
     editor.innerHTML = content || '';
+    bumpRemoteCursorOverlay();
+    if (saved) {
+      requestAnimationFrame(() => {
+        if (editorRef.current !== editor) return;
+        restorePlainTextSelectionState(editor, saved);
+        editor.focus();
+        requestAnimationFrame(() => {
+          ensureSelectionAnchoredInEditor(editor);
+          sendCursorUpdateRef.current(true);
+          bumpRemoteCursorOverlay();
+        });
+      });
+    }
   }, [content]);
 
   useEffect(() => {
@@ -293,28 +552,18 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
             const wsUserId = parseWsUserId(message.user_id);
             if (wsUserId === null) return;
             if (message.is_active === false) {
-              const cid = message.client_id;
-              if (typeof cid === 'string' && cid.trim()) {
-                const k = cid.trim();
-                delete cursorSeenAtRef.current[k];
-                setRemoteCursors((prev) => {
-                  const next = { ...prev };
-                  delete next[k];
-                  return next;
-                });
-              } else {
-                const uid = wsUserId;
-                setRemoteCursors((prev) => {
-                  const next = { ...prev };
-                  for (const pk of Object.keys(next)) {
-                    if (next[pk]?.userId === uid) {
-                      delete cursorSeenAtRef.current[pk];
-                      delete next[pk];
-                    }
+              const uid = wsUserId;
+              delete remoteCaretLayoutCacheRef.current[uid];
+              setRemoteCursors((prev) => {
+                const next = { ...prev };
+                for (const pk of Object.keys(next)) {
+                  if (next[pk]?.userId === uid) {
+                    delete cursorSeenAtRef.current[pk];
+                    delete next[pk];
                   }
-                  return next;
-                });
-              }
+                }
+                return next;
+              });
               return;
             }
             const xParsed = parseWsFiniteNumber(message.x);
@@ -323,13 +572,15 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
             const xOk = xParsed !== null;
             const yOk = yParsed !== null;
             const offsetOk = offsetParsed !== null;
-            if ((!xOk || !yOk) && !offsetOk) {
+            // Accept if any signal exists; merging uses existing state for missing parts.
+            // (Strict (x&&y)||offset dropped valid messages when the channel sent only offset or only one axis as null.)
+            if (!offsetOk && !xOk && !yOk) {
               return;
             }
             const x = xOk ? xParsed! : 0;
             const y = yOk ? yParsed! : 0;
             const userId = wsUserId;
-            const presenceKey = presenceKeyFromMessage(userId, message.client_id);
+            const presenceKey = remotePresenceKey(userId);
             const rectNum = (v: unknown) => parseWsFiniteNumber(v);
             const incomingSelectionRects = Array.isArray(message.selection_rects)
               ? message.selection_rects
@@ -378,21 +629,34 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
               storedSelectionRects = incomingSelectionRects;
             }
             cursorSeenAtRef.current[presenceKey] = Date.now();
-            setRemoteCursors((prev) => ({
-              ...prev,
-              [presenceKey]: {
+            setRemoteCursors((prev) => {
+              const next: Record<string, RemoteCursor> = { ...prev };
+              for (const pk of Object.keys(next)) {
+                if (next[pk]?.userId === userId && pk !== presenceKey) {
+                  delete cursorSeenAtRef.current[pk];
+                  delete next[pk];
+                }
+              }
+              const existing = next[presenceKey];
+              const mergedOffset = offsetOk ? offsetParsed! : existing?.cursorOffset;
+              const mergedX = xOk ? xParsed! : (existing?.x ?? x);
+              const mergedY = yOk ? yParsed! : (existing?.y ?? y);
+              const mergedUsername =
+                (typeof message.username === 'string' && message.username.trim()) || existing?.username || `User ${userId}`;
+              next[presenceKey] = {
                 presenceKey,
                 userId,
-                username: message.username || `User ${userId}`,
-                x,
-                y,
-                cursorOffset: offsetOk ? offsetParsed! : undefined,
+                username: mergedUsername,
+                x: mergedX,
+                y: mergedY,
+                cursorOffset: mergedOffset,
                 selectionStart: storedSelectionStart,
                 selectionEnd: storedSelectionEnd,
                 selectionRects: storedSelectionRects,
-                color: cursorColorForPresence(presenceKey, userId),
-              },
-            }));
+                color: cursorColorForUser(userId, presenceKey),
+              };
+              return next;
+            });
           }
         } catch {
           // Ignore malformed message and keep editor usable.
@@ -564,6 +828,8 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
             client_id: clientIdRef.current,
           }),
         );
+        // Re-broadcast caret after content so peers apply the same doc before interpreting offset (ordering on same socket is FIFO).
+        sendCursorUpdateRef.current(true);
         httpPersistTimerRef.current = window.setTimeout(() => {
           void persistViaHttp(latestContentRef.current);
         }, HTTP_FALLBACK_DEBOUNCE_MS);
@@ -582,11 +848,27 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
     const ws = wsRef.current;
     const editor = editorRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN || !editor) return;
+
+    const selection = window.getSelection();
+    let anchorInEditor = Boolean(
+      selection && selection.rangeCount > 0 && isNodeInsideEditor(editor, selection.anchorNode),
+    );
+    if (document.activeElement === editor && !anchorInEditor) {
+      ensureSelectionAnchoredInEditor(editor);
+      const sel2 = window.getSelection();
+      anchorInEditor = Boolean(
+        sel2 && sel2.rangeCount > 0 && isNodeInsideEditor(editor, sel2.anchorNode),
+      );
+    }
+
     let x = 8 + editor.scrollLeft;
     let y = 8 + editor.scrollTop;
-    const selection = window.getSelection();
-    if (selection && selection.rangeCount > 0 && editor.contains(selection.anchorNode)) {
-      const range = selection.getRangeAt(0).cloneRange();
+    let cursorOffset = 0;
+    let selectionOffsets: { start: number; end: number } | null = null;
+    let selectionRects: Array<{ left: number; top: number; width: number; height: number }> = [];
+
+    if (anchorInEditor) {
+      const range = selection!.getRangeAt(0).cloneRange();
       range.collapse(true);
       const caret = getCaretClientRect(range, editor);
       if (caret) {
@@ -594,15 +876,52 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
         x = pos.x;
         y = pos.y;
       }
+      cursorOffset = getPlainTextOffsetBeforePosition(editor, range.endContainer, range.endOffset);
+      selectionOffsets = getSelectionOffsets(editor);
+      selectionRects = getLiveSelectionRects(editor);
+
+      const collapsed =
+        !selectionOffsets || selectionOffsets.start === selectionOffsets.end;
+      lastOutgoingCursorRef.current = {
+        offset: cursorOffset,
+        x,
+        y,
+        selectionStart: collapsed ? undefined : selectionOffsets?.start,
+        selectionEnd: collapsed ? undefined : selectionOffsets?.end,
+        selectionRects: collapsed ? [] : selectionRects,
+      };
+    } else {
+      const last = lastOutgoingCursorRef.current;
+      if (last) {
+        cursorOffset = last.offset;
+        const fromOffset = getCursorXYFromOffset(editor, last.offset);
+        if (fromOffset) {
+          x = fromOffset.x;
+          y = fromOffset.y;
+        } else {
+          x = last.x;
+          y = last.y;
+        }
+        if (
+          typeof last.selectionStart === 'number' &&
+          typeof last.selectionEnd === 'number' &&
+          last.selectionEnd > last.selectionStart
+        ) {
+          selectionOffsets = { start: last.selectionStart, end: last.selectionEnd };
+          selectionRects = getSelectionRects(editor, last.selectionStart, last.selectionEnd);
+          if (selectionRects.length === 0 && last.selectionRects.length > 0) {
+            selectionRects = last.selectionRects;
+          }
+        }
+      }
     }
-    const selectionOffsets = getSelectionOffsets(editor);
-    const selectionRects = getLiveSelectionRects(editor);
+
     ws.send(
       JSON.stringify({
         type: 'cursor_update',
         x,
         y,
-        cursor_offset: getCursorOffset(editor),
+        cursor_offset: cursorOffset,
         selection_start: selectionOffsets?.start ?? null,
         selection_end: selectionOffsets?.end ?? null,
         selection_rects: selectionRects,
@@ -617,42 +936,33 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
   const getCursorOffset = (editor: HTMLDivElement): number => {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return 0;
-    if (!editor.contains(selection.anchorNode)) return 0;
+    if (!isNodeInsideEditor(editor, selection.anchorNode)) return 0;
     const range = selection.getRangeAt(0).cloneRange();
     range.collapse(true);
-    const preRange = range.cloneRange();
-    preRange.selectNodeContents(editor);
-    preRange.setEnd(range.endContainer, range.endOffset);
-    return preRange.toString().length;
+    return getPlainTextOffsetBeforePosition(editor, range.endContainer, range.endOffset);
   };
 
   const getSelectionOffsets = (editor: HTMLDivElement): { start: number; end: number } | null => {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return null;
-    if (!editor.contains(selection.anchorNode) || !editor.contains(selection.focusNode)) return null;
+    if (!isNodeInsideEditor(editor, selection.anchorNode) || !isNodeInsideEditor(editor, selection.focusNode))
+      return null;
     const range = selection.getRangeAt(0).cloneRange();
     const startRange = range.cloneRange();
     startRange.collapse(true);
     const endRange = range.cloneRange();
     endRange.collapse(false);
 
-    const preStart = startRange.cloneRange();
-    preStart.selectNodeContents(editor);
-    preStart.setEnd(startRange.endContainer, startRange.endOffset);
-
-    const preEnd = endRange.cloneRange();
-    preEnd.selectNodeContents(editor);
-    preEnd.setEnd(endRange.endContainer, endRange.endOffset);
-
-    const start = preStart.toString().length;
-    const end = preEnd.toString().length;
+    const start = getPlainTextOffsetBeforePosition(editor, startRange.endContainer, startRange.endOffset);
+    const end = getPlainTextOffsetBeforePosition(editor, endRange.endContainer, endRange.endOffset);
     return { start: Math.min(start, end), end: Math.max(start, end) };
   };
 
   const getLiveSelectionRects = (editor: HTMLDivElement): Array<{ left: number; top: number; width: number; height: number }> => {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return [];
-    if (!editor.contains(selection.anchorNode) || !editor.contains(selection.focusNode)) return [];
+    if (!isNodeInsideEditor(editor, selection.anchorNode) || !isNodeInsideEditor(editor, selection.focusNode))
+      return [];
     const range = selection.getRangeAt(0);
     if (range.collapsed) return [];
     const editorRect = editor.getBoundingClientRect();
@@ -664,32 +974,6 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
         width: rect.width,
         height: rect.height,
       }));
-  };
-
-  const resolveTextNodeAtOffset = (editor: HTMLDivElement, targetOffset: number): { node: Node; offset: number } | null => {
-    const target = Math.max(0, targetOffset);
-    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
-    let consumed = 0;
-    let textNode = walker.nextNode();
-
-    while (textNode) {
-      const text = textNode.textContent ?? '';
-      const nextConsumed = consumed + text.length;
-      if (target <= nextConsumed) {
-        return { node: textNode, offset: Math.max(0, Math.min(target - consumed, text.length)) };
-      }
-      consumed = nextConsumed;
-      textNode = walker.nextNode();
-    }
-
-    if (editor.lastChild) {
-      const fallbackOffset = editor.lastChild.nodeType === Node.TEXT_NODE
-        ? (editor.lastChild.textContent ?? '').length
-        : editor.lastChild.childNodes.length;
-      return { node: editor.lastChild, offset: fallbackOffset };
-    }
-
-    return null;
   };
 
   const getSelectionRects = (editor: HTMLDivElement, start: number, end: number): Array<{ left: number; top: number; width: number; height: number }> => {
@@ -715,27 +999,24 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
   };
 
   const getCursorXYFromOffset = (editor: HTMLDivElement, offset: number): { x: number; y: number } | null => {
-    const target = Math.max(0, offset);
-    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
-    let consumed = 0;
-    let textNode = walker.nextNode();
-    while (textNode) {
-      const nodeText = textNode.textContent ?? '';
-      const nextConsumed = consumed + nodeText.length;
-      if (target <= nextConsumed) {
-        const nodeOffset = Math.max(0, Math.min(target - consumed, nodeText.length));
-        const range = document.createRange();
-        range.setStart(textNode, nodeOffset);
-        range.setEnd(textNode, nodeOffset);
-        const caret = getCaretClientRect(range, editor);
-        if (caret) {
-          return clientPointToEditorOverlay(editor, caret.left, caret.top);
-        }
-      }
-      consumed = nextConsumed;
-      textNode = walker.nextNode();
+    const total = getTotalPlainTextLength(editor);
+    const clamped = Math.max(0, Math.min(Math.trunc(offset), total));
+    const resolved = resolveTextNodeAtOffset(editor, clamped);
+    if (!resolved) {
+      return null;
     }
-    return null;
+    const range = document.createRange();
+    try {
+      range.setStart(resolved.node, resolved.offset);
+      range.setEnd(resolved.node, resolved.offset);
+    } catch {
+      return null;
+    }
+    const caret = getCaretClientRect(range, editor);
+    if (!caret) {
+      return null;
+    }
+    return clientPointToEditorOverlay(editor, caret.left, caret.top);
   };
 
   const resolveRemoteCursorPosition = (cursor: RemoteCursor): { left: number; top: number } => {
@@ -745,8 +1026,12 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
     if (typeof cursor.cursorOffset === 'number') {
       const pos = getCursorXYFromOffset(editor, cursor.cursorOffset);
       if (pos) {
-        return { left: Math.max(pos.x, 0), top: Math.max(pos.y, 0) };
+        const p = { left: Math.max(pos.x, 0), top: Math.max(pos.y, 0) };
+        remoteCaretLayoutCacheRef.current[cursor.userId] = p;
+        return p;
       }
+      const cached = remoteCaretLayoutCacheRef.current[cursor.userId];
+      if (cached) return cached;
     }
     return { left: Math.max(cursor.x, 0), top: Math.max(cursor.y, 0) };
   };
@@ -848,7 +1133,14 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
           }}
           onKeyUp={() => sendCursorUpdate(true)}
           onMouseUp={() => sendCursorUpdate(true)}
-          onFocus={() => sendCursorUpdate(true)}
+          onFocus={() => {
+            const el = editorRef.current;
+            if (!el) return;
+            requestAnimationFrame(() => {
+              ensureSelectionAnchoredInEditor(el);
+              sendCursorUpdate(true);
+            });
+          }}
           onScroll={() => setScrollLayoutTick((t) => t + 1)}
           onBlur={() => {
             void persistViaHttp(latestContentRef.current);
@@ -866,7 +1158,7 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
               cursor.selectionEnd > cursor.selectionStart;
             const selectionRectsFromOffset =
               hasOffsetRange && editor
-                ? getSelectionRects(editor, cursor.selectionStart, cursor.selectionEnd)
+                ? getSelectionRects(editor, cursor.selectionStart!, cursor.selectionEnd!)
                 : [];
             const normalizePayloadRect = (rect: { left: number; top: number; width: number; height: number }) => {
               if (!editor) return rect;
@@ -890,14 +1182,9 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
             // Prefer DOM from offsets; if empty (e.g. doc drift), fall back to payload. If peer cleared selection, both are [].
             const selectionRects =
               selectionRectsFromOffset.length > 0 ? selectionRectsFromOffset : selectionRectsFromPayload;
-            const selectionLabelPosition =
-              selectionRects.length > 0
-                ? {
-                    left: selectionRects[0].left,
-                    top: Math.max(selectionRects[0].top - 20, 0),
-                  }
-                : null;
             const highlightBg = selectionHighlightBackground(cursor.color);
+            /** Name chip always follows caret — never tie to selectionRects[0] (stale payload often sits at 0,0 and hid the caret label). */
+            const nameLabelTop = position.top >= 22 ? position.top - 20 : position.top + 6;
             return (
               <div key={cursor.presenceKey}>
                 {selectionRects.map((rect, idx) => (
@@ -913,28 +1200,21 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
                     }}
                   />
                 ))}
-                {selectionLabelPosition && (
-                  <div
-                    className="pointer-events-none absolute rounded px-1.5 py-0.5 text-[10px] text-white shadow-sm"
-                    style={{
-                      left: `${selectionLabelPosition.left}px`,
-                      top: `${selectionLabelPosition.top}px`,
-                      backgroundColor: cursor.color,
-                    }}
-                  >
-                    {cursor.username}
-                  </div>
-                )}
+                <div
+                  className="pointer-events-none absolute z-[1] max-w-[200px] truncate whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium text-white shadow-sm"
+                  style={{
+                    left: `${Math.max(position.left, 0)}px`,
+                    top: `${Math.max(0, nameLabelTop)}px`,
+                    backgroundColor: cursor.color,
+                  }}
+                >
+                  {cursor.username}
+                </div>
                 <div
                   className="pointer-events-none absolute"
                   style={{ left: `${position.left}px`, top: `${position.top}px` }}
                 >
                   <div className="h-5 w-0.5" style={{ backgroundColor: cursor.color }} />
-                  {!selectionLabelPosition && (
-                    <div className="rounded px-1.5 py-0.5 text-[10px] text-white shadow-sm" style={{ backgroundColor: cursor.color }}>
-                      {cursor.username}
-                    </div>
-                  )}
                 </div>
               </div>
             );

@@ -4,7 +4,7 @@ from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -22,6 +22,7 @@ from meetings.services import (
     reorder_agenda_items,
     get_or_create_meeting_document,
     update_meeting_document_content,
+    user_has_meeting_document_access,
 )
 
 
@@ -31,9 +32,13 @@ def _ensure_project_membership(user, project: Project) -> None:
         project=project,
         is_active=True,
     ).exists():
-        from rest_framework.exceptions import PermissionDenied
-
         raise PermissionDenied("You do not have access to this project.")
+
+
+def _ensure_meeting_document_access(user, meeting: Meeting) -> None:
+    if user_has_meeting_document_access(user.id, meeting):
+        return
+    raise PermissionDenied("You do not have access to this meeting document.")
 
 
 class MeetingViewSet(viewsets.ModelViewSet):
@@ -235,7 +240,7 @@ class MeetingDocumentAPIView(APIView):
             id=meeting_id,
             project_id=project_id,
         )
-        _ensure_project_membership(self.request.user, meeting.project)
+        _ensure_meeting_document_access(self.request.user, meeting)
         return meeting
 
     def get(self, request, project_id: int, meeting_id: int):
