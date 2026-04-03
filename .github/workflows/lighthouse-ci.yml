@@ -239,6 +239,11 @@ jobs:
           path: frontend/.lighthouseci/
           if-no-files-found: warn
           retention-days: 14
+          # .lighthouseci is a hidden directory (dot-prefixed). upload-artifact@v4
+          # defaults include-hidden-files to false and silently skips hidden dirs,
+          # which is why the upload showed "No files were found" even though the
+          # debug step confirmed the directory and files existed.
+          include-hidden-files: true
 
       - name: Docker compose logs (on failure)
         if: failure()
