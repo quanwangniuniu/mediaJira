@@ -24,6 +24,9 @@ jobs:
   lighthouse:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      # https://docs.docker.com/build/ci/github-actions/build-summary/#disable-job-summary
+      DOCKER_BUILD_SUMMARY: false
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
