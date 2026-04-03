@@ -140,14 +140,31 @@ jobs:
             exit 1
           fi
 
+      # Root-cause fix: do NOT pass --settings=backend.ci_settings here.
+      # ci_settings uses `from .settings import *`, but settings.py defines
+      # __all__ = ('celery_app',) so import-* only brings in celery_app —
+      # INSTALLED_APPS is never imported. Django then falls back to its
+      # global default (INSTALLED_APPS=[]), sees zero apps, and outputs
+      # "Apply all migrations: (none)" without creating any tables.
+      # Omitting --settings lets manage.py use its own default (backend.settings)
+      # which loads INSTALLED_APPS correctly via decouple.config().
       - name: Run migration checks and apply migrations (Postgres)
         run: |
           docker compose exec backend sh -c "
             echo 'Checking for missing migrations...' &&
-            python manage.py makemigrations --check --dry-run --settings=backend.ci_settings &&
+            python manage.py makemigrations --check --dry-run &&
             echo 'Applying migrations...' &&
-            python manage.py migrate --noinput --settings=backend.ci_settings
+            python manage.py migrate --noinput
           "
+
+      # Seed default Plans (Free/Pro/Ultimate) required by stripe_meta.signals
+      # when a new Organisation is created during LHCI user registration.
+      # stripe_meta has no data migration, so we seed after migrate.
+      - name: Seed default plans (Free/Pro/Ultimate)
+        run: |
+          docker compose exec backend python manage.py shell -c \
+            "from stripe_meta.stripe_utils import initialize_default_plans; initialize_default_plans(); print('Plans seeded OK')"
+
       - name: Verify backend is ready
         run: |
           echo "Verifying backend health..."
@@ -181,7 +198,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "18"
+          node-version: "20"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
