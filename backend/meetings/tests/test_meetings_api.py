@@ -3,7 +3,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from core.models import Organization, Project, ProjectMember, CustomUser
-from meetings.models import Meeting, AgendaItem, ParticipantLink
+from meetings.models import Meeting, AgendaItem, ParticipantLink, MeetingDocument
 
 
 class TestMeetingAPI(TestCase):
@@ -236,5 +236,37 @@ class TestMeetingAPI(TestCase):
                 user_id=self.user_a.id,
             ).exists(),
         )
+
+    def test_get_meeting_document_creates_default_document(self):
+        meeting = Meeting.objects.create(
+            project=self.project_a,
+            title="Meeting Doc",
+            meeting_type="planning",
+            objective="Doc",
+        )
+        url = f"/api/v1/projects/{self.project_a.id}/meetings/{meeting.id}/document/"
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["meeting"], meeting.id)
+        self.assertEqual(response.data["content"], "")
+        self.assertTrue(MeetingDocument.objects.filter(meeting=meeting).exists())
+
+    def test_patch_meeting_document_updates_content(self):
+        meeting = Meeting.objects.create(
+            project=self.project_a,
+            title="Meeting Doc",
+            meeting_type="planning",
+            objective="Doc",
+        )
+        url = f"/api/v1/projects/{self.project_a.id}/meetings/{meeting.id}/document/"
+        response = self.client.patch(
+            url,
+            data={"content": "Collaborative content"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["content"], "Collaborative content")
+        doc = MeetingDocument.objects.get(meeting=meeting)
+        self.assertEqual(doc.last_edited_by_id, self.user_a.id)
 
 

@@ -26,7 +26,8 @@ import {
   normalizeMeetingArtifactType,
   type MeetingArtifactResourceIndex,
 } from '@/lib/meetings/artifactLinks';
-import type { AgendaItem, ArtifactLink, Meeting, ParticipantLink } from '@/types/meeting';
+import { hasVisibleText, sanitizeDocumentPreviewHtml } from '@/lib/meetings/documentPreview';
+import type { AgendaItem, ArtifactLink, Meeting, MeetingDocument, ParticipantLink } from '@/types/meeting';
 import { ProjectAPI, type ProjectData, type ProjectMemberData } from '@/lib/api/projectApi';
 import { Button } from '@/components/ui/button';
 import AutoResizeTextarea from '@/components/ui/AutoResizeTextarea';
@@ -184,6 +185,7 @@ export default function MeetingWorkspacePage() {
   const [schedTimeDraft, setSchedTimeDraft] = useState('');
   const [extRefDraft, setExtRefDraft] = useState('');
   const [savingMeetingMeta, setSavingMeetingMeta] = useState(false);
+  const [documentPreviewHtml, setDocumentPreviewHtml] = useState('');
 
   const orderedAgenda = useMemo(() => {
     const list = Array.isArray(agendaItems) ? agendaItems : [];
@@ -250,13 +252,14 @@ export default function MeetingWorkspacePage() {
         setLoading(true);
         setError(null);
 
-        const [m, agenda, people, links, mems, p] = await Promise.all([
+        const [m, agenda, people, links, mems, p, doc] = await Promise.all([
           MeetingsAPI.getMeeting(projectId, meetingId),
           MeetingsAPI.listAgendaItems(projectId, meetingId),
           MeetingsAPI.listParticipants(projectId, meetingId),
           MeetingsAPI.listArtifacts(projectId, meetingId),
           ProjectAPI.getAllProjectMembers(projectId).catch(() => [] as ProjectMemberData[]),
           ProjectAPI.getProject(projectId).catch(() => null as ProjectData | null),
+          MeetingsAPI.getMeetingDocument(projectId, meetingId).catch(() => null as MeetingDocument | null),
         ]);
 
         setMeeting(m);
@@ -267,10 +270,12 @@ export default function MeetingWorkspacePage() {
         setProjectMembers(
           Array.isArray(mems) ? mems.filter((row) => row.is_active) : [],
         );
+        setDocumentPreviewHtml(doc?.content ? sanitizeDocumentPreviewHtml(doc.content) : '');
       } catch (err: unknown) {
         console.error('Failed to load meeting workspace:', err);
         setProject(null);
         setProjectMembers([]);
+        setDocumentPreviewHtml('');
         const message =
           (err as { response?: { data?: { error?: string; detail?: string } }; message?: string })
             ?.response?.data?.error ||
@@ -779,6 +784,29 @@ export default function MeetingWorkspacePage() {
                 )}
               </Button>
             </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold text-gray-900">Meeting document</h3>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => router.push(`/projects/${projectId}/meetings/${meetingId}/document`)}
+            >
+              Open document
+            </Button>
+          </div>
+          <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-3 text-xs text-gray-700">
+            {hasVisibleText(documentPreviewHtml) ? (
+              <div
+                className="[&_h1]:text-sm [&_h1]:font-semibold [&_h2]:text-sm [&_h2]:font-semibold [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_blockquote]:border-l-2 [&_blockquote]:border-gray-300 [&_blockquote]:pl-2"
+                dangerouslySetInnerHTML={{ __html: documentPreviewHtml }}
+              />
+            ) : (
+              <p>No document content yet.</p>
+            )}
           </div>
         </div>
 

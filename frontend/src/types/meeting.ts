@@ -108,3 +108,13 @@ export interface ArtifactLinkCreateRequest {
   artifact_type: string;
   artifact_id: number;
 }
+
+export interface MeetingDocument {
+  id: number;
+  meeting: number;
+  content: string;
+  yjs_state?: string;
+  last_edited_by: number | null;
+  created_at: string;
+  updated_at: string;
+}
