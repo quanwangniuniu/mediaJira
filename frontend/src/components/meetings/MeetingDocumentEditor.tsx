@@ -407,6 +407,9 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
   const lastOutgoingCursorRef = useRef<LastOutgoingCursor | null>(null);
   /** When DOM just changed, getCursorXYFromOffset can fail for one frame; avoid falling back to 0,0 x/y. */
   const remoteCaretLayoutCacheRef = useRef<Record<number, { left: number; top: number }>>({});
+  /** Prevents the content-sync effect from fighting with applyRemoteContent's direct innerHTML write. */
+  const suppressContentSyncRef = useRef(false);
+  const connectedRef = useRef(false);
 
   const wsPath = useMemo(() => `/ws/meetings/${meetingId}/document/`, [meetingId]);
 
@@ -424,13 +427,17 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
   }, [content]);
 
   const applyRemoteContent = (next: string) => {
+    if (next === latestContentRef.current) return;
+
     const editor = editorRef.current;
     const preserveSelection = editor !== null && document.activeElement === editor;
     const saved = preserveSelection ? getPlainTextSelectionState(editor) : null;
 
     latestContentRef.current = next;
     setContent(next);
+
     if (editor && editor.innerHTML !== next) {
+      suppressContentSyncRef.current = true;
       remoteCaretLayoutCacheRef.current = {};
       editor.innerHTML = next;
       bumpRemoteCursorOverlay();
@@ -459,6 +466,10 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
   };
 
   useEffect(() => {
+    if (suppressContentSyncRef.current) {
+      suppressContentSyncRef.current = false;
+      return;
+    }
     const editor = editorRef.current;
     if (!editor) return;
     if (editor.innerHTML === content) return;
@@ -530,6 +541,7 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
 
       ws.onopen = () => {
         setConnected(true);
+        connectedRef.current = true;
         window.setTimeout(() => sendCursorUpdateRef.current(true), 0);
       };
 
@@ -665,6 +677,7 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
 
       ws.onclose = () => {
         setConnected(false);
+        connectedRef.current = false;
         wsRef.current = null;
         if (!stopped) {
           reconnectTimerRef.current = window.setTimeout(connect, 1500);
@@ -711,33 +724,43 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
   useEffect(() => {
     if (!hasHydrated || !token) return;
 
+    const POLL_INTERVAL_WS = 8000;
+    const POLL_INTERVAL_NO_WS = 2000;
+
     const poll = async () => {
       try {
         const doc = await MeetingsAPI.getMeetingDocument(projectId, meetingId);
         if (isUnmountedRef.current) return;
         const incomingUpdatedAt = doc.updated_at ?? '';
-        const currentUpdatedAt = lastSyncedAt ?? '';
+        const currentUpdatedAt = lastSyncedAtRef.current ?? '';
         if (!incomingUpdatedAt || incomingUpdatedAt === currentUpdatedAt) return;
         if (!isIncomingNewer(incomingUpdatedAt, currentUpdatedAt)) return;
 
         applyRemoteContent(doc.content ?? '');
+        lastSyncedAtRef.current = incomingUpdatedAt;
         setLastSyncedAt(incomingUpdatedAt);
       } catch {
         // keep silent; ws remains primary, polling is fallback
       }
     };
 
-    pollingTimerRef.current = window.setInterval(() => {
-      void poll();
-    }, 1000);
+    const scheduleNext = () => {
+      if (isUnmountedRef.current) return;
+      const interval = connectedRef.current ? POLL_INTERVAL_WS : POLL_INTERVAL_NO_WS;
+      pollingTimerRef.current = window.setTimeout(() => {
+        void poll().finally(scheduleNext);
+      }, interval);
+    };
+    scheduleNext();
 
     return () => {
       if (pollingTimerRef.current) {
-        window.clearInterval(pollingTimerRef.current);
+        window.clearTimeout(pollingTimerRef.current);
         pollingTimerRef.current = null;
       }
     };
-  }, [projectId, meetingId, hasHydrated, token, lastSyncedAt]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, meetingId, hasHydrated, token]);
 
   useEffect(() => {
     const onSelectionChange = () => {
