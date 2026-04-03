@@ -148,6 +148,20 @@ jobs:
             echo 'Applying migrations...' &&
             python manage.py migrate --noinput --settings=backend.ci_settings
           "
+      - name: Verify backend is ready
+        run: |
+          echo "Verifying backend health..."
+          for i in $(seq 1 30); do
+            if docker compose --profile ci exec -T backend python manage.py shell -c "from django.contrib.auth.models import User; print('DB OK')" > /dev/null 2>&1; then
+              echo "Backend database connection verified!"
+              exit 0
+            fi
+            echo "Backend not ready yet, waiting... ($i/30)"
+            sleep 2
+          done
+          echo "Backend verification failed"
+          docker compose --profile ci logs backend --tail 100
+          exit 1
 
       - name: Wait for app on localhost
         run: |
