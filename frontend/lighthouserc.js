@@ -21,8 +21,12 @@
  *
  * Desktop: `preset: "desktop"` applies desktop UA, viewport (~1350×940), and desktop throttling
  * (simulated dense 4G). `formFactor` is set explicitly for clarity.
+ *
+ * outputDir uses an absolute path (__dirname) so LHCI always writes to frontend/.lighthouseci/
+ * regardless of what working directory the lhci process inherits at runtime.
  * @see ../docs/lighthouse-auditing-integration-plan.md
  */
+const path = require("path");
 const base = "http://localhost";
 
 const testProjectId = process.env.LHCI_TEST_PROJECT_ID;
@@ -60,7 +64,11 @@ module.exports = {
     },
     upload: {
       target: "filesystem",
-      outputDir: "./.lighthouseci",
+      // Absolute path ensures LHCI writes here regardless of the process cwd at
+      // runtime. Using a relative path ("./.lighthouseci") caused the directory
+      // to be created somewhere other than frontend/.lighthouseci/ on CI runners
+      // because LHCI resolves it from its own internal cwd, not this config file.
+      outputDir: path.join(__dirname, ".lighthouseci"),
     },
   },
 };

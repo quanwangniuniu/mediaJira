@@ -22,7 +22,10 @@
 const fs = require('fs');
 const path = require('path');
 
-const outDir = path.join(process.cwd(), '.lighthouseci');
+// Resolve from this script's own directory (scripts/ → parent = frontend/).
+// Using process.cwd() was fragile: if the Node process inherits a cwd other
+// than frontend/ (e.g. the repo root), the manifest would not be found.
+const outDir = path.join(__dirname, '..', '.lighthouseci');
 const manifestPath = path.join(outDir, 'manifest.json');
 
 /**

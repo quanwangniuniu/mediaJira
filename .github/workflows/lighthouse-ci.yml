@@ -223,6 +223,14 @@ jobs:
           npm ci
           npm run lighthouse:local
 
+      - name: List Lighthouse output (debug)
+        if: always()
+        run: |
+          echo "=== frontend/.lighthouseci/ ==="
+          ls -la frontend/.lighthouseci/ 2>/dev/null || echo "(directory not found)"
+          echo "=== searching workspace for any .lighthouseci dir ==="
+          find "$GITHUB_WORKSPACE" -maxdepth 4 -name ".lighthouseci" -type d 2>/dev/null || true
+
       - name: Upload Lighthouse reports
         if: always()
         uses: actions/upload-artifact@v4
