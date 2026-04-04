@@ -10,6 +10,9 @@
  * Project-scoped URLs need LHCI_TEST_PROJECT_ID. `npm run lighthouse:local` runs
  * scripts/lhci-ensure-project.cjs first (register if needed → login → find or create project by
  * LHCI_PROJECT_NAME) unless LHCI_TEST_PROJECT_ID is already set or LHCI_ENSURE_PROJECT=0.
+ * Then scripts/lhci-seed-spreadsheet-task.cjs creates/reuses a spreadsheet and asset task and sets
+ * LHCI_TEST_SPREADSHEET_ID for `/projects/{id}/spreadsheets/{id}` (skipped without credentials or
+ * if LHCI_SEED_ENTITIES=0).
  *
  * Requires `puppeteer` (devDependency). LHCI reuses the same browser for Puppeteer + Lighthouse.
  * `disableStorageReset` is required: Lighthouse otherwise clears origin storage before each URL,
@@ -30,17 +33,29 @@ const path = require("path");
 const base = "http://localhost";
 
 const testProjectId = process.env.LHCI_TEST_PROJECT_ID;
+const testSpreadsheetId = process.env.LHCI_TEST_SPREADSHEET_ID;
 
 const urls = [
   `${base}/`,
   `${base}/spreadsheet`,
   `${base}/projects`,
   `${base}/decisions`,
+  `${base}/campaigns`,
+  `${base}/variations`,
+  `${base}/mailchimp`,
+  `${base}/notion`,
+  `${base}/tiktok`,
+  `${base}/messages`,
+  `${base}/calendar`,
 ];
 
 if (testProjectId) {
   urls.push(`${base}/projects/${testProjectId}/spreadsheets`);
+  urls.push(`${base}/projects/${testProjectId}/meetings`);
   urls.push(`${base}/tasks?view=list&project_id=${testProjectId}`);
+  if (testSpreadsheetId) {
+    urls.push(`${base}/projects/${testProjectId}/spreadsheets/${testSpreadsheetId}`);
+  }
 }
 
 module.exports = {
@@ -64,10 +79,7 @@ module.exports = {
     },
     upload: {
       target: "filesystem",
-      // Absolute path ensures LHCI writes here regardless of the process cwd at
-      // runtime. Using a relative path ("./.lighthouseci") caused the directory
-      // to be created somewhere other than frontend/.lighthouseci/ on CI runners
-      // because LHCI resolves it from its own internal cwd, not this config file.
+      // Absolute path
       outputDir: path.join(__dirname, ".lighthouseci"),
     },
   },

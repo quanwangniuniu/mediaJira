@@ -19,8 +19,17 @@ Lab-based performance and quality audits for the **Next.js** app.
 | Spreadsheet | `/spreadsheet` | Heavy client surface |
 | Projects | `/projects` | List / navigation |
 | Decisions | `/decisions` | List |
-| Project spreadsheets | `/projects/{id}/spreadsheets` | Only when `LHCI_TEST_PROJECT_ID` is set |
-| Tasks | `/tasks?view=list&project_id={id}` | Only when `LHCI_TEST_PROJECT_ID` is set |
+| Campaigns | `/campaigns` | |
+| Variations | `/variations` | |
+| Mailchimp | `/mailchimp` | |
+| Notion | `/notion` | |
+| TikTok | `/tiktok` | |
+| Messages | `/messages` | |
+| Calendar | `/calendar` | |
+| Project spreadsheets | `/projects/{id}/spreadsheets` | When `LHCI_TEST_PROJECT_ID` is set |
+| Project spreadsheet (grid) | `/projects/{id}/spreadsheets/{spreadsheetId}` | Seed script sets `LHCI_TEST_SPREADSHEET_ID` (needs `LHCI_AUTH_EMAIL` / `LHCI_AUTH_PASSWORD`) |
+| Project meetings | `/projects/{id}/meetings` | When `LHCI_TEST_PROJECT_ID` is set |
+| Tasks | `/tasks?view=list&project_id={id}` | When `LHCI_TEST_PROJECT_ID` is set |
 
 To change the list edit `url` / `base` in [`lighthouserc.js`](./lighthouserc.js).
 
@@ -54,8 +63,9 @@ What `npm run lighthouse:local` does:
 1. Clears `frontend/.lighthouseci/`
 2. Registers/logs in the LHCI test user via the API
 3. Finds or creates `LHCI_PROJECT_NAME` (default: `LHCI Test Project`) → sets `LHCI_TEST_PROJECT_ID`
-4. Runs `lhci autorun` (collect → assert → upload to filesystem)
-5. Builds `report-dashboard.html` and cleans up intermediate LHCI files
+4. Seeds a spreadsheet (`LHCI Seed Spreadsheet`) and an asset task (`LHCI seed asset task`) via API → sets `LHCI_TEST_SPREADSHEET_ID` (skipped without auth env or if `LHCI_SEED_ENTITIES=0`)
+5. Runs `lhci autorun` (collect → assert → upload to filesystem)
+6. Builds `report-dashboard.html` and cleans up intermediate LHCI files
 
 **Direct CLI** (bypasses step 1–3 and the dashboard): `npx lhci autorun`
 
@@ -69,6 +79,8 @@ What `npm run lighthouse:local` does:
 | `LHCI_PROJECT_NAME` | Name of the project to find or create (default: `LHCI Test Project`) |
 | `LHCI_API_BASE` / `LHCI_BASE_URL` | Override base URL if not `http://localhost` |
 | `LHCI_VERBOSE=1` | Print response body snippets to stderr for debugging (no passwords logged) |
+| `LHCI_SEED_ENTITIES=0` | Skip spreadsheet/task API seed (no `LHCI_TEST_SPREADSHEET_ID`) |
+| `LHCI_TEST_SPREADSHEET_ID` | Set automatically after seed; enables `/projects/{id}/spreadsheets/{id}` in `lighthouserc.js` |
 
 `lhci-env.cjs` auto-merges repo-root `.env` and `frontend/.env` before any other script runs (shell / CI env takes priority).
 
@@ -161,3 +173,4 @@ Lab variance is normal. Prefer **before/after** comparisons on the same setup ov
 
 - [`lighthouserc.js`](./lighthouserc.js) — URL list, thresholds, Puppeteer script, output config
 - [`scripts/lhci-run.cjs`](./scripts/lhci-run.cjs) — orchestration entry point
+- [`scripts/lhci-seed-spreadsheet-task.cjs`](./scripts/lhci-seed-spreadsheet-task.cjs) — API seed for spreadsheet + asset task

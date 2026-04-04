@@ -244,13 +244,17 @@ function main() {
       margin-bottom: 1.5rem;
     }
     .card h2 { font-size: 1rem; margin: 0 0 0.75rem; }
-    table { border-collapse: collapse; width: 100%; font-size: 0.875rem; }
-    th, td { padding: 0.5rem 0.75rem; text-align: left; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.875rem; table-layout: fixed; }
+    th, td { padding: 0.5rem 0.75rem; vertical-align: top; }
+    th.url-col, td.url-cell { text-align: left; min-width: 0; }
+    col.col-url { width: auto; }
+    col.col-score { width: 4.25rem; }
+    th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
     thead tr { border-bottom: 2px solid #dadce0; }
     tbody tr { border-bottom: 1px solid #f0f0f0; }
     tbody tr:last-child { border-bottom: none; }
     th { font-weight: 600; color: #444; white-space: nowrap; }
-    td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; min-width: 3.5rem; }
+    td.num { font-weight: 600; }
     td.url-cell a { color: #1a73e8; text-decoration: none; font-size: 0.8125rem; word-break: break-all; }
     td.url-cell a:hover { text-decoration: underline; }
 
@@ -314,13 +318,20 @@ function main() {
   <div class="card">
     <h2>Scores by URL</h2>
     <table>
+      <colgroup>
+        <col class="col-url" />
+        <col class="col-score" />
+        <col class="col-score" />
+        <col class="col-score" />
+        <col class="col-score" />
+      </colgroup>
       <thead>
         <tr>
-          <th>URL</th>
-          <th class="num" title="Performance">Perf</th>
-          <th class="num" title="Accessibility">A11y</th>
-          <th class="num" title="Best Practices">BP</th>
-          <th class="num" title="SEO">SEO</th>
+          <th class="url-col" scope="col">URL</th>
+          <th class="num" scope="col" title="Performance">Perf</th>
+          <th class="num" scope="col" title="Accessibility">A11y</th>
+          <th class="num" scope="col" title="Best Practices">BP</th>
+          <th class="num" scope="col" title="SEO">SEO</th>
         </tr>
       </thead>
       <tbody>

@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { ensureProject } = require('./lhci-ensure-project.cjs');
+const { seedSpreadsheetAndTask } = require('./lhci-seed-spreadsheet-task.cjs');
 
 const cwd = path.join(__dirname, '..');
 // Absolute path — must match outputDir in lighthouserc.js and lhci-build-dashboard.cjs.
@@ -30,6 +31,13 @@ async function main() {
 
   try {
     await ensureProject();
+  } catch (err) {
+    process.stderr.write(`${err && err.message ? err.message : err}\n`);
+    process.exit(1);
+  }
+
+  try {
+    await seedSpreadsheetAndTask();
   } catch (err) {
     process.stderr.write(`${err && err.message ? err.message : err}\n`);
     process.exit(1);

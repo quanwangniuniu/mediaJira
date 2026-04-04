@@ -5,9 +5,9 @@ name: Lighthouse CI
 
 on:
   push:
-    branches: [lighthouse-ci-test]
+    branches: [main, prod-preview]
   pull_request:
-    branches: [lighthouse-ci-test]
+    branches: [main, prod-preview]
 
 concurrency:
   group: lighthouse-${{ github.workflow }}-${{ github.ref }}

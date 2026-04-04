@@ -150,7 +150,7 @@ const Layout: React.FC<LayoutProps> = ({
         )}
 
         {/* main */}
-        <div className={`flex flex-1 ${usePageScroll ? 'overflow-visible' : 'overflow-hidden'}`}>
+        <div className={`flex min-h-0 flex-1 items-stretch ${usePageScroll ? 'overflow-visible' : 'overflow-hidden'}`}>
           {/* sidebar */}
           {showSidebar && (
             <Sidebar
