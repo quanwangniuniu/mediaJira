@@ -68,8 +68,6 @@ opentelemetry-instrumentation-logging
 
 deprecated
 opentelemetry-exporter-jaeger-thrift
-# OTLP (gRPC): required by opentelemetry-instrument when OTLP is the selected exporter
-opentelemetry-exporter-otlp-proto-grpc
 
 # Kafka
 kafka-python==2.0.2
