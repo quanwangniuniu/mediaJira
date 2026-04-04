@@ -15,6 +15,16 @@ import type { CalendarDTO, EventDTO, CalendarViewType } from "@/lib/api/calendar
 import type { EventPanelPosition } from "@/components/calendar/types";
 import { computePanelPosition } from "@/components/calendar/utils";
 
+const WEEKDAY_LABELS = [
+  { key: "mon", label: "M" },
+  { key: "tue", label: "T" },
+  { key: "wed", label: "W" },
+  { key: "thu", label: "T" },
+  { key: "fri", label: "F" },
+  { key: "sat", label: "S" },
+  { key: "sun", label: "S" },
+] as const;
+
 export type WeekViewProps = {
   currentDate: Date;
   events: EventDTO[];
@@ -145,7 +155,6 @@ export function WeekView({
   return (
     <div
       className="flex h-full flex-col rounded-3xl bg-white shadow-sm"
-      // Expose stable E2E hooks for the active view without relying on utility classes.
       data-testid="calendar-week-view"
       aria-label="Week calendar view"
     >
@@ -201,7 +210,6 @@ export function WeekView({
                   <button
                     key={hour}
                     type="button"
-                    // Slot hooks let E2E tests create events from a predictable target.
                     data-testid="calendar-week-slot"
                     aria-label={`Create event on ${format(
                       slotStart,
@@ -237,7 +245,6 @@ export function WeekView({
                   <button
                     key={event.id + event.start_datetime}
                     type="button"
-                    // Event cards need a durable selector because their layout can shift with time.
                     data-testid="calendar-event-card"
                     aria-label={`Open event ${event.title || "(No title)"}`}
                     onClick={(e) => {
@@ -397,7 +404,6 @@ export function DayView({
   return (
     <div
       className="flex flex-col rounded-xl bg-white"
-      // Match the week view hooks so tests can assert the active calendar mode consistently.
       data-testid="calendar-day-view"
       aria-label="Day calendar view"
     >
@@ -436,7 +442,6 @@ export function DayView({
               <button
                 key={hour}
                 type="button"
-                // Day slots are used by E2E tests to open the create-event dialog.
                 data-testid="calendar-day-slot"
                 aria-label={`Create event on ${format(
                   slotStart,
@@ -469,7 +474,6 @@ export function DayView({
               <button
                 key={event.id + event.start_datetime}
                 type="button"
-                // Reuse the same selector as week view so event-open tests stay view-agnostic.
                 data-testid="calendar-event-card"
                 aria-label={`Open event ${event.title || "(No title)"}`}
                 onClick={(e) => {
@@ -582,7 +586,6 @@ export function MonthView({
     return result;
   }, [days, events]);
 
-  const weekdayLabels = ["M", "T", "W", "T", "F", "S", "S"];
   const today = new Date();
 
   return (
@@ -597,9 +600,9 @@ export function MonthView({
       </div>
       <div className="grid flex-1 grid-rows-[auto_1fr]">
         <div className="grid grid-cols-7 bg-white text-[11px] font-medium text-gray-500">
-          {weekdayLabels.map((label) => (
-            <div key={label} className="flex items-center justify-center py-1">
-              {label}
+          {WEEKDAY_LABELS.map((item) => (
+            <div key={item.key} className="flex items-center justify-center py-1">
+              {item.label}
             </div>
           ))}
         </div>
@@ -787,7 +790,6 @@ export function YearView({ currentDate, onDaySelect }: YearViewProps) {
           const startMonth = startOfMonth(monthDate);
           const gridStart = startOfWeek(startMonth, { weekStartsOn: 1 });
           const days = Array.from({ length: 42 }, (_, index) => addDays(gridStart, index));
-          const weekdayLabels = ["M", "T", "W", "T", "F", "S", "S"];
 
           return (
             <div key={monthDate.toISOString()} className="rounded bg-white p-2">
@@ -795,9 +797,9 @@ export function YearView({ currentDate, onDaySelect }: YearViewProps) {
                 {format(monthDate, "MMMM")}
               </div>
               <div className="grid grid-cols-7 place-items-center gap-0.5 text-[10px] text-gray-400">
-                {weekdayLabels.map((label) => (
-                  <div key={label} className="flex h-4 items-center justify-center">
-                    {label}
+                {WEEKDAY_LABELS.map((item) => (
+                  <div key={item.key} className="flex h-4 items-center justify-center">
+                    {item.label}
                   </div>
                 ))}
                 {days.map((day) => {
@@ -842,7 +844,6 @@ export function MiniMonthCalendar({ currentDate, onDateChange }: MiniMonthCalend
     () => Array.from({ length: 42 }, (_, index) => addDays(gridStart, index)),
     [gridStart],
   );
-  const weekdayLabels = ["M", "T", "W", "T", "F", "S", "S"];
   const today = new Date();
 
   return (
@@ -851,9 +852,9 @@ export function MiniMonthCalendar({ currentDate, onDateChange }: MiniMonthCalend
         <span>{format(currentDate, "MMMM yyyy")}</span>
       </div>
       <div className="grid grid-cols-7 gap-1 text-[11px] text-gray-500">
-        {weekdayLabels.map((label) => (
-          <div key={label} className="flex h-5 items-center justify-center">
-            {label}
+        {WEEKDAY_LABELS.map((item) => (
+          <div key={item.key} className="flex h-5 items-center justify-center">
+            {item.label}
           </div>
         ))}
         {days.map((day) => {

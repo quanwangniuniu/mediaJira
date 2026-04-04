@@ -56,7 +56,6 @@ export function CalendarToolbar({
         </div>
         <div className="flex items-center gap-2">
           <span
-            // Stable hook for E2E assertions without coupling tests to layout styles.
             data-testid="calendar-header-title"
             className="text-lg font-semibold text-gray-900"
           >
