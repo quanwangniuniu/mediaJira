@@ -34,5 +34,6 @@ router.register(
 
 urlpatterns = [
     path("", include(router.urls)),
+    path("meetings/", include("meetings.template_urls")),
 ]
 

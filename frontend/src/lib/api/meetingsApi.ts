@@ -16,7 +16,7 @@ import type {
   ArtifactLinkCreateRequest,
 } from '@/types/meeting';
 
-const basePath = (projectId: number) => `/api/v1/projects/${projectId}/meetings`;
+const basePath = (projectId: number) => `/api/projects/${projectId}/meetings`;
 
 type MeetingTemplate = {
   id: string;

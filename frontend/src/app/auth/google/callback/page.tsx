@@ -92,7 +92,7 @@ function GoogleCallbackPage() {
 
         // If we reach here with a code, it means backend hasn't processed it yet
         // This shouldn't happen with the new flow, but redirect to backend for processing
-        window.location.href = `${process.env.NEXT_PUBLIC_API_URL || ''}/api/auth/google/callback/?code=${code}`;
+        window.location.href = `${process.env.NEXT_PUBLIC_API_URL || ''}/auth/google/callback/?code=${code}`;
         return;
 
       } catch (error: any) {

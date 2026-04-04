@@ -16,7 +16,7 @@ export default class TeamAPI {
   static async getUserTeams() {
     try {
       console.log('🔄 Fetching user teams...');
-      const response = await api.get('/api/auth/me/teams/');
+      const response = await api.get('/auth/me/teams/');
       console.log('✅ User teams loaded:', response.data);
       return response.data;
     } catch (error) {

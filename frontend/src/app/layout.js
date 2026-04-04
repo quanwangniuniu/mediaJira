@@ -1,7 +1,6 @@
 import "./globals.css";
 // import 'highlight.js/styles/atom-one-dark.min.css';
 import { Toaster } from 'react-hot-toast';
-import { Toaster as SonnerToaster } from '@/components/ui/sonner';
 import { AuthProvider } from '../components/providers/AuthProvider';
 import { OnboardingProvider } from '../contexts/OnboardingContext';
 import OnboardingGate from '../components/onboarding/OnboardingGate';
@@ -54,7 +53,6 @@ export default function RootLayout({ children }) {
             },
           }}
         />
-        <SonnerToaster richColors position="top-right" />
       </body>
     </html>
   );

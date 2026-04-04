@@ -191,6 +191,7 @@ class MeetingViewSet(viewsets.ModelViewSet):
                     ) from exc
 
 
+
 class AgendaItemViewSet(viewsets.ModelViewSet):
     serializer_class = AgendaItemSerializer
     permission_classes = [IsAuthenticated]

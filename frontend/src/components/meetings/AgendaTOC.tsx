@@ -21,14 +21,14 @@ import { CSS } from '@dnd-kit/utilities';
 import { GripVertical } from 'lucide-react';
 
 import type { NestedAgendaTemplateSection } from '@/lib/meetings/meetingTemplates';
-import {
-  PILL_ACTIVE,
-  PILL_BG,
-  PILL_HOVER,
-  PILL_TRANSITION,
-  PILL_WIDTH_BY_LEVEL,
-} from '@/components/notion/OutlineSidebar';
 import { cn } from '@/lib/utils';
+
+// Pill styling constants (local definitions; no cross-app UI imports)
+const PILL_BG = 'rgba(55,53,47,0.18)';
+const PILL_ACTIVE = 'rgba(55,53,47,0.6)';
+const PILL_HOVER = 'rgba(55,53,47,0.35)';
+const PILL_TRANSITION = 'background 120ms ease-out, width 120ms ease-out';
+const PILL_WIDTH_BY_LEVEL = { 1: 16, 2: 12, 3: 8 } as const;
 
 class NoDndPointerSensor extends PointerSensor {
   static activators = [
@@ -114,7 +114,7 @@ export function buildAgendaOutlineEntries(sections: NestedAgendaTemplateSection[
 }
 
 /**
- * Notion-style pills column.
+ * Outline pills column (TOC rail).
  * Shows a compact vertical line of pills representing outline entries.
  */
 function AgendaOutlinePills({

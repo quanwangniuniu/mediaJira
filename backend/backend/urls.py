@@ -42,8 +42,6 @@ urlpatterns = [
     path('api/core/', include('core.urls')),
     path('api/alerting/', include('alerting.urls')),
     path('api/report/', include('report.urls')),
-    # Must be before any path('api/', include(...)) so /api/meetings/ is not swallowed by task.urls etc.
-    path('api/meetings/', include('meetings.template_urls')),
     path('api/', include('task.urls')),
     path('api/policy/', include('policy.urls')),
     path('api/dashboard/', include('dashboard.urls')),
@@ -67,11 +65,12 @@ urlpatterns = [
     path('api/', include('automationWorkflow.urls')),
     path('api/chat/', include('chat.urls')),
     path('api/experiment/', include('experiment.urls')),
-    path('api/v1/', include('backend.api_v1_urls')),
+    path('api/v1/', include('calendars.urls')),
     path('api/', include('ad_variations.urls')),
     path('api/', include('campaign.urls')),
     path('api/slack/', include('slack_integration.urls')),
     path('api/agent/', include('agent.urls')),
+    path('api/', include('meetings.urls')),
     path("", include("django_prometheus.urls")),
 ]
 
