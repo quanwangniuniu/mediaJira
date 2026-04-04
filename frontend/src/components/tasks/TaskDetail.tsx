@@ -40,7 +40,7 @@ import {
   ScalingPlan,
 } from "@/lib/api/optimizationScalingApi";
 import { ExperimentAPI, Experiment } from "@/lib/api/experimentApi";
-import { ChevronDown, Trash2 } from "lucide-react";
+import { ChevronDown, Share2, Trash2 } from "lucide-react";
 import { OptimizationAPI, Optimization } from "@/lib/api/optimizationApi";
 import { ClientCommunicationAPI } from "@/lib/api/clientCommunicationApi";
 import type { ClientCommunicationPayload } from "@/lib/api/clientCommunicationApi";
@@ -60,6 +60,9 @@ import {
   JiraBoardDueTone,
 } from "@/components/jira-ticket/JiraBoard";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
+import { useChatData } from "@/hooks/useChatData";
+import { createChat, findPrivateChat, sendMessage } from "@/lib/api/chatApi";
+import ShareTaskDialog from "./ShareTaskDialog";
 
 interface TaskDetailProps {
   task: TaskData;
@@ -153,6 +156,8 @@ export default function TaskDetail({
   const { startReview: startBudgetReview, makeDecision: makeBudgetDecision } =
     useBudgetData();
   const projectId = task.project?.id ?? task.project_id;
+  const currentUserId = currentUser?.id !== undefined ? Number(currentUser.id) : null;
+  const { chats } = useChatData({ projectId, autoFetch: Boolean(projectId) });
 
   const [summaryDraft, setSummaryDraft] = useState(task.summary || "");
   const [descriptionDraft, setDescriptionDraft] = useState(
@@ -171,6 +176,8 @@ export default function TaskDetail({
   const [savingOwner, setSavingOwner] = useState(false);
   const [savingSummary, setSavingSummary] = useState(false);
   const [savingDescription, setSavingDescription] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [sharingTask, setSharingTask] = useState(false);
   const {
     textareaRef: descriptionTextareaRef,
     resizeTextarea: resizeDescriptionTextarea,
@@ -778,6 +785,71 @@ export default function TaskDetail({
     setDueDateInput(task.due_date ?? "");
     setEditingStartDate(false);
     setEditingDueDate(false);
+  };
+
+  const buildTaskShareContent = () => {
+    const origin =
+      typeof window !== "undefined" && window.location?.origin
+        ? window.location.origin
+        : "";
+    const taskUrl = `${origin}/tasks/${task.id}`;
+    const title = task.summary || `Task #${task.id}`;
+    return `Task shared: ${title}\n${taskUrl}`;
+  };
+
+  const handleShareTask = async (
+    targetChatIds: number[],
+    targetUserIds: number[],
+  ) => {
+    if (!task?.id || !projectId || !currentUserId) {
+      toast.error("Unable to share task right now.");
+      return;
+    }
+    if (targetChatIds.length === 0 && targetUserIds.length === 0) {
+      toast.error("Select at least one chat or user.");
+      return;
+    }
+
+    setSharingTask(true);
+    try {
+      const messageContent = buildTaskShareContent();
+      const resolvedChatIds: number[] = [...targetChatIds];
+      const numericProjectId = Number(projectId);
+
+      for (const userId of targetUserIds) {
+        const existingChat = await findPrivateChat(numericProjectId, userId);
+        if (existingChat) {
+          resolvedChatIds.push(existingChat.id);
+          continue;
+        }
+
+        const newChat = await createChat({
+          type: "private",
+          project_id: numericProjectId,
+          participant_ids: [userId],
+        });
+        resolvedChatIds.push(newChat.id);
+      }
+
+      const uniqueChatIds = Array.from(new Set(resolvedChatIds));
+      await Promise.all(
+        uniqueChatIds.map((chatId) =>
+          sendMessage({ chat_id: chatId, content: messageContent }),
+        ),
+      );
+
+      toast.success("Task shared successfully.");
+      setShareDialogOpen(false);
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to share task.";
+      toast.error(message);
+    } finally {
+      setSharingTask(false);
+    }
   };
 
   useEffect(() => {
@@ -2343,6 +2415,26 @@ export default function TaskDetail({
 
         {/* Right section */}
         <div className="space-y-4 lg:sticky lg:top-24 self-start">
+          {/* Share Task */}
+          {task?.id && projectId ? (
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <button
+                type="button"
+                onClick={() => setShareDialogOpen(true)}
+                disabled={!currentUserId}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-300"
+              >
+                <Share2 className="h-4 w-4" />
+                Share to Chat
+              </button>
+              {!currentUserId ? (
+                <p className="mt-2 text-xs text-gray-400">
+                  Sign in to share this task.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
           {/* Task Basic Info */}
           <Accordion
             type="multiple"
@@ -2642,6 +2734,17 @@ export default function TaskDetail({
           ) : null}
         </div>
       </div>
+      {task?.id && projectId && currentUserId ? (
+        <ShareTaskDialog
+          isOpen={shareDialogOpen}
+          onClose={() => setShareDialogOpen(false)}
+          projectId={String(projectId)}
+          availableChats={chats}
+          currentUserId={currentUserId}
+          isSharing={sharingTask}
+          onSubmit={handleShareTask}
+        />
+      ) : null}
       <ConfirmDialog
         isOpen={showDeleteConfirm}
         title="Delete task"

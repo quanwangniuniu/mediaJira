@@ -44,6 +44,27 @@ export default function usePlan(): UsePlanReturn {
       const response = await api.get('/api/stripe/plans/');
       setPlans(response.data.results || []);
     } catch (error: any) {
+      const status = error?.response?.status;
+
+      if (status === 403) {
+        const { refreshOrganizationAccessToken } = useAuthStore.getState();
+        const refreshResult = await refreshOrganizationAccessToken();
+
+        if (refreshResult.success) {
+          try {
+            const retryResponse = await api.get('/api/stripe/plans/');
+            setPlans(retryResponse.data.results || []);
+            return;
+          } catch (retryError: any) {
+            console.error('Error fetching plans after refresh:', retryError);
+          }
+        }
+
+        setError('Session expired. Please sign in again to view plans.');
+        setPlans([]);
+        return;
+      }
+
       console.error('Error fetching plans:', error);
       let errorMessage = 'Failed to fetch plans';
 
