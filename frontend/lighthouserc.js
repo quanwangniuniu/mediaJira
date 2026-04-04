@@ -72,9 +72,10 @@ module.exports = {
     },
     assert: {
       assertions: {
-        "categories:performance": ["warn", { minScore: 80 }],
-        "categories:accessibility": ["warn", { minScore: 80 }],
-        "categories:best-practices": ["warn", { minScore: 80 }],
+        "categories:performance": ["warn", { minScore: 0.9 }],
+        "categories:accessibility": ["warn", { minScore: 1.0 }],
+        "categories:best-practices": ["warn", { minScore: 0.9 }],
+        "categories:seo": ["warn", { minScore: 1.0 }]
       },
     },
     upload: {
