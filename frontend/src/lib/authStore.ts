@@ -37,6 +37,7 @@ interface AuthState {
   logout: () => Promise<void>;
   getCurrentUser: () => Promise<{ success: boolean; error?: string }>;
   getUserTeams: () => Promise<{ success: boolean; error?: string }>;
+  refreshOrganizationAccessToken: () => Promise<{ success: boolean; error?: string }>;
   
   // Initialize auth state on app startup
   initializeAuth: () => Promise<void>;
@@ -207,6 +208,23 @@ export const useAuthStore = create<AuthState>()(
         } catch (error: any) {
           console.error('Failed to fetch user teams:', error);
           return { success: false, error: 'Failed to get user teams' };
+        }
+      },
+
+      // Refresh organization access token
+      refreshOrganizationAccessToken: async () => {
+        try {
+          const response = await authAPI.refreshOrganizationToken();
+          const token = response.organization_access_token || null;
+          set({ organizationAccessToken: token });
+          return { success: true };
+        } catch (error: any) {
+          const message =
+            error?.response?.data?.error ||
+            error?.response?.data?.detail ||
+            error?.message ||
+            'Failed to refresh organization token';
+          return { success: false, error: message };
         }
       },
 

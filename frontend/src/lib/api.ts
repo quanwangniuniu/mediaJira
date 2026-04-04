@@ -138,6 +138,11 @@ export const authAPI = {
     return response.data;
   },
 
+  refreshOrganizationToken: async (): Promise<{ organization_access_token: string }> => {
+    const response = await api.post('/auth/organization-token/refresh/');
+    return response.data;
+  },
+
   // Profile update endpoint (handles both JSON and FormData for avatar uploads)
   updateProfile: async (profileData: { username?: string; first_name?: string; last_name?: string } | FormData): Promise<User> => {
     const config = profileData instanceof FormData 
