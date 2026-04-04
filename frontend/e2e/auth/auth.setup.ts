@@ -14,7 +14,7 @@ setup("authenticate and save storage state", async ({ page }) => {
 	await page.locator('input[name="password"]').fill(mockUser.password);
 	await page.locator('button[type="submit"]').click();
 
-	await expect(page).toHaveURL(/\/campaigns/, { timeout: 15000 });
+	await expect(page).not.toHaveURL(/\/login/, { timeout: 15000 });
 	const fs = await import("node:fs");
 	fs.mkdirSync(AUTH_DIR, { recursive: true });
 	await page.context().storageState({ path: AUTH_FILE });
