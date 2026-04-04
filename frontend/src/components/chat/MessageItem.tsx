@@ -6,6 +6,7 @@ import type { MessageItemProps } from '@/types/chat';
 import MessageStatus from './MessageStatus';
 import AttachmentDisplay from './AttachmentDisplay';
 import LinkPreview from './LinkPreview';
+import TaskSharePreview from './TaskSharePreview';
 import { extractUrls } from '@/lib/api/linkPreviewApi';
 
 const AGENT_BOT_EMAIL = 'agent-bot@system.local';
@@ -46,6 +47,18 @@ export default function MessageItem({
   } catch (error) {
     console.warn('Error extracting URLs:', error);
   }
+
+  const extractTaskIds = (content: string) => {
+    const matches = [...content.matchAll(/\/tasks\/(\d+)/g)];
+    return matches
+      .map((match) => Number(match[1]))
+      .filter((taskId) => !Number.isNaN(taskId));
+  };
+
+  const taskIds = extractTaskIds(messageContent);
+  const taskPreviewId = taskIds[0];
+  const showTaskPreview = Boolean(taskPreviewId);
+  const showLinkPreview = hasUrls && !showTaskPreview;
 
   const handleToggleSelect = () => {
     if (!isSelectMode || !onToggleSelect) return;
@@ -90,8 +103,13 @@ export default function MessageItem({
                   </div>
                 )}
                 
+                {/* Task Share Preview */}
+                {showTaskPreview && taskPreviewId ? (
+                  <TaskSharePreview taskId={taskPreviewId} className="mt-2" />
+                ) : null}
+
                 {/* Link Previews */}
-                {hasUrls && (
+                {showLinkPreview && (
                   <LinkPreview content={messageContent} />
                 )}
                 
@@ -168,8 +186,13 @@ export default function MessageItem({
                 </div>
               )}
 
+              {/* Task Share Preview */}
+              {showTaskPreview && taskPreviewId ? (
+                <TaskSharePreview taskId={taskPreviewId} className="mt-2" />
+              ) : null}
+
               {/* Link Previews */}
-              {hasUrls && (
+              {showLinkPreview && (
                 <LinkPreview content={messageContent} />
               )}
 

@@ -1,6 +1,7 @@
 {
   "ignores": [
     "@headlessui/react",
+    "@lhci/cli",
     "@opentelemetry/auto-instrumentations-node",
     "@opentelemetry/exporter-trace-otlp-http",
     "@opentelemetry/sdk-node",
@@ -14,7 +15,8 @@
     "@types/jest",
     "autoprefixer",
     "jest-environment-jsdom",
-    "postcss"
+    "postcss",
+    "puppeteer"
   ],
   "ignoreMatches": [
     "@storybook/*",
