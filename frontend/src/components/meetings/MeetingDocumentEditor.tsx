@@ -48,15 +48,12 @@ const WS_SYNC_DEBOUNCE_MS = 20;
 const HTTP_FALLBACK_DEBOUNCE_MS = 500;
 const CURSOR_BROADCAST_DEBOUNCE_MS = 25;
 const CURSOR_HEARTBEAT_MS = 600;
-/** Keep generous: heartbeats may pause briefly during toolbar clicks / focus moves. */
 const CURSOR_TTL_MS = 45000;
 
-/** One remote caret per user. Using client_id as key caused duplicate cursors (same user: doc-xxx vs u:id). */
 function remotePresenceKey(userId: number): string {
   return `u:${userId}`;
 }
 
-/** Collapsed ranges often return wrong rects at line breaks; pick topmost valid rect or measure one character. */
 function getCaretClientRect(collapsedRange: Range, editor: HTMLDivElement): { left: number; top: number; height: number } | null {
   const r = collapsedRange.cloneRange();
   r.collapse(true);
@@ -108,10 +105,6 @@ function getCaretClientRect(collapsedRange: Range, editor: HTMLDivElement): { le
   return null;
 }
 
-/**
- * Overlays are siblings of the editor (same offset parent). Use viewport delta vs editor box — do NOT add scrollTop/scrollLeft
- * (scroll is already reflected in getBoundingClientRect).
- */
 function clientPointToEditorOverlay(editor: HTMLDivElement, clientX: number, clientY: number) {
   const editorRect = editor.getBoundingClientRect();
   return {
@@ -120,7 +113,6 @@ function clientPointToEditorOverlay(editor: HTMLDivElement, clientX: number, cli
   };
 }
 
-/** Plain-text length in document order; must match offset space used by resolveTextNodeAtOffset. */
 function getTotalPlainTextLength(editor: HTMLDivElement): number {
   const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
   let total = 0;
@@ -132,7 +124,6 @@ function getTotalPlainTextLength(editor: HTMLDivElement): number {
   return total;
 }
 
-/** Concatenate all text-node content in document order (same model as getTotalPlainTextLength). */
 function getEditorPlainText(editor: HTMLDivElement): string {
   const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
   const parts: string[] = [];
@@ -144,13 +135,6 @@ function getEditorPlainText(editor: HTMLDivElement): string {
   return parts.join('');
 }
 
-/**
- * Given old and new plain text, return a function that maps an offset in the old
- * text to the corresponding offset in the new text.
- *
- * Assumes a single contiguous edit region (the common case for keystroke-level
- * collaborative edits). Works correctly for insert, delete, and replace.
- */
 function computeOffsetTransform(oldPlain: string, newPlain: string): (offset: number) => number {
   if (oldPlain === newPlain) return (o) => o;
 
@@ -174,16 +158,13 @@ function computeOffsetTransform(oldPlain: string, newPlain: string): (offset: nu
   const delta = newEditEnd - oldEditEnd;
 
   return (offset: number): number => {
-    if (offset <= prefixLen) return offset;
+    // fix: < instead of <=, so cursors exactly at the edit position are also pushed forward
+    if (offset < prefixLen) return offset;
     if (offset >= oldEditEnd) return offset + delta;
-    return prefixLen;
+    return newEditEnd;
   };
 }
 
-/**
- * Document-order plain text offset before (container, offset).
- * Must match the TreeWalker + per-node length model used by resolveTextNodeAtOffset (not Range#toString().length).
- */
 function getPlainTextOffsetBeforePosition(editor: HTMLDivElement, container: Node, offset: number): number {
   const endPoint = document.createRange();
   try {
@@ -231,7 +212,6 @@ function getPlainTextOffsetBeforePosition(editor: HTMLDivElement, container: Nod
   return total;
 }
 
-/** Map plain-text offset → DOM position; same ordering as getPlainTextOffsetBeforePosition / getTotalPlainTextLength. */
 function resolveTextNodeAtOffset(editor: HTMLDivElement, targetOffset: number): { node: Node; offset: number } | null {
   const target = Math.max(0, targetOffset);
   const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
@@ -256,7 +236,7 @@ function resolveTextNodeAtOffset(editor: HTMLDivElement, targetOffset: number): 
     return { node: editor.lastChild, offset: fallbackOffset };
   }
 
-  return null;
+  return { node: editor, offset: 0 };
 }
 
 type PlainTextSelectionState = { anchor: number; focus: number };
@@ -298,7 +278,6 @@ function restorePlainTextSelectionState(editor: HTMLDivElement, state: PlainText
   }
 }
 
-/** WS / JSON may deliver numbers as strings depending on proxies or serializers. */
 function parseWsFiniteNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && value.trim() !== '') {
@@ -314,7 +293,6 @@ function parseWsUserId(value: unknown): number | null {
   return n;
 }
 
-/** Offsets from JSON may be whole floats (e.g. 5.0). */
 function parseWsOptionalInt(value: unknown): number | null {
   const n = parseWsFiniteNumber(value);
   if (n === null) return null;
@@ -323,7 +301,6 @@ function parseWsOptionalInt(value: unknown): number | null {
   return r;
 }
 
-/** Distinct color per user (hue on the wheel); avoids 7-color palette collisions for multiple editors. */
 function cursorColorForUser(userId: number, presenceKey: string): string {
   let hash = userId >>> 0;
   for (let i = 0; i < presenceKey.length; i += 1) {
@@ -345,25 +322,12 @@ function hslToHex(h: number, s: number, l: number): string {
   let r = 0;
   let g = 0;
   let b = 0;
-  if (hh < 60) {
-    r = c;
-    g = x;
-  } else if (hh < 120) {
-    r = x;
-    g = c;
-  } else if (hh < 180) {
-    g = c;
-    b = x;
-  } else if (hh < 240) {
-    g = x;
-    b = c;
-  } else if (hh < 300) {
-    r = x;
-    b = c;
-  } else {
-    r = c;
-    b = x;
-  }
+  if (hh < 60) { r = c; g = x; }
+  else if (hh < 120) { r = x; g = c; }
+  else if (hh < 180) { g = c; b = x; }
+  else if (hh < 240) { g = x; b = c; }
+  else if (hh < 300) { r = x; b = c; }
+  else { r = c; b = x; }
   const to = (v: number) =>
     Math.round(Math.max(0, Math.min(255, (v + m) * 255)))
       .toString(16)
@@ -374,20 +338,16 @@ function hslToHex(h: number, s: number, l: number): string {
 function selectionHighlightBackground(hexColor: string): string {
   const m = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hexColor.trim());
   if (!m) return `${hexColor}33`;
-  const r = parseInt(m[1], 16);
-  const g = parseInt(m[2], 16);
-  const b = parseInt(m[3], 16);
-  return `rgba(${r},${g},${b},0.2)`;
+  const rr = parseInt(m[1], 16);
+  const gg = parseInt(m[2], 16);
+  const bb = parseInt(m[3], 16);
+  return `rgba(${rr},${gg},${bb},0.2)`;
 }
 
 function isNodeInsideEditor(editor: HTMLDivElement, n: Node | null): boolean {
   return Boolean(n && (n === editor || editor.contains(n)));
 }
 
-/**
- * Focus can land on contenteditable while Selection has no range or anchor outside (Tab, WS innerHTML, Strict Mode).
- * Without this we broadcast cursor_offset 0 forever and peers see a dead caret at the top-left.
- */
 function ensureSelectionAnchoredInEditor(editor: HTMLDivElement): void {
   if (document.activeElement !== editor) return;
   const sel = window.getSelection();
@@ -411,11 +371,7 @@ function ensureSelectionAnchoredInEditor(editor: HTMLDivElement): void {
     sel.removeAllRanges();
     sel.addRange(range);
   } catch {
-    try {
-      editor.focus();
-    } catch {
-      /* ignore */
-    }
+    try { editor.focus(); } catch { /* ignore */ }
   }
 }
 
@@ -453,10 +409,9 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
   const [scrollLayoutTick, setScrollLayoutTick] = useState(0);
   const sendCursorUpdateRef = useRef<(isActive?: boolean) => void>(() => {});
   const lastOutgoingCursorRef = useRef<LastOutgoingCursor | null>(null);
-  /** When DOM just changed, getCursorXYFromOffset can fail for one frame; avoid falling back to 0,0 x/y. */
   const remoteCaretLayoutCacheRef = useRef<Record<number, { left: number; top: number }>>({});
-  /** Prevents the content-sync effect from fighting with applyRemoteContent's direct innerHTML write. */
   const suppressContentSyncRef = useRef(false);
+  const localContentChangeRef = useRef(false);
   const connectedRef = useRef(false);
 
   const wsPath = useMemo(() => `/ws/meetings/${meetingId}/document/`, [meetingId]);
@@ -466,13 +421,8 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
     requestAnimationFrame(() => setScrollLayoutTick((t) => t + 1));
   };
 
-  useEffect(() => {
-    lastSyncedAtRef.current = lastSyncedAt;
-  }, [lastSyncedAt]);
-
-  useEffect(() => {
-    latestContentRef.current = content;
-  }, [content]);
+  useEffect(() => { lastSyncedAtRef.current = lastSyncedAt; }, [lastSyncedAt]);
+  useEffect(() => { latestContentRef.current = content; }, [content]);
 
   const applyRemoteContent = (next: string) => {
     if (next === latestContentRef.current) return;
@@ -480,7 +430,6 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
     const editor = editorRef.current;
     const preserveSelection = editor !== null && document.activeElement === editor;
     const saved = preserveSelection ? getPlainTextSelectionState(editor) : null;
-
     const oldPlain = editor ? getEditorPlainText(editor) : '';
 
     latestContentRef.current = next;
@@ -494,9 +443,7 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
       try {
         const newPlain = getEditorPlainText(editor);
         transform = computeOffsetTransform(oldPlain, newPlain);
-      } catch {
-        /* keep identity transform on failure */
-      }
+      } catch { /* identity */ }
 
       setRemoteCursors((prev) => {
         if (Object.keys(prev).length === 0) return prev;
@@ -507,7 +454,6 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
             cursorOffset: typeof cursor.cursorOffset === 'number' ? transform(cursor.cursorOffset) : cursor.cursorOffset,
             selectionStart: typeof cursor.selectionStart === 'number' ? transform(cursor.selectionStart) : cursor.selectionStart,
             selectionEnd: typeof cursor.selectionEnd === 'number' ? transform(cursor.selectionEnd) : cursor.selectionEnd,
-            selectionRects: [],
           };
         }
         return adjusted;
@@ -518,8 +464,6 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
         lastOutgoingCursorRef.current = {
           ...lastOut,
           offset: transform(lastOut.offset),
-          x: lastOut.x,
-          y: lastOut.y,
           selectionStart: typeof lastOut.selectionStart === 'number' ? transform(lastOut.selectionStart) : lastOut.selectionStart,
           selectionEnd: typeof lastOut.selectionEnd === 'number' ? transform(lastOut.selectionEnd) : lastOut.selectionEnd,
           selectionRects: [],
@@ -558,10 +502,8 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
   };
 
   useEffect(() => {
-    if (suppressContentSyncRef.current) {
-      suppressContentSyncRef.current = false;
-      return;
-    }
+    if (suppressContentSyncRef.current) { suppressContentSyncRef.current = false; return; }
+    if (localContentChangeRef.current) { localContentChangeRef.current = false; return; }
     const editor = editorRef.current;
     if (!editor) return;
     if (editor.innerHTML === content) return;
@@ -585,12 +527,20 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
   }, [content]);
 
   useEffect(() => {
+    if (loading) return;
+    const editor = editorRef.current;
+    if (!editor) return;
+    const pending = latestContentRef.current;
+    if (!pending || editor.innerHTML === pending) return;
+    editor.innerHTML = pending;
+    bumpRemoteCursorOverlay();
+    requestAnimationFrame(() => { sendCursorUpdateRef.current(true); });
+  }, [loading]);
+
+  useEffect(() => {
     let cancelled = false;
     if (!hasHydrated) return;
-    if (!token) {
-      setLoading(false);
-      return;
-    }
+    if (!token) { setLoading(false); return; }
 
     const fetchData = async () => {
       try {
@@ -600,9 +550,7 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
         setLastSyncedAt(doc.updated_at ?? null);
         setLoading(false);
         return;
-      } catch {
-        // Retry once to avoid first-load race right after auth hydration/login.
-      }
+      } catch { /* retry */ }
 
       try {
         const doc: MeetingDocument = await MeetingsAPI.getMeetingDocument(projectId, meetingId);
@@ -617,18 +565,18 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
     };
 
     void fetchData();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [projectId, meetingId, hasHydrated, token]);
 
   useEffect(() => {
     let stopped = false;
+    const createdSockets: WebSocket[] = [];
 
     const connect = () => {
       if (stopped) return;
       const wsUrl = buildWsUrl(wsPath, token ? { token } : undefined);
       const ws = new WebSocket(wsUrl);
+      createdSockets.push(ws);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -676,11 +624,7 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
             const xOk = xParsed !== null;
             const yOk = yParsed !== null;
             const offsetOk = offsetParsed !== null;
-            // Accept if any signal exists; merging uses existing state for missing parts.
-            // (Strict (x&&y)||offset dropped valid messages when the channel sent only offset or only one axis as null.)
-            if (!offsetOk && !xOk && !yOk) {
-              return;
-            }
+            if (!offsetOk && !xOk && !yOk) return;
             const x = xOk ? xParsed! : 0;
             const y = yOk ? yParsed! : 0;
             const userId = wsUserId;
@@ -698,9 +642,7 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
                     if (left === null || top === null || width === null || height === null) return null;
                     return { left, top, width, height };
                   })
-                  .filter(
-                    (r): r is { left: number; top: number; width: number; height: number } => r !== null,
-                  )
+                  .filter((r): r is { left: number; top: number; width: number; height: number } => r !== null)
               : [];
             const incomingSelectionStart = parseWsOptionalInt(message.selection_start) ?? undefined;
             const incomingSelectionEnd = parseWsOptionalInt(message.selection_end) ?? undefined;
@@ -713,9 +655,7 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
               typeof incomingSelectionStart === 'number' &&
               typeof incomingSelectionEnd === 'number' &&
               incomingSelectionStart === incomingSelectionEnd;
-            /** True only when peer clearly has nothing selected (avoid wiping rects when only payload rects exist). */
-            const peerHasNoSelection =
-              rectsEmpty && (collapsedOffsets || !hasNumericRange);
+            const peerHasNoSelection = rectsEmpty && (collapsedOffsets || !hasNumericRange);
             let storedSelectionStart: number | undefined;
             let storedSelectionEnd: number | undefined;
             let storedSelectionRects: typeof incomingSelectionRects;
@@ -762,26 +702,33 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
               return next;
             });
           }
-        } catch {
-          // Ignore malformed message and keep editor usable.
-        }
+        } catch { /* ignore */ }
       };
 
       ws.onclose = () => {
         setConnected(false);
         connectedRef.current = false;
-        wsRef.current = null;
+        // fix: only clear if the closed ws is the one stored in the ref
+        // in React Strict Mode, the first WS close event after mounting may trigger after the second mount establishes a new connection
+        // if we set it to null unconditionally, it will also clear the second connection
+        if (wsRef.current === ws) {
+          wsRef.current = null;
+        }
         if (!stopped) {
           reconnectTimerRef.current = window.setTimeout(connect, 1500);
         }
       };
     };
 
+    // track all WS instances created by this effect (including reconnects) - createdSockets is defined at the top of the effect
     connect();
     return () => {
       stopped = true;
       if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current);
-      if (wsRef.current) wsRef.current.close();
+      // close all WS instances created by this effect
+      createdSockets.forEach((s) => {
+        try { s.close(); } catch { /* ignore */ }
+      });
     };
   }, [wsPath, token]);
 
@@ -795,30 +742,18 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
     isUnmountedRef.current = false;
     return () => {
       isUnmountedRef.current = true;
-      if (saveTimerRef.current) {
-        window.clearTimeout(saveTimerRef.current);
-      }
-      if (httpPersistTimerRef.current) {
-        window.clearTimeout(httpPersistTimerRef.current);
-      }
-      if (pollingTimerRef.current) {
-        window.clearInterval(pollingTimerRef.current);
-      }
-      if (cursorTimerRef.current) {
-        window.clearTimeout(cursorTimerRef.current);
-      }
-      if (cursorHeartbeatTimerRef.current) {
-        window.clearInterval(cursorHeartbeatTimerRef.current);
-      }
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+      if (httpPersistTimerRef.current) window.clearTimeout(httpPersistTimerRef.current);
+      if (pollingTimerRef.current) window.clearInterval(pollingTimerRef.current);
+      if (cursorTimerRef.current) window.clearTimeout(cursorTimerRef.current);
+      if (cursorHeartbeatTimerRef.current) window.clearInterval(cursorHeartbeatTimerRef.current);
     };
   }, []);
 
   useEffect(() => {
     if (!hasHydrated || !token) return;
-
     const POLL_INTERVAL_WS = 8000;
     const POLL_INTERVAL_NO_WS = 2000;
-
     const poll = async () => {
       try {
         const doc = await MeetingsAPI.getMeetingDocument(projectId, meetingId);
@@ -827,48 +762,27 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
         const currentUpdatedAt = lastSyncedAtRef.current ?? '';
         if (!incomingUpdatedAt || incomingUpdatedAt === currentUpdatedAt) return;
         if (!isIncomingNewer(incomingUpdatedAt, currentUpdatedAt)) return;
-
         applyRemoteContent(doc.content ?? '');
         lastSyncedAtRef.current = incomingUpdatedAt;
         setLastSyncedAt(incomingUpdatedAt);
-      } catch {
-        // keep silent; ws remains primary, polling is fallback
-      }
+      } catch { /* silent */ }
     };
-
     const scheduleNext = () => {
       if (isUnmountedRef.current) return;
       const interval = connectedRef.current ? POLL_INTERVAL_WS : POLL_INTERVAL_NO_WS;
-      pollingTimerRef.current = window.setTimeout(() => {
-        void poll().finally(scheduleNext);
-      }, interval);
+      pollingTimerRef.current = window.setTimeout(() => { void poll().finally(scheduleNext); }, interval);
     };
     scheduleNext();
-
-    return () => {
-      if (pollingTimerRef.current) {
-        window.clearTimeout(pollingTimerRef.current);
-        pollingTimerRef.current = null;
-      }
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { if (pollingTimerRef.current) { window.clearTimeout(pollingTimerRef.current); pollingTimerRef.current = null; } };
   }, [projectId, meetingId, hasHydrated, token]);
 
   useEffect(() => {
     const onSelectionChange = () => {
-      if (saveTimerRef.current) return;
-      if (cursorTimerRef.current) {
-        window.clearTimeout(cursorTimerRef.current);
-      }
-      cursorTimerRef.current = window.setTimeout(() => {
-        sendCursorUpdate(true);
-      }, CURSOR_BROADCAST_DEBOUNCE_MS);
+      if (cursorTimerRef.current) window.clearTimeout(cursorTimerRef.current);
+      cursorTimerRef.current = window.setTimeout(() => { sendCursorUpdateRef.current(true); }, CURSOR_BROADCAST_DEBOUNCE_MS);
     };
     document.addEventListener('selectionchange', onSelectionChange);
-    return () => {
-      document.removeEventListener('selectionchange', onSelectionChange);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { document.removeEventListener('selectionchange', onSelectionChange); };
   }, []);
 
   useEffect(() => {
@@ -879,12 +793,8 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
         let changed = false;
         for (const [key, cursor] of Object.entries(prev)) {
           const seenAt = cursorSeenAtRef.current[key] ?? 0;
-          if (now - seenAt <= CURSOR_TTL_MS) {
-            next[key] = cursor;
-          } else {
-            changed = true;
-            delete cursorSeenAtRef.current[key];
-          }
+          if (now - seenAt <= CURSOR_TTL_MS) { next[key] = cursor; }
+          else { changed = true; delete cursorSeenAtRef.current[key]; }
         }
         return changed ? next : prev;
       });
@@ -893,67 +803,37 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
   }, []);
 
   useEffect(() => {
-    if (cursorHeartbeatTimerRef.current) {
-      window.clearInterval(cursorHeartbeatTimerRef.current);
-    }
+    if (cursorHeartbeatTimerRef.current) window.clearInterval(cursorHeartbeatTimerRef.current);
     cursorHeartbeatTimerRef.current = window.setInterval(() => {
-      const editor = editorRef.current;
-      if (!editor) return;
-      if (saveTimerRef.current) return;
+      if (!editorRef.current) return;
       sendCursorUpdateRef.current(true);
     }, CURSOR_HEARTBEAT_MS);
-
     return () => {
-      if (cursorHeartbeatTimerRef.current) {
-        window.clearInterval(cursorHeartbeatTimerRef.current);
-        cursorHeartbeatTimerRef.current = null;
-      }
+      if (cursorHeartbeatTimerRef.current) { window.clearInterval(cursorHeartbeatTimerRef.current); cursorHeartbeatTimerRef.current = null; }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const persistViaHttp = async (nextContent: string) => {
     setSaving(true);
     try {
-      const response = await MeetingsAPI.saveMeetingDocument(projectId, meetingId, {
-        content: nextContent,
-      });
+      const response = await MeetingsAPI.saveMeetingDocument(projectId, meetingId, { content: nextContent });
       setLastSyncedAt(response.updated_at ?? null);
-    } catch {
-      toast.error('Failed to save meeting document');
-    } finally {
-      setSaving(false);
-    }
+    } catch { toast.error('Failed to save meeting document'); }
+    finally { setSaving(false); }
   };
 
   const scheduleSave = () => {
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
     saveTimerRef.current = window.setTimeout(() => {
-      saveTimerRef.current = null;
       const ws = wsRef.current;
       if (ws && ws.readyState === WebSocket.OPEN) {
-        if (httpPersistTimerRef.current) {
-          window.clearTimeout(httpPersistTimerRef.current);
-        }
-        ws.send(
-          JSON.stringify({
-            type: 'document_update',
-            content: latestContentRef.current,
-            client_id: clientIdRef.current,
-          }),
-        );
-        // Re-broadcast caret after content so peers apply the same doc before interpreting offset (ordering on same socket is FIFO).
+        if (httpPersistTimerRef.current) window.clearTimeout(httpPersistTimerRef.current);
+        ws.send(JSON.stringify({ type: 'document_update', content: latestContentRef.current, client_id: clientIdRef.current }));
         sendCursorUpdateRef.current(true);
-        httpPersistTimerRef.current = window.setTimeout(() => {
-          void persistViaHttp(latestContentRef.current);
-        }, HTTP_FALLBACK_DEBOUNCE_MS);
+        httpPersistTimerRef.current = window.setTimeout(() => { void persistViaHttp(latestContentRef.current); }, HTTP_FALLBACK_DEBOUNCE_MS);
       } else {
-        if (httpPersistTimerRef.current) {
-          window.clearTimeout(httpPersistTimerRef.current);
-        }
-        httpPersistTimerRef.current = window.setTimeout(() => {
-          void persistViaHttp(latestContentRef.current);
-        }, HTTP_FALLBACK_DEBOUNCE_MS);
+        if (httpPersistTimerRef.current) window.clearTimeout(httpPersistTimerRef.current);
+        httpPersistTimerRef.current = window.setTimeout(() => { void persistViaHttp(latestContentRef.current); }, HTTP_FALLBACK_DEBOUNCE_MS);
       }
     }, WS_SYNC_DEBOUNCE_MS);
   };
@@ -961,20 +841,19 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
   const sendCursorUpdate = (isActive = true) => {
     const ws = wsRef.current;
     const editor = editorRef.current;
+    
+    
     if (!ws || ws.readyState !== WebSocket.OPEN || !editor) return;
 
     const selection = window.getSelection();
-    let anchorInEditor = Boolean(
-      selection && selection.rangeCount > 0 && isNodeInsideEditor(editor, selection.anchorNode),
-    );
+    let anchorInEditor = Boolean(selection && selection.rangeCount > 0 && isNodeInsideEditor(editor, selection.anchorNode));
     if (document.activeElement === editor && !anchorInEditor) {
       ensureSelectionAnchoredInEditor(editor);
       const sel2 = window.getSelection();
-      anchorInEditor = Boolean(
-        sel2 && sel2.rangeCount > 0 && isNodeInsideEditor(editor, sel2.anchorNode),
-      );
+      anchorInEditor = Boolean(sel2 && sel2.rangeCount > 0 && isNodeInsideEditor(editor, sel2.anchorNode));
     }
 
+    
     let x = 8 + editor.scrollLeft;
     let y = 8 + editor.scrollTop;
     let cursorOffset = 0;
@@ -993,13 +872,9 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
       cursorOffset = getPlainTextOffsetBeforePosition(editor, range.endContainer, range.endOffset);
       selectionOffsets = getSelectionOffsets(editor);
       selectionRects = getLiveSelectionRects(editor);
-
-      const collapsed =
-        !selectionOffsets || selectionOffsets.start === selectionOffsets.end;
+      const collapsed = !selectionOffsets || selectionOffsets.start === selectionOffsets.end;
       lastOutgoingCursorRef.current = {
-        offset: cursorOffset,
-        x,
-        y,
+        offset: cursorOffset, x, y,
         selectionStart: collapsed ? undefined : selectionOffsets?.start,
         selectionEnd: collapsed ? undefined : selectionOffsets?.end,
         selectionRects: collapsed ? [] : selectionRects,
@@ -1009,64 +884,32 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
       if (last) {
         cursorOffset = last.offset;
         const fromOffset = getCursorXYFromOffset(editor, last.offset);
-        if (fromOffset) {
-          x = fromOffset.x;
-          y = fromOffset.y;
-        } else {
-          x = last.x;
-          y = last.y;
-        }
-        if (
-          typeof last.selectionStart === 'number' &&
-          typeof last.selectionEnd === 'number' &&
-          last.selectionEnd > last.selectionStart
-        ) {
+        if (fromOffset) { x = fromOffset.x; y = fromOffset.y; }
+        else { x = last.x; y = last.y; }
+        if (typeof last.selectionStart === 'number' && typeof last.selectionEnd === 'number' && last.selectionEnd > last.selectionStart) {
           selectionOffsets = { start: last.selectionStart, end: last.selectionEnd };
           selectionRects = getSelectionRects(editor, last.selectionStart, last.selectionEnd);
-          if (selectionRects.length === 0 && last.selectionRects.length > 0) {
-            selectionRects = last.selectionRects;
-          }
+          if (selectionRects.length === 0 && last.selectionRects.length > 0) selectionRects = last.selectionRects;
         }
       }
     }
 
-    ws.send(
-      JSON.stringify({
-        type: 'cursor_update',
-        x,
-        y,
-        cursor_offset: cursorOffset,
-        selection_start: selectionOffsets?.start ?? null,
-        selection_end: selectionOffsets?.end ?? null,
-        selection_rects: selectionRects,
-        is_active: isActive,
-        client_id: clientIdRef.current,
-      }),
-    );
+    ws.send(JSON.stringify({
+      type: 'cursor_update', x, y, cursor_offset: cursorOffset,
+      selection_start: selectionOffsets?.start ?? null, selection_end: selectionOffsets?.end ?? null,
+      selection_rects: selectionRects, is_active: isActive, client_id: clientIdRef.current,
+    }));
   };
 
   sendCursorUpdateRef.current = sendCursorUpdate;
 
-  const getCursorOffset = (editor: HTMLDivElement): number => {
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0) return 0;
-    if (!isNodeInsideEditor(editor, selection.anchorNode)) return 0;
-    const range = selection.getRangeAt(0).cloneRange();
-    range.collapse(true);
-    return getPlainTextOffsetBeforePosition(editor, range.endContainer, range.endOffset);
-  };
-
   const getSelectionOffsets = (editor: HTMLDivElement): { start: number; end: number } | null => {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return null;
-    if (!isNodeInsideEditor(editor, selection.anchorNode) || !isNodeInsideEditor(editor, selection.focusNode))
-      return null;
+    if (!isNodeInsideEditor(editor, selection.anchorNode) || !isNodeInsideEditor(editor, selection.focusNode)) return null;
     const range = selection.getRangeAt(0).cloneRange();
-    const startRange = range.cloneRange();
-    startRange.collapse(true);
-    const endRange = range.cloneRange();
-    endRange.collapse(false);
-
+    const startRange = range.cloneRange(); startRange.collapse(true);
+    const endRange = range.cloneRange(); endRange.collapse(false);
     const start = getPlainTextOffsetBeforePosition(editor, startRange.endContainer, startRange.endOffset);
     const end = getPlainTextOffsetBeforePosition(editor, endRange.endContainer, endRange.endOffset);
     return { start: Math.min(start, end), end: Math.max(start, end) };
@@ -1075,19 +918,13 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
   const getLiveSelectionRects = (editor: HTMLDivElement): Array<{ left: number; top: number; width: number; height: number }> => {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return [];
-    if (!isNodeInsideEditor(editor, selection.anchorNode) || !isNodeInsideEditor(editor, selection.focusNode))
-      return [];
+    if (!isNodeInsideEditor(editor, selection.anchorNode) || !isNodeInsideEditor(editor, selection.focusNode)) return [];
     const range = selection.getRangeAt(0);
     if (range.collapsed) return [];
     const editorRect = editor.getBoundingClientRect();
     return Array.from(range.getClientRects())
       .filter((rect) => rect.width > 0 && rect.height > 0)
-      .map((rect) => ({
-        left: rect.left - editorRect.left,
-        top: rect.top - editorRect.top,
-        width: rect.width,
-        height: rect.height,
-      }));
+      .map((rect) => ({ left: rect.left - editorRect.left, top: rect.top - editorRect.top, width: rect.width, height: rect.height }));
   };
 
   const getSelectionRects = (editor: HTMLDivElement, start: number, end: number): Array<{ left: number; top: number; width: number; height: number }> => {
@@ -1095,41 +932,25 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
     const startPos = resolveTextNodeAtOffset(editor, start);
     const endPos = resolveTextNodeAtOffset(editor, end);
     if (!startPos || !endPos) return [];
-
     const range = document.createRange();
-    range.setStart(startPos.node, startPos.offset);
-    range.setEnd(endPos.node, endPos.offset);
-
+    try { range.setStart(startPos.node, startPos.offset); range.setEnd(endPos.node, endPos.offset); }
+    catch { return []; }
     const editorRect = editor.getBoundingClientRect();
-    const rects = Array.from(range.getClientRects());
-    return rects
+    return Array.from(range.getClientRects())
       .filter((rect) => rect.width > 0 && rect.height > 0)
-      .map((rect) => ({
-        left: rect.left - editorRect.left,
-        top: rect.top - editorRect.top,
-        width: rect.width,
-        height: rect.height,
-      }));
+      .map((rect) => ({ left: rect.left - editorRect.left, top: rect.top - editorRect.top, width: rect.width, height: rect.height }));
   };
 
   const getCursorXYFromOffset = (editor: HTMLDivElement, offset: number): { x: number; y: number } | null => {
     const total = getTotalPlainTextLength(editor);
     const clamped = Math.max(0, Math.min(Math.trunc(offset), total));
     const resolved = resolveTextNodeAtOffset(editor, clamped);
-    if (!resolved) {
-      return null;
-    }
+    if (!resolved) return null;
     const range = document.createRange();
-    try {
-      range.setStart(resolved.node, resolved.offset);
-      range.setEnd(resolved.node, resolved.offset);
-    } catch {
-      return null;
-    }
+    try { range.setStart(resolved.node, resolved.offset); range.setEnd(resolved.node, resolved.offset); }
+    catch { return null; }
     const caret = getCaretClientRect(range, editor);
-    if (!caret) {
-      return null;
-    }
+    if (!caret) return null;
     return clientPointToEditorOverlay(editor, caret.left, caret.top);
   };
 
@@ -1157,6 +978,7 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
     document.execCommand(command, false, value);
     const next = editor.innerHTML;
     latestContentRef.current = next;
+    localContentChangeRef.current = true;
     setContent(next);
     scheduleSave();
   };
@@ -1165,19 +987,19 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
     return <div className="rounded-2xl border border-gray-200 bg-white p-4 text-sm text-gray-600">Loading document...</div>;
   }
 
-  const activeEditorsCount = Object.keys(remoteCursors).length + 1;
+  
+  const remoteCursorEntries = Object.values(remoteCursors);
+
+
+  const activeEditorsCount = remoteCursorEntries.length + 1;
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold text-gray-900">Meeting document</h3>
-          <p className="text-xs text-gray-500">
-            Real-time collaborative editing is enabled.
-          </p>
-          <p className="text-[11px] text-gray-500">
-            Editing now: {activeEditorsCount}
-          </p>
+          <p className="text-xs text-gray-500">Real-time collaborative editing is enabled.</p>
+          <p className="text-[11px] text-gray-500">Editing now: {activeEditorsCount}</p>
         </div>
         <div className="flex items-center gap-2 text-xs">
           <span className={connected ? 'text-green-600' : 'text-amber-600'}>
@@ -1186,39 +1008,20 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
         </div>
       </div>
 
-      <div className="mb-2 flex flex-wrap items-center gap-1 rounded-md border border-gray-200 bg-gray-50 p-1">
-        <Button type="button" size="sm" variant="ghost" onClick={() => applyFormat('bold')}>
-          <Bold className="h-4 w-4" />
-        </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={() => applyFormat('italic')}>
-          <Italic className="h-4 w-4" />
-        </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={() => applyFormat('underline')}>
-          <Underline className="h-4 w-4" />
-        </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={() => applyFormat('formatBlock', 'H1')}>
-          <Heading1 className="h-4 w-4" />
-        </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={() => applyFormat('formatBlock', 'H2')}>
-          <Heading2 className="h-4 w-4" />
-        </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={() => applyFormat('insertUnorderedList')}>
-          <List className="h-4 w-4" />
-        </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={() => applyFormat('insertOrderedList')}>
-          <ListOrdered className="h-4 w-4" />
-        </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={() => applyFormat('formatBlock', 'BLOCKQUOTE')}>
-          <Quote className="h-4 w-4" />
-        </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={() => applyFormat('undo')}>
-          <Undo2 className="h-4 w-4" />
-        </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={() => applyFormat('redo')}>
-          <Redo2 className="h-4 w-4" />
-        </Button>
+      <div className="mb-2 flex flex-wrap items-center gap-1 rounded-md border border-gray-200 bg-gray-50 p-1" onMouseDown={(e) => e.preventDefault()}>
+        <Button type="button" size="sm" variant="ghost" onClick={() => applyFormat('bold')}><Bold className="h-4 w-4" /></Button>
+        <Button type="button" size="sm" variant="ghost" onClick={() => applyFormat('italic')}><Italic className="h-4 w-4" /></Button>
+        <Button type="button" size="sm" variant="ghost" onClick={() => applyFormat('underline')}><Underline className="h-4 w-4" /></Button>
+        <Button type="button" size="sm" variant="ghost" onClick={() => applyFormat('formatBlock', 'H1')}><Heading1 className="h-4 w-4" /></Button>
+        <Button type="button" size="sm" variant="ghost" onClick={() => applyFormat('formatBlock', 'H2')}><Heading2 className="h-4 w-4" /></Button>
+        <Button type="button" size="sm" variant="ghost" onClick={() => applyFormat('insertUnorderedList')}><List className="h-4 w-4" /></Button>
+        <Button type="button" size="sm" variant="ghost" onClick={() => applyFormat('insertOrderedList')}><ListOrdered className="h-4 w-4" /></Button>
+        <Button type="button" size="sm" variant="ghost" onClick={() => applyFormat('formatBlock', 'BLOCKQUOTE')}><Quote className="h-4 w-4" /></Button>
+        <Button type="button" size="sm" variant="ghost" onClick={() => applyFormat('undo')}><Undo2 className="h-4 w-4" /></Button>
+        <Button type="button" size="sm" variant="ghost" onClick={() => applyFormat('redo')}><Redo2 className="h-4 w-4" /></Button>
       </div>
 
+        {/* ====== key: editor + cursor overlay ====== */}
       <div className="relative isolate">
         {!content && (
           <div className="pointer-events-none absolute left-3 top-2 z-[1] text-sm text-gray-400">
@@ -1232,10 +1035,12 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
           onInput={(e) => {
             const next = (e.currentTarget as HTMLDivElement).innerHTML;
             latestContentRef.current = next;
+            localContentChangeRef.current = true;
             setContent(next);
             scheduleSave();
+            sendCursorUpdate(true);
           }}
-          onKeyUp={() => { if (!saveTimerRef.current) sendCursorUpdate(true); }}
+          onKeyUp={() => sendCursorUpdate(true)}
           onMouseUp={() => sendCursorUpdate(true)}
           onFocus={() => {
             const el = editorRef.current;
@@ -1246,13 +1051,12 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
             });
           }}
           onScroll={() => setScrollLayoutTick((t) => t + 1)}
-          onBlur={() => {
-            void persistViaHttp(latestContentRef.current);
-          }}
+          onBlur={() => { void persistViaHttp(latestContentRef.current); }}
           className="relative z-0 min-h-[420px] w-full overflow-auto rounded-md border border-gray-300 px-3 py-2 text-sm leading-6 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:my-2 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_blockquote]:border-l-4 [&_blockquote]:border-gray-300 [&_blockquote]:pl-3 [&_blockquote]:text-gray-700 [&_p]:my-1"
         />
-        <div className="pointer-events-none absolute inset-0 z-[100]" aria-hidden>
-          {Object.values(remoteCursors).map((cursor) => {
+        
+        <div className="pointer-events-none absolute inset-0 z-[100] overflow-visible" aria-hidden>
+          {remoteCursorEntries.map((cursor) => {
             void scrollLayoutTick;
             const position = resolveRemoteCursorPosition(cursor);
             const editor = editorRef.current;
@@ -1260,10 +1064,11 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
               typeof cursor.selectionStart === 'number' &&
               typeof cursor.selectionEnd === 'number' &&
               cursor.selectionEnd > cursor.selectionStart;
-            const selectionRectsFromOffset =
-              hasOffsetRange && editor
-                ? getSelectionRects(editor, cursor.selectionStart!, cursor.selectionEnd!)
-                : [];
+            let selectionRectsFromOffset: Array<{ left: number; top: number; width: number; height: number }> = [];
+            if (hasOffsetRange && editor) {
+              try { selectionRectsFromOffset = getSelectionRects(editor, cursor.selectionStart!, cursor.selectionEnd!); }
+              catch { selectionRectsFromOffset = []; }
+            }
             const normalizePayloadRect = (rect: { left: number; top: number; width: number; height: number }) => {
               if (!editor) return rect;
               const maxDim = Math.max(editor.clientWidth, editor.clientHeight) * 3;
@@ -1276,21 +1081,14 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
             };
             const payloadRects = cursor.selectionRects ?? [];
             const selectionRectsFromPayload = payloadRects.map((r) =>
-              normalizePayloadRect({
-                left: Math.max(r.left, 0),
-                top: Math.max(r.top, 0),
-                width: r.width,
-                height: r.height,
-              }),
+              normalizePayloadRect({ left: Math.max(r.left, 0), top: Math.max(r.top, 0), width: r.width, height: r.height })
             );
-            // Prefer DOM from offsets; if empty (e.g. doc drift), fall back to payload. If peer cleared selection, both are [].
-            const selectionRects =
-              selectionRectsFromOffset.length > 0 ? selectionRectsFromOffset : selectionRectsFromPayload;
+            const selectionRects = selectionRectsFromOffset.length > 0 ? selectionRectsFromOffset : selectionRectsFromPayload;
             const highlightBg = selectionHighlightBackground(cursor.color);
-            /** Name chip always follows caret — never tie to selectionRects[0] (stale payload often sits at 0,0 and hid the caret label). */
             const nameLabelTop = position.top >= 22 ? position.top - 20 : position.top + 6;
             return (
               <div key={cursor.presenceKey}>
+                {/* selection highlight */}
                 {selectionRects.map((rect, idx) => (
                   <div
                     key={`sel-${cursor.presenceKey}-${idx}`}
@@ -1304,6 +1102,7 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
                     }}
                   />
                 ))}
+                {/* username label */}
                 <div
                   className="pointer-events-none absolute z-[1] max-w-[200px] truncate whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium text-white shadow-sm"
                   style={{
@@ -1314,6 +1113,7 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
                 >
                   {cursor.username}
                 </div>
+                {/* cursor vertical line */}
                 <div
                   className="pointer-events-none absolute"
                   style={{ left: `${position.left}px`, top: `${position.top}px` }}
@@ -1325,16 +1125,14 @@ export function MeetingDocumentEditor({ projectId, meetingId }: Props) {
           })}
         </div>
       </div>
+
       <div className="mt-2 text-xs text-gray-500">
         Last synced: {lastSyncedAt ? new Date(lastSyncedAt).toLocaleString() : 'Not synced yet'}
       </div>
-      {Object.values(remoteCursors).length > 0 && (
+      {remoteCursorEntries.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-gray-600">
-          {Object.values(remoteCursors).map((cursor) => (
-            <span
-              key={`badge-${cursor.presenceKey}`}
-              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-0.5"
-            >
+          {remoteCursorEntries.map((cursor) => (
+            <span key={`badge-${cursor.presenceKey}`} className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-0.5">
               <span className="h-2 w-2 rounded-full" style={{ backgroundColor: cursor.color }} />
               {cursor.username}
             </span>
