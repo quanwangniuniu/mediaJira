@@ -17,7 +17,13 @@ import type {
   MeetingDocument,
 } from '@/types/meeting';
 
-const basePath = (projectId: number) => `/api/v1/projects/${projectId}/meetings`;
+const basePath = (projectId: number) => `/api/projects/${projectId}/meetings`;
+
+type MeetingTemplate = {
+  id: string;
+  name: string;
+  layout_config: unknown;
+};
 
 export const MeetingsAPI = {
   async listMeetings(projectId: number): Promise<Meeting[]> {
@@ -214,6 +220,31 @@ export const MeetingsAPI = {
     await api.delete(
       `${basePath(projectId)}/${meetingId}/artifacts/${artifactLinkId}/`,
     );
+  },
+
+  async saveTemplateLayout(templateId: string, layout_config: unknown): Promise<void> {
+    await api.patch(`/api/meetings/templates/${templateId}/`, { layout_config });
+  },
+
+  async createMeetingTemplate(payload: { name: string; layout_config: unknown }): Promise<MeetingTemplate> {
+    const response = await api.post<MeetingTemplate>(`/api/meetings/templates/`, payload);
+    return response.data;
+  },
+
+  async listMeetingTemplates(): Promise<MeetingTemplate[]> {
+    const response = await api.get(`/api/meetings/templates/`);
+    const data = response.data as any;
+    if (Array.isArray(data)) return data as MeetingTemplate[];
+    if (data && Array.isArray(data.results)) return data.results as MeetingTemplate[];
+    return [];
+  },
+
+  async deleteMeetingTemplate(templateId: string): Promise<void> {
+    await api.delete(`/api/meetings/templates/${templateId}/`);
+  },
+
+  async saveMeetingLayout(projectId: number, meetingId: number, layout_config: unknown): Promise<void> {
+    await api.patch(`${basePath(projectId)}/${meetingId}/`, { layout_config });
   },
 
   async getMeetingDocument(projectId: number, meetingId: number): Promise<MeetingDocument> {

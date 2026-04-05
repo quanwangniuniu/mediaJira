@@ -1,3 +1,5 @@
+import json
+
 from django.shortcuts import get_object_or_404
 from rest_framework import serializers
 
@@ -7,6 +9,7 @@ from meetings.models import (
     AgendaItem,
     ParticipantLink,
     ArtifactLink,
+    MeetingTemplate,
     MeetingDocument,
 )
 
@@ -34,10 +37,49 @@ class MeetingSerializer(serializers.ModelSerializer):
             "scheduled_date",
             "scheduled_time",
             "external_reference",
+            "layout_config",
             "status",
             "participant_user_ids",
         ]
         read_only_fields = ["id", "project"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        lc = data.get("layout_config")
+        if lc is None:
+            data["layout_config"] = []
+        elif isinstance(lc, (list, dict)):
+            pass
+        else:
+            data["layout_config"] = []
+        return data
+
+    def validate_layout_config(self, value):
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return value
+        if isinstance(value, dict):
+            blocks = value.get("blocks")
+            if not isinstance(blocks, list):
+                raise serializers.ValidationError(
+                    "layout_config.blocks must be a list when layout_config is an object."
+                )
+            nested = value.get("nestedSections")
+            if nested is not None and not isinstance(nested, list):
+                raise serializers.ValidationError(
+                    "layout_config.nestedSections must be a list or omitted."
+                )
+            try:
+                json.dumps(value)
+            except (TypeError, ValueError) as exc:
+                raise serializers.ValidationError(
+                    "layout_config must be JSON-serializable."
+                ) from exc
+            return value
+        raise serializers.ValidationError(
+            "layout_config must be a list of blocks or an object with a blocks list."
+        )
 
     def update(self, instance, validated_data):
         # Participants are managed via the participants sub-resource
@@ -89,6 +131,37 @@ class ArtifactLinkSerializer(serializers.ModelSerializer):
         model = ArtifactLink
         fields = ["id", "meeting", "artifact_type", "artifact_id"]
         read_only_fields = ["id", "meeting"]
+
+
+class MeetingTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MeetingTemplate
+        fields = ["id", "name", "layout_config", "created_at", "updated_at", "user"]
+        read_only_fields = ["id", "created_at", "updated_at", "user"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        lc = data.get("layout_config")
+        if lc is None:
+            data["layout_config"] = {}
+        return data
+
+    def validate_layout_config(self, value):
+        if value is None:
+            return {}
+        if isinstance(value, list):
+            return {"blocks": value}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError(
+                "layout_config must be a JSON object (e.g. {blocks, nestedSections}) or null."
+            )
+        try:
+            json.dumps(value)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError(
+                "layout_config must be JSON-serializable (no functions or circular references)."
+            )
+        return value
 
 
 class MeetingDocumentSerializer(serializers.ModelSerializer):

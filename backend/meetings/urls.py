@@ -39,5 +39,6 @@ urlpatterns = [
         MeetingDocumentAPIView.as_view(),
     ),
     path("", include(router.urls)),
+    path("meetings/", include("meetings.template_urls")),
 ]
 
