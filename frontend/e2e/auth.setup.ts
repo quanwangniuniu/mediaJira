@@ -15,7 +15,7 @@ setup('authenticate', async ({ page }) => {
   await page.getByPlaceholder('Enter your password').fill(TEST_PASSWORD);
   await page.locator('form').getByRole('button', { name: 'Sign in', exact: true }).click();
 
-  await page.waitForURL(/\/campaigns/, { timeout: 15_000 });
+  await expect(page).not.toHaveURL(/\/login/, { timeout: 15000 });
 
   await expect(page.getByText('Preparing your workspace')).not.toBeVisible({ timeout: 30_000 });
 

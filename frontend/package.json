@@ -17,7 +17,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:cypress": "cypress run",
-    "test:e2e:cypress:open": "cypress open"
+    "test:e2e:cypress:open": "cypress open",
+    "lighthouse:local": "node scripts/lhci-run.cjs"
   },
   "lint-staged": {
     "*.js": [
@@ -83,6 +84,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
+    "@lhci/cli": "^0.15.1",
     "@playwright/test": "^1.58.2",
     "@storybook/addon-essentials": "^7.6.17",
     "@storybook/addon-interactions": "^7.6.17",
@@ -111,7 +113,8 @@
     "postcss": "^8.5.6",
     "storybook": "^7.6.17",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "puppeteer": "^24.6.0"
   },
   "msw": {
     "workerDirectory": [

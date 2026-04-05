@@ -45,7 +45,7 @@ export default function Page() {
   const displayRole = user?.roles?.[0] || 'Member';
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
+    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white scroll-smooth">
       <HeaderSection
         isAuthenticated={isAuthenticated}
         displayName={displayName}
