@@ -37,7 +37,7 @@ export default function PlansSection({ showHeader = true }: PlansSectionProps) {
                   animationTimingFunction: 'cubic-bezier(0.455, 0.03, 0.515, 0.955)',
                 }}
               >
-                Get started with Media Jira
+                Get started with Marketing Simplified
               </h1>
             </div>
           </div>

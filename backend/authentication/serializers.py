@@ -127,4 +127,8 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
                     print(f"Error deleting old avatar: {e}")
         
         return super().update(instance, validated_data)
+
+
+class OrganizationTokenRefreshSerializer(serializers.Serializer):
+    organization_access_token = serializers.CharField()
         

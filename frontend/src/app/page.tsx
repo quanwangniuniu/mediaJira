@@ -4,7 +4,7 @@ import React from 'react';
 import { useAuthStore } from '../lib/authStore';
 import HeaderSection from '../components/home/HeaderSection';
 import HeroSection from '../components/home/HeroSection';
-import WhyMediaJiraSection from '../components/home/WhyMediaJiraSection';
+import WhyMarketingSimplifiedSection from '../components/home/WhyMarketingSimplifiedSection';
 import UserPermissionSection from '../components/home/UserPermissionSection';
 import SmartWorkflowSection from '../components/home/SmartWorkflowSection';
 import VisualizeCampaignsSection from '../components/home/VisualizeCampaignsSection';
@@ -45,7 +45,7 @@ export default function Page() {
   const displayRole = user?.roles?.[0] || 'Member';
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
+    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white scroll-smooth">
       <HeaderSection
         isAuthenticated={isAuthenticated}
         displayName={displayName}
@@ -55,7 +55,7 @@ export default function Page() {
         onRedirectToLogin={redirectToLogin}
       />
       <HeroSection onGetStartedClick={handleGetStartedClick} />
-      <WhyMediaJiraSection />
+      <WhyMarketingSimplifiedSection />
       <UserPermissionSection onRedirectToLogin={redirectToLogin} />
       <SmartWorkflowSection onRedirectToLogin={redirectToLogin} />
       <VisualizeCampaignsSection onRedirectToLogin={redirectToLogin} />

@@ -118,7 +118,7 @@ export default function DashboardPage() {
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Media Jira Agile</h1>
+              <h1 className="text-2xl font-bold text-gray-900">Marketing Simplified Agile</h1>
               <p className="text-sm text-gray-600 mt-1">Dashboard</p>
             </div>
             <div className="flex items-center gap-3">

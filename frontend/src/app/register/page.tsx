@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import AuthFormWrapper from '../../components/auth/AuthFormWrapper';
 import AuthFeedback from '../../components/auth/AuthFeedback';
@@ -8,12 +9,15 @@ import AuthFields from '../../components/auth/AuthFields';
 import AuthSubmit from '../../components/auth/AuthSubmit';
 import RegisterSuccessMessage from '../../components/auth/RegisterSuccessMessage';
 import useAuth from '../../hooks/useAuth';
+import { useAuthStore } from '../../lib/authStore';
 import { validateRegistrationForm, hasValidationErrors } from '../../utils/validation';
 import { RegisterRequest, FormValidation } from '../../types/auth';
 import toast from 'react-hot-toast';
 
 export default function RegisterPage() {
+  const router = useRouter();
   const { register } = useAuth();
+  const storeLogin = useAuthStore((s) => s.login);
   const [formData, setFormData] = useState<{ 
     username: string;
     email: string;
@@ -71,14 +75,20 @@ export default function RegisterPage() {
     
     console.log('Submitting registration data:', { ...requestData, password: '[HIDDEN]' });
     
-    // Call registration API through useAuth hook
     const result = await register(requestData);
-    setLoading(false);
-    
+
     if (result.success) {
+      const loginResult = await storeLogin(formData.email, formData.password);
+      setLoading(false);
+      if (loginResult.success) {
+        toast.success('Account created! Redirecting...');
+        router.replace('/campaigns');
+        return;
+      }
       setRegistrationSuccess(true);
       setRegistrationMessage(result.data?.message || 'Registration successful! Your account is ready to use.');
     } else {
+      setLoading(false);
       setErrors({ general: result.error });
     }
   };

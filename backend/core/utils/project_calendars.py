@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Optional
+from django.utils import timezone
 
 
 PROJECT_ROLE_TO_CALENDAR_PERMISSION = {
@@ -45,6 +46,16 @@ def ensure_project_calendar(project):
     if changed_fields:
         calendar.save(update_fields=changed_fields + ["updated_at"])
     return calendar
+
+
+def soft_delete_project_calendars(project) -> None:
+    from calendars.models import Calendar
+
+    now = timezone.now()
+    Calendar.objects.filter(project=project, is_deleted=False).update(
+        is_deleted=True,
+        updated_at=now,
+    )
 
 
 def sync_project_member_calendar_access(project, user, role: str | None, include_subscription: bool = True):
