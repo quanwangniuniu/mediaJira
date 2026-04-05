@@ -55,7 +55,12 @@ export function CalendarToolbar({
           </button>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-lg font-semibold text-gray-900">{headerTitle}</span>
+          <span
+            data-testid="calendar-header-title"
+            className="text-lg font-semibold text-gray-900"
+          >
+            {headerTitle}
+          </span>
         </div>
       </div>
 
