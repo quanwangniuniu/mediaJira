@@ -9,6 +9,7 @@ from meetings.models import (
     AgendaItem,
     ParticipantLink,
     ArtifactLink,
+    MeetingDocument,
 )
 from meetings.knowledge_links import (
     generated_decisions_payload,
