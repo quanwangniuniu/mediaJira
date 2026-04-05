@@ -20,6 +20,7 @@ import type {
   MeetingListTag,
   KnowledgeNavigationLink,
   PaginatedMeetingsList,
+  MeetingDocument,
 } from '@/types/meeting';
 
 const basePath = (projectId: number) => `/api/v1/projects/${projectId}/meetings`;
@@ -438,5 +439,24 @@ export const MeetingsAPI = {
     await api.delete(
       `${basePath(projectId)}/${meetingId}/artifacts/${artifactLinkId}/`,
     );
+  },
+
+  async getMeetingDocument(projectId: number, meetingId: number): Promise<MeetingDocument> {
+    const response = await api.get<MeetingDocument>(
+      `${basePath(projectId)}/${meetingId}/document/`,
+    );
+    return response.data;
+  },
+
+  async saveMeetingDocument(
+    projectId: number,
+    meetingId: number,
+    payload: { content: string; yjs_state?: string },
+  ): Promise<MeetingDocument> {
+    const response = await api.patch<MeetingDocument>(
+      `${basePath(projectId)}/${meetingId}/document/`,
+      payload,
+    );
+    return response.data;
   },
 };

@@ -27,7 +27,8 @@ import {
 } from '@/lib/meetingSchedule';
 import { formatMeetingsApiError } from '@/lib/meetingsApiErrors';
 import { MEETING_TYPE_OPTIONS } from '@/lib/meetings/meetingTypes';
-import type { Meeting, ParticipantLink } from '@/types/meeting';
+import { hasVisibleText, sanitizeDocumentPreviewHtml } from '@/lib/meetings/documentPreview';
+import type { Meeting, MeetingDocument, ParticipantLink } from '@/types/meeting';
 
 function PanelSection({
   title,
@@ -78,6 +79,7 @@ export function MeetingSummaryPanel({
   const [extRefDraft, setExtRefDraft] = useState('');
   const [savingMeta, setSavingMeta] = useState(false);
   const [deletingMeeting, setDeletingMeeting] = useState(false);
+  const [documentPreviewHtml, setDocumentPreviewHtml] = useState('');
 
   const [participants, setParticipants] = useState<ParticipantLink[]>([]);
   const [projectMembers, setProjectMembers] = useState<ProjectMemberData[]>([]);
@@ -88,7 +90,10 @@ export function MeetingSummaryPanel({
     setLoading(true);
     setError(null);
     try {
-      const m = await MeetingsAPI.getMeeting(projectId, meetingId);
+      const [m, doc] = await Promise.all([
+        MeetingsAPI.getMeeting(projectId, meetingId),
+        MeetingsAPI.getMeetingDocument(projectId, meetingId).catch(() => null as MeetingDocument | null),
+      ]);
       setMeeting(m);
       setTitleDraft(m.title);
       setObjectiveDraft(m.objective);
@@ -96,8 +101,10 @@ export function MeetingSummaryPanel({
       setSchedDateDraft(meetingDateToInput(m.scheduled_date));
       setSchedTimeDraft(meetingTimeToInput(m.scheduled_time));
       setExtRefDraft(m.external_reference ?? '');
+      setDocumentPreviewHtml(doc?.content ? sanitizeDocumentPreviewHtml(doc.content) : '');
     } catch {
       setMeeting(null);
+      setDocumentPreviewHtml('');
       setError('Could not load this meeting.');
     } finally {
       setLoading(false);

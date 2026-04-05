@@ -34,6 +34,8 @@ def meeting_tags_for_api(meeting: Meeting) -> list[dict]:
         {"slug": a.tag_definition.slug, "label": a.tag_definition.label}
         for a in meeting.tag_assignments.all()
     ]
+    MeetingDocument,
+)
 
 
 class MeetingSerializer(serializers.ModelSerializer):
@@ -412,4 +414,19 @@ class ArtifactLinkSerializer(serializers.ModelSerializer):
         model = ArtifactLink
         fields = ["id", "meeting", "artifact_type", "artifact_id"]
         read_only_fields = ["id", "meeting"]
+
+
+class MeetingDocumentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MeetingDocument
+        fields = [
+            "id",
+            "meeting",
+            "content",
+            "yjs_state",
+            "last_edited_by",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "meeting", "last_edited_by", "created_at", "updated_at"]
 
