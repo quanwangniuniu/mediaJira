@@ -5,6 +5,7 @@ from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -12,11 +13,19 @@ from core.models import Project, ProjectMember
 from meetings.models import Meeting, AgendaItem, ParticipantLink, ArtifactLink
 from meetings.serializers import (
     MeetingSerializer,
+    MeetingListSerializer,
+    MeetingKnowledgeDiscoveryQuerySerializer,
     AgendaItemSerializer,
     ParticipantLinkSerializer,
     ArtifactLinkSerializer,
 )
-from meetings.services import reorder_agenda_items
+from meetings.services import (
+    reorder_agenda_items,
+    meetings_base_queryset_for_project,
+    apply_meeting_knowledge_filters,
+    meeting_list_order_by_fields,
+    hub_split_meeting_pks_for_project,
+)
 
 
 def _ensure_project_membership(user, project: Project) -> None:
@@ -33,6 +42,7 @@ def _ensure_project_membership(user, project: Project) -> None:
 class MeetingViewSet(viewsets.ModelViewSet):
     serializer_class = MeetingSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = PageNumberPagination
 
     def get_project(self) -> Project:
         project_id = self.kwargs.get("project_id")
@@ -41,8 +51,59 @@ class MeetingViewSet(viewsets.ModelViewSet):
         return project
 
     def get_queryset(self):
+        return meetings_base_queryset_for_project(self.get_project())
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return MeetingListSerializer
+        return MeetingSerializer
+
+    def list(self, request, *args, **kwargs):
         project = self.get_project()
-        return Meeting.objects.filter(project=project).order_by("-id")
+        query_serializer = MeetingKnowledgeDiscoveryQuerySerializer(
+            data=request.query_params,
+            context={"project": project, "request": request},
+        )
+        query_serializer.is_valid(raise_exception=True)
+        filters = dict(query_serializer.validated_data)
+
+        qs_base = meetings_base_queryset_for_project(project)
+
+        incoming_pks, completed_pks = hub_split_meeting_pks_for_project(project)
+        qs_incoming_lane = qs_base.filter(pk__in=incoming_pks).distinct()
+        qs_completed_lane = qs_base.filter(pk__in=completed_pks).distinct()
+
+        incoming_result_count = (
+            apply_meeting_knowledge_filters(qs_incoming_lane, filters).distinct().count()
+        )
+        completed_result_count = (
+            apply_meeting_knowledge_filters(qs_completed_lane, filters).distinct().count()
+        )
+
+        qs_filtered = apply_meeting_knowledge_filters(qs_base, filters).distinct()
+
+        ordering = filters.get("ordering") or "-created_at"
+        qs = qs_filtered.order_by(*meeting_list_order_by_fields(ordering))
+
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            paginated = self.get_paginated_response(serializer.data)
+            # Build a plain dict so hub fields always appear in JSON (avoid mutating ReturnDict edge cases).
+            hub = {
+                "incoming_lane_total": len(incoming_pks),
+                "incoming_result_count": incoming_result_count,
+                "completed_lane_total": len(completed_pks),
+                "completed_result_count": completed_result_count,
+                # Deprecated aliases (same values as *_result_count); kept for older clients.
+                "incoming_lane_filtered": incoming_result_count,
+                "completed_lane_filtered": completed_result_count,
+            }
+            payload = {**dict(paginated.data), **hub}
+            return Response(payload)
+
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
 
     def perform_create(self, serializer):
         project = self.get_project()

@@ -50,6 +50,11 @@ paths:
         - Duplicate parentDecisionIds are rejected.
         - Cycles are rejected.
 
+        **Optional `origin_meeting_id`:** When set, the server creates `MeetingDecisionOrigin` in the same
+        transaction. The meeting must exist, belong to the **same project** as the request context (`X-Project-ID`
+        or `project_id` query), and must not be archived. Cross-project use returns **400**. Each decision has
+        at most one origin meeting.
+
         '
       operationId: createDecisionDraft
       requestBody:
@@ -99,7 +104,29 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '400':
-          $ref: '#/components/responses/ValidationError'
+          description: |
+            Validation failed. Includes DRF field errors for `origin_meeting_id` when invalid (meeting missing,
+            cross-project, archived, or duplicate origin on update).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DRFValidationError'
+              examples:
+                origin_meeting_not_found:
+                  summary: Meeting does not exist
+                  value:
+                    origin_meeting_id:
+                      - Meeting not found.
+                origin_cross_project:
+                  summary: Meeting and decision project differ
+                  value:
+                    origin_meeting_id:
+                      - Meeting must belong to the same project.
+                origin_archived:
+                  summary: Archived meeting cannot be origin
+                  value:
+                    origin_meeting_id:
+                      - Cannot link to an archived meeting.
   /decisions/drafts/{decisionId}:
     get:
       tags:
@@ -205,7 +232,24 @@ paths:
               schema:
                 $ref: '#/components/schemas/DecisionDraft'
         '400':
-          $ref: '#/components/responses/ValidationError'
+          description: |
+            Validation failed. `origin_meeting_id` is only accepted on **create**; PATCH may return field errors
+            when a second origin is attempted or when the decision already has an origin.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DRFValidationError'
+              examples:
+                origin_on_patch_only:
+                  summary: Origin only on create
+                  value:
+                    origin_meeting_id:
+                      - Meeting origin can only be set when creating a decision.
+                origin_already_set:
+                  summary: Decision already linked to a meeting
+                  value:
+                    origin_meeting_id:
+                      - Decision already has a meeting origin.
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -683,6 +727,63 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/InvalidState'
+  /decisions/{decisionId}/connections:
+    get:
+      tags:
+      - Decisions
+      summary: Get connected decisions for a decision
+      description: Returns the set of decisions connected by edges to the specified decision.
+      operationId: getDecisionConnections
+      parameters:
+      - name: decisionId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: Connected decisions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionConnectionsResponse'
+        '404':
+          description: Decision not found.
+    put:
+      tags:
+      - Decisions
+      summary: Set connected decisions by seq list (diff apply)
+      description: Replaces the connected decision set by project-scoped seq list.
+      operationId: updateDecisionConnections
+      parameters:
+      - name: decisionId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionConnectionsUpdateRequest'
+      responses:
+        '200':
+          description: Updated connected decisions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionConnectionsResponse'
+        '400':
+          description: |-
+            Invalid request. Reasons include:
+            - cycle detected
+            - duplicate edge
+            - invalid seq / seq not in project
+        '404':
+          description: Decision not found.
 components:
   securitySchemes:
     bearerAuth:
@@ -1086,6 +1187,34 @@ components:
         permissions:
           $ref: '#/components/schemas/DecisionPermissions'
           readOnly: true
+    OriginMeeting:
+      type: object
+      nullable: true
+      description: |
+        Meeting this decision or task was generated from (`MeetingDecisionOrigin` / `MeetingTaskOrigin`), or null.
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        scheduled_date:
+          type: string
+          format: date
+          nullable: true
+        type:
+          type: string
+          nullable: true
+          description: Meeting type slug
+        project_id:
+          type: integer
+          format: int64
+        detail_url:
+          type: string
+          description: In-app path to the meeting workspace
+        url:
+          type: string
+          description: Legacy alias for detail_url
     DecisionDraft:
       allOf:
       - $ref: '#/components/schemas/DecisionCore'
@@ -1101,6 +1230,9 @@ components:
             readOnly: true
             allOf:
             - $ref: '#/components/schemas/CommitRecord'
+          origin_meeting:
+            $ref: '#/components/schemas/OriginMeeting'
+            readOnly: true
     DecisionCommitted:
       allOf:
       - $ref: '#/components/schemas/DecisionCore'
@@ -1138,6 +1270,9 @@ components:
               $ref: '#/components/schemas/Review'
             readOnly: true
             default: []
+          origin_meeting:
+            $ref: '#/components/schemas/OriginMeeting'
+            readOnly: true
     Signal:
       type: object
       required:
@@ -1412,6 +1547,13 @@ components:
           items:
             type: integer
             format: int64
+        origin_meeting_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: |
+            Optional. Establishes `MeetingDecisionOrigin` for this draft. Requires project context
+            (`X-Project-ID` or `project_id`); same-project rules apply.
     UpdateDecisionDraftRequest:
       type: object
       additionalProperties: false
@@ -2007,60 +2149,3 @@ components:
           items:
             type: string
         - type: string
-  /decisions/{decisionId}/connections:
-    get:
-      tags:
-      - Decisions
-      summary: Get connected decisions for a decision
-      description: Returns the set of decisions connected by edges to the specified decision.
-      operationId: getDecisionConnections
-      parameters:
-      - name: decisionId
-        in: path
-        required: true
-        schema:
-          type: integer
-          format: int64
-      responses:
-        '200':
-          description: Connected decisions
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DecisionConnectionsResponse'
-        '404':
-          description: Decision not found.
-    put:
-      tags:
-      - Decisions
-      summary: Set connected decisions by seq list (diff apply)
-      description: Replaces the connected decision set by project-scoped seq list.
-      operationId: updateDecisionConnections
-      parameters:
-      - name: decisionId
-        in: path
-        required: true
-        schema:
-          type: integer
-          format: int64
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/DecisionConnectionsUpdateRequest'
-      responses:
-        '200':
-          description: Updated connected decisions
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DecisionConnectionsResponse'
-        '400':
-          description: |-
-            Invalid request. Reasons include:
-            - cycle detected
-            - duplicate edge
-            - invalid seq / seq not in project
-        '404':
-          description: Decision not found.

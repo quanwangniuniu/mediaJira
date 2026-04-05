@@ -42,7 +42,12 @@ def _debug_log(session_id, location, message, data=None, hypothesis_id=None):
 
 class TaskViewSet(viewsets.ModelViewSet):
     """ViewSet for Task model"""
-    queryset = Task.objects.select_related('project', 'owner', 'current_approver')
+    queryset = Task.objects.select_related(
+        'project',
+        'owner',
+        'current_approver',
+        'meeting_origin__meeting__type_definition',
+    )
     serializer_class = TaskSerializer
     permission_classes = [IsAuthenticated]
 
@@ -108,7 +113,12 @@ class TaskViewSet(viewsets.ModelViewSet):
         if not user.is_authenticated:
             return Task.objects.none()
 
-        queryset = Task.objects.select_related('project', 'owner', 'current_approver')
+        queryset = Task.objects.select_related(
+            'project',
+            'owner',
+            'current_approver',
+            'meeting_origin__meeting__type_definition',
+        )
         accessible_project_ids = set(
             ProjectMember.objects.filter(
                 user=user,
@@ -362,7 +372,12 @@ class TaskViewSet(viewsets.ModelViewSet):
         from rest_framework.exceptions import PermissionDenied  # local import to avoid circulars
 
         # Base queryset without project filtering so we can locate the task by ID
-        base_qs = Task.objects.select_related('project', 'owner', 'current_approver')
+        base_qs = Task.objects.select_related(
+            'project',
+            'owner',
+            'current_approver',
+            'meeting_origin__meeting__type_definition',
+        )
         task = get_object_or_404(base_qs, pk=self.kwargs.get('pk'))
 
         user = self.request.user
