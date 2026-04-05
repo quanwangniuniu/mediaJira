@@ -71,8 +71,10 @@ import {
   normalizeMeetingArtifactType,
   type MeetingArtifactResourceIndex,
 } from '@/lib/meetings/artifactLinks';
-import type { AgendaItem, ArtifactLink, Meeting, ParticipantLink } from '@/types/meeting';
+import { hasVisibleText, sanitizeDocumentPreviewHtml } from '@/lib/meetings/documentPreview';
+import type { AgendaItem, ArtifactLink, Meeting, MeetingDocument, ParticipantLink } from '@/types/meeting';
 import { ProjectAPI, type ProjectData, type ProjectMemberData } from '@/lib/api/projectApi';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -612,6 +614,7 @@ export default function MeetingWorkspacePage() {
   const skipLayoutPersistRef = useRef(true);
   const layoutPersistTimerRef = useRef<number | null>(null);
   const lastPersistedLayoutJsonRef = useRef<string | null>(null);
+  const [documentPreviewHtml, setDocumentPreviewHtml] = useState('');
 
   const orderedAgenda = useMemo(() => {
     const list = Array.isArray(agendaItems) ? agendaItems : [];
@@ -746,13 +749,14 @@ export default function MeetingWorkspacePage() {
         setLoading(true);
         setError(null);
 
-        const [m, agenda, people, links, mems, p] = await Promise.all([
+        const [m, agenda, people, links, mems, p, doc] = await Promise.all([
           MeetingsAPI.getMeeting(projectId, meetingId),
           MeetingsAPI.listAgendaItems(projectId, meetingId),
           MeetingsAPI.listParticipants(projectId, meetingId),
           MeetingsAPI.listArtifacts(projectId, meetingId),
           ProjectAPI.getAllProjectMembers(projectId).catch(() => [] as ProjectMemberData[]),
           ProjectAPI.getProject(projectId).catch(() => null as ProjectData | null),
+          MeetingsAPI.getMeetingDocument(projectId, meetingId).catch(() => null as MeetingDocument | null),
         ]);
 
         setMeeting(normalizeMeetingFromApi(m));
@@ -763,10 +767,12 @@ export default function MeetingWorkspacePage() {
         setProjectMembers(
           Array.isArray(mems) ? mems.filter((row) => row.is_active) : [],
         );
+        setDocumentPreviewHtml(doc?.content ? sanitizeDocumentPreviewHtml(doc.content) : '');
       } catch (err: unknown) {
         console.error('Failed to load meeting workspace:', err);
         setProject(null);
         setProjectMembers([]);
+        setDocumentPreviewHtml('');
         const message =
           (err as { response?: { data?: { error?: string; detail?: string } }; message?: string })
             ?.response?.data?.error ||
@@ -2090,6 +2096,34 @@ export default function MeetingWorkspacePage() {
         >
           <SortableContext items={blocks.map((b) => b.id)} strategy={verticalListSortingStrategy}>
             <div className="space-y-12 text-left">
+              <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-800">Meeting document</p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {hasVisibleText(documentPreviewHtml)
+                        ? 'Preview below — open the full editor to collaborate.'
+                        : 'No document content yet.'}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      router.push(`/projects/${projectId}/meetings/${meetingId}/document`)
+                    }
+                  >
+                    Open document
+                  </Button>
+                </div>
+                {hasVisibleText(documentPreviewHtml) ? (
+                  <div
+                    className="mt-3 max-h-40 overflow-y-auto rounded-lg border border-blue-100 bg-white p-3 text-xs text-gray-700 [&_h1]:text-sm [&_h1]:font-semibold [&_h2]:text-sm [&_h2]:font-semibold [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
+                    dangerouslySetInnerHTML={{ __html: documentPreviewHtml }}
+                  />
+                ) : null}
+              </div>
               {blocks.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500">
                   Canvas is empty. Please click a module from the sidebar or add a block below.

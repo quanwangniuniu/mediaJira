@@ -11,6 +11,7 @@ import {
 } from '../../components/form';
 import toast from 'react-hot-toast';
 import api from '../../lib/api';
+import { useAuthStore } from '@/lib/authStore';
 
 interface SetPasswordFormData {
   password: string;
@@ -26,6 +27,11 @@ interface ValidationErrors {
 export default function SetPasswordPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const setUser = useAuthStore((s) => s.setUser);
+  const setAuthToken = useAuthStore((s) => s.setToken);
+  const setRefreshToken = useAuthStore((s) => s.setRefreshToken);
+  const setOrganizationAccessToken = useAuthStore((s) => s.setOrganizationAccessToken);
+  const getUserTeams = useAuthStore((s) => s.getUserTeams);
   const [token, setToken] = useState<string>('');
   const [formData, setFormData] = useState<SetPasswordFormData>({
     password: '',
@@ -33,7 +39,6 @@ export default function SetPasswordPage() {
   });
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [loading, setLoading] = useState<boolean>(false);
-  const [success, setSuccess] = useState<boolean>(false);
 
   useEffect(() => {
     const tokenFromUrl = searchParams.get('token');
@@ -99,23 +104,29 @@ export default function SetPasswordPage() {
         password: formData.password
       });
 
-      setSuccess(true);
+      const { token: accessToken, refresh, user, organization_access_token } = response.data;
+
+      if (accessToken) {
+        setAuthToken(accessToken);
+      }
+      if (refresh) {
+        setRefreshToken(refresh);
+      }
+      if (organization_access_token) {
+        setOrganizationAccessToken(organization_access_token);
+      }
+      if (user) {
+        setUser(user);
+      }
+
+      try {
+        await getUserTeams();
+      } catch (teamError) {
+        console.warn('Failed to fetch user teams after password setup:', teamError);
+      }
+
       toast.success('Password set successfully! Redirecting...');
-
-      if (response.data.token) {
-        localStorage.setItem('access_token', response.data.token);
-      }
-      if (response.data.refresh) {
-        localStorage.setItem('refresh_token', response.data.refresh);
-      }
-      if (response.data.organization_access_token) {
-        localStorage.setItem('organization_access_token', response.data.organization_access_token);
-      }
-
-      setTimeout(() => {
-        router.push('/campaigns');
-      }, 1500);
-
+      router.replace('/campaigns');
     } catch (error: any) {
       console.error('Set password error:', error);
       const errorData = error.response?.data;
@@ -132,40 +143,6 @@ export default function SetPasswordPage() {
       setLoading(false);
     }
   };
-
-  if (success) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-cyan-50 py-12 px-4 sm:px-6 lg:px-8">
-        <FormContainer title="Check Your Email" subtitle="">
-          <div className="text-center space-y-6">
-            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100">
-              <svg className="h-8 w-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
-              </svg>
-            </div>
-            
-            <div className="space-y-4">
-              <h3 className="text-lg font-medium text-gray-900">
-                Password Set Successfully!
-              </h3>
-              <p className="text-gray-600">
-                Your account is ready. Redirecting to campaigns.
-              </p>
-              
-              <div className="pt-4">
-                <Link 
-                  href="/campaigns"
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
-                >
-                  Go to Campaigns
-                </Link>
-              </div>
-            </div>
-          </div>
-        </FormContainer>
-      </div>
-    );
-  }
 
   const formHasValidationErrors = Object.keys(errors).some(key => key !== 'general' && errors[key as keyof ValidationErrors]);
 

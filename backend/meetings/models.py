@@ -137,3 +137,29 @@ class MeetingTemplate(models.Model):
     def __str__(self) -> str:
         return f"{self.name} ({self.id})"
 
+
+class MeetingDocument(models.Model):
+    """
+    A single collaborative document attached to a meeting.
+    """
+
+    meeting = models.OneToOneField(
+        Meeting,
+        on_delete=models.CASCADE,
+        related_name="document",
+    )
+    content = models.TextField(blank=True, default="")
+    yjs_state = models.TextField(blank=True, default="")
+    last_edited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="edited_meeting_documents",
+        blank=True,
+        null=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"MeetingDocument meeting={self.meeting_id}"
+

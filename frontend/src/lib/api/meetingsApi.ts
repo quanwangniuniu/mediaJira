@@ -14,6 +14,7 @@ import type {
   ParticipantLinkPartialUpdateRequest,
   ArtifactLink,
   ArtifactLinkCreateRequest,
+  MeetingDocument,
 } from '@/types/meeting';
 
 const basePath = (projectId: number) => `/api/projects/${projectId}/meetings`;
@@ -244,5 +245,24 @@ export const MeetingsAPI = {
 
   async saveMeetingLayout(projectId: number, meetingId: number, layout_config: unknown): Promise<void> {
     await api.patch(`${basePath(projectId)}/${meetingId}/`, { layout_config });
+  },
+
+  async getMeetingDocument(projectId: number, meetingId: number): Promise<MeetingDocument> {
+    const response = await api.get<MeetingDocument>(
+      `${basePath(projectId)}/${meetingId}/document/`,
+    );
+    return response.data;
+  },
+
+  async saveMeetingDocument(
+    projectId: number,
+    meetingId: number,
+    payload: { content: string; yjs_state?: string },
+  ): Promise<MeetingDocument> {
+    const response = await api.patch<MeetingDocument>(
+      `${basePath(projectId)}/${meetingId}/document/`,
+      payload,
+    );
+    return response.data;
   },
 };

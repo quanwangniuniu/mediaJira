@@ -3,7 +3,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from core.models import Organization, Project, ProjectMember, CustomUser
-from meetings.models import Meeting, AgendaItem, ParticipantLink
+from meetings.models import Meeting, AgendaItem, ParticipantLink, MeetingDocument
 
 
 class TestMeetingAPI(TestCase):
@@ -279,5 +279,73 @@ class TestMeetingAPI(TestCase):
         lc = get_response.data["layout_config"]
         self.assertIsInstance(lc, dict)
         self.assertEqual(lc["nestedSections"][0]["title"], "Section A")
+
+    def test_get_meeting_document_creates_default_document(self):
+        meeting = Meeting.objects.create(
+            project=self.project_a,
+            title="Meeting Doc",
+            meeting_type="planning",
+            objective="Doc",
+        )
+        url = f"/api/projects/{self.project_a.id}/meetings/{meeting.id}/document/"
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["meeting"], meeting.id)
+        self.assertEqual(response.data["content"], "")
+        self.assertTrue(MeetingDocument.objects.filter(meeting=meeting).exists())
+
+    def test_patch_meeting_document_updates_content(self):
+        meeting = Meeting.objects.create(
+            project=self.project_a,
+            title="Meeting Doc",
+            meeting_type="planning",
+            objective="Doc",
+        )
+        url = f"/api/projects/{self.project_a.id}/meetings/{meeting.id}/document/"
+        response = self.client.patch(
+            url,
+            data={"content": "Collaborative content"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["content"], "Collaborative content")
+        doc = MeetingDocument.objects.get(meeting=meeting)
+        self.assertEqual(doc.last_edited_by_id, self.user_a.id)
+
+    def test_meeting_document_get_allowed_for_participant_without_project_membership(self):
+        meeting = Meeting.objects.create(
+            project=self.project_a,
+            title="Invited only",
+            meeting_type="planning",
+            objective="X",
+        )
+        user_c = CustomUser.objects.create_user(
+            email="user_c@example.com",
+            password="password",
+            username="user_c",
+        )
+        ParticipantLink.objects.create(meeting=meeting, user=user_c)
+        url = f"/api/projects/{self.project_a.id}/meetings/{meeting.id}/document/"
+        self.client.force_authenticate(user=user_c)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["meeting"], meeting.id)
+
+    def test_meeting_document_forbidden_without_member_or_participant_link(self):
+        meeting = Meeting.objects.create(
+            project=self.project_a,
+            title="Private doc",
+            meeting_type="planning",
+            objective="Y",
+        )
+        user_c = CustomUser.objects.create_user(
+            email="user_d@example.com",
+            password="password",
+            username="user_d",
+        )
+        url = f"/api/projects/{self.project_a.id}/meetings/{meeting.id}/document/"
+        self.client.force_authenticate(user=user_c)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 

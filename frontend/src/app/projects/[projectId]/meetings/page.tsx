@@ -38,7 +38,6 @@ export default function ProjectMeetingsPage() {
   const router = useRouter();
   const projectIdParam = params?.projectId as string | undefined;
   const projectId = projectIdParam ? Number(projectIdParam) : NaN;
-  const currentUserId = useAuthStore((state) => state.user?.id);
 
   const [project, setProject] = useState<ProjectData | null>(null);
   const [availableProjects, setAvailableProjects] = useState<ProjectData[]>([]);
@@ -138,11 +137,9 @@ export default function ProjectMeetingsPage() {
   };
 
   const projectsForSelect = useMemo(() => {
-    if (!currentUserId) return availableProjects;
-    const withOwnerInfo = availableProjects.filter((p) => p.owner?.id != null);
-    if (withOwnerInfo.length === 0) return availableProjects;
-    return withOwnerInfo.filter((p) => p.owner?.id === currentUserId);
-  }, [availableProjects, currentUserId]);
+    // Meetings should be available to project members, not only project owners.
+    return availableProjects;
+  }, [availableProjects]);
 
   const handleQuickCreate = async ({
     title,
@@ -263,6 +260,7 @@ export default function ProjectMeetingsPage() {
     () => [...meetingsArray].sort((a, b) => b.id - a.id),
     [meetingsArray],
   );
+
 
   const handleDelete = async (meetingId: number) => {
     if (!projectId || Number.isNaN(projectId)) {

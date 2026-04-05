@@ -30,7 +30,8 @@ import {
   type UnifiedMeetingTemplateOption,
 } from '@/lib/meetings/unifiedMeetingTemplates';
 import { replaceAgendaAndLayoutFromNested } from '@/lib/meetings/replaceMeetingAgendaFromTemplate';
-import type { Meeting, MeetingPartialUpdateRequest, ParticipantLink } from '@/types/meeting';
+import { hasVisibleText, sanitizeDocumentPreviewHtml } from '@/lib/meetings/documentPreview';
+import type { Meeting, MeetingDocument, MeetingPartialUpdateRequest, ParticipantLink } from '@/types/meeting';
 
 export interface MeetingSummaryPanelProps {
   projectId: number;
@@ -60,6 +61,7 @@ export function MeetingSummaryPanel({
   const [unifiedTemplateOptions, setUnifiedTemplateOptions] = useState<UnifiedMeetingTemplateOption[]>(() =>
     buildSystemTemplateOptions(),
   );
+  const [documentPreviewHtml, setDocumentPreviewHtml] = useState('');
 
   const [participants, setParticipants] = useState<ParticipantLink[]>([]);
   const [projectMembers, setProjectMembers] = useState<ProjectMemberData[]>([]);
@@ -70,7 +72,10 @@ export function MeetingSummaryPanel({
     setLoading(true);
     setError(null);
     try {
-      const m = await MeetingsAPI.getMeeting(projectId, meetingId);
+      const [m, doc] = await Promise.all([
+        MeetingsAPI.getMeeting(projectId, meetingId),
+        MeetingsAPI.getMeetingDocument(projectId, meetingId).catch(() => null as MeetingDocument | null),
+      ]);
       setMeeting(m);
       setTitleDraft(m.title);
       setObjectiveDraft(m.objective);
@@ -78,8 +83,10 @@ export function MeetingSummaryPanel({
       setSchedDateDraft(meetingDateToInput(m.scheduled_date));
       setSchedTimeDraft(meetingTimeToInput(m.scheduled_time));
       setExtRefDraft(m.external_reference ?? '');
+      setDocumentPreviewHtml(doc?.content ? sanitizeDocumentPreviewHtml(doc.content) : '');
     } catch {
       setMeeting(null);
+      setDocumentPreviewHtml('');
       setError('Could not load this meeting.');
     } finally {
       setLoading(false);
@@ -316,6 +323,34 @@ export function MeetingSummaryPanel({
                 rows={3}
               />
             </div>
+            <section>
+              <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                Meeting document
+              </h3>
+              <div className="mt-1.5 rounded-lg border border-gray-200 bg-gray-50/70 p-3">
+                <p className="mb-2 text-[11px] text-gray-500">
+                  Collaborate in real time and keep notes synced for all participants.
+                </p>
+                <div className="min-h-[3rem] rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs leading-5 text-gray-700">
+                  {hasVisibleText(documentPreviewHtml) ? (
+                    <div
+                      className="line-clamp-3 [&_h1]:text-sm [&_h1]:font-semibold [&_h2]:text-sm [&_h2]:font-semibold [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_blockquote]:border-l-2 [&_blockquote]:border-gray-300 [&_blockquote]:pl-2"
+                      dangerouslySetInnerHTML={{ __html: documentPreviewHtml }}
+                    />
+                  ) : (
+                    <p>No document content yet.</p>
+                  )}
+                </div>
+                <div className="mt-2 flex items-center justify-end">
+                  <Link
+                    href={`/projects/${projectId}/meetings/${meetingId}/document`}
+                    className="inline-flex items-center rounded-md bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-blue-700"
+                  >
+                    Open document editor
+                  </Link>
+                </div>
+              </div>
+            </section>
 
             <section>
               <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
