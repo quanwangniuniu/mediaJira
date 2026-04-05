@@ -33,21 +33,21 @@ const OnboardingGate = ({ children }: { children: React.ReactNode }) => {
   }, [checking, clearAuth, isRootRoute, needsOnboarding]);
 
   return (
-    <div className="relative min-h-screen">
+    <div className="relative">
       <div
-        className={`transition duration-200 ${
-          showOverlay ? 'pointer-events-none select-none blur-sm' : ''
+        className={`min-h-screen transition duration-200 ${
+          showOverlay ? 'pointer-events-none select-none blur-sm overflow-hidden' : ''
         }`}
       >
         {children}
       </div>
 
       {showOverlay && (
-        <div className="fixed inset-0 z-[9998] bg-slate-900/70 backdrop-blur-sm" />
+        <div className="pointer-events-none absolute inset-0 z-[9998] bg-slate-900/70 backdrop-blur-sm" />
       )}
 
       {!isAuthRoute && checking && !needsOnboarding && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center px-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center overflow-x-hidden px-4">
           <div className="bg-white rounded-xl shadow-xl border border-gray-100 px-6 py-5 flex items-center gap-3">
             <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
             <div>
@@ -59,7 +59,7 @@ const OnboardingGate = ({ children }: { children: React.ReactNode }) => {
       )}
 
       {!isAuthRoute && needsOnboarding && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center px-4 py-8 overflow-y-auto">
+        <div className="relative z-[9999] -mt-[100vh] flex min-h-screen w-full items-center justify-center px-4 py-8">
           <OnboardingWizard />
         </div>
       )}
