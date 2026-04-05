@@ -2,7 +2,13 @@ from django.shortcuts import get_object_or_404
 from rest_framework import serializers
 
 from core.models import Project, ProjectMember
-from meetings.models import Meeting, AgendaItem, ParticipantLink, ArtifactLink
+from meetings.models import (
+    Meeting,
+    AgendaItem,
+    ParticipantLink,
+    ArtifactLink,
+    MeetingDocument,
+)
 
 
 class MeetingSerializer(serializers.ModelSerializer):
@@ -83,4 +89,19 @@ class ArtifactLinkSerializer(serializers.ModelSerializer):
         model = ArtifactLink
         fields = ["id", "meeting", "artifact_type", "artifact_id"]
         read_only_fields = ["id", "meeting"]
+
+
+class MeetingDocumentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MeetingDocument
+        fields = [
+            "id",
+            "meeting",
+            "content",
+            "yjs_state",
+            "last_edited_by",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "meeting", "last_edited_by", "created_at", "updated_at"]
 

@@ -4,7 +4,8 @@ from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -15,8 +16,14 @@ from meetings.serializers import (
     AgendaItemSerializer,
     ParticipantLinkSerializer,
     ArtifactLinkSerializer,
+    MeetingDocumentSerializer,
 )
-from meetings.services import reorder_agenda_items
+from meetings.services import (
+    reorder_agenda_items,
+    get_or_create_meeting_document,
+    update_meeting_document_content,
+    user_has_meeting_document_access,
+)
 
 
 def _ensure_project_membership(user, project: Project) -> None:
@@ -25,9 +32,13 @@ def _ensure_project_membership(user, project: Project) -> None:
         project=project,
         is_active=True,
     ).exists():
-        from rest_framework.exceptions import PermissionDenied
-
         raise PermissionDenied("You do not have access to this project.")
+
+
+def _ensure_meeting_document_access(user, meeting: Meeting) -> None:
+    if user_has_meeting_document_access(user.id, meeting):
+        return
+    raise PermissionDenied("You do not have access to this meeting document.")
 
 
 class MeetingViewSet(viewsets.ModelViewSet):
@@ -218,4 +229,40 @@ class ArtifactLinkViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         meeting = self.get_meeting()
         serializer.save(meeting=meeting)
+
+
+class MeetingDocumentAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def _get_meeting(self, project_id: int, meeting_id: int) -> Meeting:
+        meeting = get_object_or_404(
+            Meeting.objects.select_related("project"),
+            id=meeting_id,
+            project_id=project_id,
+        )
+        _ensure_meeting_document_access(self.request.user, meeting)
+        return meeting
+
+    def get(self, request, project_id: int, meeting_id: int):
+        meeting = self._get_meeting(project_id, meeting_id)
+        document = get_or_create_meeting_document(meeting.id)
+        serializer = MeetingDocumentSerializer(document)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def patch(self, request, project_id: int, meeting_id: int):
+        meeting = self._get_meeting(project_id, meeting_id)
+        content = request.data.get("content")
+        if not isinstance(content, str):
+            raise ValidationError({"content": ["This field is required and must be a string."]})
+        yjs_state = request.data.get("yjs_state")
+        if yjs_state is not None and not isinstance(yjs_state, str):
+            raise ValidationError({"yjs_state": ["This field must be a string."]})
+        document = update_meeting_document_content(
+            meeting_id=meeting.id,
+            content=content,
+            yjs_state=yjs_state,
+            user_id=request.user.id,
+        )
+        serializer = MeetingDocumentSerializer(document)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
