@@ -1,14 +1,12 @@
-import logging
-
-from django.contrib.auth import get_user_model
 from rest_framework import serializers
-
-from access_control.models import UserRole
+from django.contrib.auth import get_user_model
 from core.models import Organization
+from access_control.models import UserRole
+from core.models import Role
 from stripe_meta.models import Subscription
 
+
 User = get_user_model()
-logger = logging.getLogger(__name__)
 
 class OrganizationSerializer(serializers.ModelSerializer):
     plan_id = serializers.SerializerMethodField()
@@ -48,6 +46,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
                     user=obj, 
                     role__organization=obj.organization
                 ).select_related('role')
+                print(f"Found {user_roles.count()} roles for user {obj.email}")
 
             else:
             # Strategy 2: If user has no organization, try multiple approaches
@@ -65,27 +64,20 @@ class UserProfileSerializer(serializers.ModelSerializer):
                 
                     # Log this situation for debugging
                     if user_roles.exists():
-                        logger.warning(
-                            "User id=%s has no organization but has roles tied to other organizations",
-                            obj.pk,
-                        )
+                        print(f"Warning: User {obj.email} has no organization but has roles from other organizations")
         
             return [ur.role.name for ur in user_roles]    
         except Exception as e:
-            logger.warning("get_roles failed for user id=%s: %s", obj.pk, e)
+            print(f"Error in get_roles: {e}")
             return [] 
 
     def get_avatar(self, obj):
         """Return avatar URL if avatar exists"""
-        if not obj.avatar:
-            return None
-        request = self.context.get("request")
-        if not request:
-            return None
-        try:
-            return request.build_absolute_uri(obj.avatar.url)
-        except Exception:
-            return None
+        if obj.avatar:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.avatar.url)
+        return None
 
 
 class ProfileUpdateSerializer(serializers.ModelSerializer):

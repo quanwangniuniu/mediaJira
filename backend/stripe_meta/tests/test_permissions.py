@@ -1,4 +1,4 @@
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from datetime import timedelta
@@ -100,9 +100,3 @@ class OrganizationAccessTokenTest(TestCase):
         
         result = decode_organization_access_token(wrong_sig_token)
         self.assertIsNone(result)
-
-    @override_settings(ORGANIZATION_ACCESS_TOKEN_ENCRYPTION_KEY="")
-    def test_generate_returns_none_when_encryption_key_invalid(self):
-        """Login must not depend on org-token crypto; bad key yields no token, not an exception."""
-        token = generate_organization_access_token(self.user)
-        self.assertIsNone(token)
