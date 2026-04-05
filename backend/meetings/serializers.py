@@ -34,8 +34,6 @@ def meeting_tags_for_api(meeting: Meeting) -> list[dict]:
         {"slug": a.tag_definition.slug, "label": a.tag_definition.label}
         for a in meeting.tag_assignments.all()
     ]
-    MeetingDocument,
-)
 
 
 class MeetingSerializer(serializers.ModelSerializer):
