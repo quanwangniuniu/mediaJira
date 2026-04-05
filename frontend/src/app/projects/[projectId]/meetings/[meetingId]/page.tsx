@@ -13,6 +13,7 @@ import Layout from '@/components/layout/Layout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { ProjectMemberPicker } from '@/components/meetings/ProjectMemberPicker';
 import { MeetingArtifactLinker } from '@/components/meetings/MeetingArtifactLinker';
+import { MeetingGeneratedKnowledgeSection } from '@/components/meetings/MeetingGeneratedKnowledgeSection';
 import { formatProjectMemberLabel } from '@/components/meetings/projectMemberLabel';
 import { DecisionAPI } from '@/lib/api/decisionApi';
 import { TaskAPI } from '@/lib/api/taskApi';
@@ -284,6 +285,38 @@ export default function MeetingWorkspacePage() {
     };
 
     fetchData();
+  }, [projectId, meetingId]);
+
+  // After creating a task/decision in another tab or via bfcache back, refetch so generated_* links appear.
+  useEffect(() => {
+    if (!projectId || Number.isNaN(projectId) || !meetingId || Number.isNaN(meetingId)) {
+      return;
+    }
+    let cancelled = false;
+    const refreshMeeting = () => {
+      MeetingsAPI.getMeeting(projectId, meetingId)
+        .then((m) => {
+          if (!cancelled) setMeeting(m);
+        })
+        .catch(() => {});
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        refreshMeeting();
+      }
+    };
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        refreshMeeting();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pageshow', onPageShow as EventListener);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pageshow', onPageShow as EventListener);
+    };
   }, [projectId, meetingId]);
 
   useEffect(() => {
@@ -949,9 +982,21 @@ export default function MeetingWorkspacePage() {
           </div>
         </div>
 
+        {meeting && Number.isFinite(projectId) && Number.isFinite(meetingId) ? (
+          <MeetingGeneratedKnowledgeSection
+            projectId={projectId}
+            meetingId={meetingId}
+            generatedTasks={meeting.generated_tasks ?? []}
+            generatedDecisions={meeting.generated_decisions ?? []}
+          />
+        ) : null}
+
         <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
           <div className="mb-3">
-            <h3 className="text-sm font-semibold text-gray-900">Artifacts</h3>
+            <h3 className="text-sm font-semibold text-gray-900">Related artifacts</h3>
+            <p className="mt-1 text-xs text-gray-500">
+              Manually linked items (supplementary). Does not include generated tasks/decisions above.
+            </p>
           </div>
 
           <MeetingArtifactLinker
