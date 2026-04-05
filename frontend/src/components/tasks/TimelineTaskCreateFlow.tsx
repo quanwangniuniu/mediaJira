@@ -48,6 +48,7 @@ export function TimelineTaskCreateFlow({
   updateTask,
   children,
 }: TimelineTaskCreateFlowProps) {
+  const { user } = useAuth();
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createModalExpanded, setCreateModalExpanded] = useState(false);
