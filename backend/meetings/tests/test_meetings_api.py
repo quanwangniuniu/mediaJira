@@ -336,7 +336,7 @@ class TestMeetingAPI(TestCase):
         meeting = Meeting.objects.create(
             project=self.project_a,
             title="Meeting Doc",
-            meeting_type="planning",
+            type_definition=self._meeting_type(self.project_a, slug="planning"),
             objective="Doc",
         )
         url = f"/api/v1/projects/{self.project_a.id}/meetings/{meeting.id}/document/"
@@ -350,7 +350,7 @@ class TestMeetingAPI(TestCase):
         meeting = Meeting.objects.create(
             project=self.project_a,
             title="Meeting Doc",
-            meeting_type="planning",
+            type_definition=self._meeting_type(self.project_a, slug="planning"),
             objective="Doc",
         )
         url = f"/api/v1/projects/{self.project_a.id}/meetings/{meeting.id}/document/"
@@ -368,7 +368,7 @@ class TestMeetingAPI(TestCase):
         meeting = Meeting.objects.create(
             project=self.project_a,
             title="Invited only",
-            meeting_type="planning",
+            type_definition=self._meeting_type(self.project_a, slug="planning"),
             objective="X",
         )
         user_c = CustomUser.objects.create_user(
@@ -387,7 +387,7 @@ class TestMeetingAPI(TestCase):
         meeting = Meeting.objects.create(
             project=self.project_a,
             title="Private doc",
-            meeting_type="planning",
+            type_definition=self._meeting_type(self.project_a, slug="planning"),
             objective="Y",
         )
         user_c = CustomUser.objects.create_user(
