@@ -1,5 +1,6 @@
 from typing import Iterable
 
+from django.apps import apps
 from django.shortcuts import get_object_or_404
 from rest_framework import serializers
 
@@ -9,7 +10,6 @@ from meetings.models import (
     AgendaItem,
     ParticipantLink,
     ArtifactLink,
-    MeetingDocument,
 )
 from meetings.knowledge_links import (
     generated_decisions_payload,
@@ -417,7 +417,7 @@ class ArtifactLinkSerializer(serializers.ModelSerializer):
 
 class MeetingDocumentSerializer(serializers.ModelSerializer):
     class Meta:
-        model = MeetingDocument
+        model = apps.get_model("meetings", "MeetingDocument")
         fields = [
             "id",
             "meeting",
