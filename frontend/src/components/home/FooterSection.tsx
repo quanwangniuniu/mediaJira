@@ -32,9 +32,9 @@ export default function FooterSection() {
               <div>
                 <h4 className="font-normal text-gray-900 mb-4">Product</h4>
                 <ul className="space-y-2">
-                  <li><a href="#" className="text-gray-600 hover:text-gray-900">Features</a></li>
-                  <li><a href="#" className="text-gray-600 hover:text-gray-900">How it works</a></li>
-                  <li><a href="#" className="text-gray-600 hover:text-gray-900">Pricing</a></li>
+                  <li><a href="#features" className="text-gray-600 hover:text-gray-900">Features</a></li>
+                  <li><a href="#how-it-works" className="text-gray-600 hover:text-gray-900">How it works</a></li>
+                  <li><a href="#solutions" className="text-gray-600 hover:text-gray-900">Solutions</a></li>
                 </ul>
               </div>
 
@@ -42,9 +42,9 @@ export default function FooterSection() {
               <div>
                 <h4 className="font-normal text-gray-900 mb-4">Resources</h4>
                 <ul className="space-y-2">
-                  <li><a href="#" className="text-gray-600 hover:text-gray-900">Blog</a></li>
-                  <li><a href="#" className="text-gray-600 hover:text-gray-900">Case Studies</a></li>
-                  <li><a href="#" className="text-gray-600 hover:text-gray-900">Guides</a></li>
+                  <li><span className="text-gray-600">Blog</span></li>
+                  <li><span className="text-gray-600">Case Studies</span></li>
+                  <li><span className="text-gray-600">Guides</span></li>
                 </ul>
               </div>
 
@@ -52,9 +52,9 @@ export default function FooterSection() {
               <div>
                 <h4 className="font-normal text-gray-900 mb-4">Company</h4>
                 <ul className="space-y-2">
-                  <li><a href="#" className="text-gray-600 hover:text-gray-900">About</a></li>
-                  <li><a href="#" className="text-gray-600 hover:text-gray-900">Contact us</a></li>
-                  <li><a href="#" className="text-gray-600 hover:text-gray-900">Careers</a></li>
+                  <li><span className="text-gray-600">About</span></li>
+                  <li><span className="text-gray-600">Contact us</span></li>
+                  <li><span className="text-gray-600">Careers</span></li>
                 </ul>
               </div>
 
@@ -62,8 +62,8 @@ export default function FooterSection() {
               <div>
                 <h4 className="font-normal text-gray-900 mb-4">Legal</h4>
                 <ul className="space-y-2">
-                  <li><a href="#" className="text-gray-600 hover:text-gray-900">Privacy Policy</a></li>
-                  <li><a href="#" className="text-gray-600 hover:text-gray-900">Terms of Service</a></li>
+                  <li><span className="text-gray-600">Privacy Policy</span></li>
+                  <li><span className="text-gray-600">Terms of Service</span></li>
                 </ul>
               </div>
             </div>
@@ -99,9 +99,9 @@ export default function FooterSection() {
             <div>
               <h4 className="font-semibold text-gray-900 mb-3 text-sm">Product</h4>
               <ul className="space-y-2">
-                <li><a href="#" className="text-gray-600 hover:text-gray-900 text-sm">Features</a></li>
-                <li><a href="#" className="text-gray-600 hover:text-gray-900 text-sm">How it works</a></li>
-                <li><a href="#" className="text-gray-600 hover:text-gray-900 text-sm">Pricing</a></li>
+                <li><a href="#features" className="text-gray-600 hover:text-gray-900 text-sm">Features</a></li>
+                <li><a href="#how-it-works" className="text-gray-600 hover:text-gray-900 text-sm">How it works</a></li>
+                <li><a href="#solutions" className="text-gray-600 hover:text-gray-900 text-sm">Solutions</a></li>
               </ul>
             </div>
 
@@ -109,9 +109,9 @@ export default function FooterSection() {
             <div>
               <h4 className="font-semibold text-gray-900 mb-3 text-sm">Resources</h4>
               <ul className="space-y-2">
-                <li><a href="#" className="text-gray-600 hover:text-gray-900 text-sm">Blog</a></li>
-                <li><a href="#" className="text-gray-600 hover:text-gray-900 text-sm">Case Studies</a></li>
-                <li><a href="#" className="text-gray-600 hover:text-gray-900 text-sm">Guides</a></li>
+                <li><span className="text-gray-600 text-sm">Blog</span></li>
+                <li><span className="text-gray-600 text-sm">Case Studies</span></li>
+                <li><span className="text-gray-600 text-sm">Guides</span></li>
               </ul>
             </div>
 
@@ -119,9 +119,9 @@ export default function FooterSection() {
             <div>
               <h4 className="font-semibold text-gray-900 mb-3 text-sm">Company</h4>
               <ul className="space-y-2">
-                <li><a href="#" className="text-gray-600 hover:text-gray-900 text-sm">About</a></li>
-                <li><a href="#" className="text-gray-600 hover:text-gray-900 text-sm">Contact us</a></li>
-                <li><a href="#" className="text-gray-600 hover:text-gray-900 text-sm">Careers</a></li>
+                <li><span className="text-gray-600 text-sm">About</span></li>
+                <li><span className="text-gray-600 text-sm">Contact us</span></li>
+                <li><span className="text-gray-600 text-sm">Careers</span></li>
               </ul>
             </div>
 
@@ -129,8 +129,8 @@ export default function FooterSection() {
             <div>
               <h4 className="font-semibold text-gray-900 mb-3 text-sm">Legal</h4>
               <ul className="space-y-2">
-                <li><a href="#" className="text-gray-600 hover:text-gray-900 text-sm">Privacy Policy</a></li>
-                <li><a href="#" className="text-gray-600 hover:text-gray-900 text-sm">Terms of Service</a></li>
+                <li><span className="text-gray-600 text-sm">Privacy Policy</span></li>
+                <li><span className="text-gray-600 text-sm">Terms of Service</span></li>
               </ul>
             </div>
           </div>
