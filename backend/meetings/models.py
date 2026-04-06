@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+import uuid
 
 
 class Meeting(models.Model):
@@ -24,6 +25,9 @@ class Meeting(models.Model):
     scheduled_date = models.DateField(blank=True, null=True)
     scheduled_time = models.TimeField(blank=True, null=True)
     external_reference = models.CharField(max_length=255, blank=True, null=True)
+    # Frontend meeting workspace layout (module blocks order/config).
+    # Stored as JSON-serializable structure from the editor.
+    layout_config = models.JSONField(default=list, null=True, blank=True)
     status = models.CharField(
         max_length=32,
         choices=STATUS_CHOICES,
@@ -100,4 +104,62 @@ class ArtifactLink(models.Model):
             f"ArtifactLink type={self.artifact_type} "
             f"id={self.artifact_id} meeting={self.meeting_id}"
         )
+
+
+def _meeting_template_id() -> str:
+    # Use hex string UUIDs to keep URL-safe IDs.
+    return uuid.uuid4().hex
+
+
+class MeetingTemplate(models.Model):
+    """
+    MeetingTemplate stores reusable workspace templates (layout_config).
+    layout_config is expected to be JSON-serializable (e.g. the frontend `blocks` structure).
+    Do not reintroduce block_config — legacy DB columns are dropped via migration 0003.
+    """
+
+    id = models.CharField(primary_key=True, max_length=64, default=_meeting_template_id, editable=False)
+    name = models.CharField(max_length=255)
+    layout_config = models.JSONField(default=dict, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="meeting_templates",
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.id})"
+
+
+class MeetingDocument(models.Model):
+    """
+    A single collaborative document attached to a meeting.
+    """
+
+    meeting = models.OneToOneField(
+        Meeting,
+        on_delete=models.CASCADE,
+        related_name="document",
+    )
+    content = models.TextField(blank=True, default="")
+    yjs_state = models.TextField(blank=True, default="")
+    last_edited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="edited_meeting_documents",
+        blank=True,
+        null=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"MeetingDocument meeting={self.meeting_id}"
 

@@ -41,10 +41,10 @@ export default function HeaderSection({
               </h1>
             </div>
             <nav className="hidden lg:flex gap-6">
-              <a href="#" className="text-gray-700 hover:text-gray-900">Features</a>
-              <a href="#" className="text-gray-700 hover:text-gray-900">Solutions</a>
-              <a href="#" className="text-gray-700 hover:text-gray-900">Pricing</a>
-              <a href="#" className="text-gray-700 hover:text-gray-900">Resource</a>
+              <a href="#features" className="text-gray-700 hover:text-gray-900">Features</a>
+              <a href="#solutions" className="text-gray-700 hover:text-gray-900">Solutions</a>
+              <a href="#how-it-works" className="text-gray-700 hover:text-gray-900">Pricing</a>
+              <a href="#testimonials" className="text-gray-700 hover:text-gray-900">Resources</a>
             </nav>
           </div>
           <div className="flex items-center gap-3 ">

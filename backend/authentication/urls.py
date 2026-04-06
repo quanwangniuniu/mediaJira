@@ -9,6 +9,7 @@ from .views import (
     GoogleOAuthStartView, 
     GoogleOAuthCallbackView, 
     GoogleSetPasswordView,
+    OrganizationTokenRefreshView,
     MeView, 
     UserTeamsView
 )
@@ -17,6 +18,7 @@ urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),
     path('verify/', VerifyEmailView.as_view(), name='verify'),
     path('login/', LoginView.as_view(), name='login'),
+    path('organization-token/refresh/', OrganizationTokenRefreshView.as_view(), name='organization-token-refresh'),
     path('me/', MeView.as_view(), name='me'),
     path('me/teams/', UserTeamsView.as_view(), name='user-teams'),
     

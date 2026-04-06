@@ -7,7 +7,9 @@ Tests for:
 import pytest
 from django.urls import reverse
 from rest_framework import status
+from calendars.models import Calendar
 from core.models import Project, ProjectMember
+from core.utils.project_calendars import ensure_project_calendar
 
 
 @pytest.mark.django_db
@@ -171,6 +173,18 @@ class TestProjectViewSet:
         assert response.data['name'] == project.name
         assert 'is_active' in response.data
         assert 'member_count' in response.data
+
+    def test_delete_project_soft_deletes_calendar(self, authenticated_client, project):
+        """Deleting a project should soft-delete its calendar."""
+        calendar = ensure_project_calendar(project)
+        assert calendar.is_deleted is False
+
+        url = reverse('project-detail', kwargs={'pk': project.id})
+        response = authenticated_client.delete(url)
+
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        calendar.refresh_from_db()
+        assert calendar.is_deleted is True
 
     def test_get_project_requires_membership(self, authenticated_client, user, organization):
         """Getting project details requires membership"""
