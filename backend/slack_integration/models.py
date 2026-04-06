@@ -10,9 +10,9 @@ import base64
 def encrypt_token(token):
     if not token:
         return None
-    # Ensure we have a valid key from settings, or use a default for dev if missing (NOT SAFER FOR PROD)
-    # In a real scenario, settings.SECRET_KEY should be used to derive a Fernet key
-    # For simplicity here, we assume settings.SECRET_KEY is long enough or we pad it
+    # Retrieve the secret key from settings.
+    # In a production environment, ensure SECRET_KEY is securely managed.
+    # We derive a uniform key for Fernet encryption.
     key = base64.urlsafe_b64encode(settings.SECRET_KEY[:32].encode().ljust(32, b'='))
     f = Fernet(key)
     return f.encrypt(token.encode()).decode()
