@@ -1,17 +1,19 @@
 from rest_framework import serializers
-from .models import SlackWorkspaceConnection, NotificationPreference
+from .models import NotificationPreference, SlackWorkspaceConnection
 
 class SlackOAuthInitSerializer(serializers.Serializer):
     """
     Serializer for the OAuth initialization URL response.
     """
     url = serializers.URLField(help_text="The Slack OAuth authorization URL.")
+    state = serializers.CharField(help_text="Signed state used to protect the Slack OAuth flow.")
 
 class SlackOAuthCallbackSerializer(serializers.Serializer):
     """
     Serializer for the OAuth callback.
     """
     code = serializers.CharField(required=True, help_text="The temporary authorization code from Slack.")
+    state = serializers.CharField(required=True, help_text="Signed state returned by Slack for verification.")
 
 class SlackConnectionStatusSerializer(serializers.ModelSerializer):
     """
@@ -53,12 +55,30 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
             'is_active'
         ]
         read_only_fields = ['id', 'event_type_display']
-    
+
+    def _get_effective_value(self, attrs, field_name):
+        """
+        Return the incoming value for PATCH requests, falling back to the instance.
+        """
+        if field_name in attrs:
+            return attrs[field_name]
+        if self.instance:
+            return getattr(self.instance, field_name)
+        return None
+
     def validate(self, data):
         """
         Ensure valid combination of fields (e.g., status only if event_type is STATUS_CHANGE).
         """
-        # Additional validation logic can be added here if needed
+        event_type = self._get_effective_value(data, 'event_type')
+        task_status = self._get_effective_value(data, 'task_status')
+
+        # task_status is only meaningful for TASK_STATUS_CHANGE preferences.
+        if event_type != NotificationPreference.EventType.TASK_STATUS_CHANGE and task_status:
+            raise serializers.ValidationError({
+                'task_status': 'task_status is only allowed for TASK_STATUS_CHANGE preferences.'
+            })
+
         return data
 
 class SlackTestNotificationSerializer(serializers.Serializer):

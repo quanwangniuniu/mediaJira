@@ -1,13 +1,13 @@
 import axios from 'axios';
-import { 
-  UserPreferences, 
-  UserPreferencesUpdate, 
+import {
+  UserPreferences,
+  UserPreferencesUpdate,
   SlackIntegration,
   SlackIntegrationCreate,
   SlackIntegrationUpdate
 } from '../../types/preferences';
 
-const DEFAULT_API_BASE_URL = 'https://volar-probankruptcy-orval.ngrok-free.dev';
+const DEFAULT_API_BASE_URL = 'http://localhost:8000';
 
 const API_BASE_URL =
   (process.env.NEXT_PUBLIC_API_URL && process.env.NEXT_PUBLIC_API_URL.trim()) ||
@@ -27,7 +27,7 @@ api.interceptors.request.use(
     // Get token from Zustand store instead of localStorage
     const token = typeof window !== 'undefined' ? localStorage.getItem('auth-storage') : null;
     let parsedToken = null;
-    
+
     if (token) {
       try {
         const authData = JSON.parse(token);
@@ -36,7 +36,7 @@ api.interceptors.request.use(
         console.warn('Failed to parse auth storage:', error);
       }
     }
-    
+
     if (parsedToken) {
       config.headers.Authorization = `Bearer ${parsedToken}`;
     }
@@ -88,7 +88,7 @@ export const preferencesAPI = {
   },
 
   // Slack Integration API methods
-  
+
   // Get Slack integration
   getSlackIntegration: async (): Promise<SlackIntegration> => {
     try {
@@ -108,7 +108,7 @@ export const preferencesAPI = {
       console.log('[PreferencesAPI] Creating/updating Slack integration:', data);
       const response = await api.post('/users/me/notifications/slack/', data);
       console.log('[PreferencesAPI] Slack integration created/updated:', response.data);
-      
+
       if (response.data.integration) {
         return response.data.integration;
       }
@@ -126,7 +126,7 @@ export const preferencesAPI = {
       console.log('[PreferencesAPI] Updating Slack integration:', data);
       const response = await api.post('/users/me/notifications/slack/', data);
       console.log('[PreferencesAPI] Slack integration updated:', response.data);
-      
+
       if (response.data.integration) {
         return response.data.integration;
       }

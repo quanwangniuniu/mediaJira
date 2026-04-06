@@ -4,7 +4,7 @@ export default function WhyMarketingSimplifiedSection() {
   return (
     <>
       {/* Why Marketing Simplified Section */}
-      <section className="hidden md:block py-20 px-6 bg-white">
+      <section id="features" className="hidden md:block py-20 px-6 bg-white">
         <div className="max-w-4xl mx-auto">
           <h2 className="text-4xl md:text-5xl font-bold text-center text-gray-900 mb-4">
             Why Marketing Simplified?

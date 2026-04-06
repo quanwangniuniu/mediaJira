@@ -12,6 +12,8 @@ export interface Meeting {
   scheduled_time: string | null;
   external_reference: string | null;
   status: MeetingStatus;
+  /** Workspace layout: legacy list of blocks, or `{ blocks, nestedSections }`. */
+  layout_config?: unknown | null;
 }
 
 export interface MeetingCreateRequest {
@@ -24,6 +26,8 @@ export interface MeetingCreateRequest {
   status?: MeetingStatus;
   /** Optional on create: project member user IDs (see SMP-484 participants timing). */
   participant_user_ids?: number[];
+  /** Optional workspace layout (list or `{ blocks, nestedSections }`). */
+  layout_config?: unknown | null;
 }
 
 export interface MeetingUpdateRequest {
@@ -44,6 +48,7 @@ export interface MeetingPartialUpdateRequest {
   scheduled_time?: string | null;
   external_reference?: string | null;
   status?: MeetingStatus;
+  layout_config?: unknown | null;
 }
 
 export interface AgendaItem {
@@ -107,4 +112,14 @@ export interface ArtifactLink {
 export interface ArtifactLinkCreateRequest {
   artifact_type: string;
   artifact_id: number;
+}
+
+export interface MeetingDocument {
+  id: number;
+  meeting: number;
+  content: string;
+  yjs_state?: string;
+  last_edited_by: number | null;
+  created_at: string;
+  updated_at: string;
 }

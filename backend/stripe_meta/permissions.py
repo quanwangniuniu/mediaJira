@@ -1,49 +1,58 @@
+import base64
+import json
+import logging
+from datetime import datetime, timedelta, timezone
+
+import jwt
+from cryptography.fernet import Fernet
+from django.conf import settings
+from django.contrib.auth import get_user_model
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.permissions import BasePermission
-from django.contrib.auth import get_user_model
-import jwt
-import json
-import base64
-from cryptography.fernet import Fernet
-from datetime import datetime, timedelta, timezone
-from django.conf import settings
+
 from access_control.models import UserRole
 from core.models import Role
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
+
 
 def generate_organization_access_token(user):
     """
     Generate an encrypted access token containing user_id and organization slug.
     Only generates token if user belongs to an organization.
+
+    Never raises: misconfigured keys or crypto errors would otherwise break login entirely.
     """
-    if not user.organization:
+    if not getattr(user, "organization", None):
         return None
-    
-    # Create the sensitive payload
-    sensitive_data = {
-        'user_id': user.id,
-        'organization_slug': user.organization.slug,
-    }
-    
-    # Encrypt the sensitive data
-    encryption_key = settings.ORGANIZATION_ACCESS_TOKEN_ENCRYPTION_KEY.encode()
-    fernet = Fernet(encryption_key)
-    encrypted_data = fernet.encrypt(json.dumps(sensitive_data).encode())
-    
-    # Create JWT payload with encrypted data
-    payload = {
-        'encrypted_data': base64.b64encode(encrypted_data).decode(),
-        'exp': datetime.now(timezone.utc) + timedelta(hours=24),  # 24 hour expiration
-        'iat': datetime.now(timezone.utc),
-        'type': 'access'
-    }
-    
-    # Use Django's SECRET_KEY for signing
-    secret_key = settings.ORGANIZATION_ACCESS_TOKEN_SECRET_KEY
-    token = jwt.encode(payload, secret_key, algorithm='HS256')
-    
-    return token
+
+    try:
+        sensitive_data = {
+            "user_id": user.id,
+            "organization_slug": user.organization.slug,
+        }
+
+        encryption_key = settings.ORGANIZATION_ACCESS_TOKEN_ENCRYPTION_KEY.encode()
+        fernet = Fernet(encryption_key)
+        encrypted_data = fernet.encrypt(json.dumps(sensitive_data).encode())
+
+        payload = {
+            "encrypted_data": base64.b64encode(encrypted_data).decode(),
+            "exp": datetime.now(timezone.utc) + timedelta(hours=24),
+            "iat": datetime.now(timezone.utc),
+            "type": "access",
+        }
+
+        secret_key = settings.ORGANIZATION_ACCESS_TOKEN_SECRET_KEY
+        token = jwt.encode(payload, secret_key, algorithm="HS256")
+        return token
+    except Exception:
+        logger.exception(
+            "generate_organization_access_token failed (user_id=%s); login continues without org token",
+            getattr(user, "id", None),
+        )
+        return None
 
 def decode_organization_access_token(token):
     """
