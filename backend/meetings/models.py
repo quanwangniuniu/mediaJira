@@ -9,10 +9,26 @@ class Meeting(models.Model):
     """
 
     STATUS_DRAFT = "draft"
+    STATUS_PLANNED = "planned"
+    STATUS_IN_PROGRESS = "in_progress"
+    STATUS_COMPLETED = "completed"
+    STATUS_ARCHIVED = "archived"
 
     STATUS_CHOICES = [
         (STATUS_DRAFT, "Draft"),
+        (STATUS_PLANNED, "Planned"),
+        (STATUS_IN_PROGRESS, "In Progress"),
+        (STATUS_COMPLETED, "Completed"),
+        (STATUS_ARCHIVED, "Archived"),
     ]
+
+    VALID_TRANSITIONS = {
+        STATUS_DRAFT:       [STATUS_PLANNED],
+        STATUS_PLANNED:     [STATUS_IN_PROGRESS, STATUS_DRAFT],
+        STATUS_IN_PROGRESS: [STATUS_COMPLETED],
+        STATUS_COMPLETED:   [STATUS_ARCHIVED],
+        STATUS_ARCHIVED:    [],
+    }
 
     project = models.ForeignKey(
         "core.Project",
@@ -163,3 +179,26 @@ class MeetingDocument(models.Model):
     def __str__(self) -> str:
         return f"MeetingDocument meeting={self.meeting_id}"
 
+
+class ActionItem(models.Model):
+    """
+    ActionItem represents a follow-up task arising from a meeting.
+    """
+
+    meeting = models.ForeignKey(
+        Meeting,
+        on_delete=models.CASCADE,
+        related_name="action_items",
+    )
+    description = models.TextField()
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_action_items",
+    )
+    is_resolved = models.BooleanField(default=False)
+
+    def __str__(self) -> str:
+        return f"ActionItem meeting={self.meeting_id} resolved={self.is_resolved}"
