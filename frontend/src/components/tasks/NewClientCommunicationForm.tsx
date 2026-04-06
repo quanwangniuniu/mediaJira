@@ -97,7 +97,7 @@ export default function NewClientCommunicationForm({
           htmlFor="communication-type"
           className="block text-sm font-medium text-gray-700 mb-1"
         >
-          Communication Type *
+          Communication Type
         </label>
         <select
           id="communication-type"
@@ -112,7 +112,6 @@ export default function NewClientCommunicationForm({
           className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
             errors.communication_type ? "border-red-500" : "border-gray-300"
           }`}
-          required
         >
           <option value="" disabled>
             Select communication type
@@ -154,7 +153,7 @@ export default function NewClientCommunicationForm({
       {/* Impacted Areas */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          Impacted Areas *
+          Impacted Areas
         </label>
         <div className="space-y-2">
           {IMPACTED_AREA_OPTIONS.map((opt) => (
@@ -178,7 +177,7 @@ export default function NewClientCommunicationForm({
           </p>
         )}
         <p className="text-xs text-gray-500 mt-1">
-          Select at least one area that this communication affects, such as
+          Select any areas that this communication affects, such as
           budget, creative, KPIs, or targeting.
         </p>
       </div>
@@ -189,7 +188,7 @@ export default function NewClientCommunicationForm({
           htmlFor="communication-required-actions"
           className="block text-sm font-medium text-gray-700 mb-1"
         >
-          Required Actions *
+          Required Actions
         </label>
         <textarea
           id="communication-required-actions"
@@ -203,7 +202,6 @@ export default function NewClientCommunicationForm({
           }`}
           rows={4}
           placeholder="Describe the actions that must be taken in response to this communication."
-          required
         />
         {errors.required_actions && (
           <p className="text-red-500 text-sm mt-1">

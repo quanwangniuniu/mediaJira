@@ -97,10 +97,6 @@ export default function NewTaskForm({
 
       try {
         setLoadingApprovers(true);
-        console.log(
-          "Fetching approvers for project:",
-          taskData.project_id
-        );
 
         // Load approvers only from the selected project's members
         const members = await ProjectAPI.getProjectMembers(
@@ -113,10 +109,8 @@ export default function NewTaskForm({
             email: member.user.email || "",
           })) || [];
 
-        console.log("Fetched approvers for task form:", approverList);
         setApprovers(approverList);
       } catch (error) {
-        console.error("Error fetching approvers:", error);
         setApprovers([]);
       } finally {
         setLoadingApprovers(false);
@@ -158,8 +152,6 @@ export default function NewTaskForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Form validation is handled by parent component
-    console.log("Task form submitted");
   };
 
   return (

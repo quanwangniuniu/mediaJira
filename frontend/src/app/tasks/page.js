@@ -308,7 +308,6 @@ function TasksPageContent() {
       const projects = await ProjectAPI.getProjects();
       setProjectOptions(projects || []);
     } catch (error) {
-      console.error("Failed to load projects:", error);
       setProjectOptionsError("Failed to load projects.");
     } finally {
       setProjectOptionsLoading(false);
@@ -397,6 +396,7 @@ function TasksPageContent() {
   const [contentType, setContentType] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitGuard = useRef(false);
   const [activeTab, setActiveTab] = useState("tasks");
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [editingSummary, setEditingSummary] = useState("");
@@ -457,7 +457,7 @@ function TasksPageContent() {
         setRecentProjectIds(parsed.filter((id) => Number.isFinite(id)));
       }
     } catch (error) {
-      console.warn("Failed to parse recent projects:", error);
+      // ignore parse error
     }
   }, []);
 
@@ -471,7 +471,7 @@ function TasksPageContent() {
         setPinnedProjectIds(parsed.filter((id) => Number.isFinite(id)));
       }
     } catch (error) {
-      console.warn("Failed to parse pinned projects:", error);
+      // ignore parse error
     }
   }, []);
 
@@ -492,10 +492,9 @@ function TasksPageContent() {
     if (!projectId) return;
     const loadTasks = async () => {
       try {
-        console.log("[TasksPage] Fetching tasks for project:", projectId);
-        await fetchTasks({ ...filters, project_id: projectId });
+        await fetchTasks({ project_id: projectId });
       } catch (error) {
-        console.error("[TasksPage] Failed to fetch tasks:", error);
+        // error is handled in useTaskData
       }
     };
 
@@ -550,6 +549,251 @@ function TasksPageContent() {
       project_id: prev.project_id || projectId,
     }));
   }, [projectId]);
+
+  // Task type configuration - defines how each task type should be handled
+  const taskTypeConfig = {
+    budget: {
+      contentType: "budgetrequest",
+      formData: budgetData,
+      setFormData: setBudgetData,
+      validation: null, // Will be set below
+      api: BudgetAPI.createBudgetRequest,
+      formComponent: NewBudgetRequestForm,
+      requiredFields: ["amount", "currency", "ad_channel", "budget_pool"],
+      getPayload: (createdTask) => {
+        // Ensure current_approver is provided
+        if (!taskData.current_approver_id) {
+          throw new Error("Approver is required for budget request");
+        }
+        // Ensure budget_pool is provided
+        if (!budgetData.budget_pool) {
+          throw new Error("Budget pool is required for budget request");
+        }
+        return {
+          task: createdTask.id,
+          amount: budgetData.amount,
+          currency: budgetData.currency,
+          ad_channel: budgetData.ad_channel,
+          budget_pool_id: budgetData.budget_pool,
+          notes: budgetData.notes || "",
+          current_approver: taskData.current_approver_id,
+        };
+      },
+    },
+    asset: {
+      contentType: "asset",
+      formData: assetData,
+      setFormData: setAssetData,
+      validation: null, // Will be set below
+      api: AssetAPI.createAsset,
+      formComponent: NewAssetForm,
+      requiredFields: ["tags"], // Tags are required
+      getPayload: (createdTask) => {
+        const tagsArray = (assetData.tags || "")
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean);
+        const payload = {
+          task: createdTask.id,
+          tags: tagsArray,
+        };
+        if (assetData.team) {
+          const teamNum = Number(assetData.team);
+          if (!Number.isNaN(teamNum)) {
+            payload.team = teamNum;
+          }
+        }
+        return payload;
+      },
+    },
+    retrospective: {
+      contentType: "retrospectivetask",
+      formData: retrospectiveData,
+      setFormData: setRetrospectiveData,
+      validation: null, // Will be set below
+      api: RetrospectiveAPI.createRetrospective,
+      formComponent: NewRetrospectiveForm,
+      requiredFields: ["campaign"],
+      getPayload: (createdTask) => ({
+        campaign: retrospectiveData.campaign || taskData.project_id?.toString(),
+        scheduled_at:
+          retrospectiveData.scheduled_at || new Date().toISOString(),
+        status: retrospectiveData.status || "scheduled",
+      }),
+    },
+    report: {
+      contentType: "report",
+      formData: reportData,
+      setFormData: setReportData,
+      validation: null, // will be set below
+      api: ReportAPI.createReport,
+      formComponent: NewReportForm,
+      requiredFields: ["title", "owner_id", "slice_config.csv_file_path"],
+      getPayload: (createdTask) => {
+        return {
+          task: createdTask.id,
+          title: reportData.title,
+          owner_id: reportData.owner_id,
+          report_template_id: reportData.report_template_id,
+          slice_config: {
+            csv_file_path: reportData.slice_config?.csv_file_path || "",
+          },
+        };
+      },
+    },
+    scaling: {
+      contentType: "scalingplan",
+      formData: scalingPlanData,
+      setFormData: setScalingPlanData,
+      validation: null,
+      api: OptimizationScalingAPI.createScalingPlan,
+      formComponent: ScalingPlanForm,
+      requiredFields: ["strategy"],
+      getPayload: (createdTask) => {
+        if (!createdTask?.id) {
+          throw new Error("Task ID is required to create scaling plan");
+        }
+        return {
+          task: createdTask.id,
+          strategy: scalingPlanData.strategy || "horizontal",
+          scaling_target: scalingPlanData.scaling_target || "",
+          risk_considerations: scalingPlanData.risk_considerations || "",
+          max_scaling_limit: scalingPlanData.max_scaling_limit || "",
+          stop_conditions: scalingPlanData.stop_conditions || "",
+          expected_outcomes: scalingPlanData.expected_outcomes || "",
+          affected_entities: scalingPlanData.affected_entities || null,
+        };
+      },
+    },
+    alert: {
+      contentType: "alerttask",
+      formData: alertData,
+      setFormData: setAlertData,
+      validation: null,
+      api: AlertingAPI.createAlertTask,
+      formComponent: AlertTaskForm,
+      requiredFields: ["alert_type", "severity"],
+      getPayload: (createdTask) => {
+        if (!createdTask?.id) {
+          throw new Error("Task ID is required to create alert details");
+        }
+        const rawMetricValue = alertData.change_value
+          ? Number(alertData.change_value)
+          : null;
+        const rawCurrentValue = alertData.current_value
+          ? Number(alertData.current_value)
+          : null;
+        const rawPreviousValue = alertData.previous_value
+          ? Number(alertData.previous_value)
+          : null;
+        const metricValue = Number.isNaN(rawMetricValue) ? null : rawMetricValue;
+        const currentValue = Number.isNaN(rawCurrentValue)
+          ? null
+          : rawCurrentValue;
+        const previousValue = Number.isNaN(rawPreviousValue)
+          ? null
+          : rawPreviousValue;
+        const investigationNotes = [
+          alertData.investigation_assumption
+            ? `Assumption: ${alertData.investigation_assumption}`
+            : null,
+          alertData.investigation_notes || null,
+        ]
+          .filter(Boolean)
+          .join(" | ");
+        const resolutionSteps = [
+          ...(alertData.resolution_actions || []),
+          alertData.resolution_notes || null,
+        ]
+          .filter(Boolean)
+          .join(" | ");
+        return {
+          task: createdTask.id,
+          alert_type: alertData.alert_type || "spend_spike",
+          severity: alertData.severity || "medium",
+          status: alertData.status || "open",
+          affected_entities: alertData.affected_entities || [],
+          initial_metrics: {
+            metric_key: alertData.metric_key || "spend",
+            change_type: alertData.change_type || "percent",
+            change_value: metricValue,
+            change_window: alertData.change_window || "daily",
+            current_value: currentValue,
+            previous_value: previousValue,
+          },
+          assigned_to: alertData.assigned_to
+            ? Number(alertData.assigned_to)
+            : null,
+          acknowledged_by: alertData.acknowledged_by
+            ? Number(alertData.acknowledged_by)
+            : null,
+          investigation_notes: investigationNotes,
+          resolution_steps: resolutionSteps,
+          related_references: alertData.related_references || [],
+          postmortem_root_cause: alertData.postmortem_root_cause || "",
+          postmortem_prevention: alertData.postmortem_prevention || "",
+        };
+      },
+    },
+    communication: {
+      contentType: "clientcommunication",
+      formData: communicationData,
+      setFormData: setCommunicationData,
+      validation: null,
+      api: ClientCommunicationAPI.create,
+      formComponent: NewClientCommunicationForm,
+      requiredFields: [],
+      getPayload: (createdTask) => {
+        if (!createdTask?.id) return null;
+        // Skip creating linked object if form was not filled
+        if (!communicationData.communication_type) return null;
+        return {
+          task: createdTask.id,
+          communication_type: communicationData.communication_type,
+          stakeholders: communicationData.stakeholders || "",
+          impacted_areas: communicationData.impacted_areas || [],
+          required_actions: communicationData.required_actions || "",
+          client_deadline: communicationData.client_deadline && communicationData.client_deadline.trim() !== ""
+            ? communicationData.client_deadline
+            : null,
+          notes: communicationData.notes || "",
+        };
+      },
+    },
+    optimization: {
+      contentType: "optimization",
+      formData: optimizationData,
+      setFormData: setOptimizationData,
+      validation: null,
+      api: OptimizationAPI.createOptimization,
+      formComponent: OptimizationForm,
+      requiredFields: [],
+      getPayload: (createdTask) => ({
+        task: createdTask.id,
+        ...optimizationData,
+      }),
+    },
+    experiment: {
+      contentType: "experiment",
+      formData: experimentData,
+      setFormData: setExperimentData,
+      validation: null,
+      api: ExperimentAPI.createExperiment,
+      formComponent: ExperimentForm,
+      requiredFields: [],
+      getPayload: (createdTask) => ({
+        task: createdTask.id,
+        name: createdTask.summary,
+        hypothesis: experimentData.hypothesis || "",
+        expected_outcome: experimentData.expected_outcome || undefined,
+        control_group: experimentData.control_group || undefined,
+        variant_group: experimentData.variant_group || undefined,
+        success_metric: experimentData.success_metric || undefined,
+        constraints: experimentData.constraints || undefined,
+        status: experimentData.status || "draft",
+      }),
+    },
+  };
 
   // Form validation rules
   const taskValidationRules = {
@@ -1114,12 +1358,13 @@ function TasksPageContent() {
   const createTaskTypeObject = async (taskType, createdTask) => {
     const config = taskTypeConfig[taskType];
     if (!config || !config.api) {
-      console.warn(`No API configured for task type: ${taskType}`);
       return null;
     }
 
     const payload = config.getPayload(createdTask);
-    console.log(`Creating ${taskType} with payload:`, payload);
+    if (payload === null) {
+      return null;
+    }
 
     try {
       const response = await config.api(payload);
@@ -1127,7 +1372,6 @@ function TasksPageContent() {
       // - Some APIs return {data: object}
       // - Some APIs (like AssetAPI.createAsset) return the object directly
       const createdObject = response?.data || response;
-      console.log(`${taskType} created:`, createdObject);
       return createdObject;
     } catch (error) {
       // Handle case where retrospective already exists
@@ -1141,10 +1385,6 @@ function TasksPageContent() {
           (typeof errorData.campaign === "string" &&
             errorData.campaign.includes("already exists"))
         ) {
-          console.warn(
-            "Retrospective already exists, attempting to find existing one...",
-          );
-
           // Try to find existing retrospective for this campaign
           try {
             const campaignId = payload.campaign;
@@ -1156,14 +1396,9 @@ function TasksPageContent() {
               retrospectivesResponse.data &&
               retrospectivesResponse.data.length > 0
             ) {
-              console.log(
-                "Found existing retrospective:",
-                retrospectivesResponse.data[0],
-              );
               return retrospectivesResponse.data[0];
             }
           } catch (findError) {
-            console.error("Failed to find existing retrospective:", findError);
           }
         }
       }
@@ -1578,12 +1813,8 @@ function TasksPageContent() {
 
   // Submit method to create task and related objects
   const handleSubmit = async () => {
-    console.log(
-      "Submitting task creation form with data11:",
-      isSubmitting,
-      taskData,
-    );
-    if (isSubmitting) return;
+    if (submitGuard.current || isSubmitting) return;
+    submitGuard.current = true;
 
     // Original logic for other task types
     // Validate task form first
@@ -1622,17 +1853,7 @@ function TasksPageContent() {
         due_date: taskData.due_date || null,
       };
 
-      console.log("Creating task with payload:", taskPayload);
-      console.log(
-        "taskData.current_approver_id:",
-        taskData.current_approver_id,
-      );
-      console.log(
-        "taskData.current_approver_id type:",
-        typeof taskData.current_approver_id,
-      );
       const createdTask = await createTask(taskPayload);
-      console.log("Task created:", createdTask);
 
       // Step 2: Create the specific type object
       setContentType(config?.contentType || "");
@@ -1644,23 +1865,14 @@ function TasksPageContent() {
 
       // Step 3: Link the task to the specific type object
       if (createdObject && config?.contentType) {
-        console.log(`Linking task to ${taskData.type}`, {
-          taskId: createdTask.id,
-          contentType: config.contentType,
-          objectId: createdObject.id,
-          createdObject: createdObject,
-        });
-
         try {
           // Link the task to the specific type object
           // Use the API for all types including report
-          const linkResponse = await TaskAPI.linkTask(
+          await TaskAPI.linkTask(
             createdTask.id,
             config.contentType,
             createdObject.id.toString(),
           );
-
-          console.log("Link task response:", linkResponse);
 
           // Update the task with linked object info
           const updatedTask = {
@@ -1672,16 +1884,7 @@ function TasksPageContent() {
 
           // Update the task in the store
           updateTask(createdTask.id, updatedTask);
-
-          console.log("Task linked to task type object successfully");
         } catch (linkError) {
-          console.error("Error linking task to object:", linkError);
-          console.error("Link error details:", {
-            response: linkError.response,
-            data: linkError.response?.data,
-            status: linkError.response?.status,
-            message: linkError.message,
-          });
           // Don't fail the entire creation if linking fails
           // The asset is already created with task reference (asset.task field)
           const errorMsg =
@@ -1692,26 +1895,15 @@ function TasksPageContent() {
           const typeLabel = BOARD_TYPE_META[taskData.type]?.title || taskData.type;
           toast.error(`${typeLabel} created, but failed to link to task: ${errorMsg}`);
         }
-      } else {
-        console.warn("Cannot link task: missing createdObject or contentType", {
-          createdObject: !!createdObject,
-          contentType: config?.contentType,
-        });
       }
 
       // Step 4: For asset tasks, upload initial version file if provided
       if (taskData.type === "asset" && createdObject && assetData.file) {
         try {
-          console.log(
-            "Uploading initial version file for asset:",
-            createdObject.id,
-          );
           await AssetAPI.createAssetVersion(String(createdObject.id), {
             file: assetData.file,
           });
-          console.log("Initial version file uploaded successfully");
         } catch (error) {
-          console.error("Error uploading initial version file:", error);
           // Don't fail the entire task creation if file upload fails
           // User can upload the file later
           toast.error(
@@ -1729,17 +1921,7 @@ function TasksPageContent() {
 
       // Refresh tasks list
       await reloadTasks();
-
-      console.log("Task creation completed successfully");
     } catch (error) {
-      console.error("Error creating task:", error);
-      console.error("Error details:", {
-        response: error.response,
-        data: error.response?.data,
-        status: error.response?.status,
-        message: error.message,
-      });
-
       // Show more detailed error message
       let errorMessage = "Failed to create task";
       if (error.response?.data) {
@@ -1816,13 +1998,13 @@ function TasksPageContent() {
 
       toast.error(errorMessage);
     } finally {
+      submitGuard.current = false;
       setIsSubmitting(false);
     }
   };
 
   // Submit method to create budget pool
   const handleSubmitBudgetPool = async () => {
-    console.log("Submitting budget pool form with data:", budgetPoolData);
     // Validate budget pool form
     const isValid = budgetPoolValidation.validateForm(budgetPoolData, [
       "project",
@@ -1832,15 +2014,11 @@ function TasksPageContent() {
     ]);
 
     if (!isValid) {
-      console.log("Validation failed, returning early");
       return;
     }
 
     try {
-      // Create budget pool
-      console.log("Creating budget pool with data:", budgetPoolData);
       const createdBudgetPool = await createBudgetPool(budgetPoolData);
-      console.log("Budget pool created successfully:", createdBudgetPool);
 
       // Show success message
       toast.success("Budget pool created successfully!");
@@ -1876,7 +2054,6 @@ function TasksPageContent() {
       // Clear validation errors
       budgetPoolValidation.clearErrors();
     } catch (error) {
-      console.error("Error creating budget pool:", error);
       toast.error("Failed to create budget pool. Please try again.");
     }
   };
@@ -2671,8 +2848,6 @@ function TasksPageContent() {
             validation={budgetPoolValidation}
             loading={budgetPoolLoading}
             onSubmit={(formData) => {
-              // Update budgetPoolData with latest form data before submission
-              console.log("onSubmit called with formData:", formData);
               setBudgetPoolData(formData);
               // Use setTimeout to ensure state is updated before validation
               setTimeout(() => {
@@ -2724,13 +2899,11 @@ function TasksPageContent() {
               type="button"
               onClick={(e) => {
                 e.preventDefault();
-                console.log("Submit button clicked");
                 // Get the latest form data from the form element
                 const form = e.target
                   .closest(".flex.flex-col")
                   ?.querySelector("form");
                 if (form) {
-                  const formData = new FormData(form);
                   const latestData = {
                     project:
                       budgetPoolData.project ||
@@ -2751,7 +2924,6 @@ function TasksPageContent() {
                       form.querySelector('[name="currency"]')?.value ||
                       "",
                   };
-                  console.log("Latest form data:", latestData);
                   setBudgetPoolData(latestData);
                   // Use setTimeout to ensure state is updated
                   setTimeout(() => {
