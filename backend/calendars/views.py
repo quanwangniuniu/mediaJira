@@ -13,6 +13,7 @@ from rest_framework import generics, status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
+from .services import get_calendar_events
 
 from core.models import ProjectMember
 from .models import (
@@ -1528,29 +1529,10 @@ class CalendarEventListView(generics.ListAPIView):
         if not organization:
             return CalendarEvent.objects.none()
 
-        queryset = CalendarEvent.objects.filter(
+        return get_calendar_events(
             organization=organization,
-        ).select_related('decision', 'task', 'review')
-
-        # 按日期范围过滤（必须提供）Filter by date range (required)
-        start = self.request.query_params.get('start')
-        end = self.request.query_params.get('end')
-        if start:
-            queryset = queryset.filter(start_time__gte=start)
-        if end:
-            queryset = queryset.filter(start_time__lt=end)
-
-        # 按事件类型过滤 Filter by event type（decision / task / decision_review）
-        event_type = self.request.query_params.get('event_type')
-        if event_type:
-            queryset = queryset.filter(event_type=event_type)
-
-        # 按项目过滤 Filter by project
-        project_id = self.request.query_params.get('project_id')
-        if project_id:
-            queryset = queryset.filter(
-                Q(decision__project_id=project_id) |
-                Q(task__project_id=project_id)
-            )
-
-        return queryset.order_by('start_time')
+            start=self.request.query_params.get('start'),
+            end=self.request.query_params.get('end'),
+            event_type=self.request.query_params.get('event_type'),
+            project_id=self.request.query_params.get('project_id'),
+        )
