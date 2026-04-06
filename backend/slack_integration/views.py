@@ -3,7 +3,8 @@ from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.conf import settings
-from django.shortcuts import get_object_or_404
+from django.core import signing
+from django.utils.crypto import get_random_string
 from .models import SlackWorkspaceConnection, NotificationPreference
 from .serializers import (
     SlackOAuthInitSerializer, 
@@ -20,6 +21,10 @@ from .services import (
     get_slack_channels
 )
 from django.core.exceptions import ValidationError
+from urllib.parse import urlencode
+
+SLACK_OAUTH_STATE_SALT = "slack-oauth-state"
+SLACK_OAUTH_STATE_MAX_AGE_SECONDS = 600
 
 class SlackAuthViewSet(viewsets.ViewSet):
     """
@@ -27,19 +32,54 @@ class SlackAuthViewSet(viewsets.ViewSet):
     """
     permission_classes = [permissions.IsAuthenticated]
 
+    def _build_oauth_state(self, user):
+        """
+        Generates a signed state payload tied to the authenticated user.
+        """
+        return signing.dumps(
+            {
+                "user_id": user.id,
+                "nonce": get_random_string(16)
+            },
+            salt=SLACK_OAUTH_STATE_SALT
+        )
+
+    def _validate_oauth_state(self, state, user):
+        """
+        Validates the signed state payload and ensures it belongs to the current user.
+        """
+        try:
+            payload = signing.loads(
+                state,
+                salt=SLACK_OAUTH_STATE_SALT,
+                max_age=SLACK_OAUTH_STATE_MAX_AGE_SECONDS
+            )
+        except signing.SignatureExpired:
+            raise ValidationError("Slack OAuth state has expired. Please try again.")
+        except signing.BadSignature:
+            raise ValidationError("Invalid Slack OAuth state.")
+
+        if payload.get("user_id") != user.id:
+            raise ValidationError("Slack OAuth state does not match the current user.")
+
     @action(detail=False, methods=['get'])
     def init(self, request):
         """Generates the Slack OAuth Authorization URL."""
         client_id = settings.SLACK_CLIENT_ID
         redirect_uri = settings.SLACK_REDIRECT_URI
         scopes = "channels:read,chat:write,chat:write.public,commands,incoming-webhook,groups:read,im:read,mpim:read"
-        
-        oauth_url = (
-            f"https://slack.com/oauth/v2/authorize?"
-            f"client_id={client_id}&scope={scopes}&redirect_uri={redirect_uri}"
+
+        state = self._build_oauth_state(request.user)
+        oauth_url = "https://slack.com/oauth/v2/authorize?" + urlencode(
+            {
+                "client_id": client_id,
+                "scope": scopes,
+                "redirect_uri": redirect_uri,
+                "state": state
+            }
         )
-        
-        serializer = SlackOAuthInitSerializer(data={'url': oauth_url})
+
+        serializer = SlackOAuthInitSerializer(data={'url': oauth_url, 'state': state})
         serializer.is_valid()
         return Response(serializer.data)
 
@@ -49,19 +89,21 @@ class SlackAuthViewSet(viewsets.ViewSet):
         serializer = SlackOAuthCallbackSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         code = serializer.validated_data['code']
-        
+        state = serializer.validated_data['state']
+
         try:
-            # Exchange code for token
-            slack_data = exchange_oauth_code(code)
-            
-            # Store connection for the user's organization
-            # Assuming user has an 'organization' attribute or similar relation
             if not hasattr(request.user, 'organization'):
                 return Response(
                     {"error": "User does not belong to an organization."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
+            self._validate_oauth_state(state, request.user)
+
+            # Exchange code for token
+            slack_data = exchange_oauth_code(code)
+            
+            # Store connection for the user's organization
             connection = store_slack_connection(request.user.organization, slack_data)
             
             return Response({
@@ -71,7 +113,8 @@ class SlackAuthViewSet(viewsets.ViewSet):
             }, status=status.HTTP_200_OK)
             
         except ValidationError as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            error_message = e.messages[0] if getattr(e, "messages", None) else str(e)
+            return Response({"error": error_message}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             # Log exact error in prod, generic message here
             return Response({"error": "An unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -99,8 +142,8 @@ class SlackConnectionView(APIView):
         else:
             return Response({
                 "is_connected": False,
-                "team_id": None,
-                "team_name": None,
+                "slack_team_id": None,
+                "slack_team_name": None,
                 "default_channel_id": None,
                 "default_channel_name": None,
                 "is_active": False

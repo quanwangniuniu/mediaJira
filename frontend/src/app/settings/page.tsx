@@ -1,24 +1,40 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense, useRef } from 'react';
 import Layout from '@/components/layout/Layout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import useAuth from '@/hooks/useAuth';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Settings as SettingsIcon } from 'lucide-react';
 import SlackIntegrationModal from '@/components/slack/SlackIntegrationModal';
 
 function SettingsPageContent() {
     const { user, logout, refreshUser } = useAuth();
     const router = useRouter();
+    const searchParams = useSearchParams();
     const [isSlackModalOpen, setIsSlackModalOpen] = useState(false);
+    const hasOpenedSlackRef = useRef(false);
 
     useEffect(() => {
         // Ensure we have fresh user data
         if (user) {
             refreshUser();
         }
-    }, []);
+
+        // Auto-open Slack modal if requested by URL parameter
+        if (searchParams.get('open_slack') === '1' && !hasOpenedSlackRef.current) {
+            setIsSlackModalOpen(true);
+            hasOpenedSlackRef.current = true;
+
+            // Clean up the URL parameter visually and from Next.js state
+            const newParams = new URLSearchParams(searchParams.toString());
+            newParams.delete('open_slack');
+            const newUrl = newParams.toString()
+                ? `${window.location.pathname}?${newParams.toString()}`
+                : window.location.pathname;
+            router.replace(newUrl, { scroll: false });
+        }
+    }, [user, searchParams, router]);
 
     const layoutUser = user
         ? {
@@ -41,10 +57,10 @@ function SettingsPageContent() {
 
     return (
         <Layout user={layoutUser} onUserAction={handleUserAction}>
-            <div className="p-6">
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="flex h-full flex-col bg-gray-50 p-6 md:p-8">
+                <div className="max-w-7xl mx-auto w-full">
                     {/* Header */}
-                    <div className="p-6 border-b border-gray-200">
+                    <div className="mb-8">
                         <div className="flex items-center gap-3">
                             <SettingsIcon className="w-6 h-6 text-blue-600" />
                             <div>
@@ -55,13 +71,13 @@ function SettingsPageContent() {
                     </div>
 
                     {/* Content */}
-                    <div className="p-6 space-y-8">
+                    <div className="space-y-8">
                         {/* Integrations Section */}
                         <section>
                             <h2 className="text-lg font-semibold text-gray-900 mb-4">Integrations</h2>
                             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                                 {/* Slack Card */}
-                                <div className="border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+                                <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-all">
                                     <div className="flex items-start justify-between mb-4">
                                         <div className="flex items-center gap-3">
                                             <div className="w-10 h-10 bg-[#4A154B] rounded-lg flex items-center justify-center">

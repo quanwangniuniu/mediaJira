@@ -1,11 +1,13 @@
 import api from '../api';
 
+export const SLACK_OAUTH_STATE_STORAGE_KEY = 'slack_oauth_state';
+
 export interface SlackConnectionStatus {
     is_connected: boolean;
-    slack_team_name?: string;
-    slack_team_id?: string;
-    default_channel_id?: string;
-    default_channel_name?: string;
+    slack_team_name?: string | null;
+    slack_team_id?: string | null;
+    default_channel_id?: string | null;
+    default_channel_name?: string | null;
     is_active: boolean;
 }
 
@@ -28,15 +30,14 @@ export interface NotificationPreference {
 
 export const slackApi = {
     // Initialize OAuth flow
-    initOAuth: async (): Promise<{ url: string }> => {
+    initOAuth: async (): Promise<{ url: string; state: string }> => {
         const response = await api.get('/api/slack/oauth/init/');
         return response.data;
     },
 
     // Handle OAuth callback
-    handleCallback: async (code: string): Promise<any> => {
-        const REDIRECT_URI = typeof window !== 'undefined' ? `${window.location.origin}/slack/callback` : 'https://semirhythmic-boyd-unlethargic.ngrok-free.dev/slack/callback';
-        const response = await api.post('/api/slack/oauth/callback/', { code, redirect_uri: REDIRECT_URI });
+    handleCallback: async (code: string, state: string): Promise<any> => {
+        const response = await api.post('/api/slack/oauth/callback/', { code, state });
         return response.data;
     },
 

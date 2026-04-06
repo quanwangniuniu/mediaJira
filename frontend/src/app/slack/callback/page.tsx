@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { slackApi } from '@/lib/api/slackApi';
+import { slackApi, SLACK_OAUTH_STATE_STORAGE_KEY } from '@/lib/api/slackApi';
 import { CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -12,11 +12,15 @@ function SlackCallbackContent() {
     const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
     const [errorMessage, setErrorMessage] = useState('');
 
+    const hasCalledRef = useRef(false);
+
     useEffect(() => {
         const code = searchParams.get('code');
         const error = searchParams.get('error');
+        const state = searchParams.get('state');
 
         if (error) {
+            window.localStorage.removeItem(SLACK_OAUTH_STATE_STORAGE_KEY);
             setStatus('error');
             setErrorMessage('Access denied or cancelled by user.');
             return;
@@ -28,21 +32,40 @@ function SlackCallbackContent() {
             return;
         }
 
+        if (!state) {
+            setStatus('error');
+            setErrorMessage('Missing Slack OAuth state.');
+            return;
+        }
+
+        if (hasCalledRef.current) return;
+        hasCalledRef.current = true;
+
         const processCallback = async () => {
+            const expectedState = window.localStorage.getItem(SLACK_OAUTH_STATE_STORAGE_KEY);
+
+            if (!expectedState || expectedState !== state) {
+                window.localStorage.removeItem(SLACK_OAUTH_STATE_STORAGE_KEY);
+                setStatus('error');
+                setErrorMessage('Slack OAuth state validation failed. Please try connecting again.');
+                return;
+            }
+
             try {
-                await slackApi.handleCallback(code);
+                await slackApi.handleCallback(code, state);
                 setStatus('success');
+                window.localStorage.removeItem(SLACK_OAUTH_STATE_STORAGE_KEY);
                 toast.success('Slack workspace connected successfully!');
 
                 // Redirect after delay
                 setTimeout(() => {
-                    // Assuming user came from organization profile page
-                    // Ideally we could store 'next' in state/sessionStorage before redirecting
-                    router.push('/profile');
+                    // Return to settings page with the modal auto-opened
+                    router.push('/settings?open_slack=1');
                 }, 3000);
 
             } catch (err: any) {
                 console.error('Slack OAuth Error:', err);
+                window.localStorage.removeItem(SLACK_OAUTH_STATE_STORAGE_KEY);
                 setStatus('error');
                 setErrorMessage(
                     err.response?.data?.error || 'Failed to complete Slack connection. Please try again.'
@@ -86,10 +109,10 @@ function SlackCallbackContent() {
                         <h1 className="text-xl font-semibold text-gray-900">Connection Failed</h1>
                         <p className="text-red-500 text-sm">{errorMessage}</p>
                         <button
-                            onClick={() => router.push('/profile')}
+                            onClick={() => router.push('/settings?open_slack=1')}
                             className="mt-4 px-6 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
                         >
-                            Return to Dashboard
+                            Return to Settings
                         </button>
                     </>
                 )}

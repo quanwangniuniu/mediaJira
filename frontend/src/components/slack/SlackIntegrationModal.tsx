@@ -15,9 +15,8 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import ConfirmModal from '@/components/ui/ConfirmModal';
 import { SlackPreferenceRow } from './SlackPreferenceRow';
-import { slackApi, SlackConnectionStatus, NotificationPreference, SlackChannel } from '@/lib/api/slackApi';
+import { slackApi, SlackConnectionStatus, NotificationPreference, SlackChannel, SLACK_OAUTH_STATE_STORAGE_KEY } from '@/lib/api/slackApi';
 import { ProjectAPI, ProjectData } from '@/lib/api/projectApi';
 import toast from 'react-hot-toast';
 import { CheckCircle2, Slack, Loader2, Filter } from 'lucide-react';
@@ -27,6 +26,52 @@ interface SlackIntegrationModalProps {
     onClose: () => void;
 }
 
+type ToggleState = 'on' | 'off' | 'mixed';
+type ChannelState = 'default' | 'single' | 'mixed';
+type EventType = NotificationPreference['event_type'];
+
+interface PreferenceSummary {
+    toggleState: ToggleState;
+    enabledCount: number;
+    totalCount: number;
+    channelState: ChannelState;
+    channelValue: string;
+    summaryText?: string;
+    showChannelSelect: boolean;
+}
+
+const PREFERENCE_ROWS: Array<{
+    eventType: EventType;
+    label: string;
+    description: string;
+}> = [
+    {
+        eventType: 'TASK_CREATED',
+        label: 'Task Created',
+        description: 'Notify when a new task is created.',
+    },
+    {
+        eventType: 'TASK_STATUS_CHANGE',
+        label: 'Task Review Updates',
+        description: 'Notify when a task enters review, is approved or rejected, or is cancelled.',
+    },
+    {
+        eventType: 'COMMENT_UPDATED',
+        label: 'Task Comments',
+        description: 'Notify when a new comment is posted on a task.',
+    },
+    {
+        eventType: 'DECISION_CREATED',
+        label: 'Decision Made',
+        description: 'Notify when a decision is committed or approved.',
+    },
+    {
+        eventType: 'DEADLINE_REMINDER',
+        label: 'Task Due Reminders',
+        description: 'Daily reminders for assigned tasks due soon.',
+    },
+];
+
 export default function SlackIntegrationModal({ isOpen, onClose }: SlackIntegrationModalProps) {
     const [loading, setLoading] = useState(true);
     const [connection, setConnection] = useState<SlackConnectionStatus | null>(null);
@@ -35,9 +80,6 @@ export default function SlackIntegrationModal({ isOpen, onClose }: SlackIntegrat
     const [projects, setProjects] = useState<ProjectData[]>([]);
     const [selectedProjectId, setSelectedProjectId] = useState<number | 'ALL'>('ALL');
     const [loadingChannels, setLoadingChannels] = useState(false);
-
-    const [isDisconnectModalOpen, setIsDisconnectModalOpen] = useState(false);
-    const [disconnecting, setDisconnecting] = useState(false);
 
     const fetchData = async () => {
         try {
@@ -80,7 +122,8 @@ export default function SlackIntegrationModal({ isOpen, onClose }: SlackIntegrat
 
     const handleConnect = async () => {
         try {
-            const { url } = await slackApi.initOAuth();
+            const { url, state } = await slackApi.initOAuth();
+            window.localStorage.setItem(SLACK_OAUTH_STATE_STORAGE_KEY, state);
             window.location.href = url;
         } catch (error) {
             console.error('Failed to init OAuth:', error);
@@ -90,16 +133,12 @@ export default function SlackIntegrationModal({ isOpen, onClose }: SlackIntegrat
 
     const handleDisconnect = async () => {
         try {
-            setDisconnecting(true);
             await slackApi.disconnect();
             toast.success('Slack workspace disconnected.');
-            setIsDisconnectModalOpen(false);
             await fetchData();
         } catch (error) {
             console.error('Failed to disconnect:', error);
             toast.error('Failed to disconnect Slack.');
-        } finally {
-            setDisconnecting(false);
         }
     };
 
@@ -111,35 +150,83 @@ export default function SlackIntegrationModal({ isOpen, onClose }: SlackIntegrat
 
     const filteredPreferences = getFilteredPreferences();
 
-    // Helper to find state of a specific event type within current filter scope
-    const getPreferenceState = (eventType: string) => {
-        if (!filteredPreferences.length) return false;
-        // In ALL mode: returns true if ANY project has it enabled (loose check)
-        // In Single mode: returns true if THIS project has it enabled
-
-        // Refinement for ALL mode to avoid confusion: 
-        // If ALL mode, show checked only if ALL projects have it enabled? Or at least one?
-        // Standard UX: Check if all are true -> True. Check if mix -> indeterminate (but we have toggle).
-        // Let's stick to simple: If >0 enabled, show enabled.
-        return filteredPreferences.some(p => p.event_type === eventType && p.is_active);
-    };
-
-    const getPreferenceChannel = (eventType: string) => {
-        // Find the first active preference in scope to determine display value
-        const pref = filteredPreferences.find(p => p.event_type === eventType && p.is_active);
-
-        if (!pref || !pref.slack_channel_id) return "default";
-
-        if (connection && pref.slack_channel_id === connection.default_channel_id) {
+    const normalizeChannelValue = (preference: NotificationPreference) => {
+        if (!preference.slack_channel_id) return "default";
+        if (connection && preference.slack_channel_id === connection.default_channel_id) {
             return "default";
         }
-
-        // Note: In ALL mode, if projects have different channels, this just shows the first one found.
-        // Ideally we'd show "mixed" but our Select doesn't support that easily.
-        return pref.slack_channel_id;
+        return preference.slack_channel_id;
     };
 
-    const updatePreference = async (eventType: string, updates: Partial<NotificationPreference>) => {
+    const getPreferenceSummary = (eventType: EventType): PreferenceSummary => {
+        const eventPreferences = filteredPreferences.filter((preference) => preference.event_type === eventType);
+        const totalCount = eventPreferences.length;
+
+        if (totalCount === 0) {
+            return {
+                toggleState: 'off',
+                enabledCount: 0,
+                totalCount: 0,
+                channelState: 'default',
+                channelValue: 'default',
+                showChannelSelect: false,
+            };
+        }
+
+        const enabledPreferences = eventPreferences.filter((preference) => preference.is_active);
+        const enabledCount = enabledPreferences.length;
+
+        let toggleState: ToggleState = 'off';
+        if (enabledCount === totalCount) {
+            toggleState = 'on';
+        } else if (enabledCount > 0) {
+            toggleState = 'mixed';
+        }
+
+        const channelValues = Array.from(
+            new Set(enabledPreferences.map((preference) => normalizeChannelValue(preference)))
+        );
+
+        let channelState: ChannelState = 'default';
+        let channelValue = 'default';
+
+        if (enabledPreferences.length > 0) {
+            if (channelValues.length === 1) {
+                channelValue = channelValues[0];
+                channelState = channelValue === 'default' ? 'default' : 'single';
+            } else {
+                channelState = 'mixed';
+                channelValue = 'mixed';
+            }
+        }
+
+        let summaryText: string | undefined;
+        if (selectedProjectId === 'ALL') {
+            if (toggleState === 'on') {
+                summaryText = `Enabled for all ${totalCount} projects.`;
+            } else if (toggleState === 'off') {
+                summaryText = `Disabled for all ${totalCount} projects.`;
+            } else {
+                summaryText = `Enabled for ${enabledCount}/${totalCount} projects.`;
+            }
+
+            if (enabledCount > 0 && channelState === 'mixed') {
+                summaryText += ' Channels vary by project.';
+            }
+        }
+
+        return {
+            toggleState,
+            enabledCount,
+            totalCount,
+            channelState,
+            channelValue,
+            summaryText,
+            showChannelSelect: toggleState !== 'off',
+        };
+    };
+
+    const updatePreference = async (eventType: EventType, updates: Partial<NotificationPreference>) => {
         // Find all preferences matching this event type AND within the current scope
         const targets = preferences.filter(p => {
             const typeMatch = p.event_type === eventType;
@@ -177,15 +264,15 @@ export default function SlackIntegrationModal({ isOpen, onClose }: SlackIntegrat
         }
     };
 
-    const togglePreference = (eventType: string) => {
-        const currentState = getPreferenceState(eventType);
-        updatePreference(eventType, { is_active: !currentState });
+    const togglePreference = (eventType: EventType) => {
+        const currentSummary = getPreferenceSummary(eventType);
+        updatePreference(eventType, { is_active: currentSummary.toggleState !== 'on' });
     };
 
-    const changeChannel = (eventType: string, channelId: string) => {
+    const changeChannel = (eventType: EventType, channelId: string) => {
         const actualId = channelId === "default" ? "" : channelId;
         const channelObj = channels.find(c => c.id === actualId);
-        const updates: any = { slack_channel_id: actualId };
+        const updates: Partial<NotificationPreference> = { slack_channel_id: actualId };
 
         if (channelObj) {
             updates.slack_channel_name = channelObj.name;
@@ -199,13 +286,13 @@ export default function SlackIntegrationModal({ isOpen, onClose }: SlackIntegrat
     return (
         <>
             <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-                <DialogContent className="sm:max-w-[600px]">
-                    <DialogHeader>
+                <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-[600px]">
+                    <DialogHeader className="shrink-0">
                         <DialogTitle className="flex items-center justify-center gap-2 text-xl pb-2">
                             <Slack className="w-6 h-6 text-[#4A154B]" />
                             Slack Integration
                         </DialogTitle>
-                        <DialogDescription>
+                        <DialogDescription className="text-center">
                             Connect your Slack workspace to receive real-time notifications.
                         </DialogDescription>
                     </DialogHeader>
@@ -224,7 +311,7 @@ export default function SlackIntegrationModal({ isOpen, onClose }: SlackIntegrat
                             <div className="text-center space-y-2 max-w-sm">
                                 <h3 className="text-lg font-medium text-gray-900">Connect to Slack</h3>
                                 <p className="text-sm text-gray-500">
-                                    Stay updated with your team's progress. Get instant notifications in your preferred Slack channel.
+                                    Stay updated with your team&apos;s progress. Get instant notifications in your preferred Slack channel.
                                 </p>
                             </div>
                             <button
@@ -237,111 +324,76 @@ export default function SlackIntegrationModal({ isOpen, onClose }: SlackIntegrat
                         </div>
                     ) : (
                         // Connected State
-                        <div className="space-y-6 py-2">
-                            {/* Connection Info */}
-                            <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start space-x-3">
-                                <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5" />
-                                <div>
-                                    <h4 className="text-sm font-semibold text-green-800">Connected Successfully</h4>
-                                    <p className="text-sm text-green-700 mt-1">
-                                        Linked to workspace <span className="font-semibold">{connection.slack_team_name}</span>.
-                                        {loadingChannels && <span className="ml-2 text-xs text-gray-500 animate-pulse">Loading channels...</span>}
-                                    </p>
+                        <div className="flex min-h-0 flex-1 flex-col py-2">
+                            <div className="shrink-0 space-y-4 pb-2">
+                                {/* Connection Info */}
+                                <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start space-x-3">
+                                    <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5" />
+                                    <div>
+                                        <h4 className="text-sm font-semibold text-green-800">Connected Successfully</h4>
+                                        <p className="text-sm text-green-700 mt-1">
+                                            Linked to workspace <span className="font-semibold">{connection.slack_team_name}</span>.
+                                            {loadingChannels && <span className="ml-2 text-xs text-gray-500 animate-pulse">Loading channels...</span>}
+                                        </p>
+                                    </div>
                                 </div>
-                            </div>
 
-                            {/* Project Filter */}
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-sm font-medium text-gray-900">Notification Settings</h3>
+                                {/* Project Filter */}
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-medium text-gray-900">Notification Settings</h3>
 
-                                <div className="flex items-center gap-2">
-                                    <Filter className="w-4 h-4 text-gray-400" />
-                                    <Select
-                                        value={String(selectedProjectId)}
-                                        onValueChange={(val) => setSelectedProjectId(val === 'ALL' ? 'ALL' : Number(val))}
-                                    >
-                                        <SelectTrigger className="w-[180px] h-8 text-xs bg-white">
-                                            <SelectValue placeholder="Select Project" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="ALL">All Projects ({projects.length})</SelectItem>
-                                            {projects.map(p => (
-                                                <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                    <div className="flex items-center gap-2">
+                                        <Filter className="w-4 h-4 text-gray-400" />
+                                        <Select
+                                            value={String(selectedProjectId)}
+                                            onValueChange={(val) => setSelectedProjectId(val === 'ALL' ? 'ALL' : Number(val))}
+                                        >
+                                            <SelectTrigger className="w-[180px] h-8 text-xs bg-white">
+                                                <SelectValue placeholder="Select Project" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="ALL">All Projects ({projects.length})</SelectItem>
+                                                {projects.map(p => (
+                                                    <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                 </div>
+
+                                {selectedProjectId === 'ALL' && (
+                                    <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                                        Changes made in All Projects mode will be applied to every project in this workspace.
+                                    </div>
+                                )}
                             </div>
 
                             {/* Preferences List */}
-                            <div className="border-t pt-2">
+                            <div className="min-h-0 flex-1 overflow-y-auto border-t pt-2 pr-1">
                                 {preferences.length > 0 ? (
                                     <div className="divide-y divide-gray-100">
-                                        <SlackPreferenceRow
-                                            label="Task Created"
-                                            description="Notify when a new task is created."
-                                            eventType="TASK_CREATED"
-                                            isChecked={getPreferenceState('TASK_CREATED')}
-                                            selectedChannel={getPreferenceChannel('TASK_CREATED')}
-                                            channels={channels}
-                                            loadingChannels={loadingChannels}
-                                            defaultChannelName={connection.default_channel_name}
-                                            defaultChannelId={connection.default_channel_id}
-                                            onToggle={togglePreference}
-                                            onChannelChange={changeChannel}
-                                        />
-                                        <SlackPreferenceRow
-                                            label="Task Status Changes"
-                                            description="Notify when a task status moves (e.g. In Progress → Done)."
-                                            eventType="TASK_STATUS_CHANGE"
-                                            isChecked={getPreferenceState('TASK_STATUS_CHANGE')}
-                                            selectedChannel={getPreferenceChannel('TASK_STATUS_CHANGE')}
-                                            channels={channels}
-                                            loadingChannels={loadingChannels}
-                                            defaultChannelName={connection.default_channel_name}
-                                            defaultChannelId={connection.default_channel_id}
-                                            onToggle={togglePreference}
-                                            onChannelChange={changeChannel}
-                                        />
-                                        <SlackPreferenceRow
-                                            label="Task Comments"
-                                            description="Notify when a new comment is posted on a task."
-                                            eventType="COMMENT_UPDATED"
-                                            isChecked={getPreferenceState('COMMENT_UPDATED')}
-                                            selectedChannel={getPreferenceChannel('COMMENT_UPDATED')}
-                                            channels={channels}
-                                            loadingChannels={loadingChannels}
-                                            defaultChannelName={connection.default_channel_name}
-                                            defaultChannelId={connection.default_channel_id}
-                                            onToggle={togglePreference}
-                                            onChannelChange={changeChannel}
-                                        />
-                                        <SlackPreferenceRow
-                                            label="Decision Made"
-                                            description="Notify when a key decision is recorded or approved."
-                                            eventType="DECISION_CREATED"
-                                            isChecked={getPreferenceState('DECISION_CREATED')}
-                                            selectedChannel={getPreferenceChannel('DECISION_CREATED')}
-                                            channels={channels}
-                                            loadingChannels={loadingChannels}
-                                            defaultChannelName={connection.default_channel_name}
-                                            defaultChannelId={connection.default_channel_id}
-                                            onToggle={togglePreference}
-                                            onChannelChange={changeChannel}
-                                        />
-                                        <SlackPreferenceRow
-                                            label="Review Reminders"
-                                            description="Daily reminders for assigned tasks due soon."
-                                            eventType="DEADLINE_REMINDER"
-                                            isChecked={getPreferenceState('DEADLINE_REMINDER')}
-                                            selectedChannel={getPreferenceChannel('DEADLINE_REMINDER')}
-                                            channels={channels}
-                                            loadingChannels={loadingChannels}
-                                            defaultChannelName={connection.default_channel_name}
-                                            defaultChannelId={connection.default_channel_id}
-                                            onToggle={togglePreference}
-                                            onChannelChange={changeChannel}
-                                        />
+                                        {PREFERENCE_ROWS.map((row) => {
+                                            const summary = getPreferenceSummary(row.eventType);
+
+                                            return (
+                                                <SlackPreferenceRow
+                                                    key={row.eventType}
+                                                    label={row.label}
+                                                    description={row.description}
+                                                    eventType={row.eventType}
+                                                    toggleState={summary.toggleState}
+                                                    summaryText={summary.summaryText}
+                                                    selectedChannel={summary.channelValue}
+                                                    showChannelSelect={summary.showChannelSelect}
+                                                    channels={channels}
+                                                    loadingChannels={loadingChannels}
+                                                    defaultChannelName={connection.default_channel_name}
+                                                    defaultChannelId={connection.default_channel_id}
+                                                    onToggle={togglePreference}
+                                                    onChannelChange={changeChannel}
+                                                />
+                                            );
+                                        })}
                                     </div>
                                 ) : (
                                     <div className="text-sm text-yellow-600 bg-yellow-50 p-3 rounded">
@@ -351,7 +403,7 @@ export default function SlackIntegrationModal({ isOpen, onClose }: SlackIntegrat
                             </div>
 
                             {/* Actions */}
-                            <div className="pt-4 border-t flex justify-between items-center">
+                            <div className="mt-4 shrink-0 border-t pt-4 flex justify-between items-center">
                                 <p className="text-xs text-gray-400">
                                     Team ID: {connection.slack_team_id}
                                 </p>
