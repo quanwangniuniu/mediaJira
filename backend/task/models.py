@@ -129,6 +129,11 @@ class Task(models.Model):
     # --- Timestamps ---
     created_at = models.DateTimeField(auto_now_add=True, help_text="Task creation timestamp")
     updated_at = models.DateTimeField(auto_now=True, help_text="Task last update timestamp")
+    # --- Revision Round ---
+    revision_round = models.PositiveIntegerField(
+        default=0,
+        help_text="Tracks how many times this task has been resubmitted after rejection"
+    )
 
     # --- Linked Task to the real model of chosen type (BudgetRequest, Asset, Retrospective, etc.) ---
     # For type "platform_policy_update", the payload is the single authoritative PlatformPolicyUpdate
@@ -403,10 +408,14 @@ class ApprovalRecord(models.Model):
     comment = models.TextField(null=True, blank=True, help_text="Reason for approval or rejection")
     decided_time = models.DateTimeField(auto_now_add=True, help_text="Decision timestamp")
     step_number = models.PositiveIntegerField(null=False, blank=False, help_text="Approval step number")
+    # --- Revision Tracking ---
+    revision_round = models.PositiveIntegerField(default=0, help_text="Revision round this approval record belongs to")
+    has_rejection_history = models.BooleanField(default=False, help_text="Whether this task had prior rejections at time of this record")
+    resubmitted_after_reject = models.BooleanField(default=False, help_text="Whether this record was created after a resubmission")
 
     class Meta:
-        unique_together = ['task', 'step_number']
-        ordering = ['step_number']
+        unique_together = ['task', 'step_number', 'revision_round']
+        ordering = ['revision_round', 'step_number']
 
 
 class ApprovalChain(models.Model):

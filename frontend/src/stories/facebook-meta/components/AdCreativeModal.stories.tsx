@@ -13,7 +13,7 @@ const updateSample: AdCreative = {
       name: "Download the 2026 Benchmark Report",
       message: "See how top teams improve conversion velocity.",
       description: "Free report with real campaign benchmarks.",
-      link: "https://mediajira.com/report",
+      link: "https://marketingsimplified.com/report",
       call_to_action: {
         type: "LEARN_MORE",
       },

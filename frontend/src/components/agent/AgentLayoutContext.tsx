@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react"
 
-export type AgentView = "overview" | "spreadsheets" | "decisions" | "tasks" | "workflows"
+export type AgentView = "overview" | "spreadsheets" | "decisions" | "tasks" | "workflows" | "settings"
 export type AgentTheme = "light" | "dark" | "system"
 export type FloatingChatMode = "closed" | "floating" | "maximized"
 
@@ -66,10 +66,10 @@ export function AgentLayoutProvider({ children }: { children: ReactNode }) {
       // Migration: "agent" view no longer exists
       sessionStorage.setItem("agent-active-view", "overview")
       setActiveViewState("overview")
-    } else if (storedView && ["overview", "spreadsheets", "decisions", "tasks", "workflows"].includes(storedView)) {
+    } else if (storedView && ["overview", "spreadsheets", "decisions", "tasks", "workflows", "settings"].includes(storedView)) {
       setActiveViewState(storedView as AgentView)
     }
-    // Theme forced to light — MediaJira does not support dark mode yet
+    // Theme forced to light — Marketing Simplified does not support dark mode yet
     // const stored = localStorage.getItem("agent-theme") as AgentTheme | null
     // if (stored && ["light", "dark", "system"].includes(stored)) {
     //   setThemeState(stored)
@@ -92,7 +92,7 @@ export function AgentLayoutProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("agent-theme", t)
   }
 
-  // Force light — when MediaJira supports dark mode, restore: theme === "system" ? systemTheme : theme
+  // Force light — when Marketing Simplified supports dark mode, restore: theme === "system" ? systemTheme : theme
   const resolvedTheme: "light" | "dark" = "light"
 
   // --- Floating chat controls ---

@@ -66,14 +66,44 @@ export function EventPanelDialog({
   const [calendarId, setCalendarId] = React.useState<string>(
     resolveDefaultCalendarId(event?.calendar_id),
   );
+  const formSeedRef = React.useRef<string | null>(null);
+  const formSeedKey = [
+    mode,
+    event?.id ?? "create",
+    start?.toISOString() ?? "",
+    end?.toISOString() ?? "",
+  ].join("|");
 
   React.useEffect(() => {
-    setTitle(event?.title ?? "");
-    setDescription(event?.description ?? "");
-    setCalendarId(resolveDefaultCalendarId(event?.calendar_id));
-    setLocalStart(start);
-    setLocalEnd(end);
-  }, [event, mode, resolveDefaultCalendarId, start, end]);
+    const defaultCalendarId = resolveDefaultCalendarId(event?.calendar_id);
+
+    // Reset only when the dialog target changes; preserve user input during
+    // late calendar hydration.
+    if (formSeedRef.current !== formSeedKey) {
+      formSeedRef.current = formSeedKey;
+      setTitle(event?.title ?? "");
+      setDescription(event?.description ?? "");
+      setCalendarId(defaultCalendarId);
+      setLocalStart(start);
+      setLocalEnd(end);
+      return;
+    }
+
+    setCalendarId((currentCalendarId) => {
+      if (currentCalendarId && calendars.some((cal) => cal.id === currentCalendarId)) {
+        return currentCalendarId;
+      }
+      return defaultCalendarId;
+    });
+  }, [
+    calendars,
+    end,
+    event,
+    formSeedKey,
+    mode,
+    resolveDefaultCalendarId,
+    start,
+  ]);
 
   if (!open || !localStart || !localEnd || !position) {
     return null;
@@ -99,6 +129,9 @@ export function EventPanelDialog({
       <>
         {backdrop}
         <div
+          role="dialog"
+          aria-label="View event"
+          data-testid="calendar-event-dialog"
           className="fixed z-50 w-[360px] rounded-3xl border bg-[#f0f4f9] shadow-xl animate-in slide-in-from-bottom-8 fade-in duration-300"
           style={{ top: position.top, left: position.left }}
           onClick={(e) => e.stopPropagation()}
@@ -251,6 +284,9 @@ export function EventPanelDialog({
     <>
       {backdrop}
       <div
+        role="dialog"
+        aria-label={mode === "edit" ? "Edit event" : "Create event"}
+        data-testid="calendar-event-dialog"
         className="fixed z-50 w-[420px] rounded-3xl border bg-[#f0f4f9] shadow-xl animate-in slide-in-from-bottom-8 fade-in duration-300"
         style={{ top: position.top, left: position.left }}
         onClick={(e) => e.stopPropagation()}

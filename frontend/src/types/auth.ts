@@ -43,6 +43,10 @@ export interface RegisterRequest {
 
 export interface RegisterResponse {
   message: string;
+  token: string;
+  refresh: string;
+  user: User;
+  organization_access_token?: string;
 }
 
 // Google OAuth types

@@ -18,7 +18,7 @@ export default function SmartWorkflowSection({ onRedirectToLogin }: SmartWorkflo
   return (
     <>
       {/* Smart Workflow Section - Desktop */}
-      <section className="hidden md:block py-20 px-6 bg-white">
+      <section id="solutions" className="hidden md:block py-20 px-6 bg-white">
         <div className="max-w-7xl mx-auto relative">
           <div className="flex flex-col lg:flex-row gap-4 items-center justify-center relative">
             {/* Left Card - Workflow Application */}
@@ -67,30 +67,30 @@ export default function SmartWorkflowSection({ onRedirectToLogin }: SmartWorkflo
                 {/* Sidebar */}
                 <div className="w-40 bg-white border-r border-gray-200 p-1.5">
                   <nav className="space-y-0.5 mb-3">
-                    <a href="#" className="flex items-center gap-2 px-2 py-1.5 bg-blue-50 text-blue-700 rounded-lg font-medium">
-                      <div className="w-1 h-3 bg-blue-600 rounded-full"></div>
+                    <span className="flex items-center gap-2 px-2 py-1.5 bg-blue-50 text-blue-700 rounded-lg font-medium">
+                      <span className="w-1 h-3 bg-blue-600 rounded-full"></span>
                       <span className="text-xs">Dashboard</span>
-                    </a>
-                    <a href="#" className="flex items-center gap-2 px-2 py-1.5 text-gray-600 hover:bg-gray-50 rounded-lg">
+                    </span>
+                    <span className="flex items-center gap-2 px-2 py-1.5 text-gray-600 rounded-lg">
                       <span className="text-xs">Tasks</span>
                       <span className="ml-auto px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-semibold rounded-full">16</span>
-                    </a>
+                    </span>
                   </nav>
 
                   <div className="space-y-0.5 mb-2">
                     <div className="text-[10px] font-semibold text-gray-400 uppercase mb-0.5 px-2">MAIN</div>
-                    <a href="#" className="flex items-center gap-2 px-2 py-1.5 text-gray-600 hover:bg-gray-50 rounded-lg text-xs">Reports</a>
-                    <a href="#" className="flex items-center gap-2 px-2 py-1.5 text-gray-600 hover:bg-gray-50 rounded-lg text-xs">Teams</a>
-                    <a href="#" className="flex items-center gap-2 px-2 py-1.5 text-gray-600 hover:bg-gray-50 rounded-lg text-xs">Settings</a>
+                    <span className="flex items-center gap-2 px-2 py-1.5 text-gray-600 rounded-lg text-xs">Reports</span>
+                    <span className="flex items-center gap-2 px-2 py-1.5 text-gray-600 rounded-lg text-xs">Teams</span>
+                    <span className="flex items-center gap-2 px-2 py-1.5 text-gray-600 rounded-lg text-xs">Settings</span>
                   </div>
 
                   <div className="space-y-0.5">
                     <div className="text-[10px] font-semibold text-gray-400 uppercase mb-1 px-2">RECOMMEND</div>
-                    <a href="#" className="flex items-center gap-2 px-2 py-1.5 text-gray-600 hover:bg-gray-50 rounded-lg text-xs">
+                    <span className="flex items-center gap-2 px-2 py-1.5 text-gray-600 rounded-lg text-xs">
                       Team
                       <ChevronRight className="w-3 h-3 ml-auto" />
-                    </a>
-                    <a href="#" className="flex items-center gap-2 px-2 py-1.5 text-gray-600 hover:bg-gray-50 rounded-lg text-xs">Clients</a>
+                    </span>
+                    <span className="flex items-center gap-2 px-2 py-1.5 text-gray-600 rounded-lg text-xs">Clients</span>
                   </div>
 
                   <div className="mt-auto pt-2 border-t border-gray-200">
@@ -298,7 +298,7 @@ export default function SmartWorkflowSection({ onRedirectToLogin }: SmartWorkflo
                   <div className="whitespace-nowrap">one seamless workflow.</div>
                 </h3>
                 <p className="text-lg text-gray-600 mb-8 max-w-md text-right">
-                  From creative reviews to budget approvals and campaign execution, MediaJira automates task transitions so your team stays perfectly aligned.
+                  From creative reviews to budget approvals and campaign execution, Marketing Simplified automates task transitions so your team stays perfectly aligned.
                 </p>
                 <button
                   onClick={onRedirectToLogin}
@@ -322,7 +322,7 @@ export default function SmartWorkflowSection({ onRedirectToLogin }: SmartWorkflo
                 Connect every stage in one seamless workflow.
               </h2>
               <p className="text-base text-gray-700 mb-6 leading-relaxed">
-                MediaJira automates task transitions so your team stays perfectly aligned.
+                Marketing Simplified automates task transitions so your team stays perfectly aligned.
               </p>
               <div className="flex justify-end">
                 <button className="px-6 py-1.5 bg-blue-800 text-white rounded-full hover:bg-blue-900 transition text-sm font-medium">

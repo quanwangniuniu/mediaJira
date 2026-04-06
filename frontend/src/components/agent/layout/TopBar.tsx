@@ -12,6 +12,7 @@ const viewLabels: Record<AgentView, string> = {
   decisions: "Decision Editor",
   tasks: "Task Board",
   workflows: "Workflow Manager",
+  settings: "Settings",
 }
 
 export function TopBar() {
@@ -28,7 +29,7 @@ export function TopBar() {
 
       {/* Right Controls */}
       <div className="flex items-center gap-1">
-        {/* <ThemeToggle /> — disabled until MediaJira supports dark mode */}
+        {/* <ThemeToggle /> — disabled until Marketing Simplified supports dark mode */}
         <Button
           variant="ghost"
           size="sm"

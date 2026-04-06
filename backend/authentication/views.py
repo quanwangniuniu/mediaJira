@@ -11,7 +11,8 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from rest_framework_simplejwt.tokens import RefreshToken
-from .serializers import UserProfileSerializer
+from .serializers import UserProfileSerializer, OrganizationTokenRefreshSerializer
+from .services import refresh_organization_access_token
 from core.models import Team, Organization, Role
 from access_control.models import UserRole
 from stripe_meta.permissions import generate_organization_access_token
@@ -109,7 +110,22 @@ class RegisterView(APIView):
             )
             UserRole.objects.get_or_create(user=user, role=default_role)
 
-        return Response({"message": "User registered successfully. Account is ready to use."}, status=201)
+        # Auto-login: generate JWT tokens so the frontend can log in immediately
+        refresh = RefreshToken.for_user(user)
+        profile_data = UserProfileSerializer(user, context={'request': request}).data
+        custom_access_token = generate_organization_access_token(user)
+
+        response_data = {
+            "message": "User registered successfully. Account is ready to use.",
+            "token": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": profile_data,
+        }
+
+        if custom_access_token:
+            response_data["organization_access_token"] = custom_access_token
+
+        return Response(response_data, status=201)
     
 class VerifyEmailView(APIView):
     def get(self, request):
@@ -213,6 +229,21 @@ class LoginView(APIView):
             response_data['organization_access_token'] = custom_access_token
         
         return Response(response_data, status=status.HTTP_200_OK)
+
+
+class OrganizationTokenRefreshView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            new_token = refresh_organization_access_token(request.user)
+        except ValidationError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = OrganizationTokenRefreshSerializer(
+            {"organization_access_token": new_token}
+        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 class SsoRedirectView(APIView):
     """

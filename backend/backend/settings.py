@@ -247,10 +247,13 @@ AGENT_CSV_DIR = config(
 )
 
 # Dify LLM Platform integration (optional)
-# Set these to route agent analysis through Dify instead of direct Claude API
+# Base config
 DIFY_API_URL = config('DIFY_API_URL', default='')
 DIFY_API_KEY = config('DIFY_API_KEY', default='')
+# Per-workflow keys
 DIFY_CHAT_API_KEY = config('DIFY_CHAT_API_KEY', default='')
+DIFY_MIRO_API_KEY = config('DIFY_MIRO_API_KEY', default='')
+DIFY_CALENDAR_API_KEY = config('DIFY_CALENDAR_API_KEY', default='')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
@@ -325,8 +328,8 @@ from .celery import app as celery_app
 __all__ = ('celery_app',)
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(hours=48),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=4),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=4),
     'ROTATE_REFRESH_TOKENS': False,
     'BLACKLIST_AFTER_ROTATION': True,
     'ALGORITHM': 'HS256',

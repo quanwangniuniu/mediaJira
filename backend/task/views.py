@@ -503,12 +503,16 @@ class TaskViewSet(viewsets.ModelViewSet):
                 if task.current_approval_step
                 else task.approval_records.count() + 1
             )
+            # Update revision round so next submission is tracked as a new round
             ApprovalRecord.objects.create(
                 task=task,
                 approved_by=task.current_approver or request.user,
                 is_approved=is_approved,
                 comment=comment,
-                step_number=step_number
+                step_number=step_number,
+                revision_round=task.revision_round,
+                resubmitted_after_reject=task.revision_round > 0,
+                has_rejection_history=task.approval_records.filter(is_approved=False).exists()
             )
 
             # If approved and a chain is active, auto-advance to the next step
@@ -624,6 +628,9 @@ class TaskViewSet(viewsets.ModelViewSet):
         try:
             # Revise the task (just change status to DRAFT)
             task.revise()
+
+            # Increment revision round so next submission is tracked as a new round
+            task.revision_round += 1
 
             # Save the task to persist the state change
             task.save()

@@ -599,6 +599,14 @@ class AgentOrchestrator:
             yield {"type": "done"}
             return
 
+        if action == 'distribute_message':
+            yield {
+                "type": "text",
+                "content": "Message distribution is being configured. This feature will be available soon.",
+            }
+            yield {"type": "done"}
+            return
+
         if action == 'start_follow_up':
             latest_run = self.session.workflow_runs.filter(
                 status='awaiting_confirmation',
@@ -813,8 +821,8 @@ class AgentOrchestrator:
         calendar_data_str = json.dumps(calendar_payload, ensure_ascii=False)
 
         # Call Dify Calendar Assistant workflow
-        dify_api_key = os.environ.get('DIFY_CALENDAR_API_KEY')
-        dify_api_url = os.environ.get('DIFY_API_URL', 'https://api.dify.ai')
+        dify_api_key = getattr(settings, 'DIFY_CALENDAR_API_KEY', '') or os.environ.get('DIFY_CALENDAR_API_KEY', '')
+        dify_api_url = getattr(settings, 'DIFY_API_URL', '') or os.environ.get('DIFY_API_URL', 'https://api.dify.ai')
 
         if not dify_api_key:
             yield {"type": "error", "content": "Calendar AI is not configured. Please set DIFY_CALENDAR_API_KEY."}
@@ -1115,7 +1123,7 @@ class AgentOrchestrator:
 
     def create_decision_draft(self, analysis_result, workflow_run=None):
         """Create a Decision draft with Signals and Options from analysis."""
-        yield {"type": "text", "content": "Creating decision draft..."}
+        yield {"type": "text", "content": "Creating decision pre-draft..."}
 
         if workflow_run:
             workflow_run.status = 'creating_decision'
@@ -1134,11 +1142,13 @@ class AgentOrchestrator:
             reasoning=suggested.get("reasoning", ""),
             risk_level=suggested.get("risk_level", "MEDIUM"),
             confidence=suggested.get("confidence", 3),
+            status=Decision.Status.PREDRAFT,
             project=self.project,
             project_seq=max_seq + 1,
             author=self.user,
             created_by_agent=True,
             agent_session_id=self.session.id,
+            is_pre_draft=True,
         )
 
         # Create signals from anomalies

@@ -154,11 +154,13 @@ class CreateDecisionExecutor(BaseStepExecutor):
                 reasoning=suggested.get('reasoning', ''),
                 risk_level=suggested.get('risk_level', 'MEDIUM'),
                 confidence=suggested.get('confidence', 3),
+                status=Decision.Status.PREDRAFT,
                 project=project,
                 project_seq=max_seq + 1,
                 author=user,
                 created_by_agent=True,
                 agent_session_id=self.orchestrator.session.id,
+                is_pre_draft=True,
             )
 
             for anomaly in analysis.get('anomalies', []):
