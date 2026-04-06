@@ -340,6 +340,24 @@ function CalendarPageContent() {
                 setIsDialogOpen(true);
               }}
               onEventClick={(event, position) => {
+                // 检查是否是 derived event（Decision/Task 生成的）
+                if (event.description) {
+                  try {
+                    const meta = JSON.parse(event.description);
+                    if (meta.isDerived) {
+                      if (meta.decision_id) {
+                        router.push(`/decisions/${meta.decision_id}`);
+                        return;
+                      }
+                      if (meta.task_id) {
+                        router.push(`/tasks/${meta.task_id}`);
+                        return;
+                      }
+                    }
+                  } catch {
+                  // not derived event, continue with normal processing
+                  }
+                }
                 setDialogMode("view");
                 setEditingEvent(event);
                 setDialogStart(new Date(event.start_datetime));
