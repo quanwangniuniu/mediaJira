@@ -20,11 +20,11 @@ def generate_calendar_events_for_decision(sender, instance, created, **kwargs):
     if not organization:
         return
 
-    # Decision Event — 用 committed_at 作为时间，没有则用 created_at
+    # Decision Event — Use committed_at as the time, or created_at if not available
     event_time = instance.committed_at or instance.created_at
     if event_time:
         CalendarEvent.objects.update_or_create(
-            # 用这些字段查找已有的事件，防止重复生成
+            # Use these fields to find existing events to prevent duplicate generation
             event_type=CalendarEvent.EventType.DECISION,
             decision=instance,
             defaults={
@@ -34,7 +34,7 @@ def generate_calendar_events_for_decision(sender, instance, created, **kwargs):
             }
         )
 
-    # Decision Review Event — 用 approved_at 作为时间
+    # Decision Review Event — uses approved_at as time
     if instance.approved_at:
         CalendarEvent.objects.update_or_create(
             event_type=CalendarEvent.EventType.DECISION_REVIEW,
@@ -57,9 +57,9 @@ def generate_calendar_events_for_task(sender, instance, created, **kwargs):
     if not organization:
         return
 
-    # Task Event — 只有有 due_date 才生成
+    # Task Event — only generated if there is due_date
     if instance.due_date:
-        # due_date 是 DateField，需要转成 DateTimeField
+        # due_date is a DateField and needs to be converted into a DateTimeField
         start_time = timezone.make_aware(
             timezone.datetime.combine(instance.due_date, timezone.datetime.min.time())
         )
