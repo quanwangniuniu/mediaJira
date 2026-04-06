@@ -1,32 +1,24 @@
-# Development stage
-# FROM node:18-alpine
 FROM node:18-bullseye
 
-# Set work directory
 WORKDIR /app
 
-# Create non-root user
-RUN adduser --disabled-password --gecos "" --home /home/appuser appuser
-RUN mkdir -p /app/.next && chown -R appuser:appuser /app/.next
+RUN adduser --disabled-password --gecos "" --home /home/appuser appuser \
+    && chown appuser:appuser /app
 
-# Install dependencies
-# RUN npm install -g sonarqube-scanner 
-# RUN apt-get update && apt-get install -y curl
-
-# Copy the rest of the application
-COPY --chown=appuser:appuser . /app
-
-# Assign permission
-RUN chown appuser:appuser /app
-
-# Switch to non-root user
 USER appuser
-RUN npm install
+
+COPY --chown=appuser:appuser package*.json ./
+RUN npm ci
+
+COPY --chown=appuser:appuser . .
+
+RUN mkdir -p /app/.next
 
 ENV NODE_ENV=development
 ENV NEXT_TELEMETRY_DISABLED=1
-EXPOSE 3000
 ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
+ENV HOSTNAME=0.0.0.0
+
+EXPOSE 3000
 
 CMD ["npm", "run", "dev"]

@@ -1,0 +1,256 @@
+services:
+  db:
+    build: 
+      context: ./postgres
+      dockerfile: Dockerfile
+    container_name: db
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-}
+      POSTGRES_USER: ${POSTGRES_USER:-}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - pgbackups:/var/lib/pgbackrest
+      - /var/run/postgresql:/var/run/postgresql 
+    networks:
+      - app-network
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pgbackrest:
+    build: 
+      context: ./pgbackrest
+      dockerfile: Dockerfile
+    container_name: pgbackrest
+    restart: always    
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - pgbackups:/var/lib/pgbackrest
+      - pglogs:/var/log/pgbackrest   
+      - /var/run/postgresql:/var/run/postgresql 
+    networks:
+      - app-network
+    command: ["/bin/bash", "/usr/bin/entrypoint"]
+    depends_on:
+      db:
+        condition: service_healthy
+        required: true      
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis-prod
+    restart: always
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  clamav:
+    image: clamav/clamav:latest
+    platform: linux/amd64
+    container_name: clamav-prod
+    restart: always
+    ports:
+      - "3310:3310"
+    volumes:
+      - clamav_data:/var/lib/clamav
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "clamdscan", "--version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    image: backend:prod
+    container_name: backend-prod
+    restart: always
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - POSTGRES_DB=${POSTGRES_DB:-}
+      - POSTGRES_USER=${POSTGRES_USER:-}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - DEBUG=False
+      - KAFKA_BROKER=${KAFKA_BROKER}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_OAUTH_REDIRECT_URI=${GOOGLE_OAUTH_REDIRECT_URI}
+      - FRONTEND_URL=${FRONTEND_URL}
+      - DIFY_API_URL=${DIFY_API_URL}
+      - DIFY_API_KEY=${DIFY_API_KEY}
+      - DIFY_CHAT_API_KEY=${DIFY_CHAT_API_KEY}
+      - DIFY_MIRO_API_KEY=${DIFY_MIRO_API_KEY}
+    volumes:
+      # Mount host timezone and localtime to sync time with host (Linux/Mac)
+      # Note: On Windows with Docker Desktop, time is automatically synced
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      # Conditional dependencies - Only depend on db and redis in CI environment or full environment
+      db:
+        condition: service_healthy
+        required: false
+      redis:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+    networks:
+      - app-network
+    command: ["/bin/bash", "/app/entrypoint"]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=django"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend-prod
+    restart: always
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - KAFKA_BROKER=${KAFKA_BROKER}
+    depends_on:
+      backend:
+        condition: service_started
+    networks:
+      - app-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=nextjs"
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx-prod
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf.pro:/etc/nginx/nginx.conf:ro
+      - /etc/letsencrypt/live/marketing.simplified.dpdns.org:/etc/letsencrypt/live/marketing.simplified.dpdns.org:ro
+      - /etc/letsencrypt/archive/marketing.simplified.dpdns.org:/etc/letsencrypt/archive/marketing.simplified.dpdns.org:ro
+    depends_on:
+      backend:
+        condition: service_started
+      frontend:
+        condition: service_started
+    networks:
+      - app-network
+
+  celery-worker:
+    image: backend:prod
+    # build:
+    #   context: ./backend
+    #   dockerfile: Dockerfile.bak
+    container_name: celery-worker-prod
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - POSTGRES_DB=${POSTGRES_DB:-}
+      - POSTGRES_USER=${POSTGRES_USER:-}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - DEBUG=False
+      - KAFKA_BROKER=${KAFKA_BROKER}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_OAUTH_REDIRECT_URI=${GOOGLE_OAUTH_REDIRECT_URI}
+      - FRONTEND_URL=${FRONTEND_URL}
+      - DEBUG=False
+      - DIFY_API_URL=${DIFY_API_URL}
+      - DIFY_API_KEY=${DIFY_API_KEY}
+      - DIFY_CHAT_API_KEY=${DIFY_CHAT_API_KEY}
+      - DIFY_MIRO_API_KEY=${DIFY_MIRO_API_KEY}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+        required: false    
+      redis:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+    command: celery -A backend worker --loglevel=info
+    networks:
+      - app-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    restart: always
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:29093"
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      CLUSTER_ID: "MW-7IGsmQbmFkrf2x7Ho5A"
+      KAFKA_LOG_RETENTION_HOURS: 168
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  pgdata: 
+  pgbackups: 
+  pglogs:
+  clamav_data:
+  kafka_data:
+

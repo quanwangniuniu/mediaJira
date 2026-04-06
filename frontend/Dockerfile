@@ -1,32 +1,30 @@
-FROM node:18
+FROM node:18-alpine AS deps
 WORKDIR /app
-
-# Create non-root user
-RUN adduser --disabled-password --gecos "" --home /home/appuser appuser
-RUN mkdir -p /app/.next && chown -R appuser:appuser /app/.next
-
-# Copy package.json
 COPY package*.json ./
+RUN npm ci
 
-# Install dependencies
-RUN npm install
-
-# Copy the rest of the application
+FROM node:18-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-
-# Build production bundle
 RUN npm run build
 
-# Assign permission
-RUN chown -R appuser:appuser /app
+FROM node:18-alpine AS runner
+WORKDIR /app
 
-# Switch to non-root user
-USER appuser
+RUN addgroup -S appuser && adduser -S appuser -G appuser
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-EXPOSE 3000
 ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
+ENV HOSTNAME=0.0.0.0
 
-CMD ["npm", "start"]
+COPY --from=builder --chown=appuser:appuser /app/.next/standalone ./
+COPY --from=builder --chown=appuser:appuser /app/.next/static ./.next/static
+COPY --from=builder --chown=appuser:appuser /app/public ./public
+
+USER appuser
+
+EXPOSE 3000
+
+CMD ["node", "server.js"]

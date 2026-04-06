@@ -1,26 +1,34 @@
-FROM python:3.10
+FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-# Copy requirements.txt first to leverage Docker cache
-COPY requirements.txt .
-
-COPY . .
-
-# Install system dependencies including ffmpeg
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
     mediainfo \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements_base.txt ./requirements.txt
 
-# Add non-root user(Debian/Ubuntu)
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+COPY . .
+
+
+FROM python:3.11-slim AS runner
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    mediainfo \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN adduser --disabled-password --gecos "" appuser
-# Create static directory for Django static files
-RUN mkdir -p /app/static
-RUN chown -R appuser:appuser /app
-# Make entrypoint script executable
-RUN chmod +x /app/entrypoint
+
+COPY --from=builder /install /usr/local
+COPY --chown=appuser:appuser . .
+
 USER appuser
 
-CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "backend.asgi:application"] 
+EXPOSE 8000
+
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "backend.asgi:application"]
