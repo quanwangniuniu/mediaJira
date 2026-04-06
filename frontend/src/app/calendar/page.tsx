@@ -37,12 +37,17 @@ function CalendarPageContent() {
   const [panelPosition, setPanelPosition] =
     useState<EventPanelPosition | null>(null);
   const [viewSwitcherOpen, setViewSwitcherOpen] = useState(false);
+  // SMP - 400 - active event types
+  const [activeEventTypes, setActiveEventTypes] = useState<Set<string>>(
+  new Set(["decision", "task", "decision_review"])
+);
   const viewSwitcherRef = useRef<HTMLDivElement>(null);
 
   const { events, calendars, isLoading, error, refetch } = useCalendarView({
     viewType: currentView,
     currentDate,
     calendarIds: visibleCalendarIds,
+    activeEventTypes: Array.from(activeEventTypes),
   });
 
   const handleAskAgentFromCalendar = useCallback(() => {
@@ -312,6 +317,46 @@ function CalendarPageContent() {
           onOffset={handleOffset}
           onAskAgent={handleAskAgentFromCalendar}
         />
+        {/* Derived Event Type Filter Bar */}
+      <div className="flex items-center gap-2 px-4 py-2 border-b bg-white">
+        <span className="text-xs text-gray-500 font-medium">Show:</span>
+        {[
+          { type: "decision", label: "Decisions", color: "#8B5CF6" },
+          { type: "task", label: "Tasks", color: "#10B981" },
+          { type: "decision_review", label: "Reviews", color: "#F59E0B" },
+        ].map(({ type, label, color }) => {
+          const isActive = activeEventTypes.has(type);
+          return (
+            <button
+              key={type}
+              type="button"
+              onClick={() => {
+                setActiveEventTypes((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(type)) {
+                    next.delete(type);
+                  } else {
+                    next.add(type);
+                  }
+                  return next;
+                });
+              }}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+                isActive
+                  ? "text-white border-transparent"
+                  : "text-gray-500 bg-white border-gray-300"
+              }`}
+              style={isActive ? { backgroundColor: color, borderColor: color } : {}}
+            >
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ backgroundColor: isActive ? "white" : color }}
+              />
+              {label}
+            </button>
+          );
+        })}
+      </div>
 
         <div className="flex flex-1 overflow-hidden">
           <CalendarSidebarContainer
