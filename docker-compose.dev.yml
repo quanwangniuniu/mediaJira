@@ -59,7 +59,6 @@ services:
     build: 
       context: ./backend
       dockerfile: Dockerfile.dev
-    image: backend:dev
     container_name: backend-dev
     restart: always
     ports:
@@ -141,10 +140,9 @@ services:
 
   # Celery Worker for background tasks
   celery-worker:
-    image: backend:dev
-    # build:
-    #   context: ./backend
-    #   dockerfile: Dockerfile.dev
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
     container_name: celery-worker-dev
     restart: always
     env_file:
