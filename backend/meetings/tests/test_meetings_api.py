@@ -270,7 +270,7 @@ class TestMeetingAPI(TestCase):
             scheduled_date=None,
         )
 
-        url = f"/api/v1/projects/{self.project_a.id}/meetings/"
+        url = f"/api/projects/{self.project_a.id}/meetings/"
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["incoming_lane_total"], 2)
@@ -302,7 +302,7 @@ class TestMeetingAPI(TestCase):
             2,
         )
 
-        url = f"/api/v1/projects/{self.project_a.id}/meetings/"
+        url = f"/api/projects/{self.project_a.id}/meetings/"
         r0 = self.client.get(url)
         self.assertEqual(r0.status_code, status.HTTP_200_OK)
         self.assertEqual(r0.data["incoming_lane_total"], 2)
@@ -336,7 +336,7 @@ class TestMeetingAPI(TestCase):
         meeting = Meeting.objects.create(
             project=self.project_a,
             title="Meeting",
-            meeting_type="planning",
+            type_definition=self._meeting_type(self.project_a, slug="planning"),
             objective="Objective",
         )
         url = f"/api/projects/{self.project_a.id}/meetings/{meeting.id}/"
