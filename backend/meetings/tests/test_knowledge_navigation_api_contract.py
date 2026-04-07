@@ -59,7 +59,7 @@ class TestKnowledgeNavigationAPIContract(TestCase):
         )
         MeetingDecisionOrigin.objects.create(meeting=m, decision=d)
 
-        url = f"/api/v1/projects/{self.project.id}/meetings/{m.id}/"
+        url = f"/api/projects/{self.project.id}/meetings/{m.id}/"
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("generated_decisions", response.data)
@@ -95,7 +95,7 @@ class TestKnowledgeNavigationAPIContract(TestCase):
             artifact_type="decision",
             artifact_id=d.id,
         )
-        url = f"/api/v1/projects/{self.project.id}/meetings/{m.id}/"
+        url = f"/api/projects/{self.project.id}/meetings/{m.id}/"
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data["generated_decisions"]), 1)
@@ -120,7 +120,7 @@ class TestKnowledgeNavigationAPIContract(TestCase):
             artifact_id=d.id,
         )
 
-        url = f"/api/v1/projects/{self.project.id}/meetings/{m.id}/"
+        url = f"/api/projects/{self.project.id}/meetings/{m.id}/"
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data["generated_decisions"]), 0)
@@ -147,7 +147,7 @@ class TestKnowledgeNavigationAPIContract(TestCase):
         )
         MeetingTaskOrigin.objects.create(meeting=m, task=t)
 
-        url = f"/api/v1/projects/{self.project.id}/meetings/{m.id}/"
+        url = f"/api/projects/{self.project.id}/meetings/{m.id}/"
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("generated_tasks", response.data)
@@ -178,7 +178,7 @@ class TestKnowledgeNavigationAPIContract(TestCase):
             artifact_id=t.id,
         )
 
-        url = f"/api/v1/projects/{self.project.id}/meetings/{m.id}/"
+        url = f"/api/projects/{self.project.id}/meetings/{m.id}/"
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data["generated_tasks"]), 0)

@@ -29,7 +29,7 @@ class _TwoPerPage(PageNumberPagination):
 
 
 class TestMeetingsKnowledgeListAPI(TestCase):
-    """GET /api/v1/projects/{id}/meetings/ — filters, q, pagination, strict slugs."""
+    """GET /api/projects/{id}/meetings/ — filters, q, pagination, strict slugs."""
 
     def setUp(self):
         self.client = APIClient()
@@ -82,7 +82,7 @@ class TestMeetingsKnowledgeListAPI(TestCase):
         self.client.force_authenticate(user=self.user)
 
     def _url(self, **query):
-        base = f"/api/v1/projects/{self.project.id}/meetings/"
+        base = f"/api/projects/{self.project.id}/meetings/"
         if not query:
             return base
         q = "&".join(f"{k}={v}" for k, v in query.items())
@@ -173,7 +173,7 @@ class TestMeetingsKnowledgeListAPI(TestCase):
             type_definition=self.review,
             objective="o",
         )
-        base = f"/api/v1/projects/{self.project.id}/meetings/"
+        base = f"/api/projects/{self.project.id}/meetings/"
         qs = urlencode(
             [
                 ("meeting_type", "planning"),
@@ -231,7 +231,7 @@ class TestMeetingsKnowledgeListAPI(TestCase):
             type_definition=self.planning,
             objective="o",
         )
-        base = f"/api/v1/projects/{self.project.id}/meetings/"
+        base = f"/api/projects/{self.project.id}/meetings/"
         qs = urlencode(
             [
                 ("participant", str(self.user.id)),
@@ -644,11 +644,11 @@ class TestMeetingsKnowledgeListAPI(TestCase):
         self.assertIn("date_to", r.data)
 
     def test_forbidden_other_project(self):
-        r = self.client.get(f"/api/v1/projects/{self.other_project.id}/meetings/")
+        r = self.client.get(f"/api/projects/{self.other_project.id}/meetings/")
         self.assertEqual(r.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_not_found_unknown_project(self):
-        r = self.client.get("/api/v1/projects/999999991/meetings/")
+        r = self.client.get("/api/projects/999999991/meetings/")
         self.assertEqual(r.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_list_sql_query_count_bounded_no_n_plus_one(self):
