@@ -38,7 +38,7 @@ services:
     env_file:
       - .env
     environment:
-      - DB_HOST=${POSTGRES_HOST}
+      - DB_HOST=${DB_HOST}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
       - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
@@ -123,7 +123,7 @@ services:
     env_file:
       - .env
     environment:
-      - DB_HOST=${POSTGRES_HOST}
+      - DB_HOST=${DB_HOST}
       - DEBUG=False
     # extra_hosts:
     #   - "host.docker.internal:host-gateway"
