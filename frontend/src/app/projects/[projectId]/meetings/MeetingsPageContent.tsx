@@ -30,7 +30,12 @@ import { MeetingDateTimePicker } from '@/components/meetings/MeetingDateTimePick
 import { ProjectAPI, type ProjectData, type ProjectMemberData } from '@/lib/api/projectApi';
 import { meetingTimeToInput, normalizeTimeForApi } from '@/lib/meetingSchedule';
 import { formatMeetingsApiError } from '@/lib/meetingsApiErrors';
-import { MEETING_TYPE_OPTIONS } from '@/lib/meetings/meetingTypes';
+import {
+  buildSystemTemplateOptions,
+  fetchUnifiedMeetingTemplateOptions,
+  layoutConfigForNewMeetingFromSelection,
+  type UnifiedMeetingTemplateOption,
+} from '@/lib/meetings/unifiedMeetingTemplates';
 import { MeetingSummaryPanel } from '@/components/meetings/MeetingSummaryPanel';
 import { MeetingsWorkspaceShell } from '@/components/meetings/MeetingsWorkspaceShell';
 import { useAuthStore } from '@/lib/authStore';
@@ -91,6 +96,9 @@ function MeetingsPageInner() {
   const [errorTitle, setErrorTitle] = useState('Could not load meetings');
 
   const [creating, setCreating] = useState(false);
+  const [unifiedTemplateOptions, setUnifiedTemplateOptions] = useState<
+    UnifiedMeetingTemplateOption[]
+  >(() => buildSystemTemplateOptions());
   const [title, setTitle] = useState('');
   const [meetingType, setMeetingType] = useState('');
   const [objective, setObjective] = useState('');
@@ -199,6 +207,16 @@ function MeetingsPageInner() {
   }, [projectId]);
 
   useEffect(() => {
+    if (!projectId || Number.isNaN(projectId)) return;
+    void fetchUnifiedMeetingTemplateOptions()
+      .then(setUnifiedTemplateOptions)
+      .catch((err) => {
+        console.error('Failed to load meeting templates for create form:', err);
+        setUnifiedTemplateOptions(buildSystemTemplateOptions());
+      });
+  }, [projectId, centerMode]);
+
+  useEffect(() => {
     if (!projectId || Number.isNaN(projectId)) {
       setListLoading(false);
       setListPage(null);
@@ -290,15 +308,26 @@ function MeetingsPageInner() {
       toast.error('Project ID is required');
       return;
     }
-    if (!title.trim() || !meetingType.trim() || !objective.trim()) {
-      toast.error('Please fill in title, type and objective');
+    if (!title.trim() || !meetingType.trim()) {
+      toast.error('Please fill in title and select a template');
       return;
     }
 
+    const templateOpt = unifiedTemplateOptions.find((o) => o.value === meetingType.trim());
+    if (!templateOpt) {
+      toast.error('Select a valid meeting type or template');
+      return;
+    }
+
+    const { meeting_type, layout_config } = layoutConfigForNewMeetingFromSelection(templateOpt);
+    const objectiveResolved =
+      objective.trim() || `${templateOpt.label} meeting`;
+
     const payload: MeetingCreateRequest = {
       title: title.trim(),
-      meeting_type: meetingType.trim(),
-      objective: objective.trim(),
+      meeting_type,
+      objective: objectiveResolved,
+      layout_config,
     };
     if (scheduledDate.trim()) {
       payload.scheduled_date = scheduledDate.trim();
@@ -310,17 +339,58 @@ function MeetingsPageInner() {
     setCreating(true);
     try {
       const meeting = await MeetingsAPI.createMeeting(projectId, payload);
-      toast.success('Meeting created');
+      const nested = layout_config.nestedSections ?? [];
+      const flatItems = nested.flatMap((s) => s.items);
+      if (flatItems.length > 0) {
+        try {
+          let order = 0;
+          for (const section of nested) {
+            for (const item of section.items) {
+              await MeetingsAPI.createAgendaItem(projectId, meeting.id, {
+                content: item.text,
+                order_index: order,
+                is_priority: item.duration === '10m',
+              });
+              order += 1;
+            }
+          }
+          const refreshed = await MeetingsAPI.listAgendaItems(projectId, meeting.id);
+          const refreshedList = Array.isArray(refreshed) ? refreshed : [];
+          let idx = 0;
+          const nextNested = nested.map((section) => ({
+            ...section,
+            items: section.items.map((it) => {
+              const agendaItem = refreshedList[idx];
+              idx += 1;
+              return {
+                ...it,
+                id: agendaItem ? String(agendaItem.id) : it.id,
+              };
+            }),
+          }));
+          await MeetingsAPI.patchMeeting(projectId, meeting.id, {
+            layout_config: {
+              blocks: layout_config.blocks,
+              nestedSections: nextNested,
+            },
+          });
+        } catch (seedErr) {
+          console.error('Failed to seed agenda from template:', seedErr);
+          toast.error('Meeting created, but the template agenda could not be fully applied.');
+        }
+      }
 
+      toast.success('Meeting created');
       setTitle('');
       setMeetingType('');
       setObjective('');
       setScheduledDate('');
       setScheduledTime('');
-      await refetchList();
       setCenterMode('list');
-      setSelectedMeetingId(meeting.id);
-      setRightPanelOpen(true);
+      setSelectedMeetingId(null);
+      setRightPanelOpen(false);
+      await refetchList();
+      router.push(`/projects/${projectId}/meetings/${meeting.id}`);
     } catch (err: unknown) {
       console.error('Failed to create meeting:', err);
       toast.error(formatMeetingsApiError(err, 'Failed to create meeting'));
@@ -823,9 +893,10 @@ function MeetingsPageInner() {
                             aria-label="Meeting type"
                           >
                             <option value="">Select meeting type…</option>
-                            {MEETING_TYPE_OPTIONS.map((opt) => (
+                            {unifiedTemplateOptions.map((opt) => (
                               <option key={opt.value} value={opt.value}>
                                 {opt.label}
+                                {!opt.is_system ? ' (saved)' : ''}
                               </option>
                             ))}
                           </select>
