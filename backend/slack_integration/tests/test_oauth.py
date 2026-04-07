@@ -4,7 +4,9 @@ from rest_framework.test import APITestCase
 from unittest.mock import patch
 from core.models import Organization, CustomUser
 from slack_integration.models import SlackWorkspaceConnection
+from slack_integration.views import SLACK_OAUTH_STATE_SALT
 from django.core.exceptions import ValidationError
+from django.core import signing
 
 class TestSlackOAuth(APITestCase):
     
@@ -28,8 +30,12 @@ class TestSlackOAuth(APITestCase):
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('url', response.data)
+        self.assertIn('state', response.data)
         self.assertIn('client_id=', response.data['url'])
         self.assertIn('scope=', response.data['url'])
+        self.assertIn('state=', response.data['url'])
+        payload = signing.loads(response.data['state'], salt=SLACK_OAUTH_STATE_SALT, max_age=600)
+        self.assertEqual(payload['user_id'], self.user.id)
 
     @patch('slack_integration.views.exchange_oauth_code')
     def test_oauth_callback_success(self, mock_exchange):
@@ -51,8 +57,9 @@ class TestSlackOAuth(APITestCase):
             }
         }
         
+        state = signing.dumps({"user_id": self.user.id, "nonce": "nonce"}, salt=SLACK_OAUTH_STATE_SALT)
         url = reverse('slack-oauth-callback')
-        data = {'code': 'valid_code', 'state': ''}
+        data = {'code': 'valid_code', 'state': state}
         response = self.client.post(url, data)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -76,12 +83,48 @@ class TestSlackOAuth(APITestCase):
         # Mock validation error from service
         mock_exchange.side_effect = ValidationError("Slack OAuth failed")
         
+        state = signing.dumps({"user_id": self.user.id, "nonce": "nonce"}, salt=SLACK_OAUTH_STATE_SALT)
         url = reverse('slack-oauth-callback')
-        data = {'code': 'invalid_code'}
+        data = {'code': 'invalid_code', 'state': state}
         response = self.client.post(url, data)
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('error', response.data)
+
+    def test_oauth_callback_rejects_invalid_state(self):
+        """
+        Test OAuth callback rejects an invalid state payload.
+        """
+        self.client.force_authenticate(user=self.user)
+
+        url = reverse('slack-oauth-callback')
+        data = {'code': 'valid_code', 'state': 'invalid-state'}
+        response = self.client.post(url, data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['error'], 'Invalid Slack OAuth state.')
+
+    def test_connection_status_disconnected_shape(self):
+        """
+        Test disconnected status returns the same field names as the connected serializer.
+        """
+        self.client.force_authenticate(user=self.user)
+
+        url = reverse('slack-connection-status')
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data,
+            {
+                'is_connected': False,
+                'slack_team_id': None,
+                'slack_team_name': None,
+                'default_channel_id': None,
+                'default_channel_name': None,
+                'is_active': False,
+            }
+        )
 
     def test_revoke_connection(self):
         """

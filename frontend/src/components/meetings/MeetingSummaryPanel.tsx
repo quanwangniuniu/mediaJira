@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import {
   Copy,
@@ -25,10 +25,17 @@ import {
   meetingTimeToInput,
   normalizeTimeForApi,
 } from '@/lib/meetingSchedule';
+
 import { formatMeetingsApiError } from '@/lib/meetingsApiErrors';
-import { MEETING_TYPE_OPTIONS } from '@/lib/meetings/meetingTypes';
+import {
+  buildSystemTemplateOptions,
+  fetchUnifiedMeetingTemplateOptions,
+  layoutConfigForNewMeetingFromSelection,
+  type UnifiedMeetingTemplateOption,
+} from '@/lib/meetings/unifiedMeetingTemplates';
+import { replaceAgendaAndLayoutFromNested } from '@/lib/meetings/replaceMeetingAgendaFromTemplate';
 import { hasVisibleText, sanitizeDocumentPreviewHtml } from '@/lib/meetings/documentPreview';
-import type { Meeting, MeetingDocument, ParticipantLink } from '@/types/meeting';
+import type { Meeting, MeetingDocument, MeetingPartialUpdateRequest, ParticipantLink } from '@/types/meeting';
 
 function PanelSection({
   title,
@@ -79,6 +86,9 @@ export function MeetingSummaryPanel({
   const [extRefDraft, setExtRefDraft] = useState('');
   const [savingMeta, setSavingMeta] = useState(false);
   const [deletingMeeting, setDeletingMeeting] = useState(false);
+  const [unifiedTemplateOptions, setUnifiedTemplateOptions] = useState<UnifiedMeetingTemplateOption[]>(
+    () => buildSystemTemplateOptions(),
+  );
   const [documentPreviewHtml, setDocumentPreviewHtml] = useState('');
 
   const [participants, setParticipants] = useState<ParticipantLink[]>([]);
@@ -133,9 +143,31 @@ export function MeetingSummaryPanel({
   }, [loadMeeting]);
 
   useEffect(() => {
+    void fetchUnifiedMeetingTemplateOptions()
+      .then(setUnifiedTemplateOptions)
+      .catch((err) => {
+        console.error('Failed to load meeting templates for details panel:', err);
+        setUnifiedTemplateOptions(buildSystemTemplateOptions());
+      });
+  }, [projectId]);
+
+  useEffect(() => {
     if (!meeting) return;
     void loadParticipants();
   }, [meeting, loadParticipants]);
+
+  const templateSelectOptions = useMemo(() => {
+    const opts = [...unifiedTemplateOptions];
+    const current = meetingTypeDraft.trim() || meeting?.meeting_type?.trim() || '';
+    if (current && !opts.some((o) => o.value === current)) {
+      opts.push({
+        value: current,
+        label: current,
+        is_system: false,
+      });
+    }
+    return opts;
+  }, [unifiedTemplateOptions, meetingTypeDraft, meeting?.meeting_type]);
 
   const saveMeta = async () => {
     if (!meeting || savingMeta) return;
@@ -145,20 +177,42 @@ export function MeetingSummaryPanel({
     }
     setSavingMeta(true);
     try {
-      const updated = await MeetingsAPI.patchMeeting(projectId, meetingId, {
+      const typeChanged = meetingTypeDraft.trim() !== meeting.meeting_type.trim();
+      const selectedOpt = unifiedTemplateOptions.find((o) => o.value === meetingTypeDraft.trim());
+
+      const patchPayload: MeetingPartialUpdateRequest = {
         title: titleDraft.trim(),
         objective: objectiveDraft.trim(),
         meeting_type: meetingTypeDraft.trim(),
         scheduled_date: schedDateDraft.trim() || null,
         scheduled_time: schedTimeDraft.trim() ? normalizeTimeForApi(schedTimeDraft) : null,
         external_reference: extRefDraft.trim() || null,
-      });
+      };
+
+      if (typeChanged) {
+        if (!selectedOpt) {
+          toast.error('Select a valid meeting type or template from the list');
+          return;
+        }
+        const { meeting_type: nextMeetingType, layout_config: lc } =
+          layoutConfigForNewMeetingFromSelection(selectedOpt);
+        const layoutSynced = await replaceAgendaAndLayoutFromNested(
+          projectId,
+          meetingId,
+          lc.blocks,
+          lc.nestedSections,
+        );
+        patchPayload.meeting_type = nextMeetingType;
+        patchPayload.layout_config = layoutSynced;
+      }
+
+      const updated = await MeetingsAPI.patchMeeting(projectId, meetingId, patchPayload);
       setMeeting(updated);
       onMeetingUpdated?.(updated);
-      toast.success('Meeting saved');
+      toast.success(typeChanged ? 'Meeting saved with new template layout' : 'Meeting saved');
     } catch (e: unknown) {
       console.error(e);
-      toast.error('Failed to save meeting');
+      toast.error(formatMeetingsApiError(e, 'Failed to save meeting'));
     } finally {
       setSavingMeta(false);
     }
@@ -278,13 +332,29 @@ export function MeetingSummaryPanel({
                     className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                     value={meetingTypeDraft}
                     onChange={(e) => setMeetingTypeDraft(e.target.value)}
+                    aria-label="Meeting type or template"
                   >
                     <option value="">Select…</option>
-                    {MEETING_TYPE_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
+                    <optgroup label="System templates">
+                      {templateSelectOptions
+                        .filter((o) => o.is_system)
+                        .map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                    </optgroup>
+                    {templateSelectOptions.some((o) => !o.is_system) ? (
+                      <optgroup label="Your templates">
+                        {templateSelectOptions
+                          .filter((o) => !o.is_system)
+                          .map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                      </optgroup>
+                    ) : null}
                   </select>
                 </div>
                 <div>
@@ -295,6 +365,24 @@ export function MeetingSummaryPanel({
                     onChange={(e) => setObjectiveDraft(e.target.value)}
                     rows={4}
                   />
+                </div>
+                <div>
+                  <h3 className="text-xs font-medium text-slate-600">Meeting document</h3>
+                  <div className="mt-1.5 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                    <p className="mb-2 text-[11px] text-slate-500">
+                      Collaborate in real time and keep notes synced for all participants.
+                    </p>
+                    <div className="min-h-[3rem] rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs leading-5 text-slate-700">
+                      {hasVisibleText(documentPreviewHtml) ? (
+                        <div
+                          className="line-clamp-3 [&_h1]:text-sm [&_h1]:font-semibold [&_h2]:text-sm [&_h2]:font-semibold [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_blockquote]:border-l-2 [&_blockquote]:border-slate-300 [&_blockquote]:pl-2"
+                          dangerouslySetInnerHTML={{ __html: documentPreviewHtml }}
+                        />
+                      ) : (
+                        <p>No document content yet.</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </PanelSection>

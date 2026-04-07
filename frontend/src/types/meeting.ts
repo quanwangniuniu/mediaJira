@@ -47,6 +47,8 @@ export interface Meeting {
   /** ``ArtifactLink`` only, excluding ids already in generated (supplementary). */
   related_decisions?: KnowledgeNavigationLink[];
   related_tasks?: KnowledgeNavigationLink[];
+  /** Workspace layout: legacy list of blocks, or `{ blocks, nestedSections }`. */
+  layout_config?: unknown | null;
 }
 
 /** List row from GET /meetings/ (knowledge discovery). */
@@ -142,6 +144,8 @@ export interface MeetingCreateRequest {
   status?: MeetingStatus;
   /** Optional on create: project member user IDs (see SMP-484 participants timing). */
   participant_user_ids?: number[];
+  /** Optional workspace layout (list or `{ blocks, nestedSections }`). */
+  layout_config?: unknown | null;
 }
 
 export interface MeetingUpdateRequest {
@@ -162,6 +166,7 @@ export interface MeetingPartialUpdateRequest {
   scheduled_time?: string | null;
   external_reference?: string | null;
   status?: MeetingStatus;
+  layout_config?: unknown | null;
 }
 
 export interface AgendaItem {
