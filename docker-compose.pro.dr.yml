@@ -29,7 +29,8 @@ services:
   backend:
     build: 
       context: ./backend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dr
+    image: backend:prod
     container_name: backend-prod
     restart: always
     ports:
@@ -47,7 +48,11 @@ services:
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - GOOGLE_OAUTH_REDIRECT_URI=${GOOGLE_OAUTH_REDIRECT_URI}
       - FRONTEND_URL=${FRONTEND_URL}
-
+    volumes:
+      # Mount host timezone and localtime to sync time with host (Linux/Mac)
+      # Note: On Windows with Docker Desktop, time is automatically synced
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     # extra_hosts:
     #   - "host.docker.internal:host-gateway"
     depends_on:
@@ -68,7 +73,7 @@ services:
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dr
     container_name: frontend-prod
     restart: always
     ports:
@@ -98,8 +103,8 @@ services:
       - "443:443"
     volumes:
       - ./nginx/nginx.conf.pro:/etc/nginx/nginx.conf:ro
-      - /etc/letsencrypt/live/mediajira.dpdns.org:/etc/letsencrypt/live/mediajira.dpdns.org:ro
-      - /etc/letsencrypt/archive/mediajira.dpdns.org:/etc/letsencrypt/archive/mediajira.dpdns.org:ro
+      - /etc/letsencrypt/live/marketing.simplified.dpdns.org:/etc/letsencrypt/live/marketing.simplified.dpdns.org:ro
+      - /etc/letsencrypt/archive/marketing.simplified.dpdns.org:/etc/letsencrypt/archive/marketing.simplified.dpdns.org:ro
     depends_on:
       backend:
         condition: service_started
@@ -109,9 +114,10 @@ services:
       - app-network
 
   celery-worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: backend:prod
+    # build:
+    #   context: ./backend
+    #   dockerfile: Dockerfile.bak
     container_name: celery-worker-prod
     restart: always
     env_file:
