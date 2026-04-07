@@ -57,13 +57,13 @@ class TestActionItemTaskIntegration(TestCase):
 
     def _convert_url(self, action_item_id):
         return (
-            f"/api/v1/projects/{self.project.id}/meetings/{self.meeting.id}/"
+            f"/api/projects/{self.project.id}/meetings/{self.meeting.id}/"
             f"action-items/{action_item_id}/convert-to-task/"
         )
 
     def _bulk_url(self):
         return (
-            f"/api/v1/projects/{self.project.id}/meetings/{self.meeting.id}/"
+            f"/api/projects/{self.project.id}/meetings/{self.meeting.id}/"
             f"action-items/bulk-convert-to-tasks/"
         )
 
