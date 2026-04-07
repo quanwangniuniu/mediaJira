@@ -1,4 +1,4 @@
- "use client";
+"use client";
 
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -37,10 +37,11 @@ function CalendarPageContent() {
   const [panelPosition, setPanelPosition] =
     useState<EventPanelPosition | null>(null);
   const [viewSwitcherOpen, setViewSwitcherOpen] = useState(false);
-  // SMP - 400 - active event types
+
+  // SMP-400: active event type filter state (all 3 types active by default)
   const [activeEventTypes, setActiveEventTypes] = useState<Set<string>>(
-  new Set(["decision", "task", "decision_review"])
-);
+    new Set(["decision", "task", "decision_review"])
+  );
   const viewSwitcherRef = useRef<HTMLDivElement>(null);
 
   const { events, calendars, isLoading, error, refetch } = useCalendarView({
@@ -107,7 +108,6 @@ function CalendarPageContent() {
     if (storedCalendarId) {
       setVisibleCalendarIds([storedCalendarId]);
     } else if (storedValue) {
-      // Drop malformed legacy/local data so it cannot break next reload.
       window.localStorage.removeItem(CALENDAR_FILTER_STORAGE_KEY);
     }
     setHasLoadedCalendarFilter(true);
@@ -143,18 +143,11 @@ function CalendarPageContent() {
       if (sameMonth && sameYear) {
         return `${format(start, "MMMM d")} - ${format(end, "d, yyyy")}`;
       }
-
       if (sameYear) {
         return `${format(start, "MMM d")} - ${format(end, "MMM d, yyyy")}`;
       }
-
-      return `${format(start, "MMM d, yyyy")} - ${format(
-        end,
-        "MMM d, yyyy",
-      )}`;
+      return `${format(start, "MMM d, yyyy")} - ${format(end, "MMM d, yyyy")}`;
     }
-
-    // day view
     return format(currentDate, "EEEE, MMMM d, yyyy");
   }, [currentView, currentDate]);
 
@@ -178,7 +171,6 @@ function CalendarPageContent() {
       next.setFullYear(next.getFullYear() + 1 * multiplier);
       setCurrentDate(next);
     } else {
-      // agenda: step one week by default
       setCurrentDate((prev) => addDays(prev, 7 * multiplier));
     }
   }, [currentDate, currentView]);
@@ -193,28 +185,23 @@ function CalendarPageContent() {
         tag === "input" ||
         tag === "textarea" ||
         target.getAttribute("contenteditable") === "true";
-      if (isTypingElement) {
-        return;
-      }
+      if (isTypingElement) return;
 
       if (event.key === "t" || event.key === "T") {
         event.preventDefault();
         handleToday();
         return;
       }
-
       if (event.key === "ArrowLeft") {
         event.preventDefault();
         handleOffset("prev");
         return;
       }
-
       if (event.key === "ArrowRight") {
         event.preventDefault();
         handleOffset("next");
         return;
       }
-
       if (event.key === "d" || event.key === "D") {
         event.preventDefault();
         setCurrentView("day");
@@ -259,6 +246,11 @@ function CalendarPageContent() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Refetch calendar events on mount so returning from detail pages shows fresh data
+  React.useEffect(() => {
+    refetch();
+  }, []);
+
   // Auto-refresh when the agent creates a calendar event.
   // On mount: consume any pending flag written before this page loaded (navigation case).
   // Custom event: same-window floating chat. Storage event: cross-tab.
@@ -284,8 +276,12 @@ function CalendarPageContent() {
     const handlePageShow = (e: PageTransitionEvent) => {
       if (e.persisted) consumePending();
     };
+    // Refetch when tab becomes visible again (e.g. returning from another tab)
     const handleVisibility = () => {
-      if (document.visibilityState === "visible") consumePending();
+      if (document.visibilityState === "visible") {
+        consumePending();
+        refetch();
+      }
     };
 
     window.addEventListener("agent:calendar-updated", handleRefresh);
@@ -317,46 +313,47 @@ function CalendarPageContent() {
           onOffset={handleOffset}
           onAskAgent={handleAskAgentFromCalendar}
         />
-        {/* Derived Event Type Filter Bar */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b bg-white">
-        <span className="text-xs text-gray-500 font-medium">Show:</span>
-        {[
-          { type: "decision", label: "Decisions", color: "#8B5CF6" },
-          { type: "task", label: "Tasks", color: "#10B981" },
-          { type: "decision_review", label: "Reviews", color: "#F59E0B" },
-        ].map(({ type, label, color }) => {
-          const isActive = activeEventTypes.has(type);
-          return (
-            <button
-              key={type}
-              type="button"
-              onClick={() => {
-                setActiveEventTypes((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(type)) {
-                    next.delete(type);
-                  } else {
-                    next.add(type);
-                  }
-                  return next;
-                });
-              }}
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
-                isActive
-                  ? "text-white border-transparent"
-                  : "text-gray-500 bg-white border-gray-300"
-              }`}
-              style={isActive ? { backgroundColor: color, borderColor: color } : {}}
-            >
-              <span
-                className="h-2 w-2 rounded-full"
-                style={{ backgroundColor: isActive ? "white" : color }}
-              />
-              {label}
-            </button>
-          );
-        })}
-      </div>
+
+        {/* SMP-400: Derived event type filter bar */}
+        <div className="flex items-center gap-2 px-4 py-2 border-b bg-white">
+          <span className="text-xs text-gray-500 font-medium">Show:</span>
+          {[
+            { type: "decision", label: "Decisions", color: "#8B5CF6" },
+            { type: "task", label: "Tasks", color: "#10B981" },
+            { type: "decision_review", label: "Reviews", color: "#F59E0B" },
+          ].map(({ type, label, color }) => {
+            const isActive = activeEventTypes.has(type);
+            return (
+              <button
+                key={type}
+                type="button"
+                onClick={() => {
+                  setActiveEventTypes((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(type)) {
+                      next.delete(type);
+                    } else {
+                      next.add(type);
+                    }
+                    return next;
+                  });
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+                  isActive
+                    ? "text-white border-transparent"
+                    : "text-gray-500 bg-white border-gray-300"
+                }`}
+                style={isActive ? { backgroundColor: color, borderColor: color } : {}}
+              >
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ backgroundColor: isActive ? "white" : color }}
+                />
+                {label}
+              </button>
+            );
+          })}
+        </div>
 
         <div className="flex flex-1 overflow-hidden">
           <CalendarSidebarContainer
@@ -385,24 +382,28 @@ function CalendarPageContent() {
                 setIsDialogOpen(true);
               }}
               onEventClick={(event, position) => {
-                // 检查是否是 derived event（Decision/Task 生成的）
+                // Check if this is a system-derived event (from Decision or Task)
                 if (event.description) {
                   try {
                     const meta = JSON.parse(event.description);
                     if (meta.isDerived) {
+                      // Navigate to Decision detail page with project_id for permission
                       if (meta.decision_id) {
-                        router.push(`/decisions/${meta.decision_id}`);
+                        const query = meta.project_id ? `?project_id=${meta.project_id}` : '';
+                        router.push(`/decisions/${meta.decision_id}${query}`);
                         return;
                       }
+                      // Navigate to Task detail page
                       if (meta.task_id) {
                         router.push(`/tasks/${meta.task_id}`);
                         return;
                       }
                     }
                   } catch {
-                  // not derived event, continue with normal processing
+                    // Not a derived event, fall through to normal event dialog
                   }
                 }
+                // Regular event: open the event detail dialog
                 setDialogMode("view");
                 setEditingEvent(event);
                 setDialogStart(new Date(event.start_datetime));
@@ -411,6 +412,10 @@ function CalendarPageContent() {
                 setIsDialogOpen(true);
               }}
               onEventTimeChange={async (event, start, end) => {
+                // Derived events are read-only, do not allow time changes
+                if (event.id.toString().startsWith("derived-")) {
+                  return;
+                }
                 try {
                   await CalendarAPI.updateEvent(
                     event.id,

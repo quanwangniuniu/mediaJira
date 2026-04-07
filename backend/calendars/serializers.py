@@ -98,7 +98,6 @@ class CalendarShareSerializer(serializers.ModelSerializer):
     Calendar sharing representation.
     """
 
-    # Expose calendar primary key as calendar_id
     calendar_id = serializers.UUIDField(read_only=True)
     shared_with = UserSummarySerializer(read_only=True)
 
@@ -324,7 +323,6 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
     def validate(self, attrs: dict) -> dict:
         is_recurring = attrs.get("is_recurring")
         recurrence = attrs.get("recurrence")
-        # If recurrence is provided and is_recurring is not explicitly set, treat as recurring
         if recurrence and is_recurring is None:
             attrs["is_recurring"] = True
             is_recurring = True
@@ -361,7 +359,6 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data: dict) -> Event:
         recurrence_data = validated_data.pop("recurrence", None)
-        # Remove any client-provided is_recurring flag; we derive it from recurrence_rule
         validated_data.pop("is_recurring", None)
         calendar_id = validated_data.pop("calendar_id")
         calendar = validated_data.pop("calendar", None) or self._ensure_calendar(calendar_id)
@@ -389,7 +386,6 @@ class EventCreateUpdateSerializer(serializers.ModelSerializer):
 
     def update(self, instance: Event, validated_data: dict) -> Event:
         recurrence_data = validated_data.pop("recurrence", None)
-        # Remove any client-provided is_recurring flag; we derive it from recurrence_rule
         validated_data.pop("is_recurring", None)
         calendar_id = validated_data.pop("calendar_id", None)
 
@@ -455,7 +451,6 @@ class EventAttendeeSerializer(serializers.ModelSerializer):
 class AttendeeCreateRequestSerializer(serializers.Serializer):
     """
     Request body for adding an attendee to an event.
-    Mirrors the OpenAPI shape for /events/{event_id}/attendees/ POST.
     """
 
     user_id = serializers.IntegerField(required=False)
@@ -613,16 +608,18 @@ class NotificationSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "user", "read_at", "created_at", "updated_at"]
 
-# SMP-407
+
+# SMP-407: Read-only serializer for system-derived calendar events
 from .models import CalendarEvent
 
 class CalendarEventSerializer(serializers.ModelSerializer):
     """
     Read-only serializer for system-derived CalendarEvent.
     These events are auto-generated from Decisions and Tasks.
+    All fields are read-only — no mutation allowed via API.
     """
 
-    # 暴露源实体的 ID，供前端点击跳转使用 Expose the ID of the source entity for front-end click and jump use
+    # Expose source entity IDs for front-end click navigation
     decision_id = serializers.IntegerField(
         source='decision.id',
         read_only=True,
@@ -638,6 +635,17 @@ class CalendarEventSerializer(serializers.ModelSerializer):
         read_only=True,
         allow_null=True,
     )
+    # Expose project_id for front-end permission check on navigation
+    # Decision events use decision.project_id, task events use task.project_id
+    project_id = serializers.SerializerMethodField()
+
+    def get_project_id(self, obj) -> int | None:
+        # Get project_id from the source entity (decision or task)
+        if obj.decision:
+            return obj.decision.project_id
+        if obj.task:
+            return obj.task.project_id
+        return None
 
     class Meta:
         model = CalendarEvent
@@ -647,10 +655,15 @@ class CalendarEventSerializer(serializers.ModelSerializer):
             'title',
             'start_time',
             'end_time',
-            'decision_id',   # For front-end jump
-            'task_id',       # For front-end jump
-            'review_id',     # For front-end jump
+            'decision_id',   # For front-end navigation to decision detail
+            'task_id',       # For front-end navigation to task detail
+            'review_id',     # For front-end navigation to review detail
+            'project_id',    # For front-end permission header on navigation
             'created_at',
             'updated_at',
         ]
-        read_only_fields = fields  # All read only, no write operations allowed
+        read_only_fields = [
+            'id', 'event_type', 'title', 'start_time', 'end_time',
+            'decision_id', 'task_id', 'review_id', 'project_id',
+            'created_at', 'updated_at',
+        ]
