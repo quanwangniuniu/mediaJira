@@ -47,11 +47,9 @@ import { CSS } from '@dnd-kit/utilities';
 
 import Layout from '@/components/layout/Layout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
-<<<<<<< HEAD
-import { ProjectMemberPicker } from '@/components/meetings/ProjectMemberPicker';
-import { MeetingArtifactLinker } from '@/components/meetings/MeetingArtifactLinker';
+
 import { MeetingGeneratedKnowledgeSection } from '@/components/meetings/MeetingGeneratedKnowledgeSection';
-=======
+
 import { MeetingHeader } from '@/components/meetings/meeting-header';
 import { AgendaSection } from '@/components/meetings/agenda-section';
 import {
@@ -64,7 +62,7 @@ import { SortableBlock } from '@/components/meetings/SortableBlock';
 import { CustomBlock } from '@/components/meetings/CustomBlock';
 import { TemplateSidebar } from '@/components/meetings/TemplateSidebar';
 import type { SidebarTemplate } from '@/components/meetings/TemplateSidebar';
->>>>>>> origin/prod-preview
+
 import { formatProjectMemberLabel } from '@/components/meetings/projectMemberLabel';
 import { DecisionAPI } from '@/lib/api/decisionApi';
 import { TaskAPI } from '@/lib/api/taskApi';
@@ -794,7 +792,6 @@ export default function MeetingWorkspacePage() {
     fetchData();
   }, [projectId, meetingId]);
 
-<<<<<<< HEAD
   // After creating a task/decision in another tab or via bfcache back, refetch so generated_* links appear.
   useEffect(() => {
     if (!projectId || Number.isNaN(projectId) || !meetingId || Number.isNaN(meetingId)) {
@@ -826,7 +823,7 @@ export default function MeetingWorkspacePage() {
       window.removeEventListener('pageshow', onPageShow as EventListener);
     };
   }, [projectId, meetingId]);
-=======
+
   // Meeting Type Sync: when opening a meeting, auto-apply the matching template agenda structure.
   // This ensures the initial editor state matches `meeting.meeting_type`.
   useEffect(() => {
@@ -881,7 +878,6 @@ export default function MeetingWorkspacePage() {
       }
     })();
   }, [loading]);
->>>>>>> origin/prod-preview
 
   useEffect(() => {
     if (!Number.isFinite(projectId) || !meeting) {
@@ -2146,80 +2142,7 @@ export default function MeetingWorkspacePage() {
                         : 'No document content yet.'}
                     </p>
                   </div>
-<<<<<<< HEAD
 
-                  <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center">
-                    <input
-                      value={participantRoleDrafts[p.id] ?? p.role ?? ''}
-                      onChange={(e) =>
-                        setParticipantRoleDrafts((prev) => ({ ...prev, [p.id]: e.currentTarget.value }))
-                      }
-                      onBlur={() => saveParticipantRole(p.id, participantRoleDrafts[p.id] ?? p.role ?? '')}
-                      placeholder="Role…"
-                      className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 md:w-56"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeParticipant(p.id)}
-                      disabled={removingParticipantIds.has(p.id)}
-                      className="inline-flex items-center justify-center rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {meeting && Number.isFinite(projectId) && Number.isFinite(meetingId) ? (
-          <MeetingGeneratedKnowledgeSection
-            projectId={projectId}
-            meetingId={meetingId}
-            generatedTasks={meeting.generated_tasks ?? []}
-            generatedDecisions={meeting.generated_decisions ?? []}
-          />
-        ) : null}
-
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-          <div className="mb-3">
-            <h3 className="text-sm font-semibold text-gray-900">Related artifacts</h3>
-            <p className="mt-1 text-xs text-gray-500">
-              Manually linked items (supplementary). Does not include generated tasks/decisions above.
-            </p>
-          </div>
-
-          <MeetingArtifactLinker
-            resourceIndex={artifactResources}
-            resourceLoading={artifactResourcesLoading}
-            existing={artifacts}
-            disabled={addingArtifact}
-            onLink={(artifact_type, artifact_id) => void linkMeetingArtifact(artifact_type, artifact_id)}
-          />
-
-          <div className="mt-4 grid gap-2">
-            {orderedArtifacts.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-600">
-                No artifacts linked yet. Add one above.
-              </div>
-            ) : (
-              orderedArtifacts.map((a) => {
-                const href =
-                  Number.isFinite(projectId) && !Number.isNaN(projectId)
-                    ? meetingArtifactHref(projectId, a.artifact_type, a.artifact_id)
-                    : null;
-                const title = meetingArtifactDisplayLabel(
-                  a.artifact_type,
-                  a.artifact_id,
-                  artifactResources,
-                );
-                return (
-                  <div
-                    key={a.id}
-                    className="flex flex-col gap-2 rounded-xl border border-gray-200 bg-white p-3 md:flex-row md:items-center md:justify-between"
-=======
                   <Button
                     type="button"
                     size="sm"
@@ -2227,7 +2150,6 @@ export default function MeetingWorkspacePage() {
                     onClick={() =>
                       router.push(`/projects/${projectId}/meetings/${meetingId}/document`)
                     }
->>>>>>> origin/prod-preview
                   >
                     Open document
                   </Button>
@@ -2239,6 +2161,18 @@ export default function MeetingWorkspacePage() {
                   />
                 ) : null}
               </div>
+
+              {meeting && Number.isFinite(projectId) && Number.isFinite(meetingId) ? (
+                <div className="mt-6">
+                  <MeetingGeneratedKnowledgeSection
+                    projectId={projectId}
+                    meetingId={meetingId}
+                    generatedTasks={meeting.generated_tasks ?? []}
+                    generatedDecisions={meeting.generated_decisions ?? []}
+                  />
+                </div>
+              ) : null}
+
               {blocks.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500">
                   Canvas is empty. Please click a module from the sidebar or add a block below.

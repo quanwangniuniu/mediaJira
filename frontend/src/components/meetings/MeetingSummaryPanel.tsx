@@ -107,7 +107,7 @@ export function MeetingSummaryPanel({
       setMeeting(m);
       setTitleDraft(m.title);
       setObjectiveDraft(m.objective);
-      setMeetingTypeDraft(m.meeting_type);
+      setMeetingTypeDraft(m.meeting_type ?? '');
       setSchedDateDraft(meetingDateToInput(m.scheduled_date));
       setSchedTimeDraft(meetingTimeToInput(m.scheduled_time));
       setExtRefDraft(m.external_reference ?? '');
