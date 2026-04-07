@@ -9,9 +9,11 @@ from meetings.models import (
     AgendaItem,
     ParticipantLink,
     ArtifactLink,
+    MeetingActionItem,
     MeetingTemplate,
     MeetingDocument,
 )
+from meetings.action_item_conversion import action_item_has_task
 
 
 class MeetingSerializer(serializers.ModelSerializer):
@@ -177,4 +179,44 @@ class MeetingDocumentSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "meeting", "last_edited_by", "created_at", "updated_at"]
+
+
+class MeetingActionItemSerializer(serializers.ModelSerializer):
+    """Action items for a meeting; `has_task` indicates conversion already occurred."""
+
+    has_task = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = MeetingActionItem
+        fields = ["id", "meeting", "title", "description", "order_index", "has_task"]
+        read_only_fields = ["id", "meeting", "has_task"]
+
+    def get_has_task(self, obj: MeetingActionItem) -> bool:
+        return action_item_has_task(obj.id)
+
+
+class ConvertActionItemToTaskSerializer(serializers.Serializer):
+    """Payload for POST .../action-items/{id}/convert-to-task/."""
+
+    type = serializers.CharField(required=True)
+    priority = serializers.CharField(required=True)
+    owner_id = serializers.IntegerField(required=False, allow_null=True)
+    due_date = serializers.DateField(required=False, allow_null=True)
+    summary = serializers.CharField(required=False, allow_blank=True, default="")
+    description = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    create_as_draft = serializers.BooleanField(required=False, default=True)
+
+
+class BulkConvertActionItemsSerializer(serializers.Serializer):
+    """Payload for POST .../action-items/bulk-convert-to-tasks/."""
+
+    action_item_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+    )
+    type = serializers.CharField(required=True)
+    priority = serializers.CharField(required=True)
+    owner_id = serializers.IntegerField(required=False, allow_null=True)
+    due_date = serializers.DateField(required=False, allow_null=True)
+    create_as_draft = serializers.BooleanField(required=False, default=True)
 

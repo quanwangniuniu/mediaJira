@@ -160,6 +160,41 @@ class Task(models.Model):
         help_text="Draft form state captured from task create panel",
     )
 
+    # --- Meeting / action item lineage (immutable snapshots at conversion time; not FKs) ---
+    origin_meeting_id = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Meeting id at conversion time (immutable snapshot)",
+    )
+    origin_meeting_title = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Meeting title at conversion time (immutable snapshot)",
+    )
+    origin_action_item_id = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="MeetingActionItem id at conversion time (immutable snapshot)",
+    )
+    origin_action_item_title = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Action item title at conversion time (immutable snapshot)",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["origin_action_item_id"],
+                condition=models.Q(origin_action_item_id__isnull=False),
+                name="task_unique_origin_action_item_id",
+            ),
+        ]
+
     def __str__(self):
         return f"Task #{self.id} - {self.summary} ({self.status})"
 

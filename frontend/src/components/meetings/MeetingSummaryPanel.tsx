@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import {
   Copy,
   ExternalLink,
@@ -32,6 +33,19 @@ import {
 import { replaceAgendaAndLayoutFromNested } from '@/lib/meetings/replaceMeetingAgendaFromTemplate';
 import { hasVisibleText, sanitizeDocumentPreviewHtml } from '@/lib/meetings/documentPreview';
 import type { Meeting, MeetingDocument, MeetingPartialUpdateRequest, ParticipantLink } from '@/types/meeting';
+
+const MeetingActionItemsSection = dynamic(
+  () =>
+    import('@/components/meetings/MeetingActionItemsSectionFixed').then(
+      (m) => m.MeetingActionItemsSection,
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="mt-4 text-xs text-gray-500">Loading action items…</div>
+    ),
+  },
+);
 
 export interface MeetingSummaryPanelProps {
   projectId: number;
@@ -447,6 +461,8 @@ export function MeetingSummaryPanel({
                 </>
               )}
             </section>
+
+            <MeetingActionItemsSection projectId={projectId} meetingId={meetingId} compact />
 
             <Button
               type="button"

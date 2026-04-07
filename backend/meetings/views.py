@@ -19,6 +19,7 @@ from meetings.models import (
     AgendaItem,
     ParticipantLink,
     ArtifactLink,
+    MeetingActionItem,
     MeetingTemplate,
     MeetingDocument,
 )
@@ -29,6 +30,9 @@ from meetings.serializers import (
     ArtifactLinkSerializer,
     MeetingTemplateSerializer,
     MeetingDocumentSerializer,
+    MeetingActionItemSerializer,
+    ConvertActionItemToTaskSerializer,
+    BulkConvertActionItemsSerializer,
 )
 from meetings.services import (
     reorder_agenda_items,
@@ -36,6 +40,12 @@ from meetings.services import (
     update_meeting_document_content,
     user_has_meeting_document_access,
 )
+from meetings.action_item_conversion import (
+    bulk_convert_meeting_action_items_to_tasks,
+    convert_meeting_action_item_to_task,
+)
+from task.models import Task
+from task.serializers import TaskListSerializer, TaskSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +146,29 @@ class MeetingViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         project = self.get_project()
         return Meeting.objects.filter(project=project).order_by("-id")
+
+    @action(detail=True, methods=["get"], url_path="tasks")
+    def meeting_tasks(self, request, project_id=None, pk=None):
+        """
+        List tasks that originated from this meeting (immutable lineage: origin_meeting_id).
+        """
+        meeting = self.get_object()
+        qs = (
+            Task.objects.filter(
+                project_id=meeting.project_id,
+                origin_meeting_id=meeting.id,
+            )
+            .select_related("project", "owner", "current_approver")
+            .order_by("-id")
+        )
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = TaskListSerializer(
+                page, many=True, context={"request": request}
+            )
+            return self.get_paginated_response(serializer.data)
+        serializer = TaskListSerializer(qs, many=True, context={"request": request})
+        return Response(serializer.data)
 
     def perform_create(self, serializer):
         project = self.get_project()
@@ -410,4 +443,89 @@ class MeetingDocumentAPIView(APIView):
         )
         serializer = MeetingDocumentSerializer(document)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class MeetingActionItemViewSet(viewsets.ModelViewSet):
+    serializer_class = MeetingActionItemSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_meeting(self) -> Meeting:
+        project_id = self.kwargs.get("project_id")
+        meeting_id = self.kwargs.get("meeting_id")
+        meeting = get_object_or_404(
+            Meeting.objects.select_related("project"),
+            id=meeting_id,
+            project_id=project_id,
+        )
+        _ensure_project_membership(self.request.user, meeting.project)
+        return meeting
+
+    def get_queryset(self):
+        meeting = self.get_meeting()
+        return meeting.action_items.all().order_by("order_index", "id")
+
+    def perform_create(self, serializer):
+        meeting = self.get_meeting()
+        try:
+            serializer.save(meeting=meeting)
+        except IntegrityError:
+            raise ValidationError(
+                {"order_index": ["This order_index is already used for this meeting."]}
+            )
+
+    @action(detail=True, methods=["post"], url_path="convert-to-task")
+    def convert_to_task(self, request, project_id=None, meeting_id=None, pk=None):
+        meeting = self.get_meeting()
+        action_item = get_object_or_404(
+            MeetingActionItem.objects.filter(meeting=meeting),
+            pk=pk,
+        )
+        input_serializer = ConvertActionItemToTaskSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        data = input_serializer.validated_data
+        task = convert_meeting_action_item_to_task(
+            action_item=action_item,
+            acting_user=request.user,
+            owner_id=data.get("owner_id"),
+            due_date=data.get("due_date"),
+            priority=data["priority"],
+            task_type=data["type"],
+            summary=(data.get("summary") or "").strip() or None,
+            description=data.get("description"),
+            create_as_draft=data.get("create_as_draft", True),
+        )
+        out = TaskSerializer(task, context={"request": request})
+        return Response(out.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=["post"], url_path="bulk-convert-to-tasks")
+    def bulk_convert_to_tasks(self, request, project_id=None, meeting_id=None):
+        """
+        Convert multiple action items. Already-converted or unknown ids are reported in ``skipped``;
+        others are created and listed under ``created`` (HTTP 200).
+        """
+        meeting = self.get_meeting()
+        input_serializer = BulkConvertActionItemsSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        data = input_serializer.validated_data
+        created_rows, skipped = bulk_convert_meeting_action_items_to_tasks(
+            meeting=meeting,
+            acting_user=request.user,
+            action_item_ids=data["action_item_ids"],
+            owner_id=data.get("owner_id"),
+            due_date=data.get("due_date"),
+            priority=data["priority"],
+            task_type=data["type"],
+            create_as_draft=data.get("create_as_draft", True),
+        )
+        created_payload = [
+            {
+                "action_item_id": row["action_item_id"],
+                "task": TaskSerializer(row["task"], context={"request": request}).data,
+            }
+            for row in created_rows
+        ]
+        return Response(
+            {"created": created_payload, "skipped": skipped},
+            status=status.HTTP_200_OK,
+        )
 

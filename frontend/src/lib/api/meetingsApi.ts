@@ -15,6 +15,11 @@ import type {
   ArtifactLink,
   ArtifactLinkCreateRequest,
   MeetingDocument,
+  MeetingActionItem,
+  MeetingActionItemCreateRequest,
+  MeetingActionItemPatchRequest,
+  ConvertActionItemToTaskRequest,
+  BulkConvertActionItemsRequest,
 } from '@/types/meeting';
 
 const basePath = (projectId: number) => `/api/projects/${projectId}/meetings`;
@@ -248,9 +253,7 @@ export const MeetingsAPI = {
   },
 
   async getMeetingDocument(projectId: number, meetingId: number): Promise<MeetingDocument> {
-    const response = await api.get<MeetingDocument>(
-      `${basePath(projectId)}/${meetingId}/document/`,
-    );
+    const response = await api.get<MeetingDocument>(`${basePath(projectId)}/${meetingId}/document/`);
     return response.data;
   },
 
@@ -259,10 +262,74 @@ export const MeetingsAPI = {
     meetingId: number,
     payload: { content: string; yjs_state?: string },
   ): Promise<MeetingDocument> {
-    const response = await api.patch<MeetingDocument>(
-      `${basePath(projectId)}/${meetingId}/document/`,
+    const response = await api.patch<MeetingDocument>(`${basePath(projectId)}/${meetingId}/document/`, payload);
+    return response.data;
+  },
+
+  async listActionItems(projectId: number, meetingId: number): Promise<MeetingActionItem[]> {
+    const response = await api.get(`${basePath(projectId)}/${meetingId}/action-items/`);
+    const data = response.data as any;
+    if (Array.isArray(data)) return data as MeetingActionItem[];
+    if (data && Array.isArray(data.results)) return data.results as MeetingActionItem[];
+    return [];
+  },
+
+  async createActionItem(
+    projectId: number,
+    meetingId: number,
+    payload: MeetingActionItemCreateRequest,
+  ): Promise<MeetingActionItem> {
+    const response = await api.post<MeetingActionItem>(`${basePath(projectId)}/${meetingId}/action-items/`, payload);
+    return response.data;
+  },
+
+  async patchActionItem(
+    projectId: number,
+    meetingId: number,
+    actionItemId: number,
+    payload: MeetingActionItemPatchRequest,
+  ): Promise<MeetingActionItem> {
+    const response = await api.patch<MeetingActionItem>(
+      `${basePath(projectId)}/${meetingId}/action-items/${actionItemId}/`,
       payload,
     );
     return response.data;
+  },
+
+  async deleteActionItem(projectId: number, meetingId: number, actionItemId: number): Promise<void> {
+    await api.delete(`${basePath(projectId)}/${meetingId}/action-items/${actionItemId}/`);
+  },
+
+  async convertActionItemToTask(
+    projectId: number,
+    meetingId: number,
+    actionItemId: number,
+    payload: ConvertActionItemToTaskRequest,
+  ): Promise<any> {
+    const response = await api.post(
+      `${basePath(projectId)}/${meetingId}/action-items/${actionItemId}/convert-to-task/`,
+      payload,
+    );
+    return response.data;
+  },
+
+  async bulkConvertActionItemsToTasks(
+    projectId: number,
+    meetingId: number,
+    payload: BulkConvertActionItemsRequest,
+  ): Promise<{ created: Array<{ action_item_id: number; task: any }>; skipped: Array<{ action_item_id: number; reason: string }> }> {
+    const response = await api.post(
+      `${basePath(projectId)}/${meetingId}/action-items/bulk-convert-to-tasks/`,
+      payload,
+    );
+    return response.data;
+  },
+
+  async listMeetingTasks(projectId: number, meetingId: number): Promise<any[]> {
+    const response = await api.get(`${basePath(projectId)}/${meetingId}/tasks/`);
+    const data = response.data as any;
+    if (Array.isArray(data)) return data;
+    if (data && Array.isArray(data.results)) return data.results;
+    return [];
   },
 };

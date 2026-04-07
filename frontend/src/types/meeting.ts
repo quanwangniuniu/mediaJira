@@ -123,3 +123,43 @@ export interface MeetingDocument {
   created_at: string;
   updated_at: string;
 }
+
+export interface MeetingActionItem {
+  id: number;
+  meeting: number;
+  title: string;
+  description: string;
+  order_index: number;
+  has_task: boolean;
+}
+
+export interface MeetingActionItemCreateRequest {
+  title: string;
+  description?: string;
+  order_index: number;
+}
+
+export interface MeetingActionItemPatchRequest {
+  title?: string;
+  description?: string;
+  order_index?: number;
+}
+
+export interface ConvertActionItemToTaskRequest {
+  type: string;
+  priority: string;
+  owner_id?: number | null;
+  due_date?: string | null;
+  summary?: string;
+  description?: string | null;
+  create_as_draft?: boolean;
+}
+
+export interface BulkConvertActionItemsRequest {
+  action_item_ids: number[];
+  type: string;
+  priority: string;
+  owner_id?: number | null;
+  due_date?: string | null;
+  create_as_draft?: boolean;
+}

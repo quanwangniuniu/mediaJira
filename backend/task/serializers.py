@@ -52,7 +52,7 @@ class TaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = Task
         fields = [
-            'id', 'summary', 'description', 'status', 'type',
+            'id', 'summary', 'description', 'status', 'type', 'priority',
             'owner', 'owner_id', 'project', 'project_id',
             'current_approver', 'current_approver_id',
             'content_type', 'object_id', 'start_date', 'due_date',
@@ -62,12 +62,18 @@ class TaskSerializer(serializers.ModelSerializer):
             'revision_round', 'revision_label',
             'can_lock', 'approvals_summary',
             'create_as_draft', 'draft_payload',
+            'origin_meeting_id', 'origin_meeting_title',
+            'origin_action_item_id', 'origin_action_item_title',
         ]
         read_only_fields = [
             'id', 'status', 'owner', 'content_type', 'object_id',
             'is_subtask', 'parent_relationship', 'anomaly_status',
             'approval_chain_progress', 'can_lock', 'approvals_summary',
+            'origin_meeting_id', 'origin_meeting_title',
+            'origin_action_item_id', 'origin_action_item_title',
             'revision_round', 'revision_label', # SMP-501
+            'origin_meeting_id', 'origin_meeting_title',
+            'origin_action_item_id', 'origin_action_item_title',
         ]
 
     def get_content_type(self, obj):
@@ -393,6 +399,18 @@ class TaskSerializer(serializers.ModelSerializer):
     
     def validate(self, attrs):
         """Validate the data"""
+        if self.instance is not None:
+            for key in (
+                'origin_meeting_id',
+                'origin_meeting_title',
+                'origin_action_item_id',
+                'origin_action_item_title',
+            ):
+                if key in attrs:
+                    raise serializers.ValidationError(
+                        {key: 'Meeting/action-item lineage fields are immutable.'}
+                    )
+
         # Only allow updating draft_payload while task is in DRAFT.
         if self.instance and 'draft_payload' in attrs:
             # Allow clearing draft_payload (null) at any status for cleanup.

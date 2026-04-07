@@ -1,0 +1,215 @@
+openapi: 3.0.3
+info:
+  title: Meetings — Action items & task lineage (SMP-489)
+  version: 1.0.0
+servers:
+  - url: http://localhost:8000/
+paths:
+  /api/v1/projects/{project_id}/meetings/{meeting_id}/action-items/{action_item_id}/convert-to-task/:
+    post:
+      summary: Convert a meeting action item to a Task
+      description: |
+        Creates one Task with immutable meeting/action-item lineage snapshots.
+        At most one Task per action item id (enforced by DB constraint and service checks).
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: meeting_id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: action_item_id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConvertActionItemToTaskRequest"
+      responses:
+        "201":
+          description: Task created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskFromConversion"
+        "400":
+          description: Validation error (e.g. already converted, invalid type/priority/owner)
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden (not a project member)
+
+  /api/v1/projects/{project_id}/meetings/{meeting_id}/action-items/bulk-convert-to-tasks/:
+    post:
+      summary: Bulk convert action items to tasks
+      description: |
+        Converts each listed action item that belongs to this meeting and is not yet converted.
+        Duplicate ids in the list are processed once (first occurrence order).
+        Unknown ids or already-converted ids appear in `skipped` with a `reason`;
+        successful conversions appear in `created`.
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: meeting_id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkConvertActionItemsRequest"
+      responses:
+        "200":
+          description: Results per id (created and skipped)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkConvertActionItemsResponse"
+        "400":
+          description: Invalid body (e.g. empty action_item_ids)
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden (not a project member)
+
+  /api/v1/projects/{project_id}/meetings/{meeting_id}/tasks/:
+    get:
+      summary: List tasks originating from this meeting
+      description: |
+        Returns tasks whose immutable `origin_meeting_id` matches this meeting.
+        Paginated when global DRF pagination is enabled (`results` array).
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: meeting_id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Paginated or flat list of tasks
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: array
+                    items:
+                      $ref: "#/components/schemas/TaskFromConversion"
+                  - type: object
+                    properties:
+                      count: { type: integer }
+                      next: { type: string, nullable: true }
+                      previous: { type: string, nullable: true }
+                      results:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/TaskFromConversion"
+        "401":
+          description: Unauthorized
+
+components:
+  schemas:
+    BulkConvertActionItemsRequest:
+      type: object
+      required: [action_item_ids, type, priority]
+      properties:
+        action_item_ids:
+          type: array
+          minItems: 1
+          items: { type: integer }
+        type:
+          type: string
+        priority:
+          type: string
+        owner_id:
+          type: integer
+          nullable: true
+        due_date:
+          type: string
+          format: date
+          nullable: true
+        create_as_draft:
+          type: boolean
+          default: true
+
+    BulkConvertActionItemsResponse:
+      type: object
+      properties:
+        created:
+          type: array
+          items:
+            type: object
+            required: [action_item_id, task]
+            properties:
+              action_item_id: { type: integer }
+              task:
+                $ref: "#/components/schemas/TaskFromConversion"
+        skipped:
+          type: array
+          items:
+            type: object
+            required: [action_item_id, reason]
+            properties:
+              action_item_id: { type: integer }
+              reason:
+                type: string
+                enum: [not_found, already_converted, validation_error]
+              detail:
+                description: Present when reason is validation_error
+                type: object
+
+    ConvertActionItemToTaskRequest:
+      type: object
+      required: [type, priority]
+      properties:
+        type:
+          type: string
+          description: Task type (must match Task model choices, e.g. execution, asset, report)
+        priority:
+          type: string
+          description: Task priority (HIGHEST, HIGH, MEDIUM, LOW, LOWEST)
+        owner_id:
+          type: integer
+          nullable: true
+          description: Defaults to the acting user if omitted
+        due_date:
+          type: string
+          format: date
+          nullable: true
+        summary:
+          type: string
+          description: Overrides action item title when non-empty
+        description:
+          type: string
+          nullable: true
+          description: Overrides action item description when not null
+        create_as_draft:
+          type: boolean
+          default: true
+          description: When true, task stays in DRAFT after conversion
+
+    TaskFromConversion:
+      type: object
+      description: Task representation returned after conversion (subset of full Task API)
+      properties:
+        id: { type: integer }
+        summary: { type: string }
+        description: { type: string, nullable: true }
+        status: { type: string }
+        type: { type: string }
+        priority: { type: string }
+        origin_meeting_id: { type: integer, nullable: true }
+        origin_meeting_title: { type: string }
+        origin_action_item_id: { type: integer, nullable: true }
+        origin_action_item_title: { type: string }
