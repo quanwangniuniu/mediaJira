@@ -24,6 +24,7 @@ import requests
 import jwt
 import uuid
 import secrets
+import hashlib
 
 User = get_user_model()
 
@@ -302,8 +303,7 @@ class SsoCallbackView(APIView):
                     user.save()
                 else:
                     # Create new user with hash-based username
-                    import hashlib
-                    username = f"user_{hashlib.md5(email.encode()).hexdigest()[:8]}"
+                    username = f"user_{hashlib.sha256(email.encode()).hexdigest()[:8]}"
                     
                     user = User.objects.create(
                         email=email,
