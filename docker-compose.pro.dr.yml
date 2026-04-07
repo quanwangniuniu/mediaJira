@@ -1,56 +1,10 @@
 services:
-  db:
-    build: 
-      context: ./postgres
-      dockerfile: Dockerfile
-    container_name: db
-    restart: always
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-}
-      POSTGRES_USER: ${POSTGRES_USER:-}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-      - pgbackups:/var/lib/pgbackrest
-      - /var/run/postgresql:/var/run/postgresql 
-    networks:
-      - app-network
-    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  pgbackrest:
-    build: 
-      context: ./pgbackrest
-      dockerfile: Dockerfile
-    container_name: pgbackrest
-    restart: always    
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-      - pgbackups:/var/lib/pgbackrest
-      - pglogs:/var/log/pgbackrest   
-      - /var/run/postgresql:/var/run/postgresql 
-    networks:
-      - app-network
-    command: ["/bin/bash", "/usr/bin/entrypoint"]
-    depends_on:
-      db:
-        condition: service_healthy
-        required: true      
-
   redis:
     image: redis:7-alpine
     container_name: redis-prod
     restart: always
     ports:
       - "6379:6379"
-    networks:
-      - app-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -66,8 +20,6 @@ services:
       - "3310:3310"
     volumes:
       - clamav_data:/var/lib/clamav
-    networks:
-      - app-network
     healthcheck:
       test: ["CMD", "clamdscan", "--version"]
       interval: 30s
@@ -77,7 +29,7 @@ services:
   backend:
     build: 
       context: ./backend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dr
     image: backend:prod
     container_name: backend-prod
     restart: always
@@ -86,10 +38,7 @@ services:
     env_file:
       - .env
     environment:
-      - DB_HOST=${DB_HOST:-host.docker.internal}
-      - POSTGRES_DB=${POSTGRES_DB:-}
-      - POSTGRES_USER=${POSTGRES_USER:-}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-}
+      - DB_HOST=${POSTGRES_HOST}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
       - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
@@ -99,29 +48,21 @@ services:
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - GOOGLE_OAUTH_REDIRECT_URI=${GOOGLE_OAUTH_REDIRECT_URI}
       - FRONTEND_URL=${FRONTEND_URL}
-      - DIFY_API_URL=${DIFY_API_URL}
-      - DIFY_API_KEY=${DIFY_API_KEY}
-      - DIFY_CHAT_API_KEY=${DIFY_CHAT_API_KEY}
-      - DIFY_MIRO_API_KEY=${DIFY_MIRO_API_KEY}
     volumes:
       # Mount host timezone and localtime to sync time with host (Linux/Mac)
       # Note: On Windows with Docker Desktop, time is automatically synced
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
     depends_on:
-      # Conditional dependencies - Only depend on db and redis in CI environment or full environment
-      db:
-        condition: service_healthy
-        required: false
       redis:
         condition: service_healthy
       clamav:
         condition: service_healthy
     networks:
       - app-network
-    command: ["/bin/bash", "/app/entrypoint"]
+    command: ["/bin/bash", "/app/entrypoint"]      
     logging:
       driver: "json-file"
       options:
@@ -132,7 +73,7 @@ services:
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dr
     container_name: frontend-prod
     restart: always
     ports:
@@ -182,37 +123,16 @@ services:
     env_file:
       - .env
     environment:
-      - DB_HOST=${DB_HOST:-host.docker.internal}
-      - POSTGRES_DB=${POSTGRES_DB:-}
-      - POSTGRES_USER=${POSTGRES_USER:-}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-}
-      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
-      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
-      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - DB_HOST=${POSTGRES_HOST}
       - DEBUG=False
-      - KAFKA_BROKER=${KAFKA_BROKER}
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-      - GOOGLE_OAUTH_REDIRECT_URI=${GOOGLE_OAUTH_REDIRECT_URI}
-      - FRONTEND_URL=${FRONTEND_URL}
-      - DEBUG=False
-      - DIFY_API_URL=${DIFY_API_URL}
-      - DIFY_API_KEY=${DIFY_API_KEY}
-      - DIFY_CHAT_API_KEY=${DIFY_CHAT_API_KEY}
-      - DIFY_MIRO_API_KEY=${DIFY_MIRO_API_KEY}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
     depends_on:
-      db:
-        condition: service_healthy
-        required: false    
       redis:
         condition: service_healthy
       clamav:
         condition: service_healthy
     command: celery -A backend worker --loglevel=info
-    networks:
-      - app-network
 
   kafka:
     image: confluentinc/cp-kafka:7.6.0
@@ -240,17 +160,11 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
-    networks:
-      - app-network
 
 networks:
   app-network:
     driver: bridge
 
 volumes:
-  pgdata: 
-  pgbackups: 
-  pglogs:
   clamav_data:
   kafka_data:
-
