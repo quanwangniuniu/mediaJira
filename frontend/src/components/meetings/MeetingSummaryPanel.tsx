@@ -17,6 +17,7 @@ import { MeetingDateTimePicker } from '@/components/meetings/MeetingDateTimePick
 import { ProjectMemberPicker } from '@/components/meetings/ProjectMemberPicker';
 import { formatProjectMemberLabel } from '@/components/meetings/projectMemberLabel';
 import { ProjectAPI, type ProjectMemberData } from '@/lib/api/projectApi';
+
 import { MeetingsAPI } from '@/lib/api/meetingsApi';
 import {
   meetingDateToInput,
@@ -30,7 +31,9 @@ import {
   type UnifiedMeetingTemplateOption,
 } from '@/lib/meetings/unifiedMeetingTemplates';
 import { replaceAgendaAndLayoutFromNested } from '@/lib/meetings/replaceMeetingAgendaFromTemplate';
+import { MeetingLifecyclePanel } from '@/components/meetings/MeetingLifecyclePanel';
 import { hasVisibleText, sanitizeDocumentPreviewHtml } from '@/lib/meetings/documentPreview';
+
 import type { Meeting, MeetingDocument, MeetingPartialUpdateRequest, ParticipantLink } from '@/types/meeting';
 
 export interface MeetingSummaryPanelProps {
@@ -404,6 +407,18 @@ export function MeetingSummaryPanel({
                 </Button>
               </div>
             </section>
+
+
+            <section>
+  <MeetingLifecyclePanel
+    projectId={projectId}
+    meetingId={meetingId}
+    onStatusChanged={(newStatus) => {
+      if (meeting) setMeeting({ ...meeting, status: newStatus });
+      onMeetingUpdated?.({ ...meeting!, status: newStatus });
+    }}
+  />
+</section>
 
             <section>
               <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
