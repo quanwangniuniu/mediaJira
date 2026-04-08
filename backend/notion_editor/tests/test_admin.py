@@ -263,7 +263,8 @@ class ContentBlockAdminTest(AdminTestCase):
         # Should contain HTML with JSON
         self.assertIn('<div', preview)
         self.assertIn('<pre', preview)
-        self.assertIn('"text": "Test content"', preview)
+        # content is escaped in admin preview to prevent HTML/script injection
+        self.assertIn('&quot;text&quot;: &quot;Test content&quot;', preview)
     
     def test_content_block_admin_content_preview_empty(self):
         """Test content block admin content preview with empty content"""
