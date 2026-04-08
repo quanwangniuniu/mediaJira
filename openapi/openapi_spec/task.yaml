@@ -42,6 +42,10 @@ paths:
         Creates a new task. Requires an active project.
         If project_id is not provided, the user's active project will be used.
         If user has no active project, returns 403 Forbidden.
+
+        **Optional `origin_meeting_id`:** When set, the server creates a `MeetingTaskOrigin` row in the same
+        transaction (same project as the task, meeting must exist and not be archived). Cross-project
+        meetings are rejected (**400**). A task can have at most one origin meeting.
       requestBody:
         required: true
         content:
@@ -56,11 +60,26 @@ paths:
               schema:
                 $ref: "#/components/schemas/Task"
         "400":
-          description: Bad request (missing required fields, invalid project_id, or user not a member of project)
+          description: |
+            Bad request (missing required fields, invalid project_id, user not a member of project, or
+            `origin_meeting_id` validation failed).
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                origin_meeting_not_found:
+                  summary: Meeting does not exist
+                  value:
+                    origin_meeting_id: ["Meeting not found."]
+                origin_cross_project:
+                  summary: Meeting belongs to another project
+                  value:
+                    origin_meeting_id: ["Meeting must belong to the same project."]
+                origin_archived:
+                  summary: Archived meeting cannot be used as origin
+                  value:
+                    origin_meeting_id: ["Cannot link to an archived meeting."]
         "403":
           description: Forbidden (user has no active project or is not a member of the specified project)
           content:
@@ -71,6 +90,9 @@ paths:
   /tasks/{id}:
     get:
       summary: Get a task by ID
+      description: |
+        Includes **`origin_meeting`** when the task was created with `origin_meeting_id` (bidirectional
+        knowledge navigation). Otherwise **`null`**.
       parameters:
         - in: path
           name: id
@@ -103,6 +125,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Task"
+        "400":
+          description: |
+            Validation error. `origin_meeting_id` is not accepted on update — use create only, or if the task
+            already has an origin, the server returns a business rule error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                origin_on_patch:
+                  summary: Origin only on create
+                  value:
+                    origin_meeting_id: ["Meeting origin can only be set when creating a task."]
+                origin_already_set:
+                  summary: Task already linked to a meeting
+                  value:
+                    origin_meeting_id: ["Task already has a meeting origin."]
 
   /tasks/{id}/link:
     post:
@@ -639,6 +678,19 @@ paths:
 
 components:
   schemas:
+    OriginMeeting:
+      type: object
+      nullable: true
+      description: Meeting this task was generated from (`MeetingTaskOrigin`), or null.
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        scheduled_date: { type: string, format: date, nullable: true }
+        type: { type: string, nullable: true, description: Meeting type slug }
+        project_id: { type: integer }
+        detail_url: { type: string, description: In-app path to the meeting workspace }
+        url: { type: string, description: Legacy alias for detail_url }
+
     Task:
       type: object
       properties:
@@ -653,6 +705,7 @@ components:
         current_approver: { $ref: "#/components/schemas/UserSummary" }
         project: { $ref: "#/components/schemas/ProjectSummary" }
         due_date: { type: string, format: date }
+        origin_meeting: { $ref: "#/components/schemas/OriginMeeting" }
 
     TaskCreateRequest:
       type: object
@@ -670,6 +723,12 @@ components:
           nullable: true
           description: "Project ID. If not provided, user's active project will be used."
         due_date: { type: string, format: date, nullable: true }
+        origin_meeting_id:
+          type: integer
+          nullable: true
+          description: |
+            Optional. When set, creates `MeetingTaskOrigin` for this task. Same project as the task; meeting
+            must exist, not archived, and caller must be a project member. Ignored on PATCH (use create only).
 
     TaskUpdateRequest:
       type: object
@@ -721,6 +780,17 @@ components:
           type: string
           nullable: true
           example: "Additional error details"
+
+    ValidationErrorResponse:
+      type: object
+      description: |
+        DRF-style field errors: each key is a field name; values are arrays of human-readable strings.
+      additionalProperties:
+        type: array
+        items:
+          type: string
+      example:
+        origin_meeting_id: ["Meeting not found."]
 
     TaskAttachment:
       type: object

@@ -220,12 +220,12 @@ const getNavigationItems = (
     });
   }
 
-  // baseItems.push({
-  //   name: t ? t("sidebar.settings") : "Settings",
-  //   href: "/settings",
-  //   icon: Settings,
-  //   description: t ? t("sidebar.user_preferences") : "User preferences",
-  // });
+  baseItems.push({
+    name: t ? t("sidebar.settings") : "Settings",
+    href: "/settings",
+    icon: Settings,
+    description: t ? t("sidebar.user_preferences") : "User preferences",
+  });
 
   return baseItems;
 };

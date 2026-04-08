@@ -1,21 +1,36 @@
+import logging
+import traceback
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db import IntegrityError, transaction
+from django.db import DatabaseError, IntegrityError, transaction
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied, ValidationError
-from rest_framework.views import APIView
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.exceptions import APIException, NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from core.models import Project, ProjectMember
-from meetings.models import Meeting, AgendaItem, ParticipantLink, ArtifactLink
+from meetings.models import (
+    Meeting,
+    AgendaItem,
+    ParticipantLink,
+    ArtifactLink,
+    MeetingTemplate,
+    MeetingDocument,
+)
 from meetings.serializers import (
     MeetingSerializer,
+    MeetingListSerializer,
+    MeetingKnowledgeDiscoveryQuerySerializer,
     AgendaItemSerializer,
     ParticipantLinkSerializer,
     ArtifactLinkSerializer,
+    MeetingTemplateSerializer,
     MeetingDocumentSerializer,
 )
 from meetings.services import (
@@ -23,8 +38,22 @@ from meetings.services import (
     get_or_create_meeting_document,
     update_meeting_document_content,
     user_has_meeting_document_access,
+    meetings_base_queryset_for_project,
+    apply_meeting_knowledge_filters,
+    meeting_list_order_by_fields,
+    hub_split_meeting_pks_for_project,
 )
 
+
+logger = logging.getLogger(__name__)
+
+# Default workspace module order (matches frontend initial blocks).
+DEFAULT_MEETING_LAYOUT = [
+    {"id": "header", "type": "header"},
+    {"id": "agenda", "type": "agenda"},
+    {"id": "participants", "type": "participants"},
+    {"id": "artifacts", "type": "artifacts"},
+]
 
 def _ensure_project_membership(user, project: Project) -> None:
     if not ProjectMember.objects.filter(
@@ -44,6 +73,67 @@ def _ensure_meeting_document_access(user, meeting: Meeting) -> None:
 class MeetingViewSet(viewsets.ModelViewSet):
     serializer_class = MeetingSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = PageNumberPagination
+
+    def list(self, request, *args, **kwargs):
+        try:
+            return super().list(request, *args, **kwargs)
+        except (Http404, NotFound, PermissionDenied):
+            raise
+        except DatabaseError:
+            logger.exception("Meeting list failed (database)")
+            return Response(
+                {
+                    "detail": "Could not load meetings. If this persists, ensure database migrations are applied for the meetings app.",
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+    def retrieve(self, request, *args, **kwargs):
+        try:
+            instance = self.get_object()
+        except (Http404, NotFound, PermissionDenied):
+            raise
+        except DatabaseError:
+            logger.exception("Meeting retrieve failed (database)")
+            return Response(
+                {
+                    "detail": "Could not load meeting. If this persists, ensure database migrations are applied for the meetings app.",
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        instance = self._normalize_meeting_layout(instance)
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+    def _normalize_meeting_layout(self, meeting: Meeting) -> Meeting:
+        lc = meeting.layout_config
+
+        def persist(next_lc):
+            meeting.layout_config = next_lc
+            try:
+                meeting.save(update_fields=["layout_config"])
+            except DatabaseError:
+                logger.exception("Could not persist default layout_config for meeting %s", meeting.pk)
+
+        if lc is None:
+            persist(list(DEFAULT_MEETING_LAYOUT))
+            return meeting
+
+        if isinstance(lc, list):
+            if len(lc) == 0:
+                persist(list(DEFAULT_MEETING_LAYOUT))
+            return meeting
+
+        if isinstance(lc, dict):
+            blocks = lc.get("blocks")
+            if not isinstance(blocks, list) or len(blocks) == 0:
+                persist({**lc, "blocks": list(DEFAULT_MEETING_LAYOUT)})
+            return meeting
+
+        persist(list(DEFAULT_MEETING_LAYOUT))
+        return meeting
 
     def get_project(self) -> Project:
         project_id = self.kwargs.get("project_id")
@@ -52,11 +142,76 @@ class MeetingViewSet(viewsets.ModelViewSet):
         return project
 
     def get_queryset(self):
+        return meetings_base_queryset_for_project(self.get_project())
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return MeetingListSerializer
+        return MeetingSerializer
+
+    def list(self, request, *args, **kwargs):
         project = self.get_project()
-        return Meeting.objects.filter(project=project).order_by("-id")
+        query_serializer = MeetingKnowledgeDiscoveryQuerySerializer(
+            data=request.query_params,
+            context={"project": project, "request": request},
+        )
+        query_serializer.is_valid(raise_exception=True)
+        filters = dict(query_serializer.validated_data)
+
+        qs_base = meetings_base_queryset_for_project(project)
+
+        incoming_pks, completed_pks = hub_split_meeting_pks_for_project(project)
+        qs_incoming_lane = qs_base.filter(pk__in=incoming_pks).distinct()
+        qs_completed_lane = qs_base.filter(pk__in=completed_pks).distinct()
+
+        incoming_result_count = (
+            apply_meeting_knowledge_filters(qs_incoming_lane, filters).distinct().count()
+        )
+        completed_result_count = (
+            apply_meeting_knowledge_filters(qs_completed_lane, filters).distinct().count()
+        )
+
+        qs_filtered = apply_meeting_knowledge_filters(qs_base, filters).distinct()
+
+        ordering = filters.get("ordering") or "-created_at"
+        qs = qs_filtered.order_by(*meeting_list_order_by_fields(ordering))
+
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            paginated = self.get_paginated_response(serializer.data)
+            # Build a plain dict so hub fields always appear in JSON (avoid mutating ReturnDict edge cases).
+            hub = {
+                "incoming_lane_total": len(incoming_pks),
+                "incoming_result_count": incoming_result_count,
+                "completed_lane_total": len(completed_pks),
+                "completed_result_count": completed_result_count,
+                # Deprecated aliases (same values as *_result_count); kept for older clients.
+                "incoming_lane_filtered": incoming_result_count,
+                "completed_lane_filtered": completed_result_count,
+            }
+            payload = {**dict(paginated.data), **hub}
+            return Response(payload)
+
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
 
     def perform_create(self, serializer):
         project = self.get_project()
+        # If the client doesn't provide a layout_config, initialize it to the default
+        # workspace module order so the editor always has a predictable starting state.
+        lc = serializer.validated_data.get("layout_config")
+        if lc is None:
+            serializer.validated_data["layout_config"] = list(DEFAULT_MEETING_LAYOUT)
+        elif isinstance(lc, list) and len(lc) == 0:
+            serializer.validated_data["layout_config"] = list(DEFAULT_MEETING_LAYOUT)
+        elif isinstance(lc, dict):
+            blocks = lc.get("blocks")
+            if not isinstance(blocks, list) or len(blocks) == 0:
+                serializer.validated_data["layout_config"] = {
+                    **lc,
+                    "blocks": list(DEFAULT_MEETING_LAYOUT),
+                }
         raw_ids = serializer.validated_data.pop("participant_user_ids", None)
         if raw_ids is None:
             participant_user_ids: list[int] = []
@@ -111,6 +266,7 @@ class MeetingViewSet(viewsets.ModelViewSet):
                             ]
                         }
                     ) from exc
+
 
 
 class AgendaItemViewSet(viewsets.ModelViewSet):
@@ -229,6 +385,54 @@ class ArtifactLinkViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         meeting = self.get_meeting()
         serializer.save(meeting=meeting)
+
+
+class MeetingTemplateViewSet(viewsets.ModelViewSet):
+    """
+    Reusable workspace templates for the Meeting editor.
+    """
+
+    queryset = MeetingTemplate.objects.all()
+    serializer_class = MeetingTemplateSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+
+    def create(self, request, *args, **kwargs):
+        try:
+            return super().create(request, *args, **kwargs)
+        except APIException:
+            raise
+        except Exception as e:
+            logger.error(traceback.format_exc())
+            body = {"error": str(e)}
+            if settings.DEBUG:
+                body["traceback"] = traceback.format_exc()
+            return Response(body, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def perform_create(self, serializer):
+        # id is generated by the model; keep name + layout_config from request.
+        serializer.save()
+
+    def partial_update(self, request, *args, **kwargs):
+        """
+        Upsert style PATCH support.
+
+        The frontend previously saved built-in templates keyed by `meetingType` (string),
+        so this view allows updating/creating by pk if it doesn't exist yet.
+        """
+        template_id = kwargs.get("pk")
+        if not template_id:
+            return super().partial_update(request, *args, **kwargs)
+
+        template, _ = MeetingTemplate.objects.get_or_create(
+            id=str(template_id),
+            defaults={"name": str(template_id)},
+        )
+
+        serializer = self.get_serializer(template, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
 
 class MeetingDocumentAPIView(APIView):

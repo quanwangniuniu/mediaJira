@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { OriginMeetingBlock } from "@/components/meetings/OriginMeetingBlock";
 import SignalsPanel from "@/components/decisions/SignalsPanel";
 import DecisionReviewPanel from "@/components/decisions/DecisionReviewPanel";
 import TaskPanel from "@/components/decisions/TaskPanel";
@@ -122,6 +124,10 @@ const DecisionDetailView = ({
                 {decision.title || "Untitled decision"}
               </h2>
             </section>
+
+            <div data-testid="decision-origin-meeting">
+              <OriginMeetingBlock origin={decision.origin_meeting ?? null} />
+            </div>
 
             <section className="space-y-2">
               <h3 className="text-sm font-semibold text-gray-900">

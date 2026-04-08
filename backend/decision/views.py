@@ -1,6 +1,7 @@
 from django.db import IntegrityError, transaction
 from django.db.models import Max, Q
 from django.core.exceptions import ValidationError
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -8,6 +9,7 @@ from rest_framework.response import Response
 from django.utils import timezone
 
 from core.models import Project, ProjectMember
+from meetings.models import MeetingDecisionOrigin
 from .models import CommitRecord, Decision, DecisionEdge, Review, Signal
 from .permissions import DecisionPermission
 from decision.services import invalid_state_response, validate_decision_edge
@@ -35,7 +37,11 @@ class DecisionDraftViewSet(
     permission_classes = [DecisionPermission]
     http_method_names = ["get", "post", "patch"]
     serializer_class = DecisionDraftSerializer
-    queryset = Decision.objects.filter(is_deleted=False)
+
+    def get_queryset(self):
+        return Decision.objects.filter(is_deleted=False).select_related(
+            "meeting_origin__meeting__type_definition",
+        )
 
     def _apply_parent_edges(self, decision, parent_ids):
         if parent_ids is None:
@@ -92,6 +98,7 @@ class DecisionDraftViewSet(
             raise ValidationError({"project_id": "Invalid project."})
 
         parent_ids = serializer.validated_data.pop("parentDecisionIds", None)
+        origin_meeting_id = serializer.validated_data.pop("origin_meeting_id", None)
         with transaction.atomic():
             project = Project.objects.select_for_update().get(pk=project_id)
             max_seq = (
@@ -106,6 +113,11 @@ class DecisionDraftViewSet(
                 project=project,
                 project_seq=next_seq,
             )
+            if origin_meeting_id is not None:
+                MeetingDecisionOrigin.objects.create(
+                    meeting_id=origin_meeting_id,
+                    decision=decision,
+                )
             self._apply_parent_edges(decision, parent_ids)
 
     def create(self, request, *args, **kwargs):
@@ -226,10 +238,12 @@ class DecisionViewSet(
 
     def retrieve(self, request, *args, **kwargs):
         decision_id = kwargs.get("pk")
-        try:
-            decision = Decision.objects.get(pk=decision_id, is_deleted=False)
-        except Decision.DoesNotExist:
-            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        decision = get_object_or_404(
+            Decision.objects.filter(is_deleted=False).select_related(
+                "meeting_origin__meeting__type_definition",
+            ),
+            pk=decision_id,
+        )
 
         if decision.status in (
             Decision.Status.DRAFT,
