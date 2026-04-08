@@ -39,7 +39,10 @@ class OnlineStatusService:
     def is_online(cls, user_id: int) -> bool:
         """Check if user is online"""
         key = f'{cls.ONLINE_KEY_PREFIX}:{user_id}'
-        result = cache.get(key, False)
+        try:
+            result = cache.get(key, False)
+        except Exception:
+            result = False
         logger.debug(f"[OnlineStatus] Checking user {user_id}: {result}")
         return result
     
