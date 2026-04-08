@@ -1,6 +1,7 @@
 import requests
 import base64
 from datetime import datetime, timedelta
+from urllib.parse import urlencode
 from django.conf import settings
 from django.utils import timezone
 from .models import ZoomCredential
@@ -22,9 +23,7 @@ def get_authorization_url(state: str) -> str:
         "redirect_uri": settings.ZOOM_REDIRECT_URI,
         "state": state,
     }
-    # manually concatenate query string
-    query = "&".join(f"{k}={v}" for k, v in params.items())
-    return f"{ZOOM_AUTH_URL}?{query}"
+    return f"{ZOOM_AUTH_URL}?{urlencode(params)}"
 
 
 def _basic_auth_header() -> str:

@@ -18,6 +18,7 @@ import { ProjectMemberPicker } from '@/components/meetings/ProjectMemberPicker';
 import { formatProjectMemberLabel } from '@/components/meetings/projectMemberLabel';
 import { ProjectAPI, type ProjectMemberData } from '@/lib/api/projectApi';
 import { MeetingsAPI } from '@/lib/api/meetingsApi';
+import { zoomApi } from '@/lib/api/zoomApi';
 import {
   meetingDateToInput,
   meetingTimeToInput,
@@ -68,6 +69,10 @@ export function MeetingSummaryPanel({
   const [loadingPeople, setLoadingPeople] = useState(false);
   const [removingPid, setRemovingPid] = useState<number | null>(null);
 
+  const [zoomConnected, setZoomConnected] = useState(false);
+  const [zoomStatusLoading, setZoomStatusLoading] = useState(true);
+  const [creatingZoomMeeting, setCreatingZoomMeeting] = useState(false);
+
   const loadMeeting = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -113,6 +118,14 @@ export function MeetingSummaryPanel({
   useEffect(() => {
     void loadMeeting();
   }, [loadMeeting]);
+
+  useEffect(() => {
+    zoomApi
+      .getStatus()
+      .then((s) => setZoomConnected(s.connected))
+      .catch(() => setZoomConnected(false))
+      .finally(() => setZoomStatusLoading(false));
+  }, []);
 
   useEffect(() => {
     void fetchUnifiedMeetingTemplateOptions()
@@ -205,6 +218,40 @@ export function MeetingSummaryPanel({
     if (!u) return;
     const href = /^https?:\/\//i.test(u) ? u : `https://${u}`;
     window.open(href, '_blank', 'noopener,noreferrer');
+  };
+
+  const createZoomMeeting = async () => {
+    if (!meeting || creatingZoomMeeting) return;
+    setCreatingZoomMeeting(true);
+    try {
+      let startTime: string;
+      if (schedDateDraft && schedTimeDraft) {
+        startTime = new Date(`${schedDateDraft}T${schedTimeDraft}`).toISOString();
+      } else {
+        const soon = new Date();
+        soon.setHours(soon.getHours() + 1, 0, 0, 0);
+        startTime = soon.toISOString();
+      }
+      const zoomMeeting = await zoomApi.createMeeting(
+        titleDraft.trim() || meeting.title,
+        startTime,
+        60,
+      );
+      setExtRefDraft(zoomMeeting.join_url);
+      const updated = await MeetingsAPI.patchMeeting(projectId, meetingId, {
+        external_reference: zoomMeeting.join_url,
+      });
+      setMeeting(updated);
+      onMeetingUpdated?.(updated);
+      toast.success('Zoom meeting created and saved.');
+    } catch (e: unknown) {
+      const msg =
+        (e as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+        'Failed to create Zoom meeting.';
+      toast.error(msg);
+    } finally {
+      setCreatingZoomMeeting(false);
+    }
   };
 
   const participantLabel = (userId: number) => {
@@ -374,34 +421,65 @@ export function MeetingSummaryPanel({
               <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
                 Meeting link
               </h3>
-              <input
-                type="text"
-                className="mt-1.5 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                value={extRefDraft}
-                onChange={(e) => setExtRefDraft(e.target.value)}
-                placeholder="e.g. Zoom link"
-              />
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Button
+
+              {/* Create Zoom Meeting button */}
+              <div className="mt-2">
+                <button
                   type="button"
-                  size="sm"
-                  className="bg-blue-600 hover:bg-blue-700"
-                  disabled={!extRefDraft.trim()}
-                  onClick={openRef}
+                  disabled={!zoomConnected || creatingZoomMeeting || zoomStatusLoading}
+                  onClick={() => void createZoomMeeting()}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#2D8CFF] bg-[#2D8CFF] px-3 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:bg-[#1a7ae0] disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:shadow-none"
                 >
-                  <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-                  Open link
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={!extRefDraft.trim()}
-                  onClick={copyRef}
-                >
-                  <Copy className="mr-1.5 h-3.5 w-3.5" />
-                  Copy
-                </Button>
+                  {creatingZoomMeeting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M24 12c0 6.627-5.373 12-12 12S0 18.627 0 12 5.373 0 12 0s12 5.373 12 12zm-6.462-3.692l-3.693 2.308V8H6.923A.923.923 0 006 8.923v6.154c0 .51.413.923.923.923H14v-2.616l3.538 2.212c.336.21.462.097.462-.233V8.54c0-.33-.126-.443-.462-.232z" />
+                    </svg>
+                  )}
+                  {creatingZoomMeeting ? 'Creating meeting…' : 'Create Zoom Meeting'}
+                </button>
+                {!zoomStatusLoading && !zoomConnected && (
+                  <Link
+                    href="/settings?open_zoom=1"
+                    className="mt-1.5 flex items-center justify-center gap-1 text-[11px] text-gray-400 transition-colors hover:text-blue-600"
+                  >
+                    <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
+                    Zoom not connected · Connect in Settings
+                  </Link>
+                )}
+              </div>
+
+              {/* Link input + actions */}
+              <div className="mt-3 overflow-hidden rounded-lg border border-gray-200 bg-gray-50 focus-within:border-blue-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+                <input
+                  type="text"
+                  className="w-full bg-transparent px-3 py-2 text-sm text-gray-800 placeholder-gray-400 outline-none"
+                  value={extRefDraft}
+                  onChange={(e) => setExtRefDraft(e.target.value)}
+                  placeholder="Paste a meeting link…"
+                />
+                {extRefDraft.trim() && (
+                  <div className="flex items-center gap-1 border-t border-gray-200 bg-white px-2 py-1.5">
+                    <button
+                      type="button"
+                      onClick={openRef}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Open
+                    </button>
+                    <div className="h-4 w-px bg-gray-200" />
+                    <button
+                      type="button"
+                      onClick={copyRef}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                      Copy
+                    </button>
+                  </div>
+                )}
               </div>
             </section>
 

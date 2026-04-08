@@ -1,10 +1,11 @@
 import secrets
 from django.shortcuts import redirect
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 
 from .services import (
     get_authorization_url,
@@ -27,6 +28,7 @@ class ZoomConnectView(APIView):
         # generate random state, store in session for callback verification (prevent CSRF)
         state = secrets.token_urlsafe(32)
         request.session["zoom_oauth_state"] = state
+        request.session["zoom_oauth_user_id"] = request.user.id
 
         auth_url = get_authorization_url(state)
         return Response({"auth_url": auth_url})
@@ -35,9 +37,10 @@ class ZoomConnectView(APIView):
 class ZoomCallbackView(APIView):
     """
     GET /api/v1/zoom/callback/
-    Zoom authorization completed, callback here, exchange code for token
+    Zoom authorization completed, callback here, exchange code for token.
+    No JWT auth required — user is identified via session set in ZoomConnectView.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get(self, request):
         code = request.query_params.get("code")
@@ -45,30 +48,28 @@ class ZoomCallbackView(APIView):
 
         # validate state, prevent CSRF attacks
         saved_state = request.session.pop("zoom_oauth_state", None)
+        user_id = request.session.pop("zoom_oauth_user_id", None)
+
         if not state or state != saved_state:
-            return Response(
-                {"error": "Invalid state parameter, please reconnect"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return redirect(f"{settings.FRONTEND_URL}/settings?zoom_error=invalid_state")
+
+        if not user_id:
+            return redirect(f"{settings.FRONTEND_URL}/settings?zoom_error=session_expired")
 
         if not code:
-            # when user rejects authorization, Zoom returns error parameter instead of code
-            error = request.query_params.get("error", "Unknown error")
-            return Response(
-                {"error": f"Zoom authorization failed: {error}"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            error = request.query_params.get("error", "unknown")
+            return redirect(f"{settings.FRONTEND_URL}/settings?zoom_error={error}")
 
+        User = get_user_model()
         try:
+            user = User.objects.get(id=user_id)
             token_data = exchange_code_for_token(code)
-            save_token_for_user(request.user, token_data)
+            save_token_for_user(user, token_data)
+        except User.DoesNotExist:
+            return redirect(f"{settings.FRONTEND_URL}/settings?zoom_error=user_not_found")
         except Exception as e:
-            return Response(
-                {"error": f"Failed to get token: {str(e)}"},
-                status=status.HTTP_502_BAD_GATEWAY
-            )
+            return redirect(f"{settings.FRONTEND_URL}/settings?zoom_error=token_exchange_failed")
 
-        # successfully redirect to frontend page
         return redirect(f"{settings.FRONTEND_URL}/meetings?zoom_connected=true")
 
 
