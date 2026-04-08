@@ -30,7 +30,7 @@ def make_credential(user, expired=False):
     """
     expires_at = timezone.now() + timedelta(hours=1)   # default 1 hour later
     if expired:
-        expires_at = timezone.now() - timedelta(hours=1)  # set to 1 hour ago,即已过期
+        expires_at = timezone.now() - timedelta(hours=1)  # set to 1 hour ago, expired
 
     return ZoomCredential.objects.create(
         user=user,
