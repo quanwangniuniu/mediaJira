@@ -1,13 +1,9 @@
 """
 SMP-489 Action Item → Task integration tests.
 
-Covers:
-1. Single successful conversion
-2. Same action item cannot be converted twice
-3. Task preserves origin meeting (snapshots)
-4. Task preserves origin action item (snapshots + origins API)
-5. Bulk conversion success
-6. Bulk with mix of already-converted ids (skip + continue)
+These tests exercise the meeting action-item to task conversion API end-to-end
+against the router configuration and services to ensure the contract used by
+the frontend and CI application_test job remains stable.
 """
 
 from django.test import TestCase
