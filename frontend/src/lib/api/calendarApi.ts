@@ -80,7 +80,6 @@ export const CalendarAPI = {
       data,
     ),
 
-  // Raw view endpoints – higher level hooks will choose which one to call.
   getDayView: (params: { date: string; calendar_ids?: string[] }) =>
     api.get<CalendarViewResponse>("/api/v1/views/day/", {
       params: {
@@ -133,4 +132,58 @@ export const CalendarAPI = {
 
   deleteEvent: (eventId: string, _etag?: string) =>
     api.delete<void>(`/api/v1/events/${eventId}/`),
+
+  // Fetch system-derived calendar events (from Decisions and Tasks, read-only)
+  getDerivedEvents: (params: { start: string; end: string }) =>
+    api.get<{ count: number; results: DerivedCalendarEventDTO[] }>("/api/v1/derived-events/", {
+      params: {
+        start: params.start,
+        end: params.end,
+      },
+    }),
 };
+
+// Derived CalendarEvent from Decision/Task (read-only, system-generated)
+export interface DerivedCalendarEventDTO {
+  id: number;
+  event_type: "decision" | "task" | "decision_review";
+  title: string;
+  start_time: string;
+  end_time: string | null;
+  decision_id: number | null;
+  task_id: number | null;
+  review_id: number | null;
+  project_id: number | null;  // For permission header on navigation
+}
+
+// Convert a DerivedCalendarEvent to EventDTO format for display in calendar
+export function derivedEventToEventDTO(event: DerivedCalendarEventDTO): EventDTO {
+  return {
+    id: `derived-${event.id}`,  // Prefix to prevent ID conflicts with regular events
+    title: event.title,
+    start_datetime: event.start_time,
+    end_datetime: event.end_time ?? event.start_time,
+    is_all_day: false,
+    is_recurring: false,
+    color: eventTypeToColor(event.event_type),
+    // Store source entity metadata in description for click navigation
+    description: JSON.stringify({
+      isDerived: true,
+      event_type: event.event_type,
+      decision_id: event.decision_id,
+      task_id: event.task_id,
+      review_id: event.review_id,
+      project_id: event.project_id,  // Used to build correct navigation URL with permission
+    }),
+  };
+}
+
+// Map event type to display color
+function eventTypeToColor(eventType: string): string {
+  switch (eventType) {
+    case "decision": return "#8B5CF6";        // Purple - Decision
+    case "decision_review": return "#F59E0B"; // Orange - Review
+    case "task": return "#10B981";            // Green - Task
+    default: return "#6B7280";
+  }
+}
