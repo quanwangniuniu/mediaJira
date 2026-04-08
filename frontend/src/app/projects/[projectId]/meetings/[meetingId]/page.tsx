@@ -47,6 +47,9 @@ import { CSS } from '@dnd-kit/utilities';
 
 import Layout from '@/components/layout/Layout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+
+import { MeetingGeneratedKnowledgeSection } from '@/components/meetings/MeetingGeneratedKnowledgeSection';
+
 import { MeetingHeader } from '@/components/meetings/meeting-header';
 import { AgendaSection } from '@/components/meetings/agenda-section';
 import {
@@ -59,6 +62,7 @@ import { SortableBlock } from '@/components/meetings/SortableBlock';
 import { CustomBlock } from '@/components/meetings/CustomBlock';
 import { TemplateSidebar } from '@/components/meetings/TemplateSidebar';
 import type { SidebarTemplate } from '@/components/meetings/TemplateSidebar';
+
 import { formatProjectMemberLabel } from '@/components/meetings/projectMemberLabel';
 import { DecisionAPI } from '@/lib/api/decisionApi';
 import { TaskAPI } from '@/lib/api/taskApi';
@@ -786,6 +790,38 @@ export default function MeetingWorkspacePage() {
     };
 
     fetchData();
+  }, [projectId, meetingId]);
+
+  // After creating a task/decision in another tab or via bfcache back, refetch so generated_* links appear.
+  useEffect(() => {
+    if (!projectId || Number.isNaN(projectId) || !meetingId || Number.isNaN(meetingId)) {
+      return;
+    }
+    let cancelled = false;
+    const refreshMeeting = () => {
+      MeetingsAPI.getMeeting(projectId, meetingId)
+        .then((m) => {
+          if (!cancelled) setMeeting(m);
+        })
+        .catch(() => {});
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        refreshMeeting();
+      }
+    };
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        refreshMeeting();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pageshow', onPageShow as EventListener);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pageshow', onPageShow as EventListener);
+    };
   }, [projectId, meetingId]);
 
   // Meeting Type Sync: when opening a meeting, auto-apply the matching template agenda structure.
@@ -2106,6 +2142,7 @@ export default function MeetingWorkspacePage() {
                         : 'No document content yet.'}
                     </p>
                   </div>
+
                   <Button
                     type="button"
                     size="sm"
@@ -2124,6 +2161,18 @@ export default function MeetingWorkspacePage() {
                   />
                 ) : null}
               </div>
+
+              {meeting && Number.isFinite(projectId) && Number.isFinite(meetingId) ? (
+                <div className="mt-6">
+                  <MeetingGeneratedKnowledgeSection
+                    projectId={projectId}
+                    meetingId={meetingId}
+                    generatedTasks={meeting.generated_tasks ?? []}
+                    generatedDecisions={meeting.generated_decisions ?? []}
+                  />
+                </div>
+              ) : null}
+
               {blocks.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500">
                   Canvas is empty. Please click a module from the sidebar or add a block below.
