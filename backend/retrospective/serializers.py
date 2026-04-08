@@ -159,12 +159,13 @@ class RetrospectiveTaskDetailSerializer(serializers.ModelSerializer):
 
 class RetrospectiveTaskCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating RetrospectiveTask instances"""
-    decision = serializers.CharField(required=True, allow_blank=False)
+    decision = serializers.CharField(required=False, allow_blank=True, default="")
     confidence_level = serializers.ChoiceField(
-        required=True,
+        required=False,
         choices=[1, 2, 3, 4, 5],
+        default=3,
     )
-    primary_assumption = serializers.CharField(required=True, allow_blank=False)
+    primary_assumption = serializers.CharField(required=False, allow_blank=True, default="")
     key_risk_ignore = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:

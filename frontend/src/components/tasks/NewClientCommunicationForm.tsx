@@ -109,9 +109,7 @@ export default function NewClientCommunicationForm({
               e.target.value as CommunicationType | ""
             )
           }
-          className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-            errors.communication_type ? "border-red-500" : "border-gray-300"
-          }`}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
         >
           <option value="" disabled>
             Select communication type
@@ -122,11 +120,6 @@ export default function NewClientCommunicationForm({
             </option>
           ))}
         </select>
-        {errors.communication_type && (
-          <p className="text-red-500 text-sm mt-1">
-            {errors.communication_type}
-          </p>
-        )}
       </div>
 
       {/* Stakeholders */}
@@ -171,11 +164,6 @@ export default function NewClientCommunicationForm({
             </label>
           ))}
         </div>
-        {errors.impacted_areas && (
-          <p className="text-red-500 text-sm mt-1">
-            {errors.impacted_areas}
-          </p>
-        )}
         <p className="text-xs text-gray-500 mt-1">
           Select any areas that this communication affects, such as
           budget, creative, KPIs, or targeting.
@@ -197,17 +185,10 @@ export default function NewClientCommunicationForm({
           onChange={(e) =>
             handleFieldChange("required_actions", e.target.value || "")
           }
-          className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-            errors.required_actions ? "border-red-500" : "border-gray-300"
-          }`}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
           rows={4}
           placeholder="Describe the actions that must be taken in response to this communication."
         />
-        {errors.required_actions && (
-          <p className="text-red-500 text-sm mt-1">
-            {errors.required_actions}
-          </p>
-        )}
       </div>
 
       {/* Client Deadline */}

@@ -51,7 +51,6 @@ export default function NewTaskForm({
         const types = await TaskAPI.getTaskTypes();
         setTaskTypes(types);
       } catch (error) {
-        console.error("Failed to fetch task types:", error);
         setTaskTypes([]);
       } finally {
         setLoadingTaskTypes(false);
