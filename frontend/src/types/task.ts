@@ -1,3 +1,5 @@
+import type { OriginMeetingPayload } from '@/types/meeting';
+
 export interface ApprovalChainStepRecord {
   approved_by: UserSummary;
   is_approved: boolean;
@@ -60,6 +62,8 @@ export interface TaskData {
   } | null;
   /** Draft-only: persisted create-panel state (backend stores JSON) */
   draft_payload?: unknown | null;
+  /** Provenance: meeting this task is anchored to, if any (task detail only). */
+  origin_meeting?: OriginMeetingPayload | null;
 }
 
 // Type for creating a new task (current_approver_id is user ID)
@@ -77,6 +81,8 @@ export interface CreateTaskData {
   create_as_draft?: boolean;
   /** Draft-only: persisted create-panel state (backend stores JSON) */
   draft_payload?: unknown | null;
+  /** When set, creates ``MeetingTaskOrigin`` on the server (same project as task). */
+  origin_meeting_id?: number;
 }
 
 export interface UserSummary {

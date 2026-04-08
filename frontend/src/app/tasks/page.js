@@ -40,6 +40,7 @@ import NewBudgetPool from "@/components/budget/NewBudgetPool";
 import BudgetPoolList from "@/components/budget/BudgetPoolList";
 // import { mockTasks } from "../../mock/mockTasks";
 import { ProjectAPI } from "@/lib/api/projectApi";
+import { MeetingsAPI } from "@/lib/api/meetingsApi";
 import JiraBoardView from "@/components/jira-ticket/JiraBoardView";
 import JiraSummaryView from "@/components/jira-ticket/JiraSummaryView";
 import JiraTasksView from "@/components/jira-ticket/JiraTasksView";
@@ -209,7 +210,13 @@ function TasksPageContent() {
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createModalExpanded, setCreateModalExpanded] = useState(false);
+  /** When creating from a meeting deep link (`?create=1&origin_meeting_id=`). */
+  const [createOriginMeetingId, setCreateOriginMeetingId] = useState(null);
+  const [createOriginMeetingLabel, setCreateOriginMeetingLabel] =
+    useState(null);
   const [draftEditingTaskId, setDraftEditingTaskId] = useState(null);
+  /** Avoid re-applying meeting create deep link when only `view` etc. changes in the URL. */
+  const lastMeetingDeepLinkKeyRef = useRef("");
   const [createBudgetPoolModalOpen, setCreateBudgetPoolModalOpen] =
     useState(false);
   const [manageBudgetPoolsModalOpen, setManageBudgetPoolsModalOpen] =
@@ -1269,23 +1276,55 @@ function TasksPageContent() {
     experimentValidation.clearErrors();
   };
 
-  // Open create task modal with fresh form state.
-  // When opening from a board column: (sectionKey, summaryPrefill?) — sectionKey is the column work type.
-  // When opening from timeline/elsewhere: (projectIdOverride?) — optional project id.
-  const handleOpenCreateTaskModal = (
+  /** Drop meeting create deep-link params after cancel or success (single flow exit). */
+  const clearTaskCreateQueryFromUrl = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (!params.has("create") && !params.has("origin_meeting_id")) {
+      return;
+    }
+    params.delete("create");
+    params.delete("origin_meeting_id");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [searchParams, pathname, router]);
+
+  /**
+   * Opens create modal. By default clears meeting origin (header, board column).
+   * Timeline "Create Task" passes `{ preserveMeetingOrigin: true }` so a meeting
+   * deep link (`?create=1&origin_meeting_id=`) is not wiped when opening the panel again.
+   */
+  const openGenericCreateTaskModal = (
     projectIdOverrideOrSectionKey,
     sectionKeyOrSummaryPrefill,
     summaryWhenProjectIdFirst,
+    options = {},
   ) => {
+    const preserveMeetingOrigin = options?.preserveMeetingOrigin === true;
     setDraftEditingTaskId(null);
+    if (!preserveMeetingOrigin) {
+      setCreateOriginMeetingId(null);
+      setCreateOriginMeetingLabel(null);
+      clearTaskCreateQueryFromUrl();
+    } else {
+      const rawOrigin =
+        searchParams.get("origin_meeting_id") ??
+        (typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("origin_meeting_id")
+          : null);
+      const originNum = rawOrigin ? Number(rawOrigin) : NaN;
+      if (Number.isFinite(originNum) && originNum >= 1) {
+        setCreateOriginMeetingId(originNum);
+      }
+    }
+
     const isSectionKeyOnly =
       typeof projectIdOverrideOrSectionKey === "string" &&
       projectIdOverrideOrSectionKey.length > 0;
     const resolvedProjectId = isSectionKeyOnly
       ? projectId ?? null
       : typeof projectIdOverrideOrSectionKey === "number"
-      ? projectIdOverrideOrSectionKey
-      : projectId ?? null;
+        ? projectIdOverrideOrSectionKey
+        : projectId ?? null;
     const initialWorkType = isSectionKeyOnly
       ? projectIdOverrideOrSectionKey
       : sectionKeyOrSummaryPrefill ?? "";
@@ -1294,8 +1333,9 @@ function TasksPageContent() {
         ? sectionKeyOrSummaryPrefill
         : ""
       : typeof summaryWhenProjectIdFirst === "string"
-      ? summaryWhenProjectIdFirst
-      : "";
+        ? summaryWhenProjectIdFirst
+        : "";
+
     resetFormData(resolvedProjectId, initialWorkType, initialSummary);
     clearAllValidationErrors();
     setCreateModalOpen(true);
@@ -1303,10 +1343,115 @@ function TasksPageContent() {
   };
 
   const closeCreatePanel = () => {
+    clearTaskCreateQueryFromUrl();
     setCreateModalOpen(false);
     setCreateModalExpanded(false);
     setDraftEditingTaskId(null);
+    setCreateOriginMeetingId(null);
+    setCreateOriginMeetingLabel(null);
   };
+
+  const meetingOriginForCreatePayload = () => {
+    const rawUrl =
+      searchParams.get("origin_meeting_id") ??
+      (typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("origin_meeting_id")
+        : null);
+    const urlNum = rawUrl ? Number(rawUrl) : NaN;
+    const fromUrl =
+      Number.isFinite(urlNum) && urlNum >= 1 ? urlNum : null;
+    const oid =
+      createOriginMeetingId != null &&
+      Number.isFinite(createOriginMeetingId) &&
+      createOriginMeetingId >= 1
+        ? createOriginMeetingId
+        : fromUrl;
+    return oid != null ? { origin_meeting_id: oid } : {};
+  };
+
+  useEffect(() => {
+    if (!createOriginMeetingId || !projectId) {
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const m = await MeetingsAPI.getMeeting(projectId, createOriginMeetingId);
+        if (!cancelled) {
+          setCreateOriginMeetingLabel(
+            m.title?.trim() || `Meeting ${createOriginMeetingId}`,
+          );
+        }
+      } catch {
+        if (!cancelled) {
+          setCreateOriginMeetingLabel(`Meeting ${createOriginMeetingId}`);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [createOriginMeetingId, projectId]);
+
+  // When `origin_meeting_id` is present without `create=1`, still mirror it into state
+  // so a later "Create Task" (e.g. timeline) can attach provenance.
+  useEffect(() => {
+    if (!projectId || !Number.isFinite(projectId)) return;
+    const rawOrigin =
+      searchParams.get("origin_meeting_id") ??
+      (typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("origin_meeting_id")
+        : null);
+    if (rawOrigin == null || rawOrigin === "") return;
+    const originNum = Number(rawOrigin);
+    if (!Number.isFinite(originNum) || originNum < 1) return;
+    setCreateOriginMeetingId((prev) =>
+      prev === originNum ? prev : originNum,
+    );
+  }, [searchParams, projectId]);
+
+  // Meeting deep link: `/tasks?project_id=&view=timeline&create=1&origin_meeting_id=`
+  // Keep query in the URL until cancel or successful create; form state mirrors `origin_meeting_id`.
+  useEffect(() => {
+    const rawCreate =
+      searchParams.get("create") ??
+      (typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("create")
+        : null);
+    const wantCreate =
+      rawCreate === "1" ||
+      rawCreate === "true" ||
+      (rawCreate && String(rawCreate).toLowerCase() === "yes");
+
+    if (!wantCreate || !projectId || !Number.isFinite(projectId)) {
+      lastMeetingDeepLinkKeyRef.current = "";
+      return;
+    }
+
+    const rawOrigin =
+      searchParams.get("origin_meeting_id") ??
+      (typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("origin_meeting_id")
+        : null);
+    const originNum = rawOrigin ? Number(rawOrigin) : NaN;
+    const validOrigin =
+      Number.isFinite(originNum) && originNum >= 1 ? originNum : null;
+
+    const deepKey = `${String(rawCreate)}|${rawOrigin ?? ""}|${projectId}`;
+    if (deepKey === lastMeetingDeepLinkKeyRef.current) {
+      return;
+    }
+    lastMeetingDeepLinkKeyRef.current = deepKey;
+
+    setDraftEditingTaskId(null);
+    setCreateOriginMeetingId(validOrigin);
+    setCreateOriginMeetingLabel(null);
+    setActiveTab("tasks");
+    resetFormData(projectId, "", "");
+    clearAllValidationErrors();
+    setCreateModalOpen(true);
+    setCreateModalExpanded(false);
+  }, [searchParams, projectId]);
 
   const buildDraftPayload = useCallback(() => {
     return {
@@ -1392,6 +1537,10 @@ function TasksPageContent() {
     async (taskId) => {
       if (!taskId) return;
       try {
+        setCreateOriginMeetingId(null);
+        setCreateOriginMeetingLabel(null);
+        clearTaskCreateQueryFromUrl();
+
         const resp = await TaskAPI.getTask(Number(taskId));
         const serverTask = resp?.data;
         const payload = serverTask?.draft_payload;
@@ -1431,7 +1580,12 @@ function TasksPageContent() {
         toast.error("Failed to open draft. Please try again.");
       }
     },
-    [applyDraftPayload, clearAllValidationErrors, resetFormData],
+    [
+      applyDraftPayload,
+      clearAllValidationErrors,
+      clearTaskCreateQueryFromUrl,
+      resetFormData,
+    ],
   );
 
   const handleCreateAsDraft = async () => {
@@ -1455,6 +1609,7 @@ function TasksPageContent() {
         due_date: taskData.due_date || null,
         create_as_draft: true,
         draft_payload: draftPayload,
+        ...meetingOriginForCreatePayload(),
       };
 
       await createTask(taskPayload);
@@ -1620,6 +1775,7 @@ function TasksPageContent() {
           taskData.type === "report" ? user?.id : taskData.current_approver_id,
         start_date: taskData.start_date || null,
         due_date: taskData.due_date || null,
+        ...meetingOriginForCreatePayload(),
       };
 
       console.log("Creating task with payload:", taskPayload);
@@ -1934,7 +2090,8 @@ function TasksPageContent() {
               )}
               {projectId && activeTab !== "board" && (
                 <button
-                  onClick={handleOpenCreateTaskModal}
+                  type="button"
+                  onClick={() => openGenericCreateTaskModal()}
                   className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700"
                 >
                   Create Task
@@ -2374,7 +2531,7 @@ function TasksPageContent() {
               <JiraBoardView
                 boardColumns={boardColumns}
                 tasksByType={tasksByType}
-                onCreateTask={handleOpenCreateTaskModal}
+                onCreateTask={openGenericCreateTaskModal}
                 onTaskClick={handleTaskClick}
                 getTicketKey={getTicketKey}
                 getBoardTypeIcon={getBoardTypeIcon}
@@ -2449,7 +2606,12 @@ function TasksPageContent() {
                       onTaskClick={handleTaskClick}
                       reloadTasks={reloadTasks}
                       onCreateTask={(projectIdOverride) =>
-                        handleOpenCreateTaskModal(projectIdOverride)
+                        openGenericCreateTaskModal(
+                          projectIdOverride,
+                          undefined,
+                          undefined,
+                          { preserveMeetingOrigin: true },
+                        )
                       }
                       currentUser={user || undefined}
                     />
@@ -2508,6 +2670,12 @@ function TasksPageContent() {
         }
       >
         <div className="space-y-8">
+          {createOriginMeetingLabel ? (
+            <div className="rounded-md border border-indigo-100/80 bg-indigo-50/60 px-3 py-2 text-xs text-indigo-900">
+              <span className="text-indigo-800/85">Origin meeting: </span>
+              <span className="font-medium">{createOriginMeetingLabel}</span>
+            </div>
+          ) : null}
           {/* Task info */}
           <NewTaskForm
             onTaskDataChange={handleTaskDataChange}

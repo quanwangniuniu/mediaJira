@@ -1,4 +1,6 @@
 import json
+from typing import Iterable
+from django.apps import apps
 
 from django.shortcuts import get_object_or_404
 from rest_framework import serializers
@@ -12,11 +14,37 @@ from meetings.models import (
     MeetingTemplate,
     MeetingDocument,
 )
+from meetings.knowledge_links import (
+    generated_decisions_payload,
+    generated_tasks_payload,
+    related_decisions_payload,
+    related_tasks_payload,
+)
+from meetings.services import (
+    ensure_meeting_type_definition,
+    MEETING_LIST_ORDERING_MAP,
+)
+
+
+def meeting_participants_for_api(meeting: Meeting) -> list[dict]:
+    return [
+        {"user_id": link.user_id, "role": link.role}
+        for link in meeting.participant_links.all()
+    ]
+
+
+def meeting_tags_for_api(meeting: Meeting) -> list[dict]:
+    return [
+        {"slug": a.tag_definition.slug, "label": a.tag_definition.label}
+        for a in meeting.tag_assignments.all()
+    ]
 
 
 class MeetingSerializer(serializers.ModelSerializer):
     """
     Optional write-only participant_user_ids on create — see MeetingViewSet.perform_create.
+
+    ``meeting_type`` is the API-facing string; it maps to structured ``MeetingTypeDefinition``.
     """
 
     participant_user_ids = serializers.ListField(
@@ -25,6 +53,21 @@ class MeetingSerializer(serializers.ModelSerializer):
         required=False,
         allow_empty=True,
     )
+    meeting_type = serializers.CharField(write_only=True, max_length=160, required=False)
+    meeting_type_slug = serializers.CharField(
+        read_only=True, source="type_definition.slug"
+    )
+    type_definition_id = serializers.IntegerField(
+        read_only=True, source="type_definition.id"
+    )
+    participants = serializers.SerializerMethodField()
+    tags = serializers.SerializerMethodField()
+    generated_decisions = serializers.SerializerMethodField()
+    generated_tasks = serializers.SerializerMethodField()
+    generated_decisions_count = serializers.IntegerField(read_only=True, source="decision_count")
+    generated_tasks_count = serializers.IntegerField(read_only=True, source="task_count")
+    related_decisions = serializers.SerializerMethodField()
+    related_tasks = serializers.SerializerMethodField()
 
     class Meta:
         model = Meeting
@@ -33,15 +76,81 @@ class MeetingSerializer(serializers.ModelSerializer):
             "project",
             "title",
             "meeting_type",
+            "meeting_type_slug",
+            "type_definition_id",
             "objective",
+            "summary",
             "scheduled_date",
             "scheduled_time",
             "external_reference",
             "layout_config",
             "status",
+            "is_archived",
+            "participants",
+            "tags",
+            "generated_decisions",
+            "generated_tasks",
+            "generated_decisions_count",
+            "generated_tasks_count",
+            "related_decisions",
+            "related_tasks",
+            "created_at",
+            "updated_at",
             "participant_user_ids",
         ]
-        read_only_fields = ["id", "project"]
+        read_only_fields = [
+            "id",
+            "project",
+            "meeting_type_slug",
+            "type_definition_id",
+            "created_at",
+            "updated_at",
+            "generated_decisions",
+            "generated_tasks",
+            "generated_decisions_count",
+            "generated_tasks_count",
+            "related_decisions",
+            "related_tasks",
+        ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["meeting_type"] = instance.type_definition.label
+        return data
+
+    def get_participants(self, obj):
+        return meeting_participants_for_api(obj)
+
+    def get_tags(self, obj):
+        return meeting_tags_for_api(obj)
+
+    def get_generated_decisions(self, obj):
+        return generated_decisions_payload(obj)
+
+    def get_generated_tasks(self, obj):
+        return generated_tasks_payload(obj)
+
+    def get_related_decisions(self, obj):
+        return related_decisions_payload(obj)
+
+    def get_related_tasks(self, obj):
+        return related_tasks_payload(obj)
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        if self.instance is None and request and request.method == "POST":
+            if not attrs.get("meeting_type"):
+                raise serializers.ValidationError(
+                    {"meeting_type": ["This field is required."]}
+                )
+        return attrs
+
+    def create(self, validated_data):
+        validated_data.pop("participant_user_ids", None)
+        label = validated_data.pop("meeting_type")
+        project = validated_data["project"]
+        validated_data["type_definition"] = ensure_meeting_type_definition(project, label)
+        return Meeting.objects.create(**validated_data)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -84,7 +193,222 @@ class MeetingSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         # Participants are managed via the participants sub-resource
         validated_data.pop("participant_user_ids", None)
+        if "meeting_type" in validated_data:
+            label = validated_data.pop("meeting_type")
+            validated_data["type_definition"] = ensure_meeting_type_definition(
+                instance.project, label
+            )
         return super().update(instance, validated_data)
+
+
+class MeetingKnowledgeDiscoveryQuerySerializer(serializers.Serializer):
+    """
+    Validates query params for project-scoped meeting list / knowledge discovery (strict filters).
+    """
+
+    q = serializers.CharField(required=False, max_length=500, allow_blank=True)
+    meeting_type = serializers.ListField(
+        child=serializers.CharField(max_length=80),
+        required=False,
+        allow_empty=True,
+    )
+    tag = serializers.CharField(required=False, max_length=80, allow_blank=True)
+    date_from = serializers.DateField(required=False)
+    date_to = serializers.DateField(required=False)
+    is_archived = serializers.BooleanField(required=False)
+    has_generated_decisions = serializers.BooleanField(required=False)
+    has_generated_tasks = serializers.BooleanField(required=False)
+    ordering = serializers.CharField(required=False, allow_blank=True)
+    page = serializers.IntegerField(required=False, min_value=1, default=1)
+
+    def validate_ordering(self, value):
+        if value in (None, ""):
+            return None
+        if value not in MEETING_LIST_ORDERING_MAP:
+            raise serializers.ValidationError(
+                f'Invalid ordering "{value}". Allowed: {", ".join(sorted(MEETING_LIST_ORDERING_MAP))}.'
+            )
+        return value
+
+    def validate_meeting_type(self, value):
+        """Repeated `meeting_type` query params → OR over type slugs (see ListField.get_value + QueryDict)."""
+        if not value:
+            return None
+        return self._unique_slug_strings(value, "meeting_type", 80) or None
+
+    @staticmethod
+    def _unique_positive_ints(values: Iterable[str], field_name: str) -> list[int]:
+        out: list[int] = []
+        seen: set[int] = set()
+        for raw in values:
+            if raw is None or str(raw).strip() == "":
+                continue
+            try:
+                n = int(raw)
+            except (TypeError, ValueError) as exc:
+                raise serializers.ValidationError(
+                    {field_name: ["Invalid integer."]}
+                ) from exc
+            if n < 1:
+                raise serializers.ValidationError(
+                    {field_name: ["Must be >= 1."]}
+                )
+            if n not in seen:
+                seen.add(n)
+                out.append(n)
+        return out
+
+    @staticmethod
+    def _unique_slug_strings(
+        values: Iterable[str], field_name: str, max_len: int
+    ) -> list[str]:
+        out: list[str] = []
+        seen: set[str] = set()
+        for raw in values:
+            s = str(raw).strip()
+            if not s:
+                continue
+            if len(s) > max_len:
+                raise serializers.ValidationError(
+                    {
+                        field_name: [
+                            f"Ensure this value has at most {max_len} characters (got {len(s)})."
+                        ]
+                    }
+                )
+            if s not in seen:
+                seen.add(s)
+                out.append(s)
+        return out
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        qp = getattr(request, "query_params", None) if request else None
+
+        participant_ids: list[int] = []
+        exclude_ids: list[int] = []
+        if qp is not None:
+            participant_ids = self._unique_positive_ints(
+                qp.getlist("participant"), "participant"
+            )
+            exclude_ids = self._unique_positive_ints(
+                qp.getlist("exclude_participant"), "exclude_participant"
+            )
+
+        attrs["participant"] = participant_ids if participant_ids else None
+        attrs["exclude_participant"] = exclude_ids if exclude_ids else None
+
+        if qp is not None:
+            if "participant" not in qp:
+                attrs.pop("participant", None)
+            if "exclude_participant" not in qp:
+                attrs.pop("exclude_participant", None)
+            if "meeting_type" not in qp:
+                attrs.pop("meeting_type", None)
+
+        q = attrs.get("q")
+        if q is not None:
+            stripped = q.strip()
+            attrs["q"] = stripped if stripped else None
+
+        v = attrs.get("tag")
+        if v is not None and not str(v).strip():
+            attrs["tag"] = None
+        elif v is not None:
+            attrs["tag"] = str(v).strip()
+
+        if attrs.get("date_from") and attrs.get("date_to"):
+            if attrs["date_from"] > attrs["date_to"]:
+                raise serializers.ValidationError(
+                    {"date_to": ["Must be on or after date_from."]}
+                )
+
+        pl = attrs.get("participant") or []
+        el = attrs.get("exclude_participant") or []
+        if pl and el and set(pl) & set(el):
+            raise serializers.ValidationError(
+                {
+                    "exclude_participant": [
+                        "Cannot include and exclude the same user(s)."
+                    ]
+                }
+            )
+
+        # meeting_type / tag slugs: do not require a row in MeetingTypeDefinition /
+        # MeetingTagDefinition. Unknown or never-used slugs yield an empty list (discovery UX).
+
+        if hasattr(self, "initial_data") and self.initial_data is not None:
+            if "is_archived" not in self.initial_data:
+                attrs.pop("is_archived", None)
+            if "has_generated_decisions" not in self.initial_data:
+                attrs.pop("has_generated_decisions", None)
+            if "has_generated_tasks" not in self.initial_data:
+                attrs.pop("has_generated_tasks", None)
+
+        return attrs
+
+
+class MeetingListSerializer(serializers.ModelSerializer):
+    """
+    Lightweight row for meeting list / search (no objective, notes, etc.).
+    """
+
+    meeting_type = serializers.CharField(
+        read_only=True, source="type_definition.label"
+    )
+    meeting_type_slug = serializers.CharField(
+        read_only=True, source="type_definition.slug"
+    )
+    participants = serializers.SerializerMethodField()
+    tags = serializers.SerializerMethodField()
+    decision_count = serializers.IntegerField(read_only=True)
+    task_count = serializers.IntegerField(read_only=True)
+    generated_decisions_count = serializers.IntegerField(read_only=True, source="decision_count")
+    generated_tasks_count = serializers.IntegerField(read_only=True, source="task_count")
+    generated_decisions = serializers.SerializerMethodField()
+    generated_tasks = serializers.SerializerMethodField()
+    related_decisions = serializers.SerializerMethodField()
+    related_tasks = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Meeting
+        fields = [
+            "id",
+            "title",
+            "summary",
+            "scheduled_date",
+            "meeting_type",
+            "meeting_type_slug",
+            "participants",
+            "tags",
+            "decision_count",
+            "task_count",
+            "generated_decisions_count",
+            "generated_tasks_count",
+            "generated_decisions",
+            "generated_tasks",
+            "related_decisions",
+            "related_tasks",
+            "is_archived",
+        ]
+
+    def get_participants(self, obj):
+        return meeting_participants_for_api(obj)
+
+    def get_tags(self, obj):
+        return meeting_tags_for_api(obj)
+
+    def get_generated_decisions(self, obj):
+        return generated_decisions_payload(obj)
+
+    def get_generated_tasks(self, obj):
+        return generated_tasks_payload(obj)
+
+    def get_related_decisions(self, obj):
+        return related_decisions_payload(obj)
+
+    def get_related_tasks(self, obj):
+        return related_tasks_payload(obj)
 
 
 class AgendaItemSerializer(serializers.ModelSerializer):
@@ -166,7 +490,7 @@ class MeetingTemplateSerializer(serializers.ModelSerializer):
 
 class MeetingDocumentSerializer(serializers.ModelSerializer):
     class Meta:
-        model = MeetingDocument
+        model = apps.get_model("meetings", "MeetingDocument")
         fields = [
             "id",
             "meeting",
