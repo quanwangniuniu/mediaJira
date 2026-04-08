@@ -1,4 +1,10 @@
+from django.core.exceptions import ObjectDoesNotExist
+from django.db import transaction
 from rest_framework import serializers
+
+from meetings.knowledge_links import serialize_origin_meeting
+from meetings.models import MeetingTaskOrigin
+from meetings.services import validate_meeting_for_origin_link
 from task.models import Task, ApprovalRecord, TaskComment, TaskAttachment, TaskHierarchy, TaskRelation
 from core.models import Project, ProjectMember
 from core.utils.project import get_user_active_project
@@ -48,6 +54,12 @@ class TaskSerializer(serializers.ModelSerializer):
     # Revision tracking fields for SMP-501
     revision_round = serializers.IntegerField(read_only=True)
     revision_label = serializers.SerializerMethodField()
+    origin_meeting = serializers.SerializerMethodField()
+    origin_meeting_id = serializers.IntegerField(
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
 
     class Meta:
         model = Task
@@ -62,12 +74,15 @@ class TaskSerializer(serializers.ModelSerializer):
             'revision_round', 'revision_label',
             'can_lock', 'approvals_summary',
             'create_as_draft', 'draft_payload',
+            'origin_meeting',
+            'origin_meeting_id',
         ]
         read_only_fields = [
             'id', 'status', 'owner', 'content_type', 'object_id',
             'is_subtask', 'parent_relationship', 'anomaly_status',
             'approval_chain_progress', 'can_lock', 'approvals_summary',
             'revision_round', 'revision_label', # SMP-501
+            'origin_meeting',
         ]
 
     def get_content_type(self, obj):
@@ -80,6 +95,16 @@ class TaskSerializer(serializers.ModelSerializer):
         if not obj.content_type:
             return None
         return obj.content_type.model
+
+    def get_origin_meeting(self, obj):
+        try:
+            origin = obj.meeting_origin
+        except ObjectDoesNotExist:
+            return None
+        meeting = origin.meeting
+        if meeting is None:
+            return None
+        return serialize_origin_meeting(meeting)
 
     def get_approval_chain_progress(self, obj):
         """
@@ -248,6 +273,7 @@ class TaskSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """Create a new task"""
         create_as_draft = validated_data.pop('create_as_draft', False)
+        origin_meeting_id = validated_data.pop('origin_meeting_id', None)
         # Never persist draft payload on non-draft creates.
         if not create_as_draft:
             validated_data.pop('draft_payload', None)
@@ -285,11 +311,17 @@ class TaskSerializer(serializers.ModelSerializer):
                 validated_data['current_approver'] = current_approver
                 logger.debug(f"DEBUG: Set current_approver to: {current_approver}")
             else:
-                print(f"DEBUG: current_approver_id is None, not setting current_approver")
+                logger.debug("current_approver_id is None, not setting current_approver")
 
             # Create the task (catch missing draft_payload column so we return 400 + clear message)
             try:
-                task = super().create(validated_data)
+                with transaction.atomic():
+                    task = super().create(validated_data)
+                    if origin_meeting_id is not None:
+                        MeetingTaskOrigin.objects.create(
+                            meeting_id=origin_meeting_id,
+                            task=task,
+                        )
             except (OperationalError, ProgrammingError) as db_err:
                 err_msg = str(db_err).lower()
                 if "draft_payload" in err_msg or "no such column" in err_msg or ("column" in err_msg and "does not exist" in err_msg):
@@ -393,6 +425,28 @@ class TaskSerializer(serializers.ModelSerializer):
     
     def validate(self, attrs):
         """Validate the data"""
+        if self.instance is not None and attrs.get('origin_meeting_id') is not None:
+            try:
+                self.instance.meeting_origin
+            except ObjectDoesNotExist:
+                raise serializers.ValidationError({
+                    'origin_meeting_id': 'Meeting origin can only be set when creating a task.',
+                })
+            raise serializers.ValidationError({
+                'origin_meeting_id': 'Task already has a meeting origin.',
+            })
+
+        origin_meeting_id = attrs.get('origin_meeting_id')
+        if self.instance is None and origin_meeting_id is not None:
+            user = self.context['request'].user
+            project = self._resolve_project(user, attrs.get('project_id'))
+            self._ensure_project_membership(user, project)
+            validate_meeting_for_origin_link(
+                meeting_id=origin_meeting_id,
+                project=project,
+                user=user,
+            )
+
         # Only allow updating draft_payload while task is in DRAFT.
         if self.instance and 'draft_payload' in attrs:
             # Allow clearing draft_payload (null) at any status for cleanup.
@@ -413,7 +467,11 @@ class TaskListSerializer(TaskSerializer):
     """List serializer omitting large draft payloads."""
 
     class Meta(TaskSerializer.Meta):
-        fields = [f for f in TaskSerializer.Meta.fields if f != 'draft_payload']
+        fields = [
+            f
+            for f in TaskSerializer.Meta.fields
+            if f not in ('draft_payload', 'origin_meeting', 'origin_meeting_id')
+        ]
     
     def validate_type(self, value):
         """Validate task type against Task model choices."""

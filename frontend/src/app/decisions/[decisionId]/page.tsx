@@ -152,6 +152,7 @@ const DecisionPage = () => {
                 options: draft.options || [],
                 signals: draft.signals || [],
                 projectSeq: draft.projectSeq ?? null,
+                origin_meeting: draft.origin_meeting ?? null,
               });
               setProjectSeq(
                 typeof draft.projectSeq === 'number' ? draft.projectSeq : null

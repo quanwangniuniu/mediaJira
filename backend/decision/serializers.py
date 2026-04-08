@@ -1,4 +1,9 @@
+from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
+
+from core.models import Project
+from meetings.knowledge_links import serialize_origin_meeting
+from meetings.services import validate_meeting_for_origin_link
 
 from .models import CommitRecord, Decision, DecisionEdge, DecisionStateTransition, Option, Review, Signal
 from .services import generate_signal_text
@@ -324,6 +329,66 @@ class DecisionDraftSerializer(serializers.ModelSerializer):
     agentSessionId = serializers.UUIDField(
         source="agent_session_id", required=False, allow_null=True
     )
+    origin_meeting = serializers.SerializerMethodField()
+    origin_meeting_id = serializers.IntegerField(
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
+
+    def get_origin_meeting(self, obj):
+        try:
+            origin = obj.meeting_origin
+        except ObjectDoesNotExist:
+            return None
+        meeting = origin.meeting
+        if meeting is None:
+            return None
+        return serialize_origin_meeting(meeting)
+
+    def validate(self, attrs):
+        origin_mid = attrs.get("origin_meeting_id")
+        if origin_mid is not None and self.instance is not None:
+            try:
+                self.instance.meeting_origin
+            except ObjectDoesNotExist:
+                raise serializers.ValidationError(
+                    {
+                        "origin_meeting_id": "Meeting origin can only be set when creating a decision.",
+                    },
+                )
+            raise serializers.ValidationError(
+                {
+                    "origin_meeting_id": "Decision already has a meeting origin.",
+                },
+            )
+        if origin_mid is None:
+            return attrs
+        request = self.context.get("request")
+        if request is None:
+            return attrs
+        raw_project = request.headers.get("x-project-id") or request.query_params.get(
+            "project_id"
+        )
+        if raw_project is None:
+            raise serializers.ValidationError(
+                {"origin_meeting_id": "Project context is required."},
+            )
+        try:
+            project_id = int(raw_project)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError(
+                {"origin_meeting_id": "Invalid project context."},
+            )
+        project = Project.objects.filter(pk=project_id).first()
+        if not project:
+            raise serializers.ValidationError({"origin_meeting_id": "Invalid project."})
+        validate_meeting_for_origin_link(
+            meeting_id=origin_mid,
+            project=project,
+            user=request.user,
+        )
+        return attrs
 
     def to_internal_value(self, data):
         if self.instance is not None:
@@ -386,6 +451,8 @@ class DecisionDraftSerializer(serializers.ModelSerializer):
             "parentDecisionIds",
             "createdByAgent",
             "agentSessionId",
+            "origin_meeting",
+            "origin_meeting_id",
         ]
 
 
@@ -501,6 +568,7 @@ class DecisionCommittedSerializer(serializers.ModelSerializer):
     reviews = CommittedReviewSerializer(many=True, read_only=True)
     commitRecord = CommittedCommitRecordSerializer(read_only=True)
     stateTransitions = CommittedStateTransitionSerializer(many=True, read_only=True)
+    origin_meeting = serializers.SerializerMethodField()
 
     class Meta:
         model = Decision
@@ -526,7 +594,18 @@ class DecisionCommittedSerializer(serializers.ModelSerializer):
             "reviews",
             "commitRecord",
             "stateTransitions",
+            "origin_meeting",
         ]
+
+    def get_origin_meeting(self, obj):
+        try:
+            origin = obj.meeting_origin
+        except ObjectDoesNotExist:
+            return None
+        meeting = origin.meeting
+        if meeting is None:
+            return None
+        return serialize_origin_meeting(meeting)
 
 
 class DecisionCommitActionSerializer(serializers.Serializer):

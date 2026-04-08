@@ -615,7 +615,7 @@ else:
 SLACK_CLIENT_ID = config('SLACK_CLIENT_ID', default='')
 SLACK_CLIENT_SECRET = config('SLACK_CLIENT_SECRET', default='')
 SLACK_SIGNING_SECRET = config('SLACK_SIGNING_SECRET', default='')
-SLACK_REDIRECT_URI = config('SLACK_REDIRECT_URI', default='http://localhost:3000/slack/callback')
+SLACK_REDIRECT_URI = config('SLACK_REDIRECT_URI', default='http://localhost/slack/callback')
 
 # Meetings (SMP-484): when True, creating a meeting requires at least one participant_user_ids entry
 MEETINGS_REQUIRE_PARTICIPANTS_AT_CREATE = config(

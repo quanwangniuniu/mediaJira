@@ -22,3 +22,9 @@ backend/venv/
 docker-compose.dev.override.yml
 .claude/
 **/.env.local
+.claude/.cursorrules
+CLAUDE.md
+figma/
+nul
+.claude/
+.cursorrules

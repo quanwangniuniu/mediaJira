@@ -1,9 +1,19 @@
+from datetime import timedelta
+
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from core.models import Organization, Project, ProjectMember, CustomUser
-from meetings.models import Meeting, AgendaItem, ParticipantLink, MeetingDocument
+from meetings.models import (
+    AgendaItem,
+    Meeting,
+    MeetingTypeDefinition,
+    MeetingDocument,
+    ParticipantLink,
+)
+
 
 
 class TestMeetingAPI(TestCase):
@@ -44,6 +54,14 @@ class TestMeetingAPI(TestCase):
 
         self.client.force_authenticate(user=self.user_a)
 
+    def _meeting_type(self, project, *, slug: str, label: str | None = None):
+        obj, _ = MeetingTypeDefinition.objects.get_or_create(
+            project=project,
+            slug=slug,
+            defaults={"label": label or slug},
+        )
+        return obj
+
     def _extract_ids(self, response):
         """Normalize list vs paginated responses and return ID set."""
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -61,17 +79,17 @@ class TestMeetingAPI(TestCase):
         meeting_a = Meeting.objects.create(
             project=self.project_a,
             title="Meeting A",
-            meeting_type="planning",
+            type_definition=self._meeting_type(self.project_a, slug="planning"),
             objective="Objective A",
         )
         meeting_b = Meeting.objects.create(
             project=self.project_b,
             title="Meeting B",
-            meeting_type="review",
+            type_definition=self._meeting_type(self.project_b, slug="review"),
             objective="Objective B",
         )
 
-        url = f"/api/v1/projects/{self.project_a.id}/meetings/"
+        url = f"/api/projects/{self.project_a.id}/meetings/"
         response = self.client.get(url)
 
         ids = self._extract_ids(response)
@@ -79,7 +97,7 @@ class TestMeetingAPI(TestCase):
         self.assertNotIn(meeting_b.id, ids)
 
     def test_project_isolation_meeting_list_forbidden_for_other_project(self):
-        url = f"/api/v1/projects/{self.project_b.id}/meetings/"
+        url = f"/api/projects/{self.project_b.id}/meetings/"
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
@@ -88,7 +106,7 @@ class TestMeetingAPI(TestCase):
         meeting = Meeting.objects.create(
             project=self.project_a,
             title="Meeting",
-            meeting_type="planning",
+            type_definition=self._meeting_type(self.project_a, slug="planning"),
             objective="Objective",
         )
         AgendaItem.objects.create(
@@ -101,7 +119,7 @@ class TestMeetingAPI(TestCase):
             meeting=meeting, content="Item 3", order_index=2, is_priority=False
         )
 
-        url = f"/api/v1/projects/{self.project_a.id}/meetings/{meeting.id}/agenda-items/reorder/"
+        url = f"/api/projects/{self.project_a.id}/meetings/{meeting.id}/agenda-items/reorder/"
         items = list(AgendaItem.objects.filter(meeting=meeting).order_by("order_index"))
 
         payload = {
@@ -127,11 +145,11 @@ class TestMeetingAPI(TestCase):
         meeting = Meeting.objects.create(
             project=self.project_a,
             title="Meeting",
-            meeting_type="planning",
+            type_definition=self._meeting_type(self.project_a, slug="planning"),
             objective="Objective",
         )
 
-        url = f"/api/v1/projects/{self.project_a.id}/meetings/{meeting.id}/agenda-items/reorder/"
+        url = f"/api/projects/{self.project_a.id}/meetings/{meeting.id}/agenda-items/reorder/"
 
         response = self.client.patch(
             url,
@@ -144,11 +162,11 @@ class TestMeetingAPI(TestCase):
         meeting = Meeting.objects.create(
             project=self.project_a,
             title="Meeting",
-            meeting_type="planning",
+            type_definition=self._meeting_type(self.project_a, slug="planning"),
             objective="Objective",
         )
 
-        url = f"/api/v1/projects/{self.project_a.id}/meetings/{meeting.id}/participants/"
+        url = f"/api/projects/{self.project_a.id}/meetings/{meeting.id}/participants/"
 
         response1 = self.client.post(
             url,
@@ -175,7 +193,7 @@ class TestMeetingAPI(TestCase):
         meeting = Meeting.objects.create(
             project=self.project_a,
             title="Meeting",
-            meeting_type="planning",
+            type_definition=self._meeting_type(self.project_a, slug="planning"),
             objective="Objective",
         )
         AgendaItem.objects.create(
@@ -185,14 +203,14 @@ class TestMeetingAPI(TestCase):
             meeting=meeting, content="Item 2", order_index=1, is_priority=False
         )
 
-        url = f"/api/v1/projects/{self.project_a.id}/meetings/{meeting.id}/"
+        url = f"/api/projects/{self.project_a.id}/meetings/{meeting.id}/"
 
         response = self.client.delete(url)
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(AgendaItem.objects.filter(meeting=meeting).exists())
 
     def test_create_meeting_with_participant_user_ids(self):
-        url = f"/api/v1/projects/{self.project_a.id}/meetings/"
+        url = f"/api/projects/{self.project_a.id}/meetings/"
         payload = {
             "title": "With participants",
             "meeting_type": "planning",
@@ -202,11 +220,18 @@ class TestMeetingAPI(TestCase):
         response = self.client.post(url, data=payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         meeting_id = response.data["id"]
+        self.assertIn("participants", response.data)
+        self.assertIn("tags", response.data)
+        self.assertEqual(
+            response.data["participants"],
+            [{"user_id": self.user_a.id, "role": None}],
+        )
+        self.assertEqual(response.data["tags"], [])
         links = ParticipantLink.objects.filter(meeting_id=meeting_id, user=self.user_a)
         self.assertEqual(links.count(), 1)
 
     def test_create_meeting_participant_user_ids_rejects_non_member(self):
-        url = f"/api/v1/projects/{self.project_a.id}/meetings/"
+        url = f"/api/projects/{self.project_a.id}/meetings/"
         payload = {
             "title": "Bad participant",
             "meeting_type": "planning",
@@ -219,9 +244,79 @@ class TestMeetingAPI(TestCase):
             Meeting.objects.filter(title="Bad participant").exists(),
         )
 
+    def test_meeting_list_includes_hub_lane_counts(self):
+        """Paginated list adds Incoming/Completed lane totals for the meetings hub badge (A OF B)."""
+        today = timezone.now().date()
+        mt = self._meeting_type(self.project_a, slug="planning")
+        Meeting.objects.create(
+            project=self.project_a,
+            title="Past",
+            type_definition=mt,
+            objective="x",
+            scheduled_date=today - timedelta(days=10),
+        )
+        Meeting.objects.create(
+            project=self.project_a,
+            title="Future",
+            type_definition=mt,
+            objective="x",
+            scheduled_date=today + timedelta(days=10),
+        )
+        Meeting.objects.create(
+            project=self.project_a,
+            title="Undated",
+            type_definition=mt,
+            objective="x",
+            scheduled_date=None,
+        )
+
+        url = f"/api/projects/{self.project_a.id}/meetings/"
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["incoming_lane_total"], 2)
+        self.assertEqual(response.data["completed_lane_total"], 1)
+        self.assertEqual(response.data["incoming_result_count"], 2)
+        self.assertEqual(response.data["completed_result_count"], 1)
+        self.assertEqual(response.data["incoming_lane_filtered"], 2)
+        self.assertEqual(response.data["completed_lane_filtered"], 1)
+
+    def test_meeting_list_lane_filtered_differs_when_q_narrows(self):
+        mt = self._meeting_type(self.project_a, slug="planning")
+        Meeting.objects.create(
+            project=self.project_a,
+            title="Alpha unique",
+            type_definition=mt,
+            objective="x",
+            scheduled_date=None,
+        )
+        Meeting.objects.create(
+            project=self.project_a,
+            title="Beta other",
+            type_definition=mt,
+            objective="x",
+            scheduled_date=None,
+        )
+
+        self.assertEqual(
+            Meeting.objects.filter(project=self.project_a, is_deleted=False).count(),
+            2,
+        )
+
+        url = f"/api/projects/{self.project_a.id}/meetings/"
+        r0 = self.client.get(url)
+        self.assertEqual(r0.status_code, status.HTTP_200_OK)
+        self.assertEqual(r0.data["incoming_lane_total"], 2)
+        self.assertEqual(r0.data["completed_lane_total"], 0)
+        self.assertEqual(r0.data["incoming_result_count"], 2)
+
+        r1 = self.client.get(url, {"q": "Alpha unique"})
+        self.assertEqual(r1.status_code, status.HTTP_200_OK)
+        self.assertEqual(r1.data["incoming_result_count"], 1)
+        self.assertEqual(r1.data["incoming_lane_total"], r0.data["incoming_lane_total"])
+
     @override_settings(MEETINGS_REQUIRE_PARTICIPANTS_AT_CREATE=True)
     def test_create_meeting_defaults_creator_as_participant_when_strict_and_none_sent(self):
-        url = f"/api/v1/projects/{self.project_a.id}/meetings/"
+        url = f"/api/projects/{self.project_a.id}/meetings/"
         payload = {
             "title": "No participants",
             "meeting_type": "planning",
@@ -237,14 +332,57 @@ class TestMeetingAPI(TestCase):
             ).exists(),
         )
 
+    def test_patch_meeting_layout_config_object_shape(self):
+        meeting = Meeting.objects.create(
+            project=self.project_a,
+            title="Meeting",
+            type_definition=self._meeting_type(self.project_a, slug="planning"),
+            objective="Objective",
+        )
+        url = f"/api/projects/{self.project_a.id}/meetings/{meeting.id}/"
+        payload = {
+            "layout_config": {
+                "blocks": [
+                    {"id": "header", "type": "header"},
+                    {"id": "agenda", "type": "agenda"},
+                ],
+                "nestedSections": [
+                    {
+                        "id": "s1",
+                        "title": "Section A",
+                        "items": [
+                            {
+                                "id": "1",
+                                "text": "Item",
+                                "completed": False,
+                                "duration": "5m",
+                            }
+                        ],
+                    }
+                ],
+            }
+        }
+        response = self.client.patch(url, data=payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        meeting.refresh_from_db()
+        self.assertIsInstance(meeting.layout_config, dict)
+        self.assertEqual(len(meeting.layout_config["blocks"]), 2)
+        self.assertEqual(len(meeting.layout_config["nestedSections"]), 1)
+
+        get_response = self.client.get(url)
+        self.assertEqual(get_response.status_code, status.HTTP_200_OK)
+        lc = get_response.data["layout_config"]
+        self.assertIsInstance(lc, dict)
+        self.assertEqual(lc["nestedSections"][0]["title"], "Section A")
+
     def test_get_meeting_document_creates_default_document(self):
         meeting = Meeting.objects.create(
             project=self.project_a,
             title="Meeting Doc",
-            meeting_type="planning",
+            type_definition=self._meeting_type(self.project_a, slug="planning"),
             objective="Doc",
         )
-        url = f"/api/v1/projects/{self.project_a.id}/meetings/{meeting.id}/document/"
+        url = f"/api/projects/{self.project_a.id}/meetings/{meeting.id}/document/"
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["meeting"], meeting.id)
@@ -255,10 +393,10 @@ class TestMeetingAPI(TestCase):
         meeting = Meeting.objects.create(
             project=self.project_a,
             title="Meeting Doc",
-            meeting_type="planning",
+            type_definition=self._meeting_type(self.project_a, slug="planning"),
             objective="Doc",
         )
-        url = f"/api/v1/projects/{self.project_a.id}/meetings/{meeting.id}/document/"
+        url = f"/api/projects/{self.project_a.id}/meetings/{meeting.id}/document/"
         response = self.client.patch(
             url,
             data={"content": "Collaborative content"},
@@ -273,7 +411,7 @@ class TestMeetingAPI(TestCase):
         meeting = Meeting.objects.create(
             project=self.project_a,
             title="Invited only",
-            meeting_type="planning",
+            type_definition=self._meeting_type(self.project_a, slug="planning"),
             objective="X",
         )
         user_c = CustomUser.objects.create_user(
@@ -282,7 +420,7 @@ class TestMeetingAPI(TestCase):
             username="user_c",
         )
         ParticipantLink.objects.create(meeting=meeting, user=user_c)
-        url = f"/api/v1/projects/{self.project_a.id}/meetings/{meeting.id}/document/"
+        url = f"/api/projects/{self.project_a.id}/meetings/{meeting.id}/document/"
         self.client.force_authenticate(user=user_c)
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -292,7 +430,7 @@ class TestMeetingAPI(TestCase):
         meeting = Meeting.objects.create(
             project=self.project_a,
             title="Private doc",
-            meeting_type="planning",
+            type_definition=self._meeting_type(self.project_a, slug="planning"),
             objective="Y",
         )
         user_c = CustomUser.objects.create_user(
@@ -300,7 +438,7 @@ class TestMeetingAPI(TestCase):
             password="password",
             username="user_d",
         )
-        url = f"/api/v1/projects/{self.project_a.id}/meetings/{meeting.id}/document/"
+        url = f"/api/projects/{self.project_a.id}/meetings/{meeting.id}/document/"
         self.client.force_authenticate(user=user_c)
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

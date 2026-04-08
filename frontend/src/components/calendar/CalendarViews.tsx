@@ -15,6 +15,16 @@ import type { CalendarDTO, EventDTO, CalendarViewType } from "@/lib/api/calendar
 import type { EventPanelPosition } from "@/components/calendar/types";
 import { computePanelPosition } from "@/components/calendar/utils";
 
+const WEEKDAY_LABELS = [
+  { key: "mon", label: "M" },
+  { key: "tue", label: "T" },
+  { key: "wed", label: "W" },
+  { key: "thu", label: "T" },
+  { key: "fri", label: "F" },
+  { key: "sat", label: "S" },
+  { key: "sun", label: "S" },
+] as const;
+
 export type WeekViewProps = {
   currentDate: Date;
   events: EventDTO[];
@@ -143,7 +153,11 @@ export function WeekView({
   };
 
   return (
-    <div className="flex h-full flex-col rounded-3xl bg-white shadow-sm">
+    <div
+      className="flex h-full flex-col rounded-3xl bg-white shadow-sm"
+      data-testid="calendar-week-view"
+      aria-label="Week calendar view"
+    >
       <div className="relative z-0 grid grid-cols-[60px_repeat(7,minmax(0,1fr))] bg-white text-xs font-medium text-gray-500">
         <div className="relative px-2 py-2 text-gray-400 before:absolute before:bottom-0 before:right-0 before:block before:h-px before:w-3 before:bg-gray-100 before:content-[''] after:absolute after:bottom-0 after:right-0 after:block after:h-4 after:w-px after:bg-gray-100 after:content-['']" />
         {days.map((day) => (
@@ -196,6 +210,11 @@ export function WeekView({
                   <button
                     key={hour}
                     type="button"
+                    data-testid="calendar-week-slot"
+                    aria-label={`Create event on ${format(
+                      slotStart,
+                      "EEEE, MMMM d 'at' h:mm a",
+                    )}`}
                     className="h-12 w-full border-b border-gray-100 bg-white text-left hover:bg-blue-50 flex flex-col"
                     onClick={(e) => {
                       const rect = e.currentTarget.getBoundingClientRect();
@@ -226,6 +245,8 @@ export function WeekView({
                   <button
                     key={event.id + event.start_datetime}
                     type="button"
+                    data-testid="calendar-event-card"
+                    aria-label={`Open event ${event.title || "(No title)"}`}
                     onClick={(e) => {
                       if (suppressClick) {
                         e.preventDefault();
@@ -381,7 +402,11 @@ export function DayView({
   };
 
   return (
-    <div className="flex flex-col rounded-xl bg-white">
+    <div
+      className="flex flex-col rounded-xl bg-white"
+      data-testid="calendar-day-view"
+      aria-label="Day calendar view"
+    >
       <div className="relative z-0 grid grid-cols-[60px_minmax(0,1fr)] bg-white text-xs font-medium text-gray-500">
         <div className="relative px-2 py-2 text-gray-400 before:absolute before:bottom-0 before:right-0 before:block before:h-px before:w-3 before:bg-gray-100 before:content-[''] after:absolute after:bottom-0 after:right-0 after:block after:h-2 after:w-px after:bg-gray-100 after:content-['']" />
         <div className="flex flex-col px-2 py-2 border-b">
@@ -417,6 +442,11 @@ export function DayView({
               <button
                 key={hour}
                 type="button"
+                data-testid="calendar-day-slot"
+                aria-label={`Create event on ${format(
+                  slotStart,
+                  "EEEE, MMMM d 'at' h:mm a",
+                )}`}
                 className="h-12 w-full border-b border-gray-100 bg-white text-left hover:bg-blue-50"
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
@@ -444,6 +474,8 @@ export function DayView({
               <button
                 key={event.id + event.start_datetime}
                 type="button"
+                data-testid="calendar-event-card"
+                aria-label={`Open event ${event.title || "(No title)"}`}
                 onClick={(e) => {
                   if (suppressClick) {
                     e.preventDefault();
@@ -554,20 +586,23 @@ export function MonthView({
     return result;
   }, [days, events]);
 
-  const weekdayLabels = ["M", "T", "W", "T", "F", "S", "S"];
   const today = new Date();
 
   return (
-    <div className="flex h-full flex-col rounded-xl bg-white">
+    <div
+      className="flex h-full flex-col rounded-xl bg-white"
+      data-testid="calendar-month-view"
+      aria-label="Month calendar view"
+    >
       <div className="flex items-center justify-between px-4 py-2 text-sm font-semibold text-gray-700">
         {isLoading && <span className="text-xs text-gray-400">Loading…</span>}
         {error && <span className="text-xs text-red-500">Failed to load events.</span>}
       </div>
       <div className="grid flex-1 grid-rows-[auto_1fr]">
         <div className="grid grid-cols-7 bg-white text-[11px] font-medium text-gray-500">
-          {weekdayLabels.map((label) => (
-            <div key={label} className="flex items-center justify-center py-1">
-              {label}
+          {WEEKDAY_LABELS.map((item) => (
+            <div key={item.key} className="flex items-center justify-center py-1">
+              {item.label}
             </div>
           ))}
         </div>
@@ -755,7 +790,6 @@ export function YearView({ currentDate, onDaySelect }: YearViewProps) {
           const startMonth = startOfMonth(monthDate);
           const gridStart = startOfWeek(startMonth, { weekStartsOn: 1 });
           const days = Array.from({ length: 42 }, (_, index) => addDays(gridStart, index));
-          const weekdayLabels = ["M", "T", "W", "T", "F", "S", "S"];
 
           return (
             <div key={monthDate.toISOString()} className="rounded bg-white p-2">
@@ -763,9 +797,9 @@ export function YearView({ currentDate, onDaySelect }: YearViewProps) {
                 {format(monthDate, "MMMM")}
               </div>
               <div className="grid grid-cols-7 place-items-center gap-0.5 text-[10px] text-gray-400">
-                {weekdayLabels.map((label) => (
-                  <div key={label} className="flex h-4 items-center justify-center">
-                    {label}
+                {WEEKDAY_LABELS.map((item) => (
+                  <div key={item.key} className="flex h-4 items-center justify-center">
+                    {item.label}
                   </div>
                 ))}
                 {days.map((day) => {
@@ -810,7 +844,6 @@ export function MiniMonthCalendar({ currentDate, onDateChange }: MiniMonthCalend
     () => Array.from({ length: 42 }, (_, index) => addDays(gridStart, index)),
     [gridStart],
   );
-  const weekdayLabels = ["M", "T", "W", "T", "F", "S", "S"];
   const today = new Date();
 
   return (
@@ -819,9 +852,9 @@ export function MiniMonthCalendar({ currentDate, onDateChange }: MiniMonthCalend
         <span>{format(currentDate, "MMMM yyyy")}</span>
       </div>
       <div className="grid grid-cols-7 gap-1 text-[11px] text-gray-500">
-        {weekdayLabels.map((label) => (
-          <div key={label} className="flex h-5 items-center justify-center">
-            {label}
+        {WEEKDAY_LABELS.map((item) => (
+          <div key={item.key} className="flex h-5 items-center justify-center">
+            {item.label}
           </div>
         ))}
         {days.map((day) => {
