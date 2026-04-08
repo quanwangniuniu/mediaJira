@@ -19,13 +19,16 @@ function SettingsPageContent() {
     const hasOpenedSlackRef = useRef(false);
     const hasOpenedZoomRef = useRef(false);
 
+    // Refresh user data once on mount only — not in a loop.
+    // Must NOT include `user` in deps: refreshUser() updates user → would re-trigger infinitely.
     useEffect(() => {
-        // Ensure we have fresh user data
-        if (user) {
-            refreshUser();
-        }
+        refreshUser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
-        // Auto-open Slack modal if requested by URL parameter
+    // Handle URL parameters (modal auto-open, OAuth redirects).
+    // No dependency on `user` — these only need searchParams and router.
+    useEffect(() => {
         if (searchParams.get('open_slack') === '1' && !hasOpenedSlackRef.current) {
             setIsSlackModalOpen(true);
             hasOpenedSlackRef.current = true;
@@ -38,7 +41,6 @@ function SettingsPageContent() {
             router.replace(newUrl, { scroll: false });
         }
 
-        // Auto-open Zoom modal if requested by URL parameter
         if (searchParams.get('open_zoom') === '1' && !hasOpenedZoomRef.current) {
             setIsZoomModalOpen(true);
             hasOpenedZoomRef.current = true;
@@ -51,7 +53,6 @@ function SettingsPageContent() {
             router.replace(newUrl, { scroll: false });
         }
 
-        // Handle Zoom OAuth error redirect
         const zoomError = searchParams.get('zoom_error');
         if (zoomError) {
             const messages: Record<string, string> = {
@@ -69,7 +70,7 @@ function SettingsPageContent() {
                 : window.location.pathname;
             router.replace(newUrl, { scroll: false });
         }
-    }, [user, searchParams, router]);
+    }, [searchParams, router]);
 
     const layoutUser = user
         ? {

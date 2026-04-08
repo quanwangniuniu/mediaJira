@@ -397,7 +397,7 @@ class ZoomAPITest(TestCase):
     @patch("zoom_integration.views.exchange_code_for_token")
     @patch("zoom_integration.views.save_token_for_user")
     def test_callback_success(self, mock_save, mock_exchange):
-        """test if callback should redirect to frontend when OAuth callback is successful"""
+        """test if callback should redirect to frontend success page when OAuth callback is successful"""
         mock_exchange.return_value = {
             "access_token": "token",
             "refresh_token": "refresh",
@@ -405,9 +405,10 @@ class ZoomAPITest(TestCase):
         }
         mock_save.return_value = MagicMock()
 
-        # set the state in the session (simulate the state set in the connect process)
+        # set the state and user_id in the session (simulate the state set in the connect process)
         session = self.client.session
         session["zoom_oauth_state"] = "valid_state"
+        session["zoom_oauth_user_id"] = self.user.id
         session.save()
 
         response = self.client.get(
@@ -415,13 +416,14 @@ class ZoomAPITest(TestCase):
             {"code": "auth_code_123", "state": "valid_state"}
         )
 
-        # test if callback should redirect to frontend when OAuth callback is successful
         self.assertEqual(response.status_code, status.HTTP_302_FOUND)
+        self.assertIn("zoom_connected=true", response["Location"])
 
     def test_callback_invalid_state(self):
-        """test if callback should return 400 when state is invalid"""
+        """test if callback should redirect to error page when state is invalid"""
         session = self.client.session
         session["zoom_oauth_state"] = "correct_state"
+        session["zoom_oauth_user_id"] = self.user.id
         session.save()
 
         response = self.client.get(
@@ -429,12 +431,14 @@ class ZoomAPITest(TestCase):
             {"code": "some_code", "state": "wrong_state"}
         )
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_302_FOUND)
+        self.assertIn("zoom_error=invalid_state", response["Location"])
 
     def test_callback_user_denied(self):
-        """test if callback should return 400 when user denies authorization (no code)"""
+        """test if callback should redirect to error page when user denies authorization"""
         session = self.client.session
         session["zoom_oauth_state"] = "valid_state"
+        session["zoom_oauth_user_id"] = self.user.id
         session.save()
 
         response = self.client.get(
@@ -442,4 +446,5 @@ class ZoomAPITest(TestCase):
             {"error": "access_denied", "state": "valid_state"}
         )
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_302_FOUND)
+        self.assertIn("zoom_error=access_denied", response["Location"])
