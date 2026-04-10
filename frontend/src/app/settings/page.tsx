@@ -7,23 +7,69 @@ import useAuth from '@/hooks/useAuth';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Settings as SettingsIcon } from 'lucide-react';
 import SlackIntegrationModal from '@/components/slack/SlackIntegrationModal';
+import { slackApi, SlackConnectionStatus } from '@/lib/api/slackApi';
+import { useProjectStore } from '@/lib/projectStore';
 
 function SettingsPageContent() {
-    const { user, logout, refreshUser } = useAuth();
+    const { user, logout } = useAuth();
+    const activeProject = useProjectStore((state) => state.activeProject);
     const router = useRouter();
     const searchParams = useSearchParams();
     const [isSlackModalOpen, setIsSlackModalOpen] = useState(false);
+    const [slackStatus, setSlackStatus] = useState<SlackConnectionStatus | null>(null);
+    const [slackStatusLoading, setSlackStatusLoading] = useState(true);
     const hasOpenedSlackRef = useRef(false);
+    const userId = user?.id ?? null;
 
     useEffect(() => {
-        // Ensure we have fresh user data
-        if (user) {
-            refreshUser();
+        let isActive = true;
+
+        const loadSlackStatus = async () => {
+            if (!userId) {
+                if (isActive) {
+                    setSlackStatus(null);
+                    setSlackStatusLoading(false);
+                }
+                return;
+            }
+
+            setSlackStatusLoading(true);
+
+            try {
+                const status = await slackApi.getStatus(
+                    activeProject?.id ? { projectId: activeProject.id } : undefined
+                );
+                if (isActive) {
+                    setSlackStatus(status);
+                }
+            } catch (error) {
+                console.error('Failed to load Slack status:', error);
+                if (isActive) {
+                    setSlackStatus(null);
+                }
+            } finally {
+                if (isActive) {
+                    setSlackStatusLoading(false);
+                }
+            }
+        };
+
+        void loadSlackStatus();
+
+        return () => {
+            isActive = false;
+        };
+    }, [activeProject?.id, userId]);
+
+    useEffect(() => {
+        if (slackStatusLoading) {
+            return;
         }
 
-        // Auto-open Slack modal if requested by URL parameter
         if (searchParams.get('open_slack') === '1' && !hasOpenedSlackRef.current) {
-            setIsSlackModalOpen(true);
+            if (slackStatus?.can_manage_slack) {
+                setIsSlackModalOpen(true);
+            }
             hasOpenedSlackRef.current = true;
 
             // Clean up the URL parameter visually and from Next.js state
@@ -34,7 +80,10 @@ function SettingsPageContent() {
                 : window.location.pathname;
             router.replace(newUrl, { scroll: false });
         }
-    }, [user, searchParams, router]);
+    }, [slackStatus, slackStatusLoading, searchParams, router]);
+
+    const canManageSlack = !!slackStatus?.can_manage_slack;
+    const isSlackCardDisabled = slackStatusLoading || !canManageSlack;
 
     const layoutUser = user
         ? {
@@ -77,7 +126,7 @@ function SettingsPageContent() {
                             <h2 className="text-lg font-semibold text-gray-900 mb-4">Integrations</h2>
                             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                                 {/* Slack Card */}
-                                <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-all">
+                                <div className={`bg-white border border-gray-200 rounded-xl p-6 shadow-sm transition-all ${isSlackCardDisabled ? 'opacity-75' : 'hover:shadow-md'}`}>
                                     <div className="flex items-start justify-between mb-4">
                                         <div className="flex items-center gap-3">
                                             <div className="w-10 h-10 bg-[#4A154B] rounded-lg flex items-center justify-center">
@@ -94,11 +143,23 @@ function SettingsPageContent() {
                                     <p className="text-sm text-gray-600 mb-4 line-clamp-2">
                                         Connect your Slack workspace to receive notifications and manage tasks directly from Slack.
                                     </p>
+                                    {isSlackCardDisabled && (
+                                        <p className="text-xs text-gray-500 mb-4">
+                                            {slackStatusLoading
+                                                ? 'Checking Slack permissions...'
+                                                : 'Slack can only be managed by project owners, Super Administrators, Organization Admins, Team Leaders, and Campaign Managers for projects they oversee.'}
+                                        </p>
+                                    )}
                                     <button
-                                        onClick={() => setIsSlackModalOpen(true)}
-                                        className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
+                                        onClick={() => {
+                                            if (!isSlackCardDisabled) {
+                                                setIsSlackModalOpen(true);
+                                            }
+                                        }}
+                                        disabled={isSlackCardDisabled}
+                                        className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors shadow-sm disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed hover:bg-blue-700"
                                     >
-                                        Configure
+                                        {slackStatusLoading ? 'Loading...' : 'Configure'}
                                     </button>
                                 </div>
                             </div>
