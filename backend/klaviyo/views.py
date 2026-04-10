@@ -201,7 +201,7 @@ def upload_image(request):
         # Generate MD5 hash
         file_content = file.read()
         file.seek(0)
-        md5_hash = hashlib.md5(file_content).hexdigest()
+        md5_hash = hashlib.md5(file_content, usedforsecurity=False).hexdigest()
         
         # Check for duplicate files
         existing_image = KlaviyoImage.objects.filter(md5=md5_hash).first()
@@ -369,7 +369,7 @@ def import_image_from_url(request):
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # Generate MD5 hash
-        md5_hash = hashlib.md5(file_content).hexdigest()
+        md5_hash = hashlib.md5(file_content, usedforsecurity=False).hexdigest()
         
         # Check for duplicate files
         existing_image = KlaviyoImage.objects.filter(md5=md5_hash).first()

@@ -394,6 +394,28 @@ class ArtifactLink(models.Model):
             f"id={self.artifact_id} meeting={self.meeting_id}"
         )
 
+class MeetingActionItem(models.Model):
+    """
+    Action item for a meeting.
+
+    Can be converted to at most one Task; immutable lineage snapshots are stored on Task.
+    """
+
+    meeting = models.ForeignKey(
+        Meeting,
+        on_delete=models.CASCADE,
+        related_name="action_items",
+    )
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default="")
+    order_index = models.PositiveIntegerField()
+
+    class Meta:
+        unique_together = ("meeting", "order_index")
+
+    def __str__(self) -> str:
+        return f"MeetingActionItem #{self.order_index} for meeting {self.meeting_id}"
+
 
 def _meeting_template_id() -> str:
     # Use hex string UUIDs to keep URL-safe IDs.
@@ -451,4 +473,3 @@ class MeetingDocument(models.Model):
 
     def __str__(self) -> str:
         return f"MeetingDocument meeting={self.meeting_id}"
-

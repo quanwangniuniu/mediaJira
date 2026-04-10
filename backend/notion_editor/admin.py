@@ -1,7 +1,6 @@
 from django.contrib import admin
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
 from django.urls import reverse
-from django.utils.safestring import mark_safe
 from django.contrib.admin.views.decorators import staff_member_required
 from django.shortcuts import get_object_or_404, redirect
 from django.http import JsonResponse, HttpResponse
@@ -47,23 +46,26 @@ class DraftAdmin(admin.ModelAdmin):
         if not obj.content_blocks:
             return "No content blocks"
         
-        preview_html = "<div style='max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px;'>"
-        
+        rows = []
         for i, block in enumerate(obj.content_blocks):
             block_type = block.get('type', 'unknown')
             content = block.get('content', '')
-            
-            preview_html += f"""
-            <div style='margin-bottom: 10px; padding: 5px; border-left: 3px solid #007cba;'>
-                <strong>Block {i+1} ({block_type}):</strong><br>
-                <div style='margin-left: 10px; color: #666;'>
-                    {str(content)[:200]}{'...' if len(str(content)) > 200 else ''}
-                </div>
-            </div>
-            """
-        
-        preview_html += "</div>"
-        return mark_safe(preview_html)
+            content_str = str(content)
+            rows.append((i + 1, block_type, content_str[:200], '...' if len(content_str) > 200 else ''))
+
+        return format_html(
+            "<div style='max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px;'>{}</div>",
+            format_html_join(
+                "",
+                (
+                    "<div style='margin-bottom: 10px; padding: 5px; border-left: 3px solid #007cba;'>"
+                    "<strong>Block {} ({}):</strong><br>"
+                    "<div style='margin-left: 10px; color: #666;'>{}{}</div>"
+                    "</div>"
+                ),
+                rows,
+            ),
+        )
     content_blocks_preview.short_description = 'Content Blocks Preview'
     
     def save_model(self, request, obj, form, change):
@@ -124,13 +126,13 @@ class ContentBlockAdmin(admin.ModelAdmin):
         if not obj.content:
             return "No content"
         
-        preview_html = f"""
-        <div style='max-height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background: #f9f9f9;'>
-            <strong>Raw JSON:</strong><br>
-            <pre style='white-space: pre-wrap; font-size: 12px;'>{json.dumps(obj.content, indent=2, ensure_ascii=False)}</pre>
-        </div>
-        """
-        return mark_safe(preview_html)
+        return format_html(
+            "<div style='max-height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background: #f9f9f9;'>"
+            "<strong>Raw JSON:</strong><br>"
+            "<pre style='white-space: pre-wrap; font-size: 12px;'>{}</pre>"
+            "</div>",
+            json.dumps(obj.content, indent=2, ensure_ascii=False),
+        )
     content_preview.short_description = 'Content Preview (JSON)'
 
 

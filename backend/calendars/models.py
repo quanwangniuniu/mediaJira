@@ -614,10 +614,10 @@ class Event(TimeStampedModel):
         super().save(*args, **kwargs)
 
         # Generate/update ETag based on updated_at and id
-        from hashlib import sha1  # Local import to avoid circulars
+        from hashlib import sha256  # Local import to avoid circulars
 
         if self.updated_at and self.id:
-            new_etag = sha1(f"{self.updated_at.isoformat()}-{self.id}".encode("utf-8")).hexdigest()
+            new_etag = sha256(f"{self.updated_at.isoformat()}-{self.id}".encode("utf-8")).hexdigest()
             if new_etag != self.etag:
                 type(self).objects.filter(pk=self.pk).update(etag=new_etag)
                 self.etag = new_etag
