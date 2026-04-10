@@ -1,37 +1,41 @@
 # Generated manually for SMP-489
 
 from django.db import migrations, models
-import django.db.models.deletion
+import django.utils.timezone
 
 
 class Migration(migrations.Migration):
 
     dependencies = [
         ("meetings", "0007_merge_20260407_0521"),
+        ("meetings", "0006_merge_meetingactionitem_and_document_chain"),
     ]
 
     operations = [
-        migrations.CreateModel(
-            name="MeetingActionItem",
-            fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
-                ("title", models.CharField(max_length=255)),
-                ("description", models.TextField(blank=True, default="")),
-                ("order_index", models.PositiveIntegerField(default=0)),
-                ("created_at", models.DateTimeField(auto_now_add=True)),
-                ("updated_at", models.DateTimeField(auto_now=True)),
-                (
-                    "meeting",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.CASCADE,
-                        related_name="action_items",
-                        to="meetings.meeting",
-                    ),
-                ),
-            ],
-            options={
-                "ordering": ["order_index", "id"],
-            },
+        migrations.AlterModelOptions(
+            name="meetingactionitem",
+            options={"ordering": ["order_index", "id"]},
+        ),
+        migrations.AlterUniqueTogether(
+            name="meetingactionitem",
+            unique_together=set(),
+        ),
+        migrations.AlterField(
+            model_name="meetingactionitem",
+            name="order_index",
+            field=models.PositiveIntegerField(default=0),
+        ),
+        migrations.AddField(
+            model_name="meetingactionitem",
+            name="created_at",
+            field=models.DateTimeField(auto_now_add=True, default=django.utils.timezone.now),
+            preserve_default=False,
+        ),
+        migrations.AddField(
+            model_name="meetingactionitem",
+            name="updated_at",
+            field=models.DateTimeField(auto_now=True, default=django.utils.timezone.now),
+            preserve_default=False,
         ),
         migrations.AddIndex(
             model_name="meetingactionitem",
