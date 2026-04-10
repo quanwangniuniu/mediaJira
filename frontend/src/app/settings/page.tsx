@@ -6,27 +6,33 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import useAuth from '@/hooks/useAuth';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Settings as SettingsIcon } from 'lucide-react';
+import toast from 'react-hot-toast';
 import SlackIntegrationModal from '@/components/slack/SlackIntegrationModal';
+import ZoomIntegrationModal from '@/components/zoom/ZoomIntegrationModal';
 
 function SettingsPageContent() {
     const { user, logout, refreshUser } = useAuth();
     const router = useRouter();
     const searchParams = useSearchParams();
     const [isSlackModalOpen, setIsSlackModalOpen] = useState(false);
+    const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
     const hasOpenedSlackRef = useRef(false);
+    const hasOpenedZoomRef = useRef(false);
 
+    // Refresh user data once on mount only — not in a loop.
+    // Must NOT include `user` in deps: refreshUser() updates user → would re-trigger infinitely.
     useEffect(() => {
-        // Ensure we have fresh user data
-        if (user) {
-            refreshUser();
-        }
+        refreshUser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
-        // Auto-open Slack modal if requested by URL parameter
+    // Handle URL parameters (modal auto-open, OAuth redirects).
+    // No dependency on `user` — these only need searchParams and router.
+    useEffect(() => {
         if (searchParams.get('open_slack') === '1' && !hasOpenedSlackRef.current) {
             setIsSlackModalOpen(true);
             hasOpenedSlackRef.current = true;
 
-            // Clean up the URL parameter visually and from Next.js state
             const newParams = new URLSearchParams(searchParams.toString());
             newParams.delete('open_slack');
             const newUrl = newParams.toString()
@@ -34,7 +40,38 @@ function SettingsPageContent() {
                 : window.location.pathname;
             router.replace(newUrl, { scroll: false });
         }
-    }, [user, searchParams, router]);
+
+        if (searchParams.get('open_zoom') === '1' && !hasOpenedZoomRef.current) {
+            setIsZoomModalOpen(true);
+            hasOpenedZoomRef.current = true;
+
+            const newParams = new URLSearchParams(searchParams.toString());
+            newParams.delete('open_zoom');
+            const newUrl = newParams.toString()
+                ? `${window.location.pathname}?${newParams.toString()}`
+                : window.location.pathname;
+            router.replace(newUrl, { scroll: false });
+        }
+
+        const zoomError = searchParams.get('zoom_error');
+        if (zoomError) {
+            const messages: Record<string, string> = {
+                invalid_state: 'Zoom connection failed: invalid state. Please try again.',
+                state_expired: 'Zoom connection failed: authorization link expired. Please try again.',
+                session_expired: 'Zoom connection failed: session expired. Please try again.',
+                user_not_found: 'Zoom connection failed: user not found.',
+                token_exchange_failed: 'Zoom connection failed: could not retrieve token.',
+                access_denied: 'Zoom connection cancelled.',
+            };
+            toast.error(messages[zoomError] ?? 'Zoom connection failed. Please try again.');
+            const newParams = new URLSearchParams(searchParams.toString());
+            newParams.delete('zoom_error');
+            const newUrl = newParams.toString()
+                ? `${window.location.pathname}?${newParams.toString()}`
+                : window.location.pathname;
+            router.replace(newUrl, { scroll: false });
+        }
+    }, [searchParams, router]);
 
     const layoutUser = user
         ? {
@@ -101,6 +138,32 @@ function SettingsPageContent() {
                                         Configure
                                     </button>
                                 </div>
+
+                                {/* Zoom Card */}
+                                <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-all">
+                                    <div className="flex items-start justify-between mb-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-[#2D8CFF] rounded-lg flex items-center justify-center">
+                                                <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="currentColor">
+                                                    <path d="M24 12c0 6.627-5.373 12-12 12S0 18.627 0 12 5.373 0 12 0s12 5.373 12 12zm-6.462-3.692l-3.693 2.308V8H6.923A.923.923 0 006 8.923v6.154c0 .51.413.923.923.923H14v-2.616l3.538 2.212c.336.21.462.097.462-.233V8.54c0-.33-.126-.443-.462-.232z" />
+                                                </svg>
+                                            </div>
+                                            <div>
+                                                <h3 className="font-semibold text-gray-900">Zoom</h3>
+                                                <p className="text-sm text-gray-500">Video Meetings</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <p className="text-sm text-gray-600 mb-4 line-clamp-2">
+                                        Connect your Zoom account to create and schedule video meetings directly from the platform.
+                                    </p>
+                                    <button
+                                        onClick={() => setIsZoomModalOpen(true)}
+                                        className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
+                                    >
+                                        Configure
+                                    </button>
+                                </div>
                             </div>
                         </section>
                     </div>
@@ -109,6 +172,10 @@ function SettingsPageContent() {
             <SlackIntegrationModal
                 isOpen={isSlackModalOpen}
                 onClose={() => setIsSlackModalOpen(false)}
+            />
+            <ZoomIntegrationModal
+                isOpen={isZoomModalOpen}
+                onClose={() => setIsZoomModalOpen(false)}
             />
         </Layout>
     );
