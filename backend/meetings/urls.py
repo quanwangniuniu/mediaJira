@@ -6,6 +6,7 @@ from meetings.views import (
     AgendaItemViewSet,
     ParticipantLinkViewSet,
     ArtifactLinkViewSet,
+    MeetingActionItemViewSet,
     MeetingDocumentAPIView,
 )
 
@@ -30,6 +31,11 @@ router.register(
     r"projects/(?P<project_id>\d+)/meetings/(?P<meeting_id>\d+)/artifacts",
     ArtifactLinkViewSet,
     basename="project-meeting-artifacts",
+)
+router.register(
+    r"projects/(?P<project_id>\d+)/meetings/(?P<meeting_id>\d+)/action-items",
+    MeetingActionItemViewSet,
+    basename="project-meeting-action-items",
 )
 
 

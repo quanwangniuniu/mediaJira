@@ -160,6 +160,16 @@ class Task(models.Model):
         help_text="Draft form state captured from task create panel",
     )
 
+    # Lineage: optional one-to-one link when this task was converted from a meeting action item.
+    origin_action_item = models.OneToOneField(
+        "meetings.MeetingActionItem",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="derived_task",
+        help_text="Immutable lineage: meeting action item this task was converted from.",
+    )
+
     def __str__(self):
         return f"Task #{self.id} - {self.summary} ({self.status})"
 
