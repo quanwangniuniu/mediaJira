@@ -158,7 +158,15 @@ function MeetingsHubContent() {
 
 export default function MeetingsHubPage() {
   return (
-    <Suspense>
+    <Suspense
+      fallback={
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-white p-10 text-center text-gray-500">
+          <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+          <p className="mt-3 font-medium text-gray-900">Loading Meetings…</p>
+          <p className="text-sm text-gray-600">Preparing your meetings workspace.</p>
+        </div>
+      }
+    >
       <MeetingsHubContent />
     </Suspense>
   );

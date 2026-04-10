@@ -5,7 +5,7 @@ export interface ZoomStatus {
 }
 
 export interface ZoomMeeting {
-  meeting_id: number;
+  meeting_id: string;
   topic: string;
   join_url: string;
   start_url: string;

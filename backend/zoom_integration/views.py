@@ -1,7 +1,10 @@
-import secrets
+import logging
+
 from django.shortcuts import redirect
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core import signing
+from django.utils.crypto import get_random_string
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -14,7 +17,20 @@ from .services import (
     create_zoom_meeting,
 )
 from .models import ZoomCredential
-from .serializers import CreateMeetingSerializer
+from .serializers import CreateMeetingSerializer, MeetingResponseSerializer
+
+logger = logging.getLogger(__name__)
+
+ZOOM_OAUTH_STATE_SALT = "zoom-oauth-state"
+ZOOM_OAUTH_STATE_MAX_AGE_SECONDS = 600
+
+
+def _build_zoom_oauth_state(user) -> str:
+    """Signed OAuth state: binds Zoom callback to a user without relying on session cookies."""
+    return signing.dumps(
+        {"user_id": user.id, "nonce": get_random_string(16)},
+        salt=ZOOM_OAUTH_STATE_SALT,
+    )
 
 
 class ZoomConnectView(APIView):
@@ -25,11 +41,7 @@ class ZoomConnectView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # generate random state, store in session for callback verification (prevent CSRF)
-        state = secrets.token_urlsafe(32)
-        request.session["zoom_oauth_state"] = state
-        request.session["zoom_oauth_user_id"] = request.user.id
-
+        state = _build_zoom_oauth_state(request.user)
         auth_url = get_authorization_url(state)
         return Response({"auth_url": auth_url})
 
@@ -38,7 +50,8 @@ class ZoomCallbackView(APIView):
     """
     GET /api/v1/zoom/callback/
     Zoom authorization completed, callback here, exchange code for token.
-    No JWT auth required — user is identified via session set in ZoomConnectView.
+    No JWT auth required — user id is carried in the signed ``state`` query param
+    (session cookies are unreliable across API vs OAuth redirect domains).
     """
     permission_classes = [AllowAny]
 
@@ -46,15 +59,23 @@ class ZoomCallbackView(APIView):
         code = request.query_params.get("code")
         state = request.query_params.get("state")
 
-        # validate state, prevent CSRF attacks
-        saved_state = request.session.pop("zoom_oauth_state", None)
-        user_id = request.session.pop("zoom_oauth_user_id", None)
-
-        if not state or state != saved_state:
+        if not state:
             return redirect(f"{settings.FRONTEND_URL}/settings?zoom_error=invalid_state")
 
+        try:
+            payload = signing.loads(
+                state,
+                salt=ZOOM_OAUTH_STATE_SALT,
+                max_age=ZOOM_OAUTH_STATE_MAX_AGE_SECONDS,
+            )
+        except signing.SignatureExpired:
+            return redirect(f"{settings.FRONTEND_URL}/settings?zoom_error=state_expired")
+        except signing.BadSignature:
+            return redirect(f"{settings.FRONTEND_URL}/settings?zoom_error=invalid_state")
+
+        user_id = payload.get("user_id")
         if not user_id:
-            return redirect(f"{settings.FRONTEND_URL}/settings?zoom_error=session_expired")
+            return redirect(f"{settings.FRONTEND_URL}/settings?zoom_error=invalid_state")
 
         if not code:
             error = request.query_params.get("error", "unknown")
@@ -67,7 +88,7 @@ class ZoomCallbackView(APIView):
             save_token_for_user(user, token_data)
         except User.DoesNotExist:
             return redirect(f"{settings.FRONTEND_URL}/settings?zoom_error=user_not_found")
-        except Exception as e:
+        except Exception:
             return redirect(f"{settings.FRONTEND_URL}/settings?zoom_error=token_exchange_failed")
 
         return redirect(f"{settings.FRONTEND_URL}/meetings?zoom_connected=true")
@@ -122,17 +143,37 @@ class CreateMeetingView(APIView):
         except PermissionError as e:
             # token invalid
             return Response({"error": str(e)}, status=status.HTTP_401_UNAUTHORIZED)
-        except Exception as e:
+        except Exception:
+            logger.exception(
+                "Zoom create meeting failed",
+                extra={"user_id": getattr(request.user, "id", None)},
+            )
             return Response(
-                {"error": f"Failed to create meeting: {str(e)}"},
-                status=status.HTTP_502_BAD_GATEWAY
+                {
+                    "error": "Could not create Zoom meeting. Please try again later.",
+                    "code": "zoom_meeting_create_failed",
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        return Response({
-            "meeting_id": meeting_data["id"],
-            "topic": meeting_data["topic"],
-            "join_url": meeting_data["join_url"],
-            "start_url": meeting_data["start_url"],
-            "start_time": meeting_data["start_time"],
-            "duration": meeting_data["duration"],
-        }, status=status.HTTP_201_CREATED)
+        response_serializer = MeetingResponseSerializer(data=meeting_data)
+        if not response_serializer.is_valid():
+            logger.error(
+                "Zoom create meeting returned unexpected payload",
+                extra={
+                    "user_id": getattr(request.user, "id", None),
+                    "errors": response_serializer.errors,
+                },
+            )
+            return Response(
+                {
+                    "error": "Could not create Zoom meeting. Please try again later.",
+                    "code": "zoom_meeting_create_failed",
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        return Response(
+            response_serializer.validated_data,
+            status=status.HTTP_201_CREATED,
+        )

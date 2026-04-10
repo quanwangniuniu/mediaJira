@@ -1,9 +1,10 @@
 import requests
 import base64
-from datetime import datetime, timedelta
+from datetime import timedelta
 from urllib.parse import urlencode
 from django.conf import settings
 from django.utils import timezone
+from .crypto import encrypt_token
 from .models import ZoomCredential
 
 
@@ -14,8 +15,9 @@ ZOOM_API_BASE  = "https://api.zoom.us/v2"
 
 def get_authorization_url(state: str) -> str:
     """
-    Generate URL for user to redirect to Zoom for authorization
-    state parameter is used to prevent CSRF attacks, stored in session for verification during callback
+    Generate URL for user to redirect to Zoom for authorization.
+    ``state`` must be a server-issued signed payload (see views) so the callback can verify it
+    without relying on session cookies.
     """
     params = {
         "response_type": "code",
@@ -70,17 +72,22 @@ def refresh_access_token(credential: ZoomCredential) -> ZoomCredential:
         },
         data={
             "grant_type": "refresh_token",
-            "refresh_token": credential.refresh_token,
+            "refresh_token": credential.get_refresh_token(),
         },
     )
     response.raise_for_status()
     data = response.json()
 
-    # update token in database
-    credential.access_token = data["access_token"]
-    credential.refresh_token = data["refresh_token"]
+    credential.set_tokens(data["access_token"], data["refresh_token"])
     credential.token_expires_at = timezone.now() + timedelta(seconds=data["expires_in"])
-    credential.save()
+    credential.save(
+        update_fields=[
+            "encrypted_access_token",
+            "encrypted_refresh_token",
+            "token_expires_at",
+            "updated_at",
+        ],
+    )
     return credential
 
 
@@ -96,7 +103,16 @@ def get_valid_credential(user) -> ZoomCredential:
 
     # if token is about to expire, refresh it automatically
     if credential.token_expires_at <= timezone.now() + timedelta(minutes=5):
-        credential = refresh_access_token(credential)
+        try:
+            credential = refresh_access_token(credential)
+        except requests.HTTPError as exc:
+            status_code = exc.response.status_code if exc.response is not None else None
+            if status_code in (400, 401):
+                credential.delete()
+                raise PermissionError(
+                    "Zoom connection has expired or been revoked. Please reconnect your Zoom account."
+                ) from exc
+            raise
 
     return credential
 
@@ -111,8 +127,8 @@ def save_token_for_user(user, token_data: dict) -> ZoomCredential:
     credential, _ = ZoomCredential.objects.update_or_create(
         user=user,
         defaults={
-            "access_token": token_data["access_token"],
-            "refresh_token": token_data["refresh_token"],
+            "encrypted_access_token": encrypt_token(token_data["access_token"]) or "",
+            "encrypted_refresh_token": encrypt_token(token_data["refresh_token"]) or "",
             "token_expires_at": expires_at,
         },
     )
@@ -133,7 +149,7 @@ def create_zoom_meeting(user, topic: str, start_time: str, duration: int = 60) -
     response = requests.post(
         f"{ZOOM_API_BASE}/users/me/meetings",  # me represents the currently authorized user
         headers={
-            "Authorization": f"Bearer {credential.access_token}",
+            "Authorization": f"Bearer {credential.get_access_token()}",
             "Content-Type": "application/json",
         },
         json={

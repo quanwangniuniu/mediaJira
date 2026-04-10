@@ -57,6 +57,7 @@ function SettingsPageContent() {
         if (zoomError) {
             const messages: Record<string, string> = {
                 invalid_state: 'Zoom connection failed: invalid state. Please try again.',
+                state_expired: 'Zoom connection failed: authorization link expired. Please try again.',
                 session_expired: 'Zoom connection failed: session expired. Please try again.',
                 user_not_found: 'Zoom connection failed: user not found.',
                 token_exchange_failed: 'Zoom connection failed: could not retrieve token.',

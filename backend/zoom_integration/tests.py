@@ -1,5 +1,7 @@
+import requests
 from django.test import TestCase
 from django.contrib.auth import get_user_model
+from django.core import signing
 from django.utils import timezone
 from unittest.mock import patch, MagicMock
 from datetime import timedelta
@@ -15,6 +17,7 @@ from .services import (
     save_token_for_user,
     create_zoom_meeting,
 )
+from .views import _build_zoom_oauth_state
 
 User = get_user_model()
 
@@ -32,12 +35,13 @@ def make_credential(user, expired=False):
     if expired:
         expires_at = timezone.now() - timedelta(hours=1)  # set to 1 hour ago, expired
 
-    return ZoomCredential.objects.create(
+    credential = ZoomCredential(
         user=user,
-        access_token="test_access_token",
-        refresh_token="test_refresh_token",
         token_expires_at=expires_at,
     )
+    credential.set_tokens("test_access_token", "test_refresh_token")
+    credential.save()
+    return credential
 
 
 # ─────────────────────────────────────────────
@@ -57,8 +61,12 @@ class ZoomCredentialModelTest(TestCase):
         """test if ZoomCredential can be created normally"""
         credential = make_credential(self.user)
         self.assertEqual(credential.user, self.user)
-        self.assertEqual(credential.access_token, "test_access_token")
-        self.assertEqual(credential.refresh_token, "test_refresh_token")
+        self.assertEqual(credential.get_access_token(), "test_access_token")
+        self.assertEqual(credential.get_refresh_token(), "test_refresh_token")
+        self.assertNotIn(
+            "test_access_token",
+            credential.encrypted_access_token,
+        )
 
     def test_one_to_one_constraint(self):
         """
@@ -149,8 +157,8 @@ class ZoomServiceTest(TestCase):
             updated = refresh_access_token(credential)
 
         # verify if the token in the database has been updated
-        self.assertEqual(updated.access_token, "refreshed_access_token")
-        self.assertEqual(updated.refresh_token, "refreshed_refresh_token")
+        self.assertEqual(updated.get_access_token(), "refreshed_access_token")
+        self.assertEqual(updated.get_refresh_token(), "refreshed_refresh_token")
 
     def test_get_valid_credential_raises_if_not_connected(self):
         """
@@ -184,6 +192,59 @@ class ZoomServiceTest(TestCase):
             get_valid_credential(self.user)
             mock_refresh.assert_not_called()  # verify if refresh function is not called
 
+    @patch("zoom_integration.services.requests.post")
+    def test_get_valid_credential_refresh_revoked_deletes_credential(self, mock_post):
+        """Refresh failure with 400/401 from Zoom token endpoint removes stored credential."""
+        for status_code in (400, 401):
+            with self.subTest(status_code=status_code):
+                make_credential(self.user, expired=True)
+
+                mock_resp = MagicMock()
+                mock_resp.status_code = status_code
+
+                def _raise():
+                    err = requests.HTTPError()
+                    err.response = mock_resp
+                    raise err
+
+                mock_resp.raise_for_status = _raise
+                mock_post.return_value = mock_resp
+
+                with patch("zoom_integration.services.settings") as mock_settings:
+                    mock_settings.ZOOM_CLIENT_ID = "id"
+                    mock_settings.ZOOM_CLIENT_SECRET = "secret"
+
+                    with self.assertRaises(PermissionError) as ctx:
+                        get_valid_credential(self.user)
+
+                self.assertIn("reconnect", str(ctx.exception).lower())
+                self.assertFalse(ZoomCredential.objects.filter(user=self.user).exists())
+
+    @patch("zoom_integration.services.requests.post")
+    def test_get_valid_credential_refresh_other_http_error_keeps_credential(self, mock_post):
+        """Non-auth refresh failures propagate; credential is not deleted."""
+        make_credential(self.user, expired=True)
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 502
+
+        def _raise():
+            err = requests.HTTPError()
+            err.response = mock_resp
+            raise err
+
+        mock_resp.raise_for_status = _raise
+        mock_post.return_value = mock_resp
+
+        with patch("zoom_integration.services.settings") as mock_settings:
+            mock_settings.ZOOM_CLIENT_ID = "id"
+            mock_settings.ZOOM_CLIENT_SECRET = "secret"
+
+            with self.assertRaises(requests.HTTPError):
+                get_valid_credential(self.user)
+
+        self.assertTrue(ZoomCredential.objects.filter(user=self.user).exists())
+
     def test_save_token_for_user_creates_new(self):
         """test if save_token_for_user should create a new credential when user does not have one"""
         token_data = {
@@ -193,7 +254,7 @@ class ZoomServiceTest(TestCase):
         }
         credential = save_token_for_user(self.user, token_data)
 
-        self.assertEqual(credential.access_token, "acc_token")
+        self.assertEqual(credential.get_access_token(), "acc_token")
         self.assertEqual(ZoomCredential.objects.filter(user=self.user).count(), 1)
 
     def test_save_token_for_user_updates_existing(self):
@@ -210,8 +271,8 @@ class ZoomServiceTest(TestCase):
         # verify if there is only one credential in the database, and the content has been updated
         self.assertEqual(ZoomCredential.objects.filter(user=self.user).count(), 1)
         self.assertEqual(
-            ZoomCredential.objects.get(user=self.user).access_token,
-            "updated_token"
+            ZoomCredential.objects.get(user=self.user).get_access_token(),
+            "updated_token",
         )
 
     @patch("zoom_integration.services.requests.post")
@@ -222,7 +283,7 @@ class ZoomServiceTest(TestCase):
         """
         # mock a valid credential
         mock_credential = MagicMock()
-        mock_credential.access_token = "valid_token"
+        mock_credential.get_access_token.return_value = "valid_token"
         mock_get_cred.return_value = mock_credential
 
         # mock the meeting data returned by Zoom
@@ -255,7 +316,7 @@ class ZoomServiceTest(TestCase):
         test if create_zoom_meeting should raise PermissionError when Zoom API returns 401
         """
         mock_credential = MagicMock()
-        mock_credential.access_token = "expired_token"
+        mock_credential.get_access_token.return_value = "expired_token"
         mock_get_cred.return_value = mock_credential
 
         mock_response = MagicMock()
@@ -354,6 +415,24 @@ class ZoomAPITest(TestCase):
         self.assertIn("join_url", response.data)
         self.assertEqual(response.data["topic"], "Sprint Review")
 
+    @patch("zoom_integration.views.create_zoom_meeting")
+    def test_create_meeting_invalid_zoom_payload_returns_502(self, mock_create):
+        """Malformed Zoom API body must not leak raw errors; same shape as other create failures."""
+        mock_create.return_value = {"id": "123"}  # missing required meeting fields
+
+        response = self.client.post(
+            "/api/v1/zoom/meetings/",
+            {
+                "topic": "Sprint Review",
+                "start_time": "2026-04-10T10:00:00Z",
+                "duration": 60,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
+        self.assertEqual(response.data.get("code"), "zoom_meeting_create_failed")
+
     def test_create_meeting_missing_topic(self):
         """test if create_meeting should return 400 when missing required field topic"""
         response = self.client.post("/api/v1/zoom/meetings/", {
@@ -393,6 +472,26 @@ class ZoomAPITest(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
+    @patch("zoom_integration.views.create_zoom_meeting")
+    def test_create_meeting_unexpected_error_hides_details(self, mock_create):
+        """502 responses must not echo raw exception text (URLs, stack hints)."""
+        mock_create.side_effect = RuntimeError("upstream https://api.zoom.us/v2 leaked")
+
+        response = self.client.post(
+            "/api/v1/zoom/meetings/",
+            {
+                "topic": "Test",
+                "start_time": "2026-04-10T10:00:00Z",
+                "duration": 60,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
+        self.assertEqual(response.data.get("code"), "zoom_meeting_create_failed")
+        self.assertNotIn("zoom.us", response.data.get("error", ""))
+        self.assertNotIn("zoom.us", str(response.data))
+
     # ── Callback API ──
     @patch("zoom_integration.views.exchange_code_for_token")
     @patch("zoom_integration.views.save_token_for_user")
@@ -405,15 +504,11 @@ class ZoomAPITest(TestCase):
         }
         mock_save.return_value = MagicMock()
 
-        # set the state and user_id in the session (simulate the state set in the connect process)
-        session = self.client.session
-        session["zoom_oauth_state"] = "valid_state"
-        session["zoom_oauth_user_id"] = self.user.id
-        session.save()
+        state = _build_zoom_oauth_state(self.user)
 
         response = self.client.get(
             "/api/v1/zoom/callback/",
-            {"code": "auth_code_123", "state": "valid_state"}
+            {"code": "auth_code_123", "state": state}
         )
 
         self.assertEqual(response.status_code, status.HTTP_302_FOUND)
@@ -421,29 +516,35 @@ class ZoomAPITest(TestCase):
 
     def test_callback_invalid_state(self):
         """test if callback should redirect to error page when state is invalid"""
-        session = self.client.session
-        session["zoom_oauth_state"] = "correct_state"
-        session["zoom_oauth_user_id"] = self.user.id
-        session.save()
-
         response = self.client.get(
             "/api/v1/zoom/callback/",
-            {"code": "some_code", "state": "wrong_state"}
+            {"code": "some_code", "state": "not-a-valid-signature"}
         )
 
         self.assertEqual(response.status_code, status.HTTP_302_FOUND)
         self.assertIn("zoom_error=invalid_state", response["Location"])
 
+    @patch("zoom_integration.views.signing.loads")
+    def test_callback_state_expired(self, mock_loads):
+        """test if callback should redirect when signed state is past max_age"""
+        mock_loads.side_effect = signing.SignatureExpired("expired")
+
+        state = _build_zoom_oauth_state(self.user)
+        response = self.client.get(
+            "/api/v1/zoom/callback/",
+            {"code": "auth_code_123", "state": state},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_302_FOUND)
+        self.assertIn("zoom_error=state_expired", response["Location"])
+
     def test_callback_user_denied(self):
         """test if callback should redirect to error page when user denies authorization"""
-        session = self.client.session
-        session["zoom_oauth_state"] = "valid_state"
-        session["zoom_oauth_user_id"] = self.user.id
-        session.save()
+        state = _build_zoom_oauth_state(self.user)
 
         response = self.client.get(
             "/api/v1/zoom/callback/",
-            {"error": "access_denied", "state": "valid_state"}
+            {"error": "access_denied", "state": state}
         )
 
         self.assertEqual(response.status_code, status.HTTP_302_FOUND)
