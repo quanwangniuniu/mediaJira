@@ -156,7 +156,16 @@ class CreateMeetingView(APIView):
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        response_serializer = MeetingResponseSerializer(data=meeting_data)
+        # Map Zoom's "id" to API field "meeting_id" (DRF input validation uses field names, not source=).
+        response_payload = {
+            "meeting_id": meeting_data.get("id"),
+            "topic": meeting_data.get("topic"),
+            "join_url": meeting_data.get("join_url"),
+            "start_url": meeting_data.get("start_url"),
+            "start_time": meeting_data.get("start_time"),
+            "duration": meeting_data.get("duration"),
+        }
+        response_serializer = MeetingResponseSerializer(data=response_payload)
         if not response_serializer.is_valid():
             logger.error(
                 "Zoom create meeting returned unexpected payload",

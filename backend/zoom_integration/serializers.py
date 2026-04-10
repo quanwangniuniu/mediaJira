@@ -9,8 +9,12 @@ class CreateMeetingSerializer(serializers.Serializer):
 
 
 class MeetingResponseSerializer(serializers.Serializer):
-    """Define the fields returned to the frontend (only expose the needed fields)"""
-    meeting_id = serializers.CharField(source="id")  # Zoom returns "id", we rename it to meeting_id
+    """Define the fields returned to the frontend (only expose the needed fields).
+
+    Zoom's create-meeting JSON uses ``id``; the view maps that to ``meeting_id`` before validation.
+    (DRF reads incoming keys by *field name*, not ``source``, so ``source="id"`` does not accept Zoom's ``id`` key.)
+    """
+    meeting_id = serializers.CharField()
     topic = serializers.CharField()
     join_url = serializers.URLField()      # participant link
     start_url = serializers.URLField()     # host link (contains token, do not expose to regular users)
