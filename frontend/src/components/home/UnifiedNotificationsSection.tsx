@@ -40,9 +40,9 @@ export default function UnifiedNotificationsSection({ onRedirectToLogin }: Unifi
               {/* Header */}
               <div className="flex items-center justify-between mb-3 pt-2">
                 <h4 className="text-lg font-bold text-gray-900">Notification Center</h4>
-                <a href="#" className="text-sm text-blue-600 hover:text-blue-700 font-medium">
+                <span className="text-sm text-blue-600 font-medium">
                   Unsubscribe
-                </a>
+                </span>
               </div>
 
               {/* Enable custom alerts toggle */}
@@ -165,7 +165,7 @@ export default function UnifiedNotificationsSection({ onRedirectToLogin }: Unifi
                 {/* Header */}
                 <div className="bg-white border-b border-gray-200 px-2 py-1 flex items-center justify-between">
                   <h4 className="text-[8px] font-bold text-gray-900">Notification Center</h4>
-                  <a href="#" className="text-[6px] text-blue-600 font-medium">Unsubscribe</a>
+                  <span className="text-[6px] text-blue-600 font-medium">Unsubscribe</span>
                 </div>
 
                 {/* Content */}

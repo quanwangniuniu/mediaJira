@@ -9,7 +9,7 @@ export default function TestimonialsSection({ onRedirectToLogin, onGetStartedCli
   return (
     <>
       {/* Testimonials Section -Desktop */}
-      <section className="hidden md:block py-20 px-6 bg-blue-50 rounded-t-3xl">
+      <section id="testimonials" className="hidden md:block py-20 px-6 bg-blue-50 rounded-t-3xl">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">

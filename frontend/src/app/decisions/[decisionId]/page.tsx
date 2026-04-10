@@ -12,9 +12,11 @@ import DecisionDetailView from '@/components/decisions/DecisionDetailView';
 import DecisionCommitConfirmationModal from '@/components/decisions/DecisionCommitConfirmationModal';
 import DecisionApproveConfirmationModal from '@/components/decisions/DecisionApproveConfirmationModal';
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import { OriginMeetingBlock } from '@/components/meetings/OriginMeetingBlock';
 import { DecisionAPI } from '@/lib/api/decisionApi';
 import { ProjectAPI } from '@/lib/api/projectApi';
 import { scrollToFirstError, validateDecisionDraft } from '@/components/decisions/decisionValidation';
+import type { OriginMeetingPayload } from '@/types/meeting';
 import type {
   DecisionDraftResponse,
   DecisionOptionDraft,
@@ -98,6 +100,7 @@ const DecisionPage = () => {
   const [committedSnapshot, setCommittedSnapshot] = useState<any>(null);
   const [projectName, setProjectName] = useState<string | null>(null);
   const [projectSeq, setProjectSeq] = useState<number | null>(null);
+  const [originMeeting, setOriginMeeting] = useState<OriginMeetingPayload | null>(null);
 
   const isDraft = status === 'DRAFT';
   const incompleteToastId = 'decision-draft-incomplete';
@@ -119,6 +122,7 @@ const DecisionPage = () => {
     setProjectSeq(typeof draft.projectSeq === 'number' ? draft.projectSeq : null);
     setOptions(ensureOptions(draft.options));
     setLastSavedAt(draft.lastEditedAt || draft.createdAt || null);
+    setOriginMeeting(draft.origin_meeting ?? null);
     setDirty(false);
   }, []);
 
@@ -135,6 +139,7 @@ const DecisionPage = () => {
         setStatus(committed.status);
         setCommittedSnapshot(committed);
         setProjectSeq(typeof committed.projectSeq === 'number' ? committed.projectSeq : null);
+        setOriginMeeting(null);
         setLoading(false);
         return;
       } catch (error: any) {
@@ -156,10 +161,12 @@ const DecisionPage = () => {
                 options: draft.options || [],
                 signals: draft.signals || [],
                 projectSeq: draft.projectSeq ?? null,
+                origin_meeting: draft.origin_meeting ?? null,
               });
               setProjectSeq(
                 typeof draft.projectSeq === 'number' ? draft.projectSeq : null
               );
+              setOriginMeeting(draft.origin_meeting ?? null);
               setLoading(false);
               return;
             }
@@ -319,6 +326,7 @@ const DecisionPage = () => {
       );
       setTitle(draft.title || '');
       setLastSavedAt(draft.lastEditedAt || draft.createdAt || null);
+      setOriginMeeting(draft.origin_meeting ?? null);
       setDirty((prev) => prev || false);
     } catch (error) {
       console.error('Failed to save title:', error);
@@ -355,6 +363,7 @@ const DecisionPage = () => {
       const response = await DecisionAPI.commit(decisionId, projectIdValue);
       setStatus(response.status);
       setCommittedSnapshot(response.decision);
+      setOriginMeeting(null);
       setDirty(false);
       toast.success(response.detail || 'Decision committed.');
       return true;
@@ -411,6 +420,7 @@ const DecisionPage = () => {
       const response = await DecisionAPI.approve(decisionId, projectIdValue);
       setStatus(response.status);
       setCommittedSnapshot(response.decision);
+      setOriginMeeting(null);
       toast.success(response.detail || 'Decision approved.');
     } catch (error: any) {
       const response = error?.response;
@@ -579,17 +589,24 @@ const DecisionPage = () => {
               <SignalsPanel decisionId={decisionId} projectId={projectIdValue} mode="edit" />
             </div>
             <div className={`h-full flex-1 min-w-0 bg-gray-50 ${focusMode ? 'relative z-[20]' : ''}`}>
-              <DecisionWorkspaceEditor
-                contextSummary={contextSummary}
-                reasoning={reasoning}
-                riskLevel={riskLevel as any}
-                confidenceScore={confidenceScore}
-                options={options}
-                errors={errors}
-                onChange={updateField}
-                onOptionsChange={handleOptionsChange}
-                focusMode={focusMode}
-              />
+              <div className="flex h-full min-h-0 flex-col gap-6 overflow-y-auto px-6 py-6">
+                <div data-testid="decision-draft-origin-meeting">
+                  <OriginMeetingBlock origin={originMeeting} />
+                </div>
+                <div className="min-h-0 flex-1">
+                  <DecisionWorkspaceEditor
+                    contextSummary={contextSummary}
+                    reasoning={reasoning}
+                    riskLevel={riskLevel as any}
+                    confidenceScore={confidenceScore}
+                    options={options}
+                    errors={errors}
+                    onChange={updateField}
+                    onOptionsChange={handleOptionsChange}
+                    focusMode={focusMode}
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>

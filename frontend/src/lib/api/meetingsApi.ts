@@ -14,27 +14,259 @@ import type {
   ParticipantLinkPartialUpdateRequest,
   ArtifactLink,
   ArtifactLinkCreateRequest,
+  MeetingListQueryParams,
+  MeetingListItem,
+  MeetingListParticipant,
+  MeetingListTag,
+  KnowledgeNavigationLink,
+  PaginatedMeetingsList,
+  MeetingDocument,
 } from '@/types/meeting';
 
-const basePath = (projectId: number) => `/api/v1/projects/${projectId}/meetings`;
+const basePath = (projectId: number) => `/api/projects/${projectId}/meetings`;
+
+type MeetingTemplate = {
+  id: string;
+  name: string;
+  layout_config: unknown;
+};
+
+function buildMeetingListParams(
+  params?: MeetingListQueryParams,
+): Record<string, string | number | number[] | string[]> {
+  if (!params) return {};
+  const q: Record<string, string | number | number[] | string[]> = {};
+  if (params.q?.trim()) q.q = params.q.trim();
+  if (params.meeting_type?.length) {
+    q.meeting_type = params.meeting_type.map((s) => s.trim()).filter(Boolean);
+  }
+  if (params.tag?.trim()) q.tag = params.tag.trim();
+  if (params.participant?.length) {
+    q.participant = params.participant.filter((id) => Number.isFinite(id) && id >= 1);
+  }
+  if (params.exclude_participant?.length) {
+    q.exclude_participant = params.exclude_participant.filter(
+      (id) => Number.isFinite(id) && id >= 1,
+    );
+  }
+  if (params.date_from) q.date_from = params.date_from;
+  if (params.date_to) q.date_to = params.date_to;
+  if (params.is_archived === true) q.is_archived = 'true';
+  if (params.is_archived === false) q.is_archived = 'false';
+  if (params.has_generated_decisions === true) q.has_generated_decisions = 'true';
+  if (params.has_generated_decisions === false) q.has_generated_decisions = 'false';
+  if (params.has_generated_tasks === true) q.has_generated_tasks = 'true';
+  if (params.has_generated_tasks === false) q.has_generated_tasks = 'false';
+  if (params.ordering) q.ordering = params.ordering;
+  if (params.page != null && params.page >= 1) q.page = params.page;
+  return q;
+}
+
+function normalizeKnowledgeLinks(raw: unknown): KnowledgeNavigationLink[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry) => entry as Record<string, unknown>)
+    .filter((x) => {
+      const id = Number(x?.id);
+      const detailUrlRaw = x?.detail_url ?? x?.detailUrl;
+      const urlRaw = x?.url;
+      const link =
+        typeof detailUrlRaw === 'string'
+          ? String(detailUrlRaw)
+          : typeof urlRaw === 'string'
+            ? String(urlRaw)
+            : '';
+      return x != null && Number.isFinite(id) && link.length > 0;
+    })
+    .map((x) => {
+      const detailUrlRaw = x.detail_url ?? x.detailUrl;
+      const urlRaw = x.url;
+      const detailUrl =
+        typeof detailUrlRaw === 'string'
+          ? String(detailUrlRaw)
+          : typeof urlRaw === 'string'
+            ? String(urlRaw)
+            : '';
+      const titleRaw = x.title;
+      const title =
+        typeof titleRaw === 'string' && titleRaw.trim().length > 0
+          ? titleRaw
+          : `Item ${Number(x.id)}`;
+      const out: KnowledgeNavigationLink = {
+        id: Number(x.id),
+        title,
+        url: detailUrl,
+      };
+      if (typeof detailUrlRaw === 'string') out.detail_url = detailUrlRaw;
+      if (typeof x.status === 'string') out.status = x.status;
+      if (x.assignee_name === null || typeof x.assignee_name === 'string') {
+        out.assignee_name = x.assignee_name;
+      }
+      return out;
+    });
+}
+
+/** Detail/create/update payloads: stable generated + related navigation arrays. */
+function withMeetingKnowledgeFields(meeting: Meeting): Meeting {
+  const raw = meeting as unknown as Record<string, unknown>;
+  const genDec = raw.generated_decisions ?? raw.generatedDecisions;
+  const genTasks = raw.generated_tasks ?? raw.generatedTasks;
+  const relDec = raw.related_decisions ?? raw.relatedDecisions;
+  const relTasks = raw.related_tasks ?? raw.relatedTasks;
+  return {
+    ...meeting,
+    generated_decisions: normalizeKnowledgeLinks(genDec),
+    generated_tasks: normalizeKnowledgeLinks(genTasks),
+    related_decisions: normalizeKnowledgeLinks(relDec),
+    related_tasks: normalizeKnowledgeLinks(relTasks),
+  };
+}
+
+function normalizeMeetingListItem(raw: Record<string, unknown>): MeetingListItem {
+  const participants = raw.participants;
+  const tags = raw.tags;
+  return {
+    id: Number(raw.id),
+    title: typeof raw.title === 'string' ? raw.title : '',
+    summary: typeof raw.summary === 'string' ? raw.summary : '',
+    scheduled_date:
+      raw.scheduled_date === null || raw.scheduled_date === undefined
+        ? null
+        : String(raw.scheduled_date),
+    scheduled_time:
+      raw.scheduled_time === null || raw.scheduled_time === undefined
+        ? null
+        : String(raw.scheduled_time),
+    meeting_type: typeof raw.meeting_type === 'string' ? raw.meeting_type : '',
+    meeting_type_slug:
+      typeof raw.meeting_type_slug === 'string' ? raw.meeting_type_slug : '',
+    participants: Array.isArray(participants)
+      ? (participants as MeetingListParticipant[])
+      : [],
+    tags: Array.isArray(tags) ? (tags as MeetingListTag[]) : [],
+    decision_count:
+      typeof raw.decision_count === 'number' ? raw.decision_count : 0,
+    task_count: typeof raw.task_count === 'number' ? raw.task_count : 0,
+    generated_decisions_count:
+      typeof raw.generated_decisions_count === 'number'
+        ? raw.generated_decisions_count
+        : typeof raw.decision_count === 'number'
+          ? raw.decision_count
+          : 0,
+    generated_tasks_count:
+      typeof raw.generated_tasks_count === 'number'
+        ? raw.generated_tasks_count
+        : typeof raw.task_count === 'number'
+          ? raw.task_count
+          : 0,
+    generated_decisions: normalizeKnowledgeLinks(
+      raw.generated_decisions ?? raw.generatedDecisions,
+    ),
+    generated_tasks: normalizeKnowledgeLinks(raw.generated_tasks ?? raw.generatedTasks),
+    related_decisions: normalizeKnowledgeLinks(
+      raw.related_decisions ?? raw.relatedDecisions,
+    ),
+    related_tasks: normalizeKnowledgeLinks(raw.related_tasks ?? raw.relatedTasks),
+    is_archived: Boolean(raw.is_archived),
+  };
+}
 
 export const MeetingsAPI = {
-  async listMeetings(projectId: number): Promise<Meeting[]> {
-    const response = await api.get(`${basePath(projectId)}/`);
-    const data = response.data as any;
-    if (Array.isArray(data)) return data as Meeting[];
-    if (data && Array.isArray(data.results)) return data.results as Meeting[];
-    return [];
+  /**
+   * Paginated knowledge-discovery list (strict filters). Prefer for meetings hub list UI.
+   */
+  async listMeetingsPaginated(
+    projectId: number,
+    params?: MeetingListQueryParams,
+  ): Promise<PaginatedMeetingsList> {
+    const response = await api.get(`${basePath(projectId)}/`, {
+      params: buildMeetingListParams(params),
+    });
+    const raw = response.data;
+    /** Paginated `{ count, results, ... }`, bare array, or `{ data: { ... } }` envelope. */
+    let data: Record<string, unknown>;
+    let rawResults: unknown[];
+    if (Array.isArray(raw)) {
+      data = {};
+      rawResults = raw;
+    } else if (raw && typeof raw === 'object') {
+      const top = raw as Record<string, unknown>;
+      const inner = top.data;
+      if (
+        inner &&
+        typeof inner === 'object' &&
+        !Array.isArray(inner) &&
+        Array.isArray((inner as Record<string, unknown>).results)
+      ) {
+        data = inner as Record<string, unknown>;
+      } else {
+        data = top;
+      }
+      rawResults = Array.isArray(data.results) ? data.results : [];
+    } else {
+      data = {};
+      rawResults = [];
+    }
+
+    /** Hub counts: tolerate string numbers and camelCase (proxies / older clients). */
+    const parseHubCount = (v: unknown): number | undefined => {
+      if (typeof v === 'number' && Number.isFinite(v)) return v;
+      if (typeof v === 'string' && v.trim() !== '') {
+        const n = Number(v);
+        if (Number.isFinite(n)) return n;
+      }
+      return undefined;
+    };
+    const pick = (snake: string, camel: string) =>
+      parseHubCount(data[snake]) ?? parseHubCount(data[camel]);
+
+    if (process.env.NODE_ENV !== 'production' && rawResults.length > 0) {
+      const hasHub =
+        data.incoming_lane_total != null ||
+        data.incoming_result_count != null ||
+        data.incomingLaneTotal != null ||
+        data.incomingResultCount != null;
+      if (!hasHub) {
+        console.warn('[meetingsApi] list JSON missing hub lane keys', {
+          topKeys:
+            raw && typeof raw === 'object' && !Array.isArray(raw)
+              ? Object.keys(raw as object).slice(0, 30)
+              : [],
+          envelopeKeys: Object.keys(data).slice(0, 30),
+        });
+      }
+    }
+
+    return {
+      count: Array.isArray(raw)
+        ? raw.length
+        : typeof data.count === 'number'
+          ? data.count
+          : 0,
+      next: (data.next as string | null | undefined) ?? null,
+      previous: (data.previous as string | null | undefined) ?? null,
+      results: rawResults.map((row) =>
+        normalizeMeetingListItem(row as unknown as Record<string, unknown>),
+      ),
+      incomingLaneTotal: pick('incoming_lane_total', 'incomingLaneTotal'),
+      incomingResultCount:
+        pick('incoming_result_count', 'incomingResultCount') ??
+        pick('incoming_lane_filtered', 'incomingLaneFiltered'),
+      completedLaneTotal: pick('completed_lane_total', 'completedLaneTotal'),
+      completedResultCount:
+        pick('completed_result_count', 'completedResultCount') ??
+        pick('completed_lane_filtered', 'completedLaneFiltered'),
+    };
   },
 
   async createMeeting(projectId: number, payload: MeetingCreateRequest): Promise<Meeting> {
     const response = await api.post<Meeting>(`${basePath(projectId)}/`, payload);
-    return response.data;
+    return withMeetingKnowledgeFields(response.data);
   },
 
   async getMeeting(projectId: number, meetingId: number): Promise<Meeting> {
     const response = await api.get<Meeting>(`${basePath(projectId)}/${meetingId}/`);
-    return response.data;
+    return withMeetingKnowledgeFields(response.data);
   },
 
   async updateMeeting(
@@ -43,7 +275,7 @@ export const MeetingsAPI = {
     payload: MeetingUpdateRequest,
   ): Promise<Meeting> {
     const response = await api.put<Meeting>(`${basePath(projectId)}/${meetingId}/`, payload);
-    return response.data;
+    return withMeetingKnowledgeFields(response.data);
   },
 
   async patchMeeting(
@@ -52,7 +284,7 @@ export const MeetingsAPI = {
     payload: MeetingPartialUpdateRequest,
   ): Promise<Meeting> {
     const response = await api.patch<Meeting>(`${basePath(projectId)}/${meetingId}/`, payload);
-    return response.data;
+    return withMeetingKnowledgeFields(response.data);
   },
 
   async deleteMeeting(projectId: number, meetingId: number): Promise<void> {
@@ -213,5 +445,49 @@ export const MeetingsAPI = {
     await api.delete(
       `${basePath(projectId)}/${meetingId}/artifacts/${artifactLinkId}/`,
     );
+  },
+
+  async saveTemplateLayout(templateId: string, layout_config: unknown): Promise<void> {
+    await api.patch(`/api/meetings/templates/${templateId}/`, { layout_config });
+  },
+
+  async createMeetingTemplate(payload: { name: string; layout_config: unknown }): Promise<MeetingTemplate> {
+    const response = await api.post<MeetingTemplate>(`/api/meetings/templates/`, payload);
+    return response.data;
+  },
+
+  async listMeetingTemplates(): Promise<MeetingTemplate[]> {
+    const response = await api.get(`/api/meetings/templates/`);
+    const data = response.data as any;
+    if (Array.isArray(data)) return data as MeetingTemplate[];
+    if (data && Array.isArray(data.results)) return data.results as MeetingTemplate[];
+    return [];
+  },
+
+  async deleteMeetingTemplate(templateId: string): Promise<void> {
+    await api.delete(`/api/meetings/templates/${templateId}/`);
+  },
+
+  async saveMeetingLayout(projectId: number, meetingId: number, layout_config: unknown): Promise<void> {
+    await api.patch(`${basePath(projectId)}/${meetingId}/`, { layout_config });
+  },
+
+  async getMeetingDocument(projectId: number, meetingId: number): Promise<MeetingDocument> {
+    const response = await api.get<MeetingDocument>(
+      `${basePath(projectId)}/${meetingId}/document/`,
+    );
+    return response.data;
+  },
+
+  async saveMeetingDocument(
+    projectId: number,
+    meetingId: number,
+    payload: { content: string; yjs_state?: string },
+  ): Promise<MeetingDocument> {
+    const response = await api.patch<MeetingDocument>(
+      `${basePath(projectId)}/${meetingId}/document/`,
+      payload,
+    );
+    return response.data;
   },
 };

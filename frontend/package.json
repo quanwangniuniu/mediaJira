@@ -17,7 +17,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:cypress": "cypress run",
-    "test:e2e:cypress:open": "cypress open"
+    "test:e2e:cypress:open": "cypress open",
+    "lighthouse:local": "node scripts/lhci-run.cjs"
   },
   "lint-staged": {
     "*.js": [
@@ -82,6 +83,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
+    "@lhci/cli": "^0.15.1",
     "@playwright/test": "^1.58.2",
     "@storybook/addon-essentials": "^7.6.17",
     "@storybook/addon-interactions": "^7.6.17",
@@ -90,10 +92,10 @@
     "@storybook/nextjs": "^7.6.17",
     "@storybook/react": "^7.6.17",
     "@storybook/test": "^7.6.17",
+    "@testing-library/dom": "^9.3.0",
     "@testing-library/jest-dom": "^6.1.5",
     "@testing-library/react": "^14.1.2",
     "@testing-library/user-event": "^14.5.1",
-    "@testing-library/dom": "^9.3.0",
     "@types/jest": "^29.5.8",
     "@types/node": "^24.9.1",
     "@types/react": "^18.3.28",
@@ -108,6 +110,7 @@
     "lint-staged": "^15.2.0",
     "msw": "^2.12.10",
     "postcss": "^8.5.6",
+    "puppeteer": "^24.6.0",
     "storybook": "^7.6.17",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.9.3"

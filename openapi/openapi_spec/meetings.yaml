@@ -1,0 +1,641 @@
+openapi: 3.0.3
+info:
+  title: Meetings — knowledge discovery (list)
+  version: 1.0.0
+  description: |
+    Contract for **project-scoped meeting list retrieval** with filters and lightweight content search (`q`).
+    Base URL matches Django routing: meetings are mounted under **`/api/v1/`**.
+
+    **Structured filters (`meeting_type`, `tag`):** Unknown or project-unused slugs (including types never
+    instantiated in the project) return **200** with an empty `results` list—filters apply via joins; there is
+    no separate **400** for “slug not defined on project.” Malformed query types (dates, ordering, page, etc.)
+    still yield **400** as documented per parameter.
+
+    **Frozen query parameter names for this list endpoint:** `q`, `meeting_type`, `participant`,
+    `exclude_participant`, `tag`, `date_from`, `date_to`, `is_archived`, `has_generated_decisions`,
+    `has_generated_tasks`, `ordering`, `page` — each is defined under `paths[...].get.parameters` below.
+
+    **Per-section ordering (Incoming vs Completed)** on the Next.js meetings hub is **client-side React state**
+    after the list is split; it is **not** a URL or API parameter.
+
+    Note: use **`is_archived`** (not `archived`) and **`date_from` / `date_to`** (not `from` / `to`). Frontend
+    URL state for API-backed filters must use these exact keys.
+
+servers:
+  - url: http://localhost:8000/
+
+paths:
+  /api/v1/projects/{project_id}/meetings/:
+    get:
+      summary: List meetings (search & filters)
+      description: |
+        Returns a **paginated** list of meetings for the given project.
+
+        **Scope:** Results are always limited to `project_id`. Cross-project leakage is invalid.
+
+        **Content search (`q`):** Case-insensitive match against **title** and **summary** (implementation may use
+        `icontains` initially; full-text search is a later optimization).
+
+        **Structured filters:** `meeting_type` and `tag` are matched against **project-local slugs**
+        (`MeetingTypeDefinition.slug`, `MeetingTagDefinition.slug`), not free-text labels.
+
+        **Dates:** `date_from` / `date_to` apply to **`scheduled_date`** (inclusive bounds). Meetings with
+        `scheduled_date` null are excluded when either bound is set, unless the implementation explicitly
+        documents otherwise (default: exclude nulls when filtering by date).
+
+        **403 vs 404:** The API may respond with **403** when the caller is authenticated but **not authorized**
+        for this project, and **404** when the project identifier does not resolve to a resource the server
+        exposes. The exact status for a given situation depends on product security policy (e.g. existence
+        disclosure, ordering of permission checks vs lookup). Callers should treat **either** as “no usable
+        list for this `project_id`” and must not infer cross-project data from the response.
+
+        **Unknown query parameters:** Names not listed in this operation are not part of this contract;
+        typical DRF behavior is to ignore them.
+      tags:
+        - meetings
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: q
+          in: query
+          required: false
+          description: Search **title** and **summary** (whitespace trimmed; empty means no text filter).
+          schema:
+            type: string
+            maxLength: 500
+        - name: meeting_type
+          in: query
+          required: false
+          description: |
+            Repeat for each type slug (OR). Example: `meeting_type=planning&meeting_type=review`.
+          schema:
+            type: array
+            items:
+              type: string
+              maxLength: 80
+          style: form
+          explode: true
+        - name: participant
+          in: query
+          required: false
+          description: |
+            Repeat for each user id. Include meetings that have **any** of these participants (OR).
+            Example: `participant=1&participant=2`.
+          schema:
+            type: array
+            items:
+              type: integer
+              minimum: 1
+          style: form
+          explode: true
+        - name: exclude_participant
+          in: query
+          required: false
+          description: |
+            Repeat for each user id. Exclude meetings that include **any** of these participants.
+            Must not overlap ids with `participant` when both are provided.
+          schema:
+            type: array
+            items:
+              type: integer
+              minimum: 1
+          style: form
+          explode: true
+        - name: tag
+          in: query
+          required: false
+          description: Filter by **tag slug** for this project (`MeetingTagDefinition.slug`).
+          schema:
+            type: string
+            maxLength: 80
+        - name: date_from
+          in: query
+          required: false
+          description: Inclusive lower bound on `scheduled_date` (**ISO 8601 date**, `YYYY-MM-DD`).
+          schema:
+            type: string
+            format: date
+            example: "2026-01-15"
+        - name: date_to
+          in: query
+          required: false
+          description: Inclusive upper bound on `scheduled_date` (**ISO 8601 date**, `YYYY-MM-DD`).
+          schema:
+            type: string
+            format: date
+            example: "2026-03-01"
+        - name: is_archived
+          in: query
+          required: false
+          description: When `true`, only archived meetings; when `false`, only non-archived; omit for both.
+          schema:
+            type: boolean
+        - name: has_generated_decisions
+          in: query
+          required: false
+          description: |
+            When `true`, only meetings with at least one **generated** (origin) decision (`MeetingDecisionOrigin`).
+            When `false`, only meetings with none. **Does not** consider `ArtifactLink` / related artifacts.
+          schema:
+            type: boolean
+        - name: has_generated_tasks
+          in: query
+          required: false
+          description: |
+            When `true`, only meetings with at least one **generated** (origin) task (`MeetingTaskOrigin`).
+            When `false`, only meetings with none. **Does not** consider artifact links.
+          schema:
+            type: boolean
+        - name: ordering
+          in: query
+          required: false
+          description: |
+            Sort field. Prefix `-` for descending. Unsupported values → **400**.
+
+            **Planned allowed values** (implementation must reject anything else):
+            - `created_at`, `-created_at` (default if omitted: `-created_at`)
+            - `scheduled_date`, `-scheduled_date`
+            - `updated_at`, `-updated_at`
+            - `title`, `-title`
+          schema:
+            type: string
+            example: "-created_at"
+        - name: page
+          in: query
+          required: false
+          description: 1-based page index for paginated results.
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+      responses:
+        "200":
+          description: Paginated list of meeting summary rows.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedMeetingList"
+              examples:
+                default:
+                  value:
+                    count: 42
+                    next: "http://localhost:8000/api/v1/projects/1/meetings/?page=2"
+                    previous: null
+                    results:
+                      - id: 10
+                        title: Q1 planning sync
+                        summary: Agreed on roadmap milestones.
+                        scheduled_date: "2026-02-01"
+                        meeting_type: Planning
+                        meeting_type_slug: planning
+                        participants:
+                          - user_id: 5
+                            role: host
+                        tags:
+                          - slug: strategy
+                            label: Strategy
+                        decision_count: 2
+                        task_count: 3
+                        generated_decisions:
+                          - id: 101
+                            title: Pause TikTok spend
+                            url: /decisions/101?project_id=1
+                          - id: 102
+                            title: Increase Meta retargeting budget
+                            url: /decisions/102?project_id=1
+                        generated_tasks:
+                          - id: 201
+                            title: Update targeting settings
+                            url: /tasks/201
+                        related_decisions: []
+                        related_tasks: []
+                        is_archived: false
+        "400":
+          description: |
+            Malformed or invalid query parameters.
+
+            **Typical cases:**
+            - `date_from` / `date_to` not valid `YYYY-MM-DD` dates.
+            - `date_from` > `date_to`.
+            - `ordering` not in the allowed set.
+            - `participant` / `page` not a positive integer.
+            - `is_archived` not parseable as boolean (e.g. `is_archived=maybe`).
+
+            **DRF-style body** (field errors):
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                bad_date:
+                  value:
+                    date_from: ["Enter a valid date (YYYY-MM-DD)."]
+                bad_ordering:
+                  value:
+                    ordering: ["Select a valid choice. \"-foo\" is not allowed."]
+        "401":
+          description: Unauthenticated (missing or invalid bearer token).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: |
+            Authenticated user **does not have access** to this project (forbidden). The concrete authorization
+            model (e.g. membership, ownership, staff, superuser, or other access rules) is **not** fixed by this
+            contract—only the outcome: the caller may not list meetings under this `project_id`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                detail: You do not have access to this project.
+        "404":
+          description: |
+            No **project** resource available for this `project_id` from the caller’s perspective (not found).
+            Implementations may also use **404** in place of **403** to avoid revealing whether a project id exists;
+            see the **403 vs 404** note in the operation description.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                detail: Not found.
+
+  /api/v1/projects/{project_id}/meetings/{meeting_id}/:
+    get:
+      summary: Get meeting detail (knowledge navigation)
+      description: |
+        Returns the **full** meeting resource used by the meeting workspace, including:
+
+        - **`generated_tasks_count` / `generated_decisions_count`**: counts from `MeetingTaskOrigin` /
+          `MeetingDecisionOrigin` only (aligns with **`has_generated_*`** list filters).
+        - **`generated_tasks` / `generated_decisions`**: origin-based navigation payloads.
+        - **`related_tasks` / `related_decisions`**: supplementary `ArtifactLink` rows (excludes ids already
+          listed under generated).
+
+        **403 vs 404:** Same policy as the list endpoint for project access and existence.
+      tags:
+        - meetings
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ProjectId"
+        - name: meeting_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Meeting detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeetingDetail"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller cannot access this project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project or meeting not found (or not exposed to caller)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Same authentication as other MediaJira API routes (JWT).
+
+  parameters:
+    ProjectId:
+      name: project_id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+
+  schemas:
+    MeetingParticipantSnippet:
+      type: object
+      required: [user_id]
+      properties:
+        user_id:
+          type: integer
+          description: Participant user primary key.
+        role:
+          type: string
+          nullable: true
+          description: Optional role label from `ParticipantLink.role`.
+
+    MeetingTagSnippet:
+      type: object
+      required: [slug, label]
+      properties:
+        slug:
+          type: string
+          description: Project-scoped tag slug (`MeetingTagDefinition.slug`).
+        label:
+          type: string
+          description: Display label (`MeetingTagDefinition.label`).
+
+    KnowledgeNavigationLink:
+      type: object
+      required: [id, title, url]
+      description: |
+        Minimal object for contextual navigation (meeting ↔ decision ↔ task).
+        `url` / `detail_url` are **in-app paths** (Next.js App Router), not the API URL.
+        When present, `detail_url` duplicates `url` (preferred key for new clients).
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        url:
+          type: string
+          example: "/decisions/101?project_id=2"
+        detail_url:
+          type: string
+          description: Same as `url` when returned by the API.
+        status:
+          type: string
+          description: Task or decision status when applicable (generated rows).
+        assignee_name:
+          type: string
+          nullable: true
+          description: Task owner display name when applicable (generated tasks).
+
+    MeetingListItem:
+      type: object
+      required:
+        - id
+        - title
+        - summary
+        - meeting_type
+        - meeting_type_slug
+        - participants
+        - tags
+        - decision_count
+        - task_count
+        - generated_decisions
+        - generated_tasks
+        - related_decisions
+        - related_tasks
+        - is_archived
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        summary:
+          type: string
+          description: May be empty string when not set.
+        scheduled_date:
+          type: string
+          format: date
+          nullable: true
+        meeting_type:
+          type: string
+          description: Display label (`MeetingTypeDefinition.label`); aligns with existing serializer output.
+        meeting_type_slug:
+          type: string
+        participants:
+          type: array
+          items:
+            $ref: "#/components/schemas/MeetingParticipantSnippet"
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/MeetingTagSnippet"
+        decision_count:
+          type: integer
+          minimum: 0
+          description: Number of **generated** (origin) decisions — `MeetingDecisionOrigin` rows.
+        task_count:
+          type: integer
+          minimum: 0
+          description: Number of **generated** (origin) tasks — `MeetingTaskOrigin` rows.
+        generated_decisions_count:
+          type: integer
+          minimum: 0
+          description: Same as `decision_count` (explicit alias for UI).
+        generated_tasks_count:
+          type: integer
+          minimum: 0
+          description: Same as `task_count` (explicit alias for UI).
+        generated_decisions:
+          type: array
+          items:
+            $ref: "#/components/schemas/KnowledgeNavigationLink"
+          description: |
+            Origin-based navigation: decisions from `MeetingDecisionOrigin` (same cardinality as provenance;
+            aligns with `decision_count`).
+        generated_tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/KnowledgeNavigationLink"
+          description: |
+            Origin-based navigation: tasks from `MeetingTaskOrigin` (aligns with `task_count`).
+        related_decisions:
+          type: array
+          items:
+            $ref: "#/components/schemas/KnowledgeNavigationLink"
+          description: |
+            Supplementary: `ArtifactLink` with `artifact_type` decision, excluding ids already in `generated_decisions`.
+        related_tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/KnowledgeNavigationLink"
+          description: |
+            Supplementary: `ArtifactLink` with `artifact_type` task, excluding ids already in `generated_tasks`.
+        is_archived:
+          type: boolean
+
+    MeetingDetail:
+      type: object
+      description: |
+        Full meeting payload from `MeetingSerializer` (retrieve). Includes the same generated/related knowledge
+        navigation fields as list rows, plus workspace fields (`objective`, `status`, timestamps, …).
+      required:
+        - id
+        - project
+        - title
+        - objective
+        - summary
+        - meeting_type
+        - meeting_type_slug
+        - type_definition_id
+        - status
+        - is_archived
+        - participants
+        - tags
+        - generated_decisions
+        - generated_tasks
+        - generated_decisions_count
+        - generated_tasks_count
+        - related_decisions
+        - related_tasks
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+        project:
+          type: integer
+          description: Project primary key
+        title:
+          type: string
+        objective:
+          type: string
+        summary:
+          type: string
+        scheduled_date:
+          type: string
+          format: date
+          nullable: true
+        scheduled_time:
+          type: string
+          nullable: true
+          description: Time portion when set (implementation-defined format)
+        external_reference:
+          type: string
+          nullable: true
+        meeting_type:
+          type: string
+          description: Display label (`MeetingTypeDefinition.label`)
+        meeting_type_slug:
+          type: string
+        type_definition_id:
+          type: integer
+        status:
+          type: string
+          example: draft
+        is_archived:
+          type: boolean
+        participants:
+          type: array
+          items:
+            $ref: "#/components/schemas/MeetingParticipantSnippet"
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/MeetingTagSnippet"
+        generated_decisions_count:
+          type: integer
+          minimum: 0
+          description: Same as annotated origin decision count (`MeetingDecisionOrigin`).
+        generated_tasks_count:
+          type: integer
+          minimum: 0
+          description: Same as annotated origin task count (`MeetingTaskOrigin`).
+        generated_decisions:
+          type: array
+          items:
+            $ref: "#/components/schemas/KnowledgeNavigationLink"
+        generated_tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/KnowledgeNavigationLink"
+        related_decisions:
+          type: array
+          items:
+            $ref: "#/components/schemas/KnowledgeNavigationLink"
+        related_tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/KnowledgeNavigationLink"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PaginatedMeetingList:
+      type: object
+      required: [count, results]
+      properties:
+        count:
+          type: integer
+          minimum: 0
+          description: Total number of meetings matching filters (all pages).
+        next:
+          type: string
+          format: uri
+          nullable: true
+        previous:
+          type: string
+          format: uri
+          nullable: true
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/MeetingListItem"
+        incoming_lane_total:
+          type: integer
+          minimum: 0
+          description: |
+            Hub UI only: **B** — count of meetings in the **Incoming** lane (project scope, no discovery filters),
+            same calendar-day split as the client.
+        incoming_result_count:
+          type: integer
+          minimum: 0
+          description: |
+            Hub UI only: **A** — same Incoming lane subset, then discovery filters applied (full queryset, not the
+            current page of `results`).
+        completed_lane_total:
+          type: integer
+          minimum: 0
+          description: |
+            Hub UI only: **B** — count of meetings in the **Completed** lane without discovery filters.
+        completed_result_count:
+          type: integer
+          minimum: 0
+          description: |
+            Hub UI only: **A** — Completed lane + discovery filters.
+        incoming_lane_filtered:
+          type: integer
+          minimum: 0
+          deprecated: true
+          description: Deprecated alias for `incoming_result_count`.
+        completed_lane_filtered:
+          type: integer
+          minimum: 0
+          deprecated: true
+          description: Deprecated alias for `completed_result_count`.
+
+    ErrorResponse:
+      type: object
+      description: Generic error envelope (e.g. 403/404).
+      properties:
+        detail:
+          type: string
+      additionalProperties: true
+
+    ValidationErrorResponse:
+      type: object
+      description: |
+        Field-keyed validation errors (Django REST framework default for 400).
+        Values are arrays of human-readable strings.
+      additionalProperties:
+        type: array
+        items:
+          type: string
+      example:
+        date_to: ["Must be on or after date_from."]

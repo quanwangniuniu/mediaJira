@@ -220,12 +220,12 @@ const getNavigationItems = (
     });
   }
 
-  // baseItems.push({
-  //   name: t ? t("sidebar.settings") : "Settings",
-  //   href: "/settings",
-  //   icon: Settings,
-  //   description: t ? t("sidebar.user_preferences") : "User preferences",
-  // });
+  baseItems.push({
+    name: t ? t("sidebar.settings") : "Settings",
+    href: "/settings",
+    icon: Settings,
+    description: t ? t("sidebar.user_preferences") : "User preferences",
+  });
 
   return baseItems;
 };
@@ -358,16 +358,17 @@ const Sidebar: FC<SidebarProps> = ({
   return (
     <div
       className={`
-      flex flex-col bg-white border-r border-gray-200 transition-all duration-300 ease-in-out
+      sticky top-0 z-30 flex h-[100vh] min-h-full shrink-0 flex-col self-stretch
+      bg-white border-r border-gray-200 transition-all duration-300 ease-in-out
       ${collapsed ? "w-16" : "w-64"}
       ${className}
     `}
     >
       {/* Collapse button */}
-      <div className="border-b border-gray-200">
+      <div className="shrink-0 border-b border-gray-200">
         <button
           onClick={handleCollapseToggle}
-          className="py-4 px-1.5 rounded-lg hover:bg-gray-100 transition-colors duration-200 w-full flex flex-col items-end"
+          className="py-4 px-1.5 rounded-lg transition-colors duration-200 w-full flex flex-col items-end"
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           {collapsed ? (
@@ -379,7 +380,11 @@ const Sidebar: FC<SidebarProps> = ({
       </div>
 
       {/* Navigation menu */}
-      <nav className="flex-1 px-2 py-4 space-y-1">
+      <nav
+        className={`min-h-0 flex-1 space-y-1 overflow-y-auto px-2 py-4 ${
+          collapsed ? "pb-28" : "pb-44"
+        }`}
+      >
         {navigationItems.map((item) => {
           const Icon = item.icon;
           const isItemActive = isActive(item.href, item.exactMatch);
@@ -505,12 +510,17 @@ const Sidebar: FC<SidebarProps> = ({
         })}
       </nav>
 
-      {/* Agent AI Link */}
-      <div className="px-2 pb-2 border-t border-gray-200 pt-2">
-        <a
-          href="/agent"
-          onClick={(e) => handleLinkClick(e, "/agent")}
-          className={`
+      {/* Agent AI Link + footer*/}
+      <div
+        className={`fixed bottom-0 left-0 z-30 flex flex-col border-t border-r border-gray-200 bg-white transition-all duration-300 ease-in-out ${
+          collapsed ? "w-16" : "w-64"
+        }`}
+      >
+        <div className="px-2 pb-2 pt-2">
+          <a
+            href="/agent"
+            onClick={(e) => handleLinkClick(e, "/agent")}
+            className={`
             flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200
             ${
               isActive("/agent")
@@ -519,32 +529,32 @@ const Sidebar: FC<SidebarProps> = ({
             }
             ${collapsed ? "justify-center" : ""}
           `}
-        >
-          <Bot className="h-5 w-5 flex-shrink-0" />
-          {!collapsed && (
-            <>
-              <span>Agent</span>
-              <span className={`ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
-                isActive("/agent")
-                  ? "bg-white/20 text-white"
-                  : "bg-blue-100 text-blue-600"
-              }`}>
-                AI
-              </span>
-            </>
-          )}
-        </a>
-      </div>
-
-      {/* Footer information */}
-      {!collapsed && (
-        <div className="p-4 border-t border-gray-200">
-          <div className="text-xs text-gray-500">
-            <div className="font-medium">{t("footer.version")}</div>
-            <div>{t("footer.copyright")}</div>
-          </div>
+          >
+            <Bot className="h-5 w-5 flex-shrink-0" />
+            {!collapsed && (
+              <>
+                <span>Agent</span>
+                <span className={`ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                  isActive("/agent")
+                    ? "bg-white/20 text-white"
+                    : "bg-blue-100 text-blue-600"
+                }`}>
+                  AI
+                </span>
+              </>
+            )}
+          </a>
         </div>
-      )}
+
+        {!collapsed && (
+          <div className="border-t border-gray-200 p-4">
+            <div className="text-xs text-gray-500">
+              <div className="font-medium">{t("footer.version")}</div>
+              <div>{t("footer.copyright")}</div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

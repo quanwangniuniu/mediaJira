@@ -88,6 +88,7 @@ INSTALLED_APPS = [
     'slack_integration.apps.SlackIntegrationConfig',
     'agent.apps.AgentConfig',
     'meetings.apps.MeetingsConfig',
+    'zoom_integration.apps.ZoomIntegrationConfig',
 ]
 
 MIDDLEWARE = [
@@ -615,7 +616,7 @@ else:
 SLACK_CLIENT_ID = config('SLACK_CLIENT_ID', default='')
 SLACK_CLIENT_SECRET = config('SLACK_CLIENT_SECRET', default='')
 SLACK_SIGNING_SECRET = config('SLACK_SIGNING_SECRET', default='')
-SLACK_REDIRECT_URI = config('SLACK_REDIRECT_URI', default='http://localhost:3000/slack/callback')
+SLACK_REDIRECT_URI = config('SLACK_REDIRECT_URI', default='http://localhost/slack/callback')
 
 # Meetings (SMP-484): when True, creating a meeting requires at least one participant_user_ids entry
 MEETINGS_REQUIRE_PARTICIPANTS_AT_CREATE = config(
@@ -623,3 +624,7 @@ MEETINGS_REQUIRE_PARTICIPANTS_AT_CREATE = config(
     default=False,
     cast=bool,
 )
+
+ZOOM_CLIENT_ID     = os.environ.get("ZOOM_CLIENT_ID", "")
+ZOOM_CLIENT_SECRET = os.environ.get("ZOOM_CLIENT_SECRET", "")
+ZOOM_REDIRECT_URI  = os.environ.get("ZOOM_REDIRECT_URI", "http://localhost/api/v1/zoom/callback/")

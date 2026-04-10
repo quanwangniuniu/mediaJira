@@ -56,7 +56,6 @@ export interface PlatformPolicyUpdateData {
 export interface PolicyChoicesResponse {
   platforms: { value: string; label: string }[];
   policy_change_types: { value: string; label: string }[];
-  mitigation_statuses: { value: string; label: string }[];
 }
 
 export const PolicyAPI = {
@@ -94,7 +93,5 @@ export const PolicyAPI = {
   markReviewed: (id: number) =>
     api.post(`/api/policy/platform-policy-updates/${id}/mark-reviewed/`),
 
-  // Get enum choices for policy fields
-  getChoices: () =>
-    api.get<PolicyChoicesResponse>('/api/policy/policy-choices/'),
+  getChoices: () => api.get("/api/platform-policy-updates/choices/"),
 };

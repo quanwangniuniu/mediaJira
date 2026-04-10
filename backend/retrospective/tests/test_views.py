@@ -87,8 +87,8 @@ class RetrospectiveTaskViewSetTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(RetrospectiveTask.objects.count(), 2)  # Including the one from setUp
 
-    def test_create_retrospective_requires_new_fields(self):
-        """Test required decision fields on retrospective creation"""
+    def test_create_retrospective_decision_fields_are_optional(self):
+        """Test decision fields are now optional on retrospective creation"""
         third_campaign = Project.objects.create(
             name='Third Test Campaign',
             organization=self.organization
@@ -97,10 +97,7 @@ class RetrospectiveTaskViewSetTest(TestCase):
         url = reverse('retrospective:retrospective-list')
         response = self.client.post(url, {'campaign': str(third_campaign.id)})
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('decision', response.data)
-        self.assertIn('confidence_level', response.data)
-        self.assertIn('primary_assumption', response.data)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_create_retrospective_rejects_invalid_confidence_level(self):
         """Test confidence_level option validation on create"""

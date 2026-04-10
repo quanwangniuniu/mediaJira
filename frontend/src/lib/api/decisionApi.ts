@@ -42,11 +42,14 @@ const withProject = (projectId?: number | null) => {
 };
 
 export const DecisionAPI = {
-  createDraft: async (projectId: number) => {
+  createDraft: async (
+    projectId: number,
+    body?: { origin_meeting_id?: number },
+  ) => {
     const response = await api.post<DecisionDraftResponse>(
       '/api/decisions/drafts/',
-      {},
-      withProject(projectId)
+      body ?? {},
+      withProject(projectId),
     );
     return response.data;
   },

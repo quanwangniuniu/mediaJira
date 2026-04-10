@@ -85,7 +85,7 @@ export default function NewRetrospectiveForm({
           htmlFor="retrospective-campaign"
           className="block text-sm font-medium text-gray-700 mb-1"
         >
-          Campaign (Project) *
+          Campaign (Project)
         </label>
         <input
           id="retrospective-campaign"
@@ -99,12 +99,8 @@ export default function NewRetrospectiveForm({
             errors.campaign ? "border-red-500" : "border-gray-300"
           }`}
           placeholder="Project ID (from selected project)"
-          required
           readOnly={!!taskData.project_id}
         />
-        {errors.campaign && (
-          <p className="text-red-500 text-sm mt-1">{errors.campaign}</p>
-        )}
         {taskData.project_id && (
           <p className="text-xs text-gray-500 mt-1">
             Using project from task: {taskData.project_id}
@@ -181,7 +177,7 @@ export default function NewRetrospectiveForm({
           htmlFor="retrospective-decision"
           className="block text-sm font-medium text-gray-700 mb-1"
         >
-          Decision *
+          Decision
         </label>
         <textarea
           id="retrospective-decision"
@@ -194,15 +190,12 @@ export default function NewRetrospectiveForm({
           rows={3}
           placeholder="What decision was made?"
         />
-        {errors.decision && (
-          <p className="text-red-500 text-sm mt-1">{errors.decision}</p>
-        )}
       </div>
 
       {/* Confidence Level */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          Confidence Level *
+          Confidence Level
         </label>
         <div className="flex flex-wrap gap-2">
           {confidenceOptions.map((level) => (
@@ -222,9 +215,6 @@ export default function NewRetrospectiveForm({
             </button>
           ))}
         </div>
-        {errors.confidence_level && (
-          <p className="text-red-500 text-sm mt-1">{errors.confidence_level}</p>
-        )}
       </div>
 
       {/* Primary Assumption */}
@@ -233,7 +223,7 @@ export default function NewRetrospectiveForm({
           htmlFor="retrospective-primary-assumption"
           className="block text-sm font-medium text-gray-700 mb-1"
         >
-          Primary Assumption *
+          Primary Assumption
         </label>
         <textarea
           id="retrospective-primary-assumption"
@@ -248,11 +238,6 @@ export default function NewRetrospectiveForm({
           rows={3}
           placeholder="What key assumption supported this decision?"
         />
-        {errors.primary_assumption && (
-          <p className="text-red-500 text-sm mt-1">
-            {errors.primary_assumption}
-          </p>
-        )}
       </div>
 
       {/* Key Risk Ignored (Optional) */}

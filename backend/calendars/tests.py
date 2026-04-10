@@ -1618,3 +1618,167 @@ class SignalTests(TestCase):
 
         final_count = Calendar.objects.filter(owner=user).count()
         self.assertEqual(final_count, 0)
+
+class CalendarEventModelTests(TestCase):
+    """
+    Test the validation logic of the CalendarEvent model
+    """
+
+    def setUp(self):
+        self.organization = Organization.objects.create(
+            name="Test Org", slug="test-org-cal-event"
+        )
+        self.user = User.objects.create_user(
+            email="test@example.com",
+            password="test1234",
+            username="testuser_cal",
+            organization=self.organization,
+        )
+        self.project = Project.objects.create(
+            name="Test Project",
+            organization=self.organization,
+            owner=self.user,
+            objectives=["awareness"],
+            kpis={"ctr": {"target": 0.02}},
+        )
+
+    def test_decision_event_requires_decision(self):
+        from calendars.models import CalendarEvent
+        from django.core.exceptions import ValidationError
+        event = CalendarEvent(
+            organization=self.organization,
+            event_type=CalendarEvent.EventType.DECISION,
+            title="Test",
+            start_time=timezone.now(),
+        )
+        with self.assertRaises(ValidationError):
+            event.clean()
+
+    def test_task_event_requires_task(self):
+        from calendars.models import CalendarEvent
+        from django.core.exceptions import ValidationError
+        event = CalendarEvent(
+            organization=self.organization,
+            event_type=CalendarEvent.EventType.TASK,
+            title="Test",
+            start_time=timezone.now(),
+        )
+        with self.assertRaises(ValidationError):
+            event.clean()
+
+    def test_decision_review_event_requires_decision(self):
+        from calendars.models import CalendarEvent
+        from django.core.exceptions import ValidationError
+        event = CalendarEvent(
+            organization=self.organization,
+            event_type=CalendarEvent.EventType.DECISION_REVIEW,
+            title="Test",
+            start_time=timezone.now(),
+        )
+        with self.assertRaises(ValidationError):
+            event.clean()
+
+
+class CalendarEventSignalTests(TestCase):
+    """
+    Automatically generate CalendarEvent when testing Decision and Task creation/update
+    """
+
+    def setUp(self):
+        from calendars.models import CalendarEvent
+        self.CalendarEvent = CalendarEvent
+        self.organization = Organization.objects.create(
+            name="Signal Test Org", slug="signal-test-org"
+        )
+        self.user = User.objects.create_user(
+            email="signal@example.com",
+            password="test1234",
+            username="signaluser",
+            organization=self.organization,
+        )
+        self.project = Project.objects.create(
+            name="Signal Project",
+            organization=self.organization,
+            owner=self.user,
+            objectives=["awareness"],
+            kpis={"ctr": {"target": 0.02}},
+        )
+
+    def _create_decision(self, **kwargs):
+        from decision.models import Decision
+        defaults = {
+            "project": self.project,
+            "author": self.user,
+            "title": "Test Decision",
+            "project_seq": None,
+        }
+        defaults.update(kwargs)
+        return Decision.objects.create(**defaults)
+
+    def _create_task(self, **kwargs):
+        from task.models import Task
+        defaults = {
+            "summary": "Test Task",
+            "project": self.project,
+            "owner": self.user,
+            "type": "execution",
+            "due_date": timezone.now().date(),
+        }
+        defaults.update(kwargs)
+        return Task.objects.create(**defaults)
+
+    def test_decision_event_created_on_decision_save(self):
+        decision = self._create_decision()
+        events = self.CalendarEvent.objects.filter(
+            event_type=self.CalendarEvent.EventType.DECISION,
+            decision=decision,
+        )
+        self.assertEqual(events.count(), 1)
+
+    def test_decision_event_updated_on_decision_update(self):
+        decision = self._create_decision()
+        decision.title = "Updated Decision"
+        decision.save()
+        events = self.CalendarEvent.objects.filter(
+            event_type=self.CalendarEvent.EventType.DECISION,
+            decision=decision,
+        )
+        # There cannot be duplicates, update_or_create guarantees only one
+        self.assertEqual(events.count(), 1)
+        self.assertIn("Updated Decision", events.first().title)
+
+    def test_task_event_created_on_task_with_due_date(self):
+        task = self._create_task()
+        events = self.CalendarEvent.objects.filter(
+            event_type=self.CalendarEvent.EventType.TASK,
+            task=task,
+        )
+        self.assertEqual(events.count(), 1)
+
+    def test_task_event_not_created_without_due_date(self):
+        task = self._create_task(due_date=None)
+        events = self.CalendarEvent.objects.filter(
+            event_type=self.CalendarEvent.EventType.TASK,
+            task=task,
+        )
+        self.assertEqual(events.count(), 0)
+
+    def test_decision_review_event_created_on_approved_at(self):
+        decision = self._create_decision(approved_at=timezone.now())
+        events = self.CalendarEvent.objects.filter(
+            event_type=self.CalendarEvent.EventType.DECISION_REVIEW,
+            decision=decision,
+        )
+        self.assertEqual(events.count(), 1)
+
+    def test_no_duplicate_events_on_multiple_saves(self):
+        task = self._create_task()
+        task.summary = "Updated Task"
+        task.save()
+        task.summary = "Updated Task Again"
+        task.save()
+        events = self.CalendarEvent.objects.filter(
+            event_type=self.CalendarEvent.EventType.TASK,
+            task=task,
+        )
+        self.assertEqual(events.count(), 1)
