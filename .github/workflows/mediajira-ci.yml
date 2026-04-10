@@ -383,9 +383,14 @@ jobs:
         if: always()
         run: |
           echo "Cleaning up containers and volumes..."
-          docker compose --profile ci down -v
+          # Reuse the CI env file if present; don't fail job on cleanup-only issues.
+          if [ -f .env ]; then
+            docker compose --profile ci --env-file .env down -v || true
+          else
+            docker compose --profile ci down -v || true
+          fi
           echo "Cleaning up unused Docker resources..."
-          docker system prune -f
+          docker system prune -f || true
 
   deploy:
     needs: [block, code_scan, image_scan, application_test]

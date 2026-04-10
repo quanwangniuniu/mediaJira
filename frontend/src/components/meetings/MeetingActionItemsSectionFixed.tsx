@@ -117,7 +117,7 @@ export function MeetingActionItemsSection({
     setLoading(true);
     try {
       const [actionItems, tasks, members, types] = await Promise.all([
-        MeetingsAPI.listActionItems(projectId, meetingId),
+        MeetingsAPI.listMeetingActionItems(projectId, meetingId),
         MeetingsAPI.listMeetingTasks(projectId, meetingId),
         ProjectAPI.getAllProjectMembers(projectId).catch(() => [] as ProjectMemberData[]),
         TaskAPI.getTaskTypes().catch(() => [] as Array<{ value: string; label: string }>),
@@ -163,7 +163,7 @@ export function MeetingActionItemsSection({
     try {
       const nextOrder =
         orderedItems.length > 0 ? orderedItems[orderedItems.length - 1].order_index + 1 : 0;
-      const created = await MeetingsAPI.createActionItem(projectId, meetingId, {
+      const created = await MeetingsAPI.createMeetingActionItem(projectId, meetingId, {
         title,
         description: newDescription.trim(),
         order_index: nextOrder,
@@ -183,7 +183,7 @@ export function MeetingActionItemsSection({
     if (busyId != null) return;
     setBusyId(actionItemId);
     try {
-      await MeetingsAPI.deleteActionItem(projectId, meetingId, actionItemId);
+      await MeetingsAPI.deleteMeetingActionItem(projectId, meetingId, actionItemId);
       setItems((prev) => prev.filter((row) => row.id !== actionItemId));
       setSelectedIds((prev) => {
         const next = new Set(prev);
@@ -206,7 +206,7 @@ export function MeetingActionItemsSection({
     if (busyId != null) return;
     setBusyId(actionItem.id);
     try {
-      await MeetingsAPI.convertActionItemToTask(
+      await MeetingsAPI.convertMeetingActionItemToTask(
         projectId,
         meetingId,
         actionItem.id,
@@ -246,16 +246,18 @@ export function MeetingActionItemsSection({
     setBulkBusy(true);
     try {
       const ownerId = ownerIdDraft ? Number(ownerIdDraft) : null;
-      const result = await MeetingsAPI.bulkConvertActionItemsToTasks(projectId, meetingId, {
-        action_item_ids: ids,
-        type: effectiveTaskType,
-        priority: priorityDraft,
-        owner_id: Number.isFinite(ownerId) ? ownerId : null,
-        due_date: normalizeDueDateForApi(dueDateDraft),
-        create_as_draft: createAsDraft,
+      const result = await MeetingsAPI.bulkConvertMeetingActionItemsToTasks(projectId, meetingId, {
+        items: ids.map((action_item_id) => ({
+          action_item_id,
+          type: effectiveTaskType,
+          priority: priorityDraft,
+          owner_id: Number.isFinite(ownerId) ? ownerId : null,
+          due_date: normalizeDueDateForApi(dueDateDraft),
+          create_as_draft: createAsDraft,
+        })),
       });
-      const createdCount = Array.isArray(result.created) ? result.created.length : 0;
-      const skippedCount = Array.isArray(result.skipped) ? result.skipped.length : 0;
+      const createdCount = Array.isArray(result) ? result.length : 0;
+      const skippedCount = Math.max(0, ids.length - createdCount);
       await loadAll();
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('agent:tasks-changed'));
@@ -409,7 +411,7 @@ export function MeetingActionItemsSection({
         ) : (
           orderedItems.map((item) => {
             const linkedTask = convertedMap.get(item.id);
-            const isConverted = Boolean(linkedTask) || item.has_task;
+            const isConverted = Boolean(linkedTask) || item.converted_task_id != null;
             return (
               <div
                 key={item.id}
