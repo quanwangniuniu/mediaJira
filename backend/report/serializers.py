@@ -16,13 +16,20 @@ class ReportTaskKeyActionSerializer(serializers.ModelSerializer):
 
 
 class ReportTaskSerializer(serializers.ModelSerializer):
+    audience_type = serializers.ChoiceField(
+        required=False,
+        choices=ReportTask.AudienceType.choices,
+        default=ReportTask.AudienceType.SELF,
+    )
+    audience_details = serializers.CharField(required=False, allow_blank=True, allow_null=True, default="")
+    context = serializers.JSONField(required=False, allow_null=True, default=dict)
+    outcome_summary = serializers.CharField(required=False, allow_blank=True, allow_null=True, default="")
+    narrative_explanation = serializers.CharField(required=False, allow_blank=True, allow_null=True, default="")
     is_complete = serializers.BooleanField(read_only=True)
     prompt_template = serializers.SerializerMethodField(read_only=True)
 
     # Expose key actions as ordered objects.
     key_actions = ReportTaskKeyActionSerializer(many=True, read_only=True)
-    # Explicitly declare context as JSONField to ensure proper handling
-    context = serializers.JSONField(required=False)
 
     class Meta:
         model = ReportTask
@@ -52,6 +59,8 @@ class ReportTaskSerializer(serializers.ModelSerializer):
 
     def validate_context(self, value):
         """Validate context structure."""
+        if value is None:
+            return value
         if not isinstance(value, dict):
             raise serializers.ValidationError("Context must be a JSON object.")
         
@@ -92,8 +101,15 @@ class ReportCreateSerializer(serializers.ModelSerializer):
     """Create report (no key_actions); key actions are created via nested key-actions endpoints."""
 
     task = serializers.PrimaryKeyRelatedField(queryset=Task.objects.all())
-    # Explicitly declare context as JSONField to ensure proper handling
-    context = serializers.JSONField(required=False)
+    audience_type = serializers.ChoiceField(
+        required=False,
+        choices=ReportTask.AudienceType.choices,
+        default=ReportTask.AudienceType.SELF,
+    )
+    audience_details = serializers.CharField(required=False, allow_blank=True, allow_null=True, default="")
+    context = serializers.JSONField(required=False, allow_null=True, default=dict)
+    outcome_summary = serializers.CharField(required=False, allow_blank=True, allow_null=True, default="")
+    narrative_explanation = serializers.CharField(required=False, allow_blank=True, allow_null=True, default="")
 
     class Meta:
         model = ReportTask
@@ -115,6 +131,8 @@ class ReportCreateSerializer(serializers.ModelSerializer):
 
     def validate_context(self, value):
         """Validate context structure."""
+        if value is None:
+            return value
         if not isinstance(value, dict):
             raise serializers.ValidationError("Context must be a JSON object.")
 
@@ -184,8 +202,11 @@ class ReportCreateSerializer(serializers.ModelSerializer):
 class ReportUpdateSerializer(serializers.ModelSerializer):
     """Partial update; no task, no key_actions."""
     
-    # Explicitly declare context as JSONField to ensure proper handling
-    context = serializers.JSONField(required=False)
+    audience_type = serializers.ChoiceField(required=False, choices=ReportTask.AudienceType.choices)
+    audience_details = serializers.CharField(required=False, allow_blank=True, allow_null=True, default="")
+    context = serializers.JSONField(required=False, allow_null=True, default=dict)
+    outcome_summary = serializers.CharField(required=False, allow_blank=True, allow_null=True, default="")
+    narrative_explanation = serializers.CharField(required=False, allow_blank=True, allow_null=True, default="")
 
     class Meta:
         model = ReportTask
@@ -199,6 +220,8 @@ class ReportUpdateSerializer(serializers.ModelSerializer):
 
     def validate_context(self, value):
         """Validate context structure."""
+        if value is None:
+            return value
         if not isinstance(value, dict):
             raise serializers.ValidationError("Context must be a JSON object.")
         

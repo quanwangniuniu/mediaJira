@@ -105,6 +105,8 @@ services:
     env_file:
       - .env
     volumes:
+      # Host source so local edits hot-reload in the container (QA on :80 via nginx).
+      - ./frontend:/app
       - frontend_node_modules:/app/node_modules
       - frontend_next:/app/.next
       # - sonar-token-data:/token

@@ -283,14 +283,12 @@ class UsageTrackingMiddleware(MiddlewareMixin):
         # Get user's current plan limits
         plan_limits = self._get_user_plan_limits(user)
         if not plan_limits:
-            # No plan limits found - user doesn't have active subscription
-            return {
-                'blocked': True,
-                'message': 'No active subscription found. Please subscribe to a plan to use this feature.',
-                'current_usage': 0,
-                'limit': 0,
-                'action_type': tracking_info['action_type']
-            }
+            # No active subscription — allow the request but log a warning
+            logger.warning(
+                f"User {user.id} has no active subscription. "
+                f"Allowing {tracking_info['action_type']} request without limit enforcement."
+            )
+            return {'blocked': False}
         
         # Get current usage for today
         today = timezone.now().date()

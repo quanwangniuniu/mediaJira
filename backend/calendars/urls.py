@@ -1,4 +1,6 @@
 from django.urls import path
+# SMP-407
+from .views import CalendarEventListView
 
 from .views import (
     CalendarViewSet,
@@ -115,5 +117,12 @@ urlpatterns = [
         "events/<uuid:event_id>/reminders/",
         EventReminderListCreateView.as_view(),
         name="event-reminder-list",
+    ),
+
+    # Calendar derived events (read-only, system-generated) SMP-407
+    path(
+        'derived-events/',
+        CalendarEventListView.as_view(),
+        name='calendar-derived-events',
     ),
 ]

@@ -26,6 +26,7 @@ class ExperimentProgressUpdateSerializer(serializers.ModelSerializer):
 class ExperimentSerializer(serializers.ModelSerializer):
     """Serializer for Experiment model"""
     
+    hypothesis = serializers.CharField(required=False, allow_blank=True, default="")
     progress_updates = ExperimentProgressUpdateSerializer(many=True, read_only=True)
     # Computed properties for backward compatibility - dates now come from Task
     start_date = serializers.SerializerMethodField()

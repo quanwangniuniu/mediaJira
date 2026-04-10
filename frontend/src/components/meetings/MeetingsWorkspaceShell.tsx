@@ -4,7 +4,8 @@ import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 export interface MeetingsWorkspaceShellProps {
-  sidebar: ReactNode;
+  /** Omit or pass `null` to hide the left rail (full-width main). */
+  sidebar?: ReactNode | null;
   main: ReactNode;
   detail: ReactNode;
   detailOpen: boolean;
@@ -27,9 +28,11 @@ export function MeetingsWorkspaceShell({
         className,
       )}
     >
-      <aside className="shrink-0 border-b border-gray-200 bg-slate-50/90 lg:w-56 lg:border-b-0 lg:border-r lg:border-gray-200">
-        {sidebar}
-      </aside>
+      {sidebar != null ? (
+        <aside className="shrink-0 border-b border-gray-200 bg-slate-50/90 lg:w-56 lg:border-b-0 lg:border-r lg:border-gray-200">
+          {sidebar}
+        </aside>
+      ) : null}
 
       <main className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-[#fafbfc]">{main}</main>
 
