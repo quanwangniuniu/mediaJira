@@ -60,6 +60,7 @@ import {
   JiraBoardDueTone,
 } from "@/components/jira-ticket/JiraBoard";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
+import { OriginMeetingBlock } from "@/components/meetings/OriginMeetingBlock";
 import { useChatData } from "@/hooks/useChatData";
 import { createChat, findPrivateChat, sendMessage } from "@/lib/api/chatApi";
 import ShareTaskDialog from "./ShareTaskDialog";
@@ -1726,6 +1727,9 @@ export default function TaskDetail({
                     </Link>
                   </p>
                 ) : null}
+                <div className="mt-3">
+                  <OriginMeetingBlock origin={task?.origin_meeting ?? null} />
+                </div>
               </div>
             ) : (
               <div className="space-y-3 mb-6 w-full">

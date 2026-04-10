@@ -1,3 +1,5 @@
+import type { OriginMeetingPayload } from '@/types/meeting';
+
 export type DecisionStatus =
   | 'DRAFT'
   | 'AWAITING_APPROVAL'
@@ -114,6 +116,8 @@ export interface DecisionDraftResponse {
   createdByAgent?: boolean;
   /** The UUID of the Agent session that created this decision, if any. */
   agentSessionId?: string | null;
+  /** Same provenance field as committed detail; present on draft GET when anchored to a meeting. */
+  origin_meeting?: OriginMeetingPayload | null;
 }
 
 export interface DecisionCommittedResponse {
@@ -137,6 +141,8 @@ export interface DecisionCommittedResponse {
   createdByAgent?: boolean;
   /** The UUID of the Agent session that created this decision, if any. */
   agentSessionId?: string | null;
+  /** Provenance: meeting this decision is anchored to, if any. */
+  origin_meeting?: OriginMeetingPayload | null;
 }
 
 export interface DecisionListItem {

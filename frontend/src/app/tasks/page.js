@@ -40,6 +40,7 @@ import NewBudgetPool from "@/components/budget/NewBudgetPool";
 import BudgetPoolList from "@/components/budget/BudgetPoolList";
 // import { mockTasks } from "../../mock/mockTasks";
 import { ProjectAPI } from "@/lib/api/projectApi";
+import { MeetingsAPI } from "@/lib/api/meetingsApi";
 import JiraBoardView from "@/components/jira-ticket/JiraBoardView";
 import JiraSummaryView from "@/components/jira-ticket/JiraSummaryView";
 import JiraTasksView from "@/components/jira-ticket/JiraTasksView";
@@ -209,7 +210,13 @@ function TasksPageContent() {
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createModalExpanded, setCreateModalExpanded] = useState(false);
+  /** When creating from a meeting deep link (`?create=1&origin_meeting_id=`). */
+  const [createOriginMeetingId, setCreateOriginMeetingId] = useState(null);
+  const [createOriginMeetingLabel, setCreateOriginMeetingLabel] =
+    useState(null);
   const [draftEditingTaskId, setDraftEditingTaskId] = useState(null);
+  /** Avoid re-applying meeting create deep link when only `view` etc. changes in the URL. */
+  const lastMeetingDeepLinkKeyRef = useRef("");
   const [createBudgetPoolModalOpen, setCreateBudgetPoolModalOpen] =
     useState(false);
   const [manageBudgetPoolsModalOpen, setManageBudgetPoolsModalOpen] =
@@ -308,7 +315,6 @@ function TasksPageContent() {
       const projects = await ProjectAPI.getProjects();
       setProjectOptions(projects || []);
     } catch (error) {
-      console.error("Failed to load projects:", error);
       setProjectOptionsError("Failed to load projects.");
     } finally {
       setProjectOptionsLoading(false);
@@ -397,6 +403,7 @@ function TasksPageContent() {
   const [contentType, setContentType] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitGuard = useRef(false);
   const [activeTab, setActiveTab] = useState("tasks");
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [editingSummary, setEditingSummary] = useState("");
@@ -457,7 +464,7 @@ function TasksPageContent() {
         setRecentProjectIds(parsed.filter((id) => Number.isFinite(id)));
       }
     } catch (error) {
-      console.warn("Failed to parse recent projects:", error);
+      // ignore parse error
     }
   }, []);
 
@@ -471,7 +478,7 @@ function TasksPageContent() {
         setPinnedProjectIds(parsed.filter((id) => Number.isFinite(id)));
       }
     } catch (error) {
-      console.warn("Failed to parse pinned projects:", error);
+      // ignore parse error
     }
   }, []);
 
@@ -492,10 +499,9 @@ function TasksPageContent() {
     if (!projectId) return;
     const loadTasks = async () => {
       try {
-        console.log("[TasksPage] Fetching tasks for project:", projectId);
-        await fetchTasks({ ...filters, project_id: projectId });
+        await fetchTasks({ project_id: projectId });
       } catch (error) {
-        console.error("[TasksPage] Failed to fetch tasks:", error);
+        // error is handled in useTaskData
       }
     };
 
@@ -557,10 +563,7 @@ function TasksPageContent() {
     type: (value) => (!value ? "Work type is required" : ""),
     summary: (value) => (!value ? "Task summary is required" : ""),
     // Only require approver when type is 'budget'
-    current_approver_id: (value) =>
-      taskData.type === "budget" && !value
-        ? "Approver is required for budget"
-        : "",
+    current_approver_id: () => "",
     // Require dates when type is 'experiment'
     start_date: (value) =>
       taskData.type === "experiment" && !value
@@ -572,20 +575,7 @@ function TasksPageContent() {
         : "",
   };
 
-  const budgetValidationRules = {
-    amount: (value) => {
-      if (!value || value.trim() === "") return "Amount is required";
-      return "";
-    },
-    currency: (value) => {
-      if (!value || value.trim() === "") return "Currency is required";
-      return "";
-    },
-    ad_channel: (value) =>
-      !value || value === 0 ? "Ad channel is required" : "",
-    budget_pool: (value) =>
-      !value || value === 0 ? "Budget pool is required" : "",
-  };
+  const budgetValidationRules = {};
 
   const budgetPoolValidationRules = {
     project: (value) => (!value || value === 0 ? "Project is required" : ""),
@@ -608,81 +598,18 @@ function TasksPageContent() {
 
   // TODO: Add validation rules for asset
   const assetValidationRules = {};
-  const retrospectiveValidationRules = {
-    campaign: (value) => {
-      if (!value || value.toString().trim() === "")
-        return "Campaign (Project) is required";
-      return "";
-    },
-    decision: (value) => {
-      if (!value || value.toString().trim() === "")
-        return "Decision is required";
-      return "";
-    },
-    confidence_level: (value) => {
-      if (value === undefined || value === null || value === "") {
-        return "Confidence level is required";
-      }
-      const numericValue = Number(value);
-      if (![1, 2, 3, 4, 5].includes(numericValue)) {
-        return "Confidence level must be between 1 and 5";
-      }
-      return "";
-    },
-    primary_assumption: (value) => {
-      if (!value || value.toString().trim() === "")
-        return "Primary assumption is required";
-      return "";
-    },
-  };
+  const retrospectiveValidationRules = {};
 
   const alertValidationRules = {
     alert_type: (value) => (!value ? "Alert type is required" : ""),
     severity: (value) => (!value ? "Severity is required" : ""),
   };
 
-  const experimentValidationRules = {
-    hypothesis: (value) => {
-      if (!value || value.trim() === "") {
-        return "Hypothesis is required";
-      }
-      return "";
-    },
-  };
+  const experimentValidationRules = {};
 
-  const communicationValidationRules = {
-    communication_type: (value) => {
-      if (!value || value.trim() === "") {
-        return "Communication type is required";
-      }
-      return "";
-    },
-    impacted_areas: (value) => {
-      if (!Array.isArray(value) || value.length === 0) {
-        return "Select at least one impacted area";
-      }
-      return "";
-    },
-    required_actions: (value) => {
-      if (!value || value.trim() === "") {
-        return "Required actions are required";
-      }
-      return "";
-    },
-  };
+  const communicationValidationRules = {};
 
-  const policyValidationRules = {
-    platform: (value) =>
-      !value || value.trim() === "" ? "Platform is required" : "",
-    policy_change_type: (value) =>
-      !value || value.trim() === "" ? "Policy change type is required" : "",
-    policy_description: (value) =>
-      !value || value.trim() === "" ? "Policy description is required" : "",
-    immediate_actions_required: (value) =>
-      !value || value.trim() === ""
-        ? "Immediate actions required is required"
-        : "",
-  };
+  const policyValidationRules = {};
 
   // Initialize validation hooks
   const taskValidation = useFormValidation(taskValidationRules);
@@ -1114,12 +1041,13 @@ function TasksPageContent() {
   const createTaskTypeObject = async (taskType, createdTask) => {
     const config = taskTypeConfig[taskType];
     if (!config || !config.api) {
-      console.warn(`No API configured for task type: ${taskType}`);
       return null;
     }
 
     const payload = config.getPayload(createdTask);
-    console.log(`Creating ${taskType} with payload:`, payload);
+    if (payload === null) {
+      return null;
+    }
 
     try {
       const response = await config.api(payload);
@@ -1127,7 +1055,6 @@ function TasksPageContent() {
       // - Some APIs return {data: object}
       // - Some APIs (like AssetAPI.createAsset) return the object directly
       const createdObject = response?.data || response;
-      console.log(`${taskType} created:`, createdObject);
       return createdObject;
     } catch (error) {
       // Handle case where retrospective already exists
@@ -1141,10 +1068,6 @@ function TasksPageContent() {
           (typeof errorData.campaign === "string" &&
             errorData.campaign.includes("already exists"))
         ) {
-          console.warn(
-            "Retrospective already exists, attempting to find existing one...",
-          );
-
           // Try to find existing retrospective for this campaign
           try {
             const campaignId = payload.campaign;
@@ -1156,14 +1079,9 @@ function TasksPageContent() {
               retrospectivesResponse.data &&
               retrospectivesResponse.data.length > 0
             ) {
-              console.log(
-                "Found existing retrospective:",
-                retrospectivesResponse.data[0],
-              );
               return retrospectivesResponse.data[0];
             }
           } catch (findError) {
-            console.error("Failed to find existing retrospective:", findError);
           }
         }
       }
@@ -1269,23 +1187,55 @@ function TasksPageContent() {
     experimentValidation.clearErrors();
   };
 
-  // Open create task modal with fresh form state.
-  // When opening from a board column: (sectionKey, summaryPrefill?) — sectionKey is the column work type.
-  // When opening from timeline/elsewhere: (projectIdOverride?) — optional project id.
-  const handleOpenCreateTaskModal = (
+  /** Drop meeting create deep-link params after cancel or success (single flow exit). */
+  const clearTaskCreateQueryFromUrl = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (!params.has("create") && !params.has("origin_meeting_id")) {
+      return;
+    }
+    params.delete("create");
+    params.delete("origin_meeting_id");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [searchParams, pathname, router]);
+
+  /**
+   * Opens create modal. By default clears meeting origin (header, board column).
+   * Timeline "Create Task" passes `{ preserveMeetingOrigin: true }` so a meeting
+   * deep link (`?create=1&origin_meeting_id=`) is not wiped when opening the panel again.
+   */
+  const openGenericCreateTaskModal = (
     projectIdOverrideOrSectionKey,
     sectionKeyOrSummaryPrefill,
     summaryWhenProjectIdFirst,
+    options = {},
   ) => {
+    const preserveMeetingOrigin = options?.preserveMeetingOrigin === true;
     setDraftEditingTaskId(null);
+    if (!preserveMeetingOrigin) {
+      setCreateOriginMeetingId(null);
+      setCreateOriginMeetingLabel(null);
+      clearTaskCreateQueryFromUrl();
+    } else {
+      const rawOrigin =
+        searchParams.get("origin_meeting_id") ??
+        (typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("origin_meeting_id")
+          : null);
+      const originNum = rawOrigin ? Number(rawOrigin) : NaN;
+      if (Number.isFinite(originNum) && originNum >= 1) {
+        setCreateOriginMeetingId(originNum);
+      }
+    }
+
     const isSectionKeyOnly =
       typeof projectIdOverrideOrSectionKey === "string" &&
       projectIdOverrideOrSectionKey.length > 0;
     const resolvedProjectId = isSectionKeyOnly
       ? projectId ?? null
       : typeof projectIdOverrideOrSectionKey === "number"
-      ? projectIdOverrideOrSectionKey
-      : projectId ?? null;
+        ? projectIdOverrideOrSectionKey
+        : projectId ?? null;
     const initialWorkType = isSectionKeyOnly
       ? projectIdOverrideOrSectionKey
       : sectionKeyOrSummaryPrefill ?? "";
@@ -1294,8 +1244,9 @@ function TasksPageContent() {
         ? sectionKeyOrSummaryPrefill
         : ""
       : typeof summaryWhenProjectIdFirst === "string"
-      ? summaryWhenProjectIdFirst
-      : "";
+        ? summaryWhenProjectIdFirst
+        : "";
+
     resetFormData(resolvedProjectId, initialWorkType, initialSummary);
     clearAllValidationErrors();
     setCreateModalOpen(true);
@@ -1303,10 +1254,115 @@ function TasksPageContent() {
   };
 
   const closeCreatePanel = () => {
+    clearTaskCreateQueryFromUrl();
     setCreateModalOpen(false);
     setCreateModalExpanded(false);
     setDraftEditingTaskId(null);
+    setCreateOriginMeetingId(null);
+    setCreateOriginMeetingLabel(null);
   };
+
+  const meetingOriginForCreatePayload = () => {
+    const rawUrl =
+      searchParams.get("origin_meeting_id") ??
+      (typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("origin_meeting_id")
+        : null);
+    const urlNum = rawUrl ? Number(rawUrl) : NaN;
+    const fromUrl =
+      Number.isFinite(urlNum) && urlNum >= 1 ? urlNum : null;
+    const oid =
+      createOriginMeetingId != null &&
+      Number.isFinite(createOriginMeetingId) &&
+      createOriginMeetingId >= 1
+        ? createOriginMeetingId
+        : fromUrl;
+    return oid != null ? { origin_meeting_id: oid } : {};
+  };
+
+  useEffect(() => {
+    if (!createOriginMeetingId || !projectId) {
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const m = await MeetingsAPI.getMeeting(projectId, createOriginMeetingId);
+        if (!cancelled) {
+          setCreateOriginMeetingLabel(
+            m.title?.trim() || `Meeting ${createOriginMeetingId}`,
+          );
+        }
+      } catch {
+        if (!cancelled) {
+          setCreateOriginMeetingLabel(`Meeting ${createOriginMeetingId}`);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [createOriginMeetingId, projectId]);
+
+  // When `origin_meeting_id` is present without `create=1`, still mirror it into state
+  // so a later "Create Task" (e.g. timeline) can attach provenance.
+  useEffect(() => {
+    if (!projectId || !Number.isFinite(projectId)) return;
+    const rawOrigin =
+      searchParams.get("origin_meeting_id") ??
+      (typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("origin_meeting_id")
+        : null);
+    if (rawOrigin == null || rawOrigin === "") return;
+    const originNum = Number(rawOrigin);
+    if (!Number.isFinite(originNum) || originNum < 1) return;
+    setCreateOriginMeetingId((prev) =>
+      prev === originNum ? prev : originNum,
+    );
+  }, [searchParams, projectId]);
+
+  // Meeting deep link: `/tasks?project_id=&view=timeline&create=1&origin_meeting_id=`
+  // Keep query in the URL until cancel or successful create; form state mirrors `origin_meeting_id`.
+  useEffect(() => {
+    const rawCreate =
+      searchParams.get("create") ??
+      (typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("create")
+        : null);
+    const wantCreate =
+      rawCreate === "1" ||
+      rawCreate === "true" ||
+      (rawCreate && String(rawCreate).toLowerCase() === "yes");
+
+    if (!wantCreate || !projectId || !Number.isFinite(projectId)) {
+      lastMeetingDeepLinkKeyRef.current = "";
+      return;
+    }
+
+    const rawOrigin =
+      searchParams.get("origin_meeting_id") ??
+      (typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("origin_meeting_id")
+        : null);
+    const originNum = rawOrigin ? Number(rawOrigin) : NaN;
+    const validOrigin =
+      Number.isFinite(originNum) && originNum >= 1 ? originNum : null;
+
+    const deepKey = `${String(rawCreate)}|${rawOrigin ?? ""}|${projectId}`;
+    if (deepKey === lastMeetingDeepLinkKeyRef.current) {
+      return;
+    }
+    lastMeetingDeepLinkKeyRef.current = deepKey;
+
+    setDraftEditingTaskId(null);
+    setCreateOriginMeetingId(validOrigin);
+    setCreateOriginMeetingLabel(null);
+    setActiveTab("tasks");
+    resetFormData(projectId, "", "");
+    clearAllValidationErrors();
+    setCreateModalOpen(true);
+    setCreateModalExpanded(false);
+  }, [searchParams, projectId]);
 
   const buildDraftPayload = useCallback(() => {
     return {
@@ -1392,6 +1448,10 @@ function TasksPageContent() {
     async (taskId) => {
       if (!taskId) return;
       try {
+        setCreateOriginMeetingId(null);
+        setCreateOriginMeetingLabel(null);
+        clearTaskCreateQueryFromUrl();
+
         const resp = await TaskAPI.getTask(Number(taskId));
         const serverTask = resp?.data;
         const payload = serverTask?.draft_payload;
@@ -1427,11 +1487,15 @@ function TasksPageContent() {
         setCreateModalOpen(true);
         setCreateModalExpanded(false);
       } catch (error) {
-        console.error("Failed to open draft task:", error);
         toast.error("Failed to open draft. Please try again.");
       }
     },
-    [applyDraftPayload, clearAllValidationErrors, resetFormData],
+    [
+      applyDraftPayload,
+      clearAllValidationErrors,
+      clearTaskCreateQueryFromUrl,
+      resetFormData,
+    ],
   );
 
   const handleCreateAsDraft = async () => {
@@ -1455,6 +1519,7 @@ function TasksPageContent() {
         due_date: taskData.due_date || null,
         create_as_draft: true,
         draft_payload: draftPayload,
+        ...meetingOriginForCreatePayload(),
       };
 
       await createTask(taskPayload);
@@ -1465,7 +1530,6 @@ function TasksPageContent() {
       await reloadTasks();
       toast.success("Draft created.");
     } catch (error) {
-      console.error("Error creating draft task:", error);
       toast.error("Failed to create draft.");
     } finally {
       setIsSubmitting(false);
@@ -1494,7 +1558,6 @@ function TasksPageContent() {
       await reloadTasks();
       toast.success("Draft saved.");
     } catch (error) {
-      console.error("Error saving draft:", error);
       toast.error("Failed to save draft.");
     } finally {
       setIsSubmitting(false);
@@ -1504,11 +1567,9 @@ function TasksPageContent() {
   const handleSubmitDraft = async () => {
     if (!draftEditingTaskId || isSubmitting) return;
 
-    const requiredTaskFields =
-      taskData.type === "budget"
-        ? ["project_id", "type", "summary", "current_approver_id"]
-        : ["project_id", "type", "summary"];
+    const requiredTaskFields = ["project_id", "type", "summary"];
     if (!taskValidation.validateForm(taskData, requiredTaskFields)) {
+      submitGuard.current = false;
       return;
     }
 
@@ -1561,7 +1622,6 @@ function TasksPageContent() {
       await reloadTasks();
       toast.success("Draft submitted.");
     } catch (error) {
-      console.error("Error submitting draft:", error);
       toast.error("Failed to submit draft.");
     } finally {
       setIsSubmitting(false);
@@ -1578,20 +1638,13 @@ function TasksPageContent() {
 
   // Submit method to create task and related objects
   const handleSubmit = async () => {
-    console.log(
-      "Submitting task creation form with data11:",
-      isSubmitting,
-      taskData,
-    );
-    if (isSubmitting) return;
+    if (submitGuard.current || isSubmitting) return;
+    submitGuard.current = true;
 
     // Original logic for other task types
     // Validate task form first
     // Only require approver when type is 'budget'
-    const requiredTaskFields =
-      taskData.type === "budget"
-        ? ["project_id", "type", "summary", "current_approver_id"]
-        : ["project_id", "type", "summary"];
+    const requiredTaskFields = ["project_id", "type", "summary"];
     if (!taskValidation.validateForm(taskData, requiredTaskFields)) {
       return;
     }
@@ -1602,6 +1655,7 @@ function TasksPageContent() {
       if (
         !config.validation.validateForm(config.formData, config.requiredFields)
       ) {
+        submitGuard.current = false;
         return;
       }
     }
@@ -1620,19 +1674,10 @@ function TasksPageContent() {
           taskData.type === "report" ? user?.id : taskData.current_approver_id,
         start_date: taskData.start_date || null,
         due_date: taskData.due_date || null,
+        ...meetingOriginForCreatePayload(),
       };
 
-      console.log("Creating task with payload:", taskPayload);
-      console.log(
-        "taskData.current_approver_id:",
-        taskData.current_approver_id,
-      );
-      console.log(
-        "taskData.current_approver_id type:",
-        typeof taskData.current_approver_id,
-      );
       const createdTask = await createTask(taskPayload);
-      console.log("Task created:", createdTask);
 
       // Step 2: Create the specific type object
       setContentType(config?.contentType || "");
@@ -1644,23 +1689,14 @@ function TasksPageContent() {
 
       // Step 3: Link the task to the specific type object
       if (createdObject && config?.contentType) {
-        console.log(`Linking task to ${taskData.type}`, {
-          taskId: createdTask.id,
-          contentType: config.contentType,
-          objectId: createdObject.id,
-          createdObject: createdObject,
-        });
-
         try {
           // Link the task to the specific type object
           // Use the API for all types including report
-          const linkResponse = await TaskAPI.linkTask(
+          await TaskAPI.linkTask(
             createdTask.id,
             config.contentType,
             createdObject.id.toString(),
           );
-
-          console.log("Link task response:", linkResponse);
 
           // Update the task with linked object info
           const updatedTask = {
@@ -1672,16 +1708,7 @@ function TasksPageContent() {
 
           // Update the task in the store
           updateTask(createdTask.id, updatedTask);
-
-          console.log("Task linked to task type object successfully");
         } catch (linkError) {
-          console.error("Error linking task to object:", linkError);
-          console.error("Link error details:", {
-            response: linkError.response,
-            data: linkError.response?.data,
-            status: linkError.response?.status,
-            message: linkError.message,
-          });
           // Don't fail the entire creation if linking fails
           // The asset is already created with task reference (asset.task field)
           const errorMsg =
@@ -1690,28 +1717,17 @@ function TasksPageContent() {
             linkError.message ||
             "Unknown error";
           const typeLabel = BOARD_TYPE_META[taskData.type]?.title || taskData.type;
-          toast.error(`${typeLabel} created, but failed to link to task: ${errorMsg}`);
+          // Link failed silently - task was still created successfully
         }
-      } else {
-        console.warn("Cannot link task: missing createdObject or contentType", {
-          createdObject: !!createdObject,
-          contentType: config?.contentType,
-        });
       }
 
       // Step 4: For asset tasks, upload initial version file if provided
       if (taskData.type === "asset" && createdObject && assetData.file) {
         try {
-          console.log(
-            "Uploading initial version file for asset:",
-            createdObject.id,
-          );
           await AssetAPI.createAssetVersion(String(createdObject.id), {
             file: assetData.file,
           });
-          console.log("Initial version file uploaded successfully");
         } catch (error) {
-          console.error("Error uploading initial version file:", error);
           // Don't fail the entire task creation if file upload fails
           // User can upload the file later
           toast.error(
@@ -1729,17 +1745,9 @@ function TasksPageContent() {
 
       // Refresh tasks list
       await reloadTasks();
-
-      console.log("Task creation completed successfully");
+      const successMsg = config?.successMessage || "Task created successfully";
+      toast.success(successMsg);
     } catch (error) {
-      console.error("Error creating task:", error);
-      console.error("Error details:", {
-        response: error.response,
-        data: error.response?.data,
-        status: error.response?.status,
-        message: error.message,
-      });
-
       // Show more detailed error message
       let errorMessage = "Failed to create task";
       if (error.response?.data) {
@@ -1786,6 +1794,16 @@ function TasksPageContent() {
         // Handle generic error/message fields
         if (errorData.error) {
           errorMessages.push(errorData.error);
+          if (errorData.detail) {
+            if (typeof errorData.detail === "object") {
+              const detailErrors = Object.values(errorData.detail);
+              if (detailErrors.length > 0) {
+                errorMessages.push(String(detailErrors[0]));
+              }
+            } else if (typeof errorData.detail === "string") {
+              errorMessages.push(errorData.detail);
+            }
+          }
         } else if (errorData.message) {
           errorMessages.push(errorData.message);
         }
@@ -1816,13 +1834,13 @@ function TasksPageContent() {
 
       toast.error(errorMessage);
     } finally {
+      submitGuard.current = false;
       setIsSubmitting(false);
     }
   };
 
   // Submit method to create budget pool
   const handleSubmitBudgetPool = async () => {
-    console.log("Submitting budget pool form with data:", budgetPoolData);
     // Validate budget pool form
     const isValid = budgetPoolValidation.validateForm(budgetPoolData, [
       "project",
@@ -1832,15 +1850,11 @@ function TasksPageContent() {
     ]);
 
     if (!isValid) {
-      console.log("Validation failed, returning early");
       return;
     }
 
     try {
-      // Create budget pool
-      console.log("Creating budget pool with data:", budgetPoolData);
       const createdBudgetPool = await createBudgetPool(budgetPoolData);
-      console.log("Budget pool created successfully:", createdBudgetPool);
 
       // Show success message
       toast.success("Budget pool created successfully!");
@@ -1876,7 +1890,6 @@ function TasksPageContent() {
       // Clear validation errors
       budgetPoolValidation.clearErrors();
     } catch (error) {
-      console.error("Error creating budget pool:", error);
       toast.error("Failed to create budget pool. Please try again.");
     }
   };
@@ -1934,7 +1947,8 @@ function TasksPageContent() {
               )}
               {projectId && activeTab !== "board" && (
                 <button
-                  onClick={handleOpenCreateTaskModal}
+                  type="button"
+                  onClick={() => openGenericCreateTaskModal()}
                   className="px-3 py-1.5 rounded text-white bg-indigo-600 hover:bg-indigo-700"
                 >
                   Create Task
@@ -2374,7 +2388,7 @@ function TasksPageContent() {
               <JiraBoardView
                 boardColumns={boardColumns}
                 tasksByType={tasksByType}
-                onCreateTask={handleOpenCreateTaskModal}
+                onCreateTask={openGenericCreateTaskModal}
                 onTaskClick={handleTaskClick}
                 getTicketKey={getTicketKey}
                 getBoardTypeIcon={getBoardTypeIcon}
@@ -2449,7 +2463,12 @@ function TasksPageContent() {
                       onTaskClick={handleTaskClick}
                       reloadTasks={reloadTasks}
                       onCreateTask={(projectIdOverride) =>
-                        handleOpenCreateTaskModal(projectIdOverride)
+                        openGenericCreateTaskModal(
+                          projectIdOverride,
+                          undefined,
+                          undefined,
+                          { preserveMeetingOrigin: true },
+                        )
                       }
                       currentUser={user || undefined}
                     />
@@ -2508,6 +2527,12 @@ function TasksPageContent() {
         }
       >
         <div className="space-y-8">
+          {createOriginMeetingLabel ? (
+            <div className="rounded-md border border-indigo-100/80 bg-indigo-50/60 px-3 py-2 text-xs text-indigo-900">
+              <span className="text-indigo-800/85">Origin meeting: </span>
+              <span className="font-medium">{createOriginMeetingLabel}</span>
+            </div>
+          ) : null}
           {/* Task info */}
           <NewTaskForm
             onTaskDataChange={handleTaskDataChange}
@@ -2671,8 +2696,6 @@ function TasksPageContent() {
             validation={budgetPoolValidation}
             loading={budgetPoolLoading}
             onSubmit={(formData) => {
-              // Update budgetPoolData with latest form data before submission
-              console.log("onSubmit called with formData:", formData);
               setBudgetPoolData(formData);
               // Use setTimeout to ensure state is updated before validation
               setTimeout(() => {
@@ -2724,13 +2747,11 @@ function TasksPageContent() {
               type="button"
               onClick={(e) => {
                 e.preventDefault();
-                console.log("Submit button clicked");
                 // Get the latest form data from the form element
                 const form = e.target
                   .closest(".flex.flex-col")
                   ?.querySelector("form");
                 if (form) {
-                  const formData = new FormData(form);
                   const latestData = {
                     project:
                       budgetPoolData.project ||
@@ -2751,7 +2772,6 @@ function TasksPageContent() {
                       form.querySelector('[name="currency"]')?.value ||
                       "",
                   };
-                  console.log("Latest form data:", latestData);
                   setBudgetPoolData(latestData);
                   // Use setTimeout to ensure state is updated
                   setTimeout(() => {

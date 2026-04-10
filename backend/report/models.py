@@ -39,10 +39,13 @@ class ReportTask(models.Model):
     audience_type = models.CharField(
         max_length=30,
         choices=AudienceType.choices,
+        default=AudienceType.SELF,
         help_text="Who the report is intended for",
     )
     audience_details = models.TextField(
         blank=True,
+        null=True,
+        default="",
         help_text="Optional audience details (required if audience type is other)",
     )
     audience_prompt_version = models.CharField(
@@ -53,13 +56,19 @@ class ReportTask(models.Model):
     context = models.JSONField(
         default=dict,
         blank=True,
+        null=True,
         help_text="Structured context for the report: {reporting_period: {type, text, start_date?, end_date?}, situation, what_changed}",
     )
     outcome_summary = models.TextField(
+        blank=True,
+        null=True,
+        default="",
         help_text="High-level, qualitative outcome summary",
     )
     narrative_explanation = models.TextField(
         blank=True,
+        null=True,
+        default="",
         help_text="Optional narrative explanation",
     )
     created_at = models.DateTimeField(auto_now_add=True)
@@ -73,7 +82,7 @@ class ReportTask(models.Model):
 
     def clean(self):
         super().clean()
-        if self.audience_type == self.AudienceType.OTHER and not self.audience_details.strip():
+        if self.audience_type == self.AudienceType.OTHER and not (self.audience_details or "").strip():
             raise ValidationError({
                 "audience_details": "Audience details are required when audience type is 'other'."
             })
@@ -98,14 +107,14 @@ class ReportTask(models.Model):
     def is_complete(self) -> bool:
         if not self.audience_type:
             return False
-        if self.audience_type == self.AudienceType.OTHER and not self.audience_details.strip():
+        if self.audience_type == self.AudienceType.OTHER and not (self.audience_details or "").strip():
             return False
         if not self.audience_prompt_version:
             return False
         # Check if context has situation (required field)
         if not isinstance(self.context, dict) or not self.context.get("situation", "").strip():
             return False
-        if not self.outcome_summary.strip():
+        if not (self.outcome_summary or "").strip():
             return False
         action_count = self.key_actions.count()
         return 1 <= action_count <= 6
