@@ -80,6 +80,31 @@ class PlatformPolicyUpdateViewSet(viewsets.ModelViewSet):
 
     # --- Custom actions ---
 
+    @action(detail=False, methods=["get"], url_path="choices")
+    def choices(self, request):
+        return Response({
+            "platforms": [
+                {"value": "meta", "label": "Meta (Facebook/Instagram)"},
+                {"value": "google_ads", "label": "Google Ads"},
+                {"value": "tiktok", "label": "TikTok"},
+                {"value": "linkedin", "label": "LinkedIn"},
+                {"value": "twitter", "label": "Twitter/X"},
+                {"value": "snapchat", "label": "Snapchat"},
+                {"value": "pinterest", "label": "Pinterest"},
+                {"value": "other", "label": "Other"},
+            ],
+            "policy_change_types": [
+                {"value": "targeting_rules", "label": "Targeting Rules"},
+                {"value": "content_policy", "label": "Content Policy"},
+                {"value": "privacy_policy", "label": "Privacy Policy"},
+                {"value": "ad_placement", "label": "Ad Placement"},
+                {"value": "budget_policy", "label": "Budget Policy"},
+                {"value": "compliance_requirement", "label": "Compliance Requirement"},
+                {"value": "data_usage", "label": "Data Usage"},
+                {"value": "other", "label": "Other"},
+            ],
+        })
+
     @action(detail=True, methods=['post'], url_path='mark-mitigation-completed')
     def mark_mitigation_completed(self, request, pk=None):
         """Set mitigation_status to COMPLETED and record timestamp."""

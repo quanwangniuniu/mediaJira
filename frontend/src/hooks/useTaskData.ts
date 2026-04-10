@@ -68,7 +68,6 @@ export const useTaskData = () => {
       try {
         setLoading(true);
         setError(null);
-        console.log("Fetching tasks from backend...");
 
         // Fetch all pages of tasks
         let allTasks: any[] = [];
@@ -79,28 +78,10 @@ export const useTaskData = () => {
           let response: any;
 
           if (nextUrl) {
-            // #region agent log
-            if (ENABLE_INGEST) {
-              fetch(
-                "http://127.0.0.1:7242/ingest/d1c5a812-8fba-4f4b-91ec-d69ecfc99679",
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    runId: "usetaskdata-project-debug-v1",
-                    hypothesisId: "H3",
-                    location:
-                      "useTaskData.ts:fetchTasks:nextUrlRequest",
-                    message: "Requesting paginated next URL",
-                    data: { nextUrl, page },
-                    timestamp: Date.now(),
-                  }),
-                },
-              ).catch(() => {});
-            }
-            // #endregion
-            // If we have a next URL, use it directly
-            response = await api.get(nextUrl);
+            // Extract relative path+query to avoid mixed-content errors when
+            // the backend returns an absolute HTTP URL on an HTTPS page.
+            const parsed = new URL(nextUrl, window.location.origin);
+            response = await api.get(parsed.pathname + parsed.search);
           } else {
             // Otherwise, use TaskAPI with params and page number
             const requestParams = { ...params, page };
@@ -171,37 +152,8 @@ export const useTaskData = () => {
         } while (nextUrl);
 
         setTasks(allTasks);
-        console.log("Backend tasks fetched successfully:", allTasks.length);
         return allTasks;
       } catch (err) {
-        // #region agent log
-        if (ENABLE_INGEST) {
-          fetch(
-            "http://127.0.0.1:7242/ingest/d1c5a812-8fba-4f4b-91ec-d69ecfc99679",
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                runId: "usetaskdata-project-debug-v1",
-                hypothesisId: "H5",
-                location: "useTaskData.ts:fetchTasks:catch",
-                message: "fetchTasks threw error",
-                data: {
-                  message: (err as any)?.message ?? null,
-                  status: (err as any)?.response?.status ?? null,
-                  responseDetail:
-                    (err as any)?.response?.data?.detail ??
-                    (err as any)?.response?.data?.message ??
-                    null,
-                  responseDataType: typeof (err as any)?.response?.data,
-                },
-                timestamp: Date.now(),
-              }),
-            },
-          ).catch(() => {});
-        }
-        // #endregion
-        console.error("Backend fetch failed:", err);
         setError(err);
         throw err;
       } finally {
@@ -223,7 +175,6 @@ export const useTaskData = () => {
         return task;
       } catch (err) {
         setError(err);
-        console.error("Failed to fetch task:", err);
         throw err;
       } finally {
         setLoading(false);
@@ -239,30 +190,20 @@ export const useTaskData = () => {
       setError(null);
 
       try {
-        // Try to create the task normally first
-        console.log("Creating task via backend /api/tasks/ ...");
         const response = await TaskAPI.createTask(taskData);
         const newTask = response.data as TaskData;
 
         addTask(newTask);
-        console.log("Backend task created successfully:", newTask.id);
         return newTask;
       } catch (err) {
-        console.error(
-          "Backend task creation failed, trying /api/tasks/force-create/ ...",
-          err,
-        );
-
         // Use the fallback interface to try again
         try {
           const forceResponse = await TaskAPI.forceCreateTask(taskData);
           const newTask = forceResponse.data as TaskData;
 
           addTask(newTask);
-          console.log("Task created via force-create:", newTask.id);
           return newTask;
         } catch (forceErr) {
-          console.error("Force-create also failed:", forceErr);
           setError(forceErr);
           throw forceErr;
         }
@@ -275,10 +216,6 @@ export const useTaskData = () => {
 
   // Reload tasks function for manual refresh
   const reloadTasks = useCallback(async () => {
-    console.log(
-      "[useTaskData] Reloading tasks with last params...",
-      lastParams,
-    );
     await fetchTasks(lastParams);
   }, [fetchTasks, lastParams]);
 

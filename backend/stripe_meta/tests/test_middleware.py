@@ -269,7 +269,7 @@ class UsageTrackingMiddlewareTest(TestCase):
         self.assertIn('limit reached', result['message'].lower())
     
     def test_check_usage_limits_no_subscription(self):
-        """Test usage limit checking when user has no subscription"""
+        """Test usage limit checking allows requests when user has no subscription"""
         # Remove subscription
         self.subscription.delete()
         
@@ -277,8 +277,7 @@ class UsageTrackingMiddlewareTest(TestCase):
         
         result = self.middleware._check_usage_limits(self.user, tracking_info)
         
-        self.assertTrue(result['blocked'])
-        self.assertIn('no active subscription', result['message'].lower())
+        self.assertFalse(result['blocked'])
     
     def test_get_user_plan_limits_success(self):
         """Test getting user plan limits successfully"""

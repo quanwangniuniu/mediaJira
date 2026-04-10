@@ -21,5 +21,4 @@ class CalendarConfig(AppConfig):
     verbose_name = 'Calendar Management'
 
     def ready(self):
-        # Intentionally no-op: calendar creation is project-driven, not user-signals-driven.
-        return None
+        import calendars.signals  # noqa: F401 — registers Decision/Task signals

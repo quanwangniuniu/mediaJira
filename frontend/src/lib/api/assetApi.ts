@@ -106,7 +106,6 @@ export class AssetAPI {
       const response = await api.get('/api/assets/', { params });
       return response.data;
     } catch (error) {
-      console.error('Error fetching assets:', error);
       toast.error('Failed to load assets');
       throw error;
     }
@@ -118,7 +117,6 @@ export class AssetAPI {
       const response = await api.get(`/api/assets/${assetId}/`);
       return response.data;
     } catch (error) {
-      console.error('Error fetching asset:', error);
       toast.error('Failed to load asset details');
       throw error;
     }
@@ -128,10 +126,8 @@ export class AssetAPI {
   static async createAsset(data: CreateAssetRequest): Promise<Asset> {
     try {
       const response = await api.post('/api/assets/', data);
-      toast.success('Asset created successfully');
       return response.data;
     } catch (error) {
-      console.error('Error creating asset:', error);
       toast.error('Failed to create asset');
       throw error;
     }
@@ -143,7 +139,6 @@ export class AssetAPI {
       await api.delete(`/api/assets/${assetId}/`);
       toast.success('Asset deleted successfully');
     } catch (error) {
-      console.error('Error deleting asset:', error);
       toast.error('Failed to delete asset');
       throw error;
     }
@@ -167,7 +162,6 @@ export class AssetAPI {
       }
       return all;
     } catch (error) {
-      console.error('Error fetching asset versions:', error);
       toast.error('Failed to load asset versions');
       throw error;
     }
@@ -200,7 +194,6 @@ export class AssetAPI {
       toast.success('Asset version uploaded');
       return response.data;
     } catch (error) {
-      console.error('Error creating asset version:', error);
       toast.error('Failed to upload asset version');
       throw error;
     }
@@ -234,7 +227,6 @@ export class AssetAPI {
       toast.success('Version updated');
       return response.data;
     } catch (error) {
-      console.error('Error updating asset version:', error);
       toast.error('Failed to update version');
       throw error;
     }
@@ -246,7 +238,6 @@ export class AssetAPI {
       await api.delete(`/api/assets/${assetId}/versions/${versionId}/`);
       toast.success('Version deleted');
     } catch (error) {
-      console.error('Error deleting asset version:', error);
       toast.error('Failed to delete version');
       throw error;
     }
@@ -270,7 +261,6 @@ export class AssetAPI {
       }
       return all;
     } catch (error) {
-      console.error('Error fetching asset comments:', error);
       toast.error('Failed to load asset comments');
       throw error;
     }
@@ -282,7 +272,6 @@ export class AssetAPI {
       const response = await api.post(`/api/assets/${assetId}/comments/`, data);
       return response.data;
     } catch (error) {
-      console.error('Error creating asset comment:', error);
       toast.error('Failed to add comment');
       throw error;
     }
@@ -294,7 +283,6 @@ export class AssetAPI {
       const response = await api.get(`/api/assets/${assetId}/assignments/`);
       return response.data.results || [];
     } catch (error) {
-      console.error('Error fetching asset assignments:', error);
       toast.error('Failed to load asset assignments');
       throw error;
     }
@@ -310,7 +298,6 @@ export class AssetAPI {
       toast.success('Assignment created');
       return response.data;
     } catch (error) {
-      console.error('Error creating asset assignment:', error);
       toast.error('Failed to create assignment');
       throw error;
     }
@@ -334,7 +321,6 @@ export class AssetAPI {
       }
       return all;
     } catch (error) {
-      console.error('Error fetching asset history:', error);
       toast.error('Failed to load asset history');
       throw error;
     }
@@ -347,7 +333,6 @@ export class AssetAPI {
       toast.success('Version published');
       return response.data;
     } catch (error) {
-      console.error('Error publishing asset version:', error);
       toast.error('Failed to publish version');
       throw error;
     }
@@ -360,7 +345,6 @@ export class AssetAPI {
       toast.success('Asset submitted');
       return response.data;
     } catch (error) {
-      console.error('Error submitting asset:', error);
       toast.error('Failed to submit asset');
       throw error;
     }
@@ -386,7 +370,6 @@ export class AssetAPI {
       toast.success(actionToMsg[action] || 'Action completed');
       return response.data;
     } catch (error) {
-      console.error('Error performing review action:', error);
       toast.error('Failed to perform action');
       throw error;
     }
@@ -399,7 +382,6 @@ export class AssetAPI {
       toast.success('Review started');
       return response.data;
     } catch (error) {
-      console.error('Error starting review:', error);
       toast.error('Failed to start review');
       throw error;
     }
@@ -412,7 +394,6 @@ export class AssetAPI {
       toast.success('Asset approved');
       return response.data;
     } catch (error) {
-      console.error('Error approving asset:', error);
       toast.error('Failed to approve');
       throw error;
     }
@@ -425,7 +406,6 @@ export class AssetAPI {
       toast.success('Asset rejected');
       return response.data;
     } catch (error) {
-      console.error('Error rejecting asset:', error);
       toast.error('Failed to reject');
       throw error;
     }
@@ -438,7 +418,6 @@ export class AssetAPI {
       toast.success('Rejection acknowledged');
       return response.data;
     } catch (error) {
-      console.error('Error acknowledging rejection:', error);
       toast.error('Failed to acknowledge');
       throw error;
     }
@@ -451,7 +430,6 @@ export class AssetAPI {
       toast.success('Asset archived');
       return response.data;
     } catch (error) {
-      console.error('Error archiving asset:', error);
       toast.error('Failed to archive');
       throw error;
     }

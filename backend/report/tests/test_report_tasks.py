@@ -80,6 +80,22 @@ def authenticated_client(api_client, user):
 
 @pytest.mark.django_db
 class TestReportTaskAPI:
+    def test_create_report_task_with_only_task_defaults_optional_fields(
+        self, authenticated_client, task
+    ):
+        url = reverse("report:report-list-create")
+        payload = {
+            "task": task.id,
+        }
+
+        resp = authenticated_client.post(url, payload, format="json")
+        assert resp.status_code == status.HTTP_201_CREATED
+        assert resp.data["audience_type"] == "self"
+        assert resp.data["audience_details"] == ""
+        assert resp.data["outcome_summary"] == ""
+        assert resp.data["narrative_explanation"] == ""
+        assert resp.data["audience_prompt_version"] == "self_v1"
+
     def test_create_report_task_pins_prompt_version_and_returns_template_inline(
         self, authenticated_client, task
     ):

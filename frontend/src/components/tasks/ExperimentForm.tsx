@@ -164,7 +164,7 @@ export function ExperimentForm({
     <div className="space-y-4">
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          Hypothesis *
+          Hypothesis
         </label>
         <textarea
           value={localData.hypothesis || ""}
@@ -172,7 +172,6 @@ export function ExperimentForm({
           rows={3}
           className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
           placeholder="e.g., New video creative increases CTR by 10% compared to top-performing creative"
-          required
         />
       </div>
 
