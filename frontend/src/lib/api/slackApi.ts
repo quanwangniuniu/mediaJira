@@ -91,16 +91,10 @@ export const slackApi = {
 
     // Get notification preferences
     getPreferences: async (context?: SlackRequestContext): Promise<NotificationPreference[]> => {
-        const response = await api.get('/api/slack/preferences/', {
+        const response = await api.get<NotificationPreference[]>('/api/slack/preferences/', {
             params: buildSlackContextParams(context),
         });
-        // Helper to normalize the API response.
-        // Django REST Framework may return a paginated response ({ count: N, results: [...] })
-        // or a flat list. This ensures we always strictly return an array.
-        const data = response.data;
-        if (Array.isArray(data)) return data;
-        if (data && Array.isArray(data.results)) return data.results;
-        return [];
+        return response.data;
     },
 
     // Update a specific preference

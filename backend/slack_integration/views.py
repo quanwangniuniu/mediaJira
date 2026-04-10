@@ -247,6 +247,7 @@ class NotificationPreferenceViewSet(SlackManagementAccessMixin, viewsets.ModelVi
     """
     serializer_class = NotificationPreferenceSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
 
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)

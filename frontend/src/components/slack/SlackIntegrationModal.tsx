@@ -123,7 +123,7 @@ export default function SlackIntegrationModal({ isOpen, onClose }: SlackIntegrat
             });
 
             const prefsList = await slackApi.getPreferences(requestContext);
-            setPreferences(prefsList || []);
+            setPreferences(prefsList);
 
             if (connStatus.is_active) {
                 setLoadingChannels(true);

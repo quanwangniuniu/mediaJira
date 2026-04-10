@@ -66,11 +66,6 @@ class TestNotificationPreferenceApi(APITestCase):
         defaults.update(kwargs)
         return NotificationPreference.objects.create(**defaults)
 
-    def _get_list_results(self, response):
-        if isinstance(response.data, list):
-            return response.data
-        return response.data.get("results", [])
-
     def test_patch_rejects_task_status_for_non_status_event(self):
         preference = self._create_preference(NotificationPreference.EventType.TASK_CREATED)
 
@@ -129,12 +124,12 @@ class TestNotificationPreferenceApi(APITestCase):
         )
 
         response = self.client.get(reverse("slack-preferences-list"))
-        results = self._get_list_results(response)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["id"], manageable_preference.id)
-        self.assertEqual(results[0]["project"], self.project.id)
+        self.assertIsInstance(response.data, list)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["id"], manageable_preference.id)
+        self.assertEqual(response.data[0]["project"], self.project.id)
 
     def test_patch_outside_manageable_scope_returns_not_found(self):
         preference = self._create_preference(
@@ -211,10 +206,10 @@ class TestNotificationPreferenceApi(APITestCase):
             reverse("slack-preferences-list"),
             {"project_id": self.project.id},
         )
-        results = self._get_list_results(response)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["id"], shared_preference.id)
-        self.assertEqual(results[0]["project"], self.project.id)
-        self.assertFalse(results[0]["is_active"])
+        self.assertIsInstance(response.data, list)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["id"], shared_preference.id)
+        self.assertEqual(response.data[0]["project"], self.project.id)
+        self.assertFalse(response.data[0]["is_active"])
