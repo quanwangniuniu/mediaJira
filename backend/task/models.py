@@ -65,6 +65,7 @@ class Task(models.Model):
       help_text="The project that the task belongs to"
     )
     due_date = models.DateField(null=True, blank=True, help_text="The due date of the task") # TODO: Modify according to escalation requirements
+    planned_start_date = models.DateField(null=True, blank=True, help_text="The planned start date of the task")
     type = models.CharField(
       max_length=50,
       choices=[

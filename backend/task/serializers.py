@@ -67,7 +67,7 @@ class TaskSerializer(serializers.ModelSerializer):
             'id', 'summary', 'description', 'status', 'type',
             'owner', 'owner_id', 'project', 'project_id',
             'current_approver', 'current_approver_id',
-            'content_type', 'object_id', 'start_date', 'due_date',
+            'content_type', 'object_id', 'start_date', 'due_date', 'planned_start_date',
             'is_subtask', 'parent_relationship', 'order_in_project',
             'anomaly_status', 'approval_chain_progress',
             # Revision tracking fields for SMP-501
