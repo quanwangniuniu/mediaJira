@@ -531,10 +531,6 @@ export function MeetingSummaryPanel({
   />
 </section>
 
-            <section>
-              <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-                Participants
-              </h3>
             <PanelSection title="Participants" description="Who is in this meeting.">
               {loadingPeople ? (
                 <p className="text-xs text-slate-500">Loading…</p>
