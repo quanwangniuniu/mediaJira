@@ -7,7 +7,9 @@ from meetings.models import Meeting, AgendaItem, ParticipantLink, ActionItem
 
 
 def _meeting(project, **kwargs):
-    defaults = dict(title="Test Meeting", meeting_type="planning", objective="Some objective")
+    from meetings.services import ensure_meeting_type_definition
+    type_def = ensure_meeting_type_definition(project, "planning")
+    defaults = dict(title="Test Meeting", type_definition=type_def, objective="Some objective")
     defaults.update(kwargs)
     return Meeting.objects.create(project=project, **defaults)
 
@@ -37,7 +39,7 @@ class TestMeetingLifecycleAPI(TestCase):
         return f"/api/projects/{self.project.id}/meetings/{meeting.id}/lifecycle/transition/"
 
     # ------------------------------------------------------------------
-    # GET /lifecycle/  �?current state + available transitions
+    # GET /lifecycle/  - current state + available transitions
     # ------------------------------------------------------------------
 
     def test_lifecycle_returns_current_state_and_transitions(self):

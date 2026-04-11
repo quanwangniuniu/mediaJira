@@ -111,6 +111,7 @@ class MeetingSerializer(serializers.ModelSerializer):
             "generated_tasks_count",
             "related_decisions",
             "related_tasks",
+            "status",
         ]
 
     def to_representation(self, instance):
