@@ -2,7 +2,7 @@ import json
 import uuid
 from unittest.mock import patch, MagicMock
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APITestCase, APIClient
 from rest_framework import status
 
@@ -1007,6 +1007,7 @@ class CalendarAgentTests(TestCase):
         error_chunks = [c for c in chunks if c['type'] == 'error']
         self.assertTrue(len(error_chunks) > 0)
 
+    @override_settings(DIFY_CALENDAR_API_KEY='')
     @patch.dict('os.environ', {}, clear=False)
     def test_answer_calendar_question_no_api_key_yields_error(self):
         """Missing DIFY_CALENDAR_API_KEY yields a configuration error chunk."""
