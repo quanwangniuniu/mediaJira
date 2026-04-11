@@ -167,7 +167,7 @@ const DecisionEditModal = ({
 
   const validateLocal = useCallback(
     (signalCount: number) => validateDecisionDraft(
-      { title, contextSummary, reasoning, riskLevel, confidenceScore, options },
+      { title, contextSummary, reasoning, riskLevel: riskLevel || null, confidenceScore, options },
       signalCount,
     ),
     [confidenceScore, contextSummary, options, reasoning, riskLevel, title],
