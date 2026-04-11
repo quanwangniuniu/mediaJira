@@ -21,7 +21,7 @@ export default function WhyMarketingSimplifiedSection() {
                 <div className="flex-1">
                   <h3 className="text-xl font-bold text-gray-900 mb-2">Designer</h3>
                   <p className="text-gray-700 italic text-sm leading-relaxed">
-                    &quot;My creative files get lost in endless email threads, and approvals take forever.&quot;
+                    "My creative files get lost in endless email threads, and approvals take forever."
                   </p>
                 </div>
                 <div className="w-44 h-44 flex-shrink-0 overflow-hidden">
@@ -47,7 +47,7 @@ export default function WhyMarketingSimplifiedSection() {
                 <div className="flex-1">
                   <h3 className="text-xl font-bold text-gray-900 mb-2">Senior Media Buyer</h3>
                   <p className="text-gray-700 italic text-sm leading-relaxed">
-                    &quot;Budgets are tracked in spreadsheets, and I never know if the latest version is approved.&quot;
+                    "Budgets are tracked in spreadsheets, and I never know if the latest version is approved."
                   </p>
                 </div>
               </div>
@@ -66,7 +66,7 @@ export default function WhyMarketingSimplifiedSection() {
                 <div className="flex-1">
                   <h3 className="text-xl font-bold text-gray-900 mb-2">Specialist Media Buyer</h3>
                   <p className="text-gray-700 italic text-sm leading-relaxed">
-                    &quot;Managing Google Ads, TikTok, and Facebook separately wastes time and causes errors.&quot;
+                    "Managing Google Ads, TikTok, and Facebook separately wastes time and causes errors."
                   </p>
                 </div>
               </div>
@@ -78,7 +78,7 @@ export default function WhyMarketingSimplifiedSection() {
                 <div className="flex-1">
                   <h3 className="text-xl font-bold text-gray-900 mb-2">Data Analyst</h3>
                   <p className="text-gray-700 italic text-sm leading-relaxed">
-                    &quot;I spend days collecting data from different tools just to prepare a report.&quot;
+                    "I spend days collecting data from different tools just to prepare a report."
                   </p>
                 </div>
                 <div className="w-44 h-44 flex-shrink-0 overflow-hidden">
@@ -112,7 +112,7 @@ export default function WhyMarketingSimplifiedSection() {
                 <div className="flex-1">
                   <h3 className="text-lg md:text-xl font-bold text-gray-900 mb-2">Designer</h3>
                   <p className="text-gray-700 italic text-xs md:text-sm leading-relaxed">
-                    &quot;My creative files get lost in endless email threads, and approvals take forever.&quot;
+                    "My creative files get lost in endless email threads, and approvals take forever."
                   </p>
                 </div>
                 <div className="w-20 h-20 md:w-24 md:h-24 flex-shrink-0 overflow-hidden">
@@ -138,7 +138,7 @@ export default function WhyMarketingSimplifiedSection() {
                 <div className="flex-1">
                   <h3 className="text-lg md:text-xl font-bold text-gray-900 mb-2">Senior Media Buyer</h3>
                   <p className="text-gray-700 italic text-xs md:text-sm leading-relaxed">
-                    &quot;Budgets are tracked in spreadsheets, and I never know if the latest version is approved.&quot;
+                    "Budgets are tracked in spreadsheets, and I never know if the latest version is approved."
                   </p>
                 </div>
               </div>
@@ -157,7 +157,7 @@ export default function WhyMarketingSimplifiedSection() {
                 <div className="flex-1">
                   <h3 className="text-lg md:text-xl font-bold text-gray-900 mb-2">Specialist Media Buyer</h3>
                   <p className="text-gray-700 italic text-xs md:text-sm leading-relaxed">
-                    &quot;Managing Google Ads, TikTok, and Facebook separately wastes time and causes errors.&quot;
+                    "Managing Google Ads, TikTok, and Facebook separately wastes time and causes errors."
                   </p>
                 </div>
               </div>
@@ -169,7 +169,7 @@ export default function WhyMarketingSimplifiedSection() {
                 <div className="flex-1">
                   <h3 className="text-lg md:text-xl font-bold text-gray-900 mb-2">Data Analyst</h3>
                   <p className="text-gray-700 italic text-xs md:text-sm leading-relaxed">
-                    &quot;I spend days collecting data from different tools just to prepare a report.&quot;
+                    "I spend days collecting data from different tools just to prepare a report."
                   </p>
                 </div>
                 <div className="w-20 h-20 md:w-24 md:h-24 flex-shrink-0 overflow-hidden">

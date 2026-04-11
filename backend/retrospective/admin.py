@@ -2,8 +2,9 @@
 Django admin interface for retrospective models
 """
 from django.contrib import admin
-from django.utils.html import format_html, format_html_join
+from django.utils.html import format_html
 from django.urls import reverse
+from django.utils.safestring import mark_safe
 
 from .models import RetrospectiveTask, Insight, RetrospectiveStatus, InsightSeverity
 
@@ -154,10 +155,11 @@ class InsightAdmin(admin.ModelAdmin):
     def suggested_actions(self, obj):
         """Display suggested actions as formatted list"""
         if obj.suggested_actions:
-            return format_html(
-                "<ul>{}</ul>",
-                format_html_join("", "<li>{}</li>", ((action,) for action in obj.suggested_actions)),
-            )
+            actions_html = '<ul>'
+            for action in obj.suggested_actions:
+                actions_html += f'<li>{action}</li>'
+            actions_html += '</ul>'
+            return mark_safe(actions_html)
         return 'No actions suggested'
     suggested_actions.short_description = 'Suggested Actions'
 

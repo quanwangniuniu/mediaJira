@@ -77,7 +77,7 @@ def upload_video_ad(request):
         # Generate MD5 hash
         file_content = file.read()
         file.seek(0)  # Reset file pointer
-        md5_hash = hashlib.md5(file_content, usedforsecurity=False).hexdigest()
+        md5_hash = hashlib.md5(file_content).hexdigest()
         
         # Check for duplicate files
         existing_creative = TikTokCreative.objects.filter(md5=md5_hash).first()
@@ -293,7 +293,7 @@ def upload_image_ad(request):
         # Generate MD5 hash
         file_content = file.read()
         file.seek(0)  # Reset file pointer
-        md5_hash = hashlib.md5(file_content, usedforsecurity=False).hexdigest()
+        md5_hash = hashlib.md5(file_content).hexdigest()
         
         # Check for duplicate files
         existing_creative = TikTokCreative.objects.filter(md5=md5_hash).first()
