@@ -464,10 +464,6 @@ export function DecisionEditor() {
           isSelected: selectedOption === o.id,
           order: index,
         })),
-        signals: signals.map((s) => ({
-          displayTextOverride: `${s.label}: ${s.value}`,
-          comparison: "NONE",
-        })),
       }
 
       let id = editingDecisionId
@@ -718,16 +714,15 @@ export function DecisionEditor() {
   // ─── Edit View ────────────────────────────────────────
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 relative">
-      {focusMode && (
-        <div
-          className="absolute inset-0 bg-black/30 z-10 pointer-events-none"
-          aria-hidden="true"
-        />
-      )}
+    <div className="flex-1 overflow-y-auto p-6">
       <div className="max-w-4xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div
+          className={cn(
+            "flex items-center justify-between",
+            focusMode && "relative z-20"
+          )}
+        >
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="sm" onClick={() => setViewMode("list")} className="text-muted-foreground">
               <ChevronLeft className="w-4 h-4 mr-1" />
@@ -778,6 +773,14 @@ export function DecisionEditor() {
           )}
         </div>
 
+        <div className="relative">
+          {focusMode && (
+            <div
+              className="pointer-events-none absolute inset-0 z-10 bg-black/30"
+              aria-hidden="true"
+            />
+          )}
+          <div className="relative z-[11] space-y-6">
         {/* Validation Status Bar */}
         <Card className="bg-card border-border">
           <CardContent className="py-3 px-4">
@@ -1203,6 +1206,8 @@ export function DecisionEditor() {
             </CardContent>
           </Card>
         </div>
+          </div>
+        </div>
       </div>
 
       <DecisionCommitConfirmationModal
@@ -1218,7 +1223,7 @@ export function DecisionEditor() {
         signals={signals.map((s, i) => ({
           id: i,
           displayText: `${s.label}: ${s.value}`,
-        } as any))}
+        }))}
         confirmations={commitConfirmations}
         onToggleConfirmation={(key) =>
           setCommitConfirmations((prev) => ({ ...prev, [key]: !prev[key] }))

@@ -396,14 +396,8 @@ const DecisionPage = () => {
     if (!ok) return;
     setCommitModalOpen(true);
     setCommitConfirmations({ alternatives: false, risk: false, review: false });
-    setLoadingCommitDetails(true);
-    try {
-      // `commitSignals` already loaded during validation to enforce signal requirement.
-    } catch (error) {
-      console.warn('Failed to load signals for commit modal:', error);
-    } finally {
-      setLoadingCommitDetails(false);
-    }
+    // commitSignals already populated during validateBeforeCommit.
+    setLoadingCommitDetails(false);
   };
 
   const handleConfirmCommit = async () => {
@@ -556,9 +550,6 @@ const DecisionPage = () => {
     <Layout>
       <ProtectedRoute>
         <div className="flex h-full flex-col bg-gray-50 relative">
-          {focusMode && (
-            <div className="fixed inset-0 bg-black/50 z-[10] pointer-events-none" aria-hidden="true" />
-          )}
           <DecisionWorkbenchHeader
             projectLabel={projectLabel}
             status={status}
@@ -577,7 +568,14 @@ const DecisionPage = () => {
             titleError={errors.title}
             focusMode={focusMode}
           />
-          <div className="flex flex-1 min-h-0">
+          <div className="relative flex min-h-0 flex-1">
+            {focusMode && (
+              <div
+                className="pointer-events-none absolute inset-0 z-[10] bg-black/50"
+                aria-hidden="true"
+              />
+            )}
+            <div className="relative z-[11] flex min-h-0 flex-1">
             <div
               id="decision-field-signals"
               className={`h-full w-[24%] min-w-[240px] max-w-[340px] transition-all ${
@@ -607,6 +605,7 @@ const DecisionPage = () => {
                   />
                 </div>
               </div>
+            </div>
             </div>
           </div>
         </div>
