@@ -6,6 +6,7 @@ from meetings.views import (
     AgendaItemViewSet,
     ParticipantLinkViewSet,
     ArtifactLinkViewSet,
+    ActionItemViewSet,
     MeetingDocumentAPIView,
 )
 
@@ -31,6 +32,11 @@ router.register(
     ArtifactLinkViewSet,
     basename="project-meeting-artifacts",
 )
+router.register(
+    r"projects/(?P<project_id>\d+)/meetings/(?P<meeting_id>\d+)/action-items",
+    ActionItemViewSet,
+    basename="project-meeting-action-items",
+)
 
 
 urlpatterns = [
@@ -39,6 +45,5 @@ urlpatterns = [
         MeetingDocumentAPIView.as_view(),
     ),
     path("", include(router.urls)),
-    path("meetings/", include("meetings.template_urls")),
 ]
 

@@ -490,4 +490,25 @@ export const MeetingsAPI = {
     );
     return response.data;
   },
+  async getLifecycle(
+  projectId: number,
+  meetingId: number,
+): Promise<{ status: string; available_transitions: string[] }> {
+  const response = await api.get(
+    `${basePath(projectId)}/${meetingId}/lifecycle/`,
+  );
+  return response.data as { status: string; available_transitions: string[] };
+},
+
+async executeTransition(
+  projectId: number,
+  meetingId: number,
+  toState: string,
+): Promise<{ status: string; available_transitions: string[] }> {
+  const response = await api.post(
+    `${basePath(projectId)}/${meetingId}/lifecycle/transition/`,
+    { to_state: toState },
+  );
+  return response.data as { status: string; available_transitions: string[] };
+},
 };
