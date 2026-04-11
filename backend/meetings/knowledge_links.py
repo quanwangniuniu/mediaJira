@@ -108,7 +108,7 @@ def generated_decisions_payload(meeting: Any) -> list[dict[str, Any]]:
 
     project_id = meeting.project_id
     origins = meeting.decision_origins.all()
-    decisions = [o.decision for o in origins]
+    decisions = [o.decision for o in origins if not o.decision.is_deleted]
     decisions.sort(key=lambda d: d.id)
     return [serialize_linked_decision(d, project_id) for d in decisions]
 
@@ -129,7 +129,9 @@ def related_decisions_payload(meeting: Any) -> list[dict[str, Any]]:
     """
 
     project_id = meeting.project_id
-    generated_ids = {o.decision_id for o in meeting.decision_origins.all()}
+    generated_ids = {
+        o.decision_id for o in meeting.decision_origins.all() if not o.decision.is_deleted
+    }
     artifact_ids: list[int] = []
     for link in meeting.artifact_links.all():
         if _normalize_artifact_type(link.artifact_type) == "decision" and link.artifact_id:
@@ -142,7 +144,9 @@ def related_decisions_payload(meeting: Any) -> list[dict[str, Any]]:
     from decision.models import Decision
 
     out: list[dict[str, Any]] = []
-    for d in Decision.objects.filter(id__in=artifact_ids, project_id=project_id).order_by("id"):
+    for d in Decision.objects.filter(
+        id__in=artifact_ids, project_id=project_id, is_deleted=False
+    ).order_by("id"):
         out.append(serialize_linked_decision(d, project_id))
     return out
 

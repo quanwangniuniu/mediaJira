@@ -94,7 +94,6 @@ export default function NewBudgetRequestForm({
         // Filter budget pools based on selected currency and ad channel
         filterBudgetPools(pools, budgetData.currency, budgetData.ad_channel);
       } catch (error) {
-        console.error('Error fetching budget pools:', error);
         setBudgetPools([]);
         setFilteredBudgetPools([]);
         // Clear budget pool selection on error
@@ -163,7 +162,6 @@ export default function NewBudgetRequestForm({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     // Form validation is handled by parent component
-    console.log('Budget request form submitted');
   };
 
   return (
@@ -171,7 +169,7 @@ export default function NewBudgetRequestForm({
       {/* Amount */}
       <div>
         <label htmlFor="budget-amount" className="block text-sm font-medium text-gray-700 mb-1">
-          Amount *
+          Amount
         </label>
         <input
           id="budget-amount"
@@ -181,31 +179,22 @@ export default function NewBudgetRequestForm({
           min="0.01"
           value={budgetData.amount || ''}
           onChange={(e) => handleInputChange('amount', e.target.value)}
-          className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-            errors.amount ? 'border-red-500' : 'border-gray-300'
-          }`}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
           placeholder="Enter amount (e.g., 1000.00)"
-          required
         />
-        {errors.amount && (
-          <p className="text-red-500 text-sm mt-1">{errors.amount}</p>
-        )}
       </div>
 
       {/* Currency */}
       <div>
         <label htmlFor="budget-currency" className="block text-sm font-medium text-gray-700 mb-1">
-          Currency *
+          Currency
         </label>
         <select
           id="budget-currency"
           name="currency"
           value={budgetData.currency || ''}
           onChange={(e) => handleInputChange('currency', e.target.value)}
-          className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-            errors.currency ? 'border-red-500' : 'border-gray-300'
-          }`}
-          required
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
         >
           <option value="" disabled>
             Select currency
@@ -213,25 +202,19 @@ export default function NewBudgetRequestForm({
           {/* TODO: display all currencies from the database, hardcoded currencies for now */}
           <option value="AUD">AUD - Australian Dollar</option>
         </select>
-        {errors.currency && (
-          <p className="text-red-500 text-sm mt-1">{errors.currency}</p>
-        )}
       </div>
 
       {/* Ad Channel */}
       <div>
         <label htmlFor="budget-ad-channel" className="block text-sm font-medium text-gray-700 mb-1">
-          Advertising Channel *
+          Advertising Channel
         </label>
         <select
           id="budget-ad-channel"
           name="ad_channel"
           value={budgetData.ad_channel || ''}
           onChange={(e) => handleInputChange('ad_channel', Number(e.target.value))}
-          className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-            errors.ad_channel ? 'border-red-500' : 'border-gray-300'
-          }`}
-          required
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
           disabled={loadingAdChannels}
         >
           <option value='' disabled>
@@ -246,9 +229,6 @@ export default function NewBudgetRequestForm({
             <option value="" disabled>No ad channels found for this project</option>
           )}
         </select>
-        {errors.ad_channel && (
-          <p className="text-red-500 text-sm mt-1">{errors.ad_channel}</p>
-        )}
       </div>
 
       {/* Notes */}
@@ -270,17 +250,14 @@ export default function NewBudgetRequestForm({
       {/* Budget Pool Selection */}
       <div>
         <label htmlFor="budget-pool" className="block text-sm font-medium text-gray-700 mb-1">
-          Budget Pool *
+          Budget Pool
         </label>
         <select
           id="budget-pool"
           name="budget_pool"
           value={budgetData.budget_pool || ''}
           onChange={(e) => handleInputChange('budget_pool', Number(e.target.value))}
-          className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-            errors.budget_pool ? 'border-red-500' : 'border-gray-300'
-          }`}
-          required
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
           disabled={loadingBudgetPools || !budgetData.currency || !budgetData.ad_channel}
         >
           <option value='' disabled>
@@ -298,9 +275,6 @@ export default function NewBudgetRequestForm({
             </option>
           ))}
         </select>
-        {errors.budget_pool && (
-          <p className="text-red-500 text-sm mt-1">{errors.budget_pool}</p>
-        )}
         {budgetData.currency && budgetData.ad_channel && filteredBudgetPools.length === 0 && !loadingBudgetPools && (
           <p className="text-amber-600 text-sm mt-1">
             No budget pool found for this currency and ad channel combination. Please create a budget pool first.

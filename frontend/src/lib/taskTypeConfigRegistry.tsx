@@ -34,6 +34,7 @@ const defaultReportContext = {
 
 export type TaskTypeConfigStatic = {
   contentType: string;
+  successMessage: string;
   api: (payload: any) => Promise<unknown>;
   formComponent: ComponentType<any>;
   requiredFields: string[];
@@ -41,22 +42,19 @@ export type TaskTypeConfigStatic = {
     formData: any,
     taskData: { project_id?: number; summary?: string; current_approver_id?: number | null },
     createdTask: { id: number }
-  ) => Record<string, unknown>;
+  ) => Record<string, unknown> | null;
 };
 
 export const TASK_TYPE_CONFIG_STATIC: Record<string, TaskTypeConfigStatic> = {
   budget: {
     contentType: "budgetrequest",
+    successMessage: "Budget Request created successfully",
     api: BudgetAPI.createBudgetRequest,
     formComponent: NewBudgetRequestForm,
-    requiredFields: ["amount", "currency", "ad_channel", "budget_pool"],
+    requiredFields: [],
     getPayload: (formData, taskData, createdTask) => {
-      if (!taskData.current_approver_id) {
-        throw new Error("Approver is required for budget request");
-      }
-      if (!formData.budget_pool) {
-        throw new Error("Budget pool is required for budget request");
-      }
+      if (!taskData.current_approver_id) return null;
+      if (!formData.budget_pool) return null;
       return {
         task: createdTask.id,
         amount: formData.amount,
@@ -70,6 +68,7 @@ export const TASK_TYPE_CONFIG_STATIC: Record<string, TaskTypeConfigStatic> = {
   },
   asset: {
     contentType: "asset",
+    successMessage: "Asset task created successfully",
     api: AssetAPI.createAsset,
     formComponent: NewAssetForm,
     requiredFields: ["tags"],
@@ -91,29 +90,26 @@ export const TASK_TYPE_CONFIG_STATIC: Record<string, TaskTypeConfigStatic> = {
   },
   retrospective: {
     contentType: "retrospectivetask",
+    successMessage: "Retrospective created successfully",
     api: RetrospectiveAPI.createRetrospective,
     formComponent: NewRetrospectiveForm,
-    requiredFields: [
-      "campaign",
-      "decision",
-      "confidence_level",
-      "primary_assumption",
-    ],
+    requiredFields: [],
     getPayload: (formData, taskData, createdTask) => ({
       campaign: formData.campaign || taskData.project_id?.toString(),
       scheduled_at: formData.scheduled_at || new Date().toISOString(),
       status: formData.status || "scheduled",
       decision: formData.decision || "",
-      confidence_level: Number(formData.confidence_level) as 1 | 2 | 3 | 4 | 5,
+      confidence_level: formData.confidence_level || undefined,
       primary_assumption: formData.primary_assumption || "",
       key_risk_ignore: formData.key_risk_ignore?.trim() || undefined,
     }),
   },
   scaling: {
     contentType: "scalingplan",
+    successMessage: "Scaling Plan created successfully",
     api: OptimizationScalingAPI.createScalingPlan,
     formComponent: ScalingPlanForm,
-    requiredFields: ["strategy"],
+    requiredFields: [],
     getPayload: (formData, _taskData, createdTask) => {
       if (!createdTask?.id) {
         throw new Error("Task ID is required to create scaling plan");
@@ -132,6 +128,7 @@ export const TASK_TYPE_CONFIG_STATIC: Record<string, TaskTypeConfigStatic> = {
   },
   alert: {
     contentType: "alerttask",
+    successMessage: "Alert task created successfully",
     api: AlertingAPI.createAlertTask,
     formComponent: AlertTaskForm,
     requiredFields: ["alert_type", "severity"],
@@ -181,22 +178,13 @@ export const TASK_TYPE_CONFIG_STATIC: Record<string, TaskTypeConfigStatic> = {
   },
   communication: {
     contentType: "clientcommunication",
+    successMessage: "Client Communication task created successfully",
     api: ClientCommunicationAPI.create,
     formComponent: NewClientCommunicationForm,
-    requiredFields: ["communication_type", "required_actions", "impacted_areas"],
+    requiredFields: [],
     getPayload: (formData, _taskData, createdTask) => {
-      if (!createdTask?.id) {
-        throw new Error("Task ID is required to create client communication");
-      }
-      if (!formData.impacted_areas || formData.impacted_areas.length === 0) {
-        throw new Error("At least one impacted area is required");
-      }
-      if (!formData.communication_type) {
-        throw new Error("Communication type is required");
-      }
-      if (!formData.required_actions || formData.required_actions.trim() === "") {
-        throw new Error("Required actions is required");
-      }
+      if (!createdTask?.id) return null;
+      if (!formData.communication_type) return null;
       return {
         task: createdTask.id,
         communication_type: formData.communication_type,
@@ -213,9 +201,10 @@ export const TASK_TYPE_CONFIG_STATIC: Record<string, TaskTypeConfigStatic> = {
   },
   experiment: {
     contentType: "experiment",
+    successMessage: "Experiment task created successfully",
     api: ExperimentAPI.createExperiment,
     formComponent: ExperimentForm,
-    requiredFields: ["hypothesis"],
+    requiredFields: [],
     getPayload: (formData, taskData, createdTask) => ({
       task: createdTask.id,
       name: taskData.summary || "Experiment task",
@@ -231,6 +220,7 @@ export const TASK_TYPE_CONFIG_STATIC: Record<string, TaskTypeConfigStatic> = {
   },
   optimization: {
     contentType: "optimization",
+    successMessage: "Optimization task created successfully",
     api: OptimizationAPI.createOptimization,
     formComponent: OptimizationForm,
     requiredFields: [],
@@ -241,9 +231,10 @@ export const TASK_TYPE_CONFIG_STATIC: Record<string, TaskTypeConfigStatic> = {
   },
   report: {
     contentType: "reporttask",
+    successMessage: "Report task created successfully",
     api: ReportAPI.createReport,
     formComponent: ReportForm,
-    requiredFields: ["outcome_summary"],
+    requiredFields: [],
     getPayload: (formData, _taskData, createdTask) => ({
       task: createdTask.id,
       audience_type: formData.audience_type,
@@ -256,17 +247,20 @@ export const TASK_TYPE_CONFIG_STATIC: Record<string, TaskTypeConfigStatic> = {
   },
   platform_policy_update: {
     contentType: "platformpolicyupdate",
+    successMessage: "Platform Policy Update created successfully",
     api: PolicyAPI.create,
     formComponent: NewPlatformPolicyUpdateForm,
-    requiredFields: ["platform", "policy_change_type", "policy_description", "immediate_actions_required"],
+    requiredFields: [],
     getPayload: (formData, _taskData, createdTask) => {
+      if (!createdTask?.id) return null;
+      if (!formData.platform) return null;
       const parseCommaSeparated = (val: string) =>
         (val || "")
           .split(",")
           .map((s: string) => s.trim())
           .filter(Boolean);
       return {
-        task_id: createdTask.id,
+        task: createdTask.id,
         platform: formData.platform,
         policy_change_type: formData.policy_change_type,
         policy_description: formData.policy_description,
