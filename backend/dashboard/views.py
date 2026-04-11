@@ -8,7 +8,9 @@ from django.db.models import Count, Q
 from django.utils import timezone
 from datetime import timedelta
 from task.models import Task, ApprovalRecord, TaskComment
-from .serializers import DashboardSummarySerializer
+from decision.models import Decision
+from spreadsheet.models import Spreadsheet
+from .serializers import DashboardSummarySerializer, ProjectWorkspaceDashboardSerializer
 
 
 logger = logging.getLogger(__name__)
@@ -32,13 +34,11 @@ def disable_tracing(func):
         return func
 
     def wrapper(*args, **kwargs):
-        # Suppress tracing by attaching a context with an invalid span
         ctx = set_span_in_context(INVALID_SPAN)
         token = attach(ctx)
         try:
             return func(*args, **kwargs)
         finally:
-            # Restore previous tracing context
             detach(token)
     return wrapper
 
@@ -58,7 +58,6 @@ class DashboardSummaryView(APIView):
     @disable_tracing
     def get(self, request):
         try:
-            # Get optional project filter and validate as positive integer
             project_id_param = request.query_params.get('project_id')
             project_id = None
             if project_id_param is not None:
@@ -75,12 +74,10 @@ class DashboardSummaryView(APIView):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
-            # Build base queryset
             queryset = Task.objects.all()
             if project_id is not None:
                 queryset = queryset.filter(project_id=project_id)
 
-            # Calculate time metrics
             now = timezone.now()
             seven_days_ago = now - timedelta(days=7)
             seven_days_ahead = now + timedelta(days=7)
@@ -104,10 +101,8 @@ class DashboardSummaryView(APIView):
                 ).count()
             }
 
-            # Status overview
             total_work_items = queryset.count()
 
-            # Map statuses to Jira-like display names
             status_mapping = {
                 Task.Status.DRAFT: ('TO_DO', 'To Do', '#94A3B8'),
                 Task.Status.SUBMITTED: ('TO_DO', 'To Do', '#94A3B8'),
@@ -118,7 +113,6 @@ class DashboardSummaryView(APIView):
                 Task.Status.CANCELLED: ('CANCELLED', 'Cancelled', '#6B7280'),
             }
 
-            # Count by display status (grouped)
             status_counts = {}
             for task_status in queryset.values('status').annotate(count=Count('status')):
                 db_status = task_status['status']
@@ -135,30 +129,22 @@ class DashboardSummaryView(APIView):
                 status_counts[display_status]['count'] += count
 
             status_breakdown = list(status_counts.values())
-
             status_overview = {
                 'total_work_items': total_work_items,
                 'breakdown': status_breakdown
             }
 
-            # Priority breakdown
             priority_counts = queryset.values('priority').annotate(count=Count('priority')).order_by('priority')
-            priority_breakdown = []
-
-            # Ensure all priorities are represented
             priority_order = [Task.Priority.HIGHEST, Task.Priority.HIGH, Task.Priority.MEDIUM, Task.Priority.LOW, Task.Priority.LOWEST]
             priority_count_dict = {item['priority']: item['count'] for item in priority_counts}
-
+            priority_breakdown = []
             for priority in priority_order:
                 priority_breakdown.append({
                     'priority': priority,
                     'count': priority_count_dict.get(priority, 0)
                 })
 
-            # Types of work breakdown
             type_counts = queryset.values('type').annotate(count=Count('type')).order_by('-count')
-
-            # Map type codes to display names
             type_display_names = {
                 'budget': 'Budget',
                 'asset': 'Asset',
@@ -166,13 +152,11 @@ class DashboardSummaryView(APIView):
                 'report': 'Report',
                 'execution': 'Execution'
             }
-
             types_of_work = []
             for type_item in type_counts:
                 type_code = type_item['type']
                 count = type_item['count']
                 percentage = (count / total_work_items * 100) if total_work_items > 0 else 0
-
                 types_of_work.append({
                     'type': type_code,
                     'display_name': type_display_names.get(type_code, type_code.title()),
@@ -180,10 +164,8 @@ class DashboardSummaryView(APIView):
                     'percentage': round(percentage, 1)
                 })
 
-            # Recent activity feed
             recent_activity = self._get_recent_activity(project_id, limit=20)
 
-            # Build response
             dashboard_data = {
                 'time_metrics': time_metrics,
                 'status_overview': status_overview,
@@ -196,7 +178,6 @@ class DashboardSummaryView(APIView):
             return Response(serializer.data, status=status.HTTP_200_OK)
 
         except Exception:
-            # Log full error server-side but return a sanitized message to clients
             logger.exception("Unexpected error in DashboardSummaryView")
             return Response(
                 {'detail': 'Internal server error. Please try again later.'},
@@ -205,22 +186,17 @@ class DashboardSummaryView(APIView):
 
     def _get_recent_activity(self, project_id, limit=20):
         """
-        Gather recent activity from multiple sources and unify them
-        Returns a list of activity events sorted by timestamp
+        Gather recent activity from multiple sources and unify them.
 
         CRITICAL OPTIMIZATION: Direct project_id filtering instead of subqueries
         - Much faster than task__in=queryset which creates expensive subqueries
         - Uses indexed project_id field for fast lookups
         """
         activities = []
+        limit = min(limit, 20)  # SAFETY LOCK 1: hard cap at 20
 
-        # SAFETY LOCK 1: Hard cap at 20 items - never allow frontend to request more
-        limit = min(limit, 20)
-
-        # Build filter for project_id (if provided)
         task_filter = Q(project_id=project_id) if project_id else Q()
 
-        # 1. Task creations - direct project filtering + time sort
         recent_tasks = Task.objects.filter(task_filter).select_related('owner').order_by('-created_at')[:limit]
         for task in recent_tasks:
             if task.owner:
@@ -233,7 +209,6 @@ class DashboardSummaryView(APIView):
                     'human_readable': self._get_human_readable_time(task.created_at)
                 })
 
-        # 2. Approval/Rejection events - direct project filtering via task__project_id
         approval_filter = Q(task__project_id=project_id) if project_id else Q()
         approval_records = ApprovalRecord.objects.filter(
             approval_filter
@@ -251,7 +226,6 @@ class DashboardSummaryView(APIView):
                 'is_approved': record.is_approved
             })
 
-        # 3. Comments - direct project filtering via task__project_id
         comment_filter = Q(task__project_id=project_id) if project_id else Q()
         comments = TaskComment.objects.filter(
             comment_filter
@@ -268,15 +242,13 @@ class DashboardSummaryView(APIView):
                 'comment_body': comment.body[:100] if len(comment.body) > 100 else comment.body
             })
 
-        # Sort all activities by timestamp (most recent first) and limit
         activities.sort(key=lambda x: x['timestamp'], reverse=True)
         return activities[:limit]
 
     def _get_human_readable_time(self, timestamp):
-        """Convert timestamp to human-readable format (e.g., 'less than a minute ago')"""
+        """Convert timestamp to human-readable format"""
         now = timezone.now()
         diff = now - timestamp
-
         seconds = diff.total_seconds()
 
         if seconds < 60:
@@ -296,3 +268,84 @@ class DashboardSummaryView(APIView):
         else:
             months = int(seconds / 2592000)
             return f'{months} month{"s" if months > 1 else ""} ago'
+
+
+# ── SMP-472: Project Workspace Dashboard ──────────────────────────────────
+
+class ProjectWorkspaceDashboardView(APIView):
+    """
+    Project Workspace Dashboard endpoint for SMP-472.
+
+    Returns a lightweight summary of Decisions, Tasks, and Spreadsheets
+    scoped strictly to the requested project. This is an orientation surface,
+    not an analytics dashboard — no cross-project data is ever returned.
+
+    Query params:
+        project_id (int, required): The project to scope the dashboard to.
+
+    Returns:
+        200: { decisions: [...], tasks: [...], spreadsheets: [...] }
+        400: If project_id is missing or invalid.
+        401: If the user is not authenticated.
+    """
+    permission_classes = [IsAuthenticated]
+
+    # Maximum items returned per zone — keeps the dashboard lightweight
+    ZONE_LIMIT = 5
+
+    def get(self, request):
+        # --- Validate project_id ---
+        project_id_param = request.query_params.get('project_id')
+        if project_id_param is None:
+            return Response(
+                {'detail': 'project_id is required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            project_id = int(project_id_param)
+            if project_id <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'project_id must be a positive integer.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # --- Decision Zone ---
+        # Show active decisions: committed or awaiting approval, most recent first
+        decisions = Decision.objects.filter(
+            project_id=project_id,
+            is_deleted=False,
+            status__in=[
+                Decision.Status.COMMITTED,
+                Decision.Status.AWAITING_APPROVAL,
+                Decision.Status.REVIEWED,
+            ]
+        ).order_by('-updated_at')[:self.ZONE_LIMIT]
+
+        # --- Task Zone ---
+        # Show tasks that need attention: submitted, under review, or rejected
+        tasks = Task.objects.filter(
+            project_id=project_id,
+            status__in=[
+                Task.Status.SUBMITTED,
+                Task.Status.UNDER_REVIEW,
+                Task.Status.REJECTED,
+            ]
+        ).order_by('-updated_at')[:self.ZONE_LIMIT]
+
+        # --- Spreadsheet Zone ---
+        # Show recently active spreadsheets in this project
+        spreadsheets = Spreadsheet.objects.filter(
+            project_id=project_id,
+            is_deleted=False,
+        ).order_by('-updated_at')[:self.ZONE_LIMIT]
+
+        # --- Serialize and respond ---
+        data = {
+            'decisions': list(decisions),
+            'tasks': list(tasks),
+            'spreadsheets': list(spreadsheets),
+        }
+        serializer = ProjectWorkspaceDashboardSerializer(data)
+        return Response(serializer.data, status=status.HTTP_200_OK)

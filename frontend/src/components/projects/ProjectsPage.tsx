@@ -163,10 +163,10 @@ const ProjectCard = ({
         </div>
         <div className="flex items-center gap-2">
           <a
-            href={`/tasks?project_id=${project.id}`}
+            href={`/projects/${project.id}`}
             className="inline-flex items-center justify-center rounded-full p-2 text-blue-700 transition hover:bg-blue-50"
-            aria-label="View tasks"
-            title="View tasks"
+            aria-label="Open project workspace"
+            title="Open project workspace"
           >
             <ArrowRight className="h-4 w-4" />
           </a>

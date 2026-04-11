@@ -88,3 +88,36 @@ class DashboardSummarySerializer(serializers.Serializer):
     priority_breakdown = PriorityBreakdownSerializer(many=True)
     types_of_work = TypeBreakdownSerializer(many=True)
     recent_activity = ActivityEventSerializer(many=True)
+
+# ── SMP-472: Project Workspace Dashboard serializers ──────────────────────
+
+from decision.models import Decision
+from spreadsheet.models import Spreadsheet
+
+
+class WorkspaceDecisionSerializer(serializers.ModelSerializer):
+    """Decision summary for Project Workspace Dashboard."""
+    class Meta:
+        model = Decision
+        fields = ['id', 'title', 'status', 'risk_level', 'updated_at']
+
+
+class WorkspaceTaskSerializer(serializers.ModelSerializer):
+    """Task summary for Project Workspace Dashboard."""
+    class Meta:
+        model = Task
+        fields = ['id', 'summary', 'status', 'priority', 'type', 'due_date', 'updated_at']
+
+
+class WorkspaceSpreadsheetSerializer(serializers.ModelSerializer):
+    """Spreadsheet summary for Project Workspace Dashboard."""
+    class Meta:
+        model = Spreadsheet
+        fields = ['id', 'name', 'updated_at']
+
+
+class ProjectWorkspaceDashboardSerializer(serializers.Serializer):
+    """Main serializer for SMP-472 Project Workspace Dashboard endpoint."""
+    decisions = WorkspaceDecisionSerializer(many=True)
+    tasks = WorkspaceTaskSerializer(many=True)
+    spreadsheets = WorkspaceSpreadsheetSerializer(many=True)
