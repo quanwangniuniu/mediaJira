@@ -1,3 +1,4 @@
+import logging
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
@@ -136,7 +137,7 @@ class MeetingViewSet(viewsets.ModelViewSet):
             participant_user_ids = list(dict.fromkeys(int(x) for x in raw_ids))
 
         # Strict mode used to require the client to send ids; create flow no longer asks
-        # for participants on the form â€” default to the creator so the meeting always has
+        # for participants on the form â€?default to the creator so the meeting always has
         # at least one participant when the setting is enabled.
         if getattr(settings, "MEETINGS_REQUIRE_PARTICIPANTS_AT_CREATE", False):
             if len(participant_user_ids) < 1:

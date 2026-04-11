@@ -31,13 +31,13 @@ class TestMeetingLifecycleAPI(TestCase):
         self.client.force_authenticate(user=self.member)
 
     def _lifecycle_url(self, meeting):
-        return f"/api/v1/projects/{self.project.id}/meetings/{meeting.id}/lifecycle/"
+        return f"/api/projects/{self.project.id}/meetings/{meeting.id}/lifecycle/"
 
     def _transition_url(self, meeting):
-        return f"/api/v1/projects/{self.project.id}/meetings/{meeting.id}/lifecycle/transition/"
+        return f"/api/projects/{self.project.id}/meetings/{meeting.id}/lifecycle/transition/"
 
     # ------------------------------------------------------------------
-    # GET /lifecycle/  — current state + available transitions
+    # GET /lifecycle/  �?current state + available transitions
     # ------------------------------------------------------------------
 
     def test_lifecycle_returns_current_state_and_transitions(self):
@@ -232,13 +232,13 @@ class TestMeetingLifecycleAPI(TestCase):
         self.client.post(
             self._transition_url(meeting), {"to_state": "planned"}, format="json"
         )
-        detail_url = f"/api/v1/projects/{self.project.id}/meetings/{meeting.id}/"
+        detail_url = f"/api/projects/{self.project.id}/meetings/{meeting.id}/"
         response = self.client.get(detail_url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["status"], Meeting.STATUS_PLANNED)
 
     # ------------------------------------------------------------------
-    # Archived validation — unresolved action items
+    # Archived validation �?unresolved action items
     # ------------------------------------------------------------------
 
     def test_to_archived_blocked_by_unresolved_action_items(self):
@@ -273,7 +273,7 @@ class TestMeetingLifecycleAPI(TestCase):
     # ------------------------------------------------------------------
 
     def _action_items_url(self, meeting):
-        return f"/api/v1/projects/{self.project.id}/meetings/{meeting.id}/action-items/"
+        return f"/api/projects/{self.project.id}/meetings/{meeting.id}/action-items/"
 
     def test_create_action_item(self):
         meeting = _meeting(self.project)
@@ -310,9 +310,63 @@ class TestMeetingLifecycleAPI(TestCase):
 
     def test_patch_status_directly_is_ignored(self):
         meeting = _meeting(self.project)
-        url = f"/api/v1/projects/{self.project.id}/meetings/{meeting.id}/"
+        url = f"/api/projects/{self.project.id}/meetings/{meeting.id}/"
         response = self.client.patch(url, {"status": "completed"}, format="json")
         # Request succeeds but status remains unchanged
         self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_201_CREATED])
+        meeting.refresh_from_db()
+        self.assertEqual(meeting.status, Meeting.STATUS_DRAFT)
+
+    # ------------------------------------------------------------------
+    # Unauthenticated access (401)
+    # ------------------------------------------------------------------
+
+    def test_unauthenticated_cannot_view_lifecycle(self):
+        meeting = _meeting(self.project)
+        self.client.force_authenticate(user=None)
+        response = self.client.get(self._lifecycle_url(meeting))
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_unauthenticated_cannot_execute_transition(self):
+        meeting = _meeting(self.project)
+        self.client.force_authenticate(user=None)
+        response = self.client.post(
+            self._transition_url(meeting), {"to_state": "planned"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        meeting.refresh_from_db()
+        self.assertEqual(meeting.status, Meeting.STATUS_DRAFT)
+
+    # ------------------------------------------------------------------
+    # Cross-project isolation
+    # ------------------------------------------------------------------
+
+    def test_other_project_member_cannot_view_lifecycle(self):
+        other_org = Organization.objects.create(name="Other Org", slug="other-org")
+        other_project = Project.objects.create(name="Other Project", organization=other_org)
+        other_user = CustomUser.objects.create_user(
+            email="other@example.com", password="pw", username="other"
+        )
+        ProjectMember.objects.create(user=other_user, project=other_project, is_active=True)
+
+        meeting = _meeting(self.project)
+        self.client.force_authenticate(user=other_user)
+        response = self.client.get(self._lifecycle_url(meeting))
+        self.assertIn(response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
+
+    def test_other_project_member_cannot_execute_transition(self):
+        other_org = Organization.objects.create(name="Other Org X", slug="other-org-x")
+        other_project = Project.objects.create(name="Other Project X", organization=other_org)
+        other_user = CustomUser.objects.create_user(
+            email="otherx@example.com", password="pw", username="otherx"
+        )
+        ProjectMember.objects.create(user=other_user, project=other_project, is_active=True)
+
+        meeting = _meeting(self.project)
+        self.client.force_authenticate(user=other_user)
+        response = self.client.post(
+            self._transition_url(meeting), {"to_state": "planned"}, format="json"
+        )
+        self.assertIn(response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
         meeting.refresh_from_db()
         self.assertEqual(meeting.status, Meeting.STATUS_DRAFT)

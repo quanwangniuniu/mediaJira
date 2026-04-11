@@ -1,10 +1,7 @@
-<<<<<<< HEAD
-=======
 import json
 from typing import Iterable
 from django.apps import apps
 
->>>>>>> 4678efbc76c02279946515c1630e8e63495e928c
 from django.shortcuts import get_object_or_404
 from rest_framework import serializers
 
@@ -100,9 +97,7 @@ class MeetingSerializer(serializers.ModelSerializer):
             "updated_at",
             "participant_user_ids",
         ]
-<<<<<<< HEAD
         read_only_fields = ["id", "project", "status"]
-=======
         read_only_fields = [
             "id",
             "project",
@@ -194,7 +189,6 @@ class MeetingSerializer(serializers.ModelSerializer):
         raise serializers.ValidationError(
             "layout_config must be a list of blocks or an object with a blocks list."
         )
->>>>>>> 4678efbc76c02279946515c1630e8e63495e928c
 
     def update(self, instance, validated_data):
         # Participants are managed via the participants sub-resource

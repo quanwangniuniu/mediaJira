@@ -7,12 +7,12 @@ Indexing strategy (B-tree, Postgres-friendly)
   query narrows the heap immediately (scope + scale).
 - **``(project, scheduled_date)``** supports date-range filters (``meeting_date`` dimension uses
   ``scheduled_date`` as the canonical calendar anchor; time-of-day remains in ``scheduled_time``).
-- **``(project, is_archived, -updated_at)``** supports “active vs archived knowledge” slices and
+- **``(project, is_archived, -updated_at)``** supports "active vs archived knowledge" slices and
   recency sorts without full scans.
-- **``(project, -created_at)``** supports default “newest first” browsing.
-- **ParticipantLink (user, meeting)** speeds “meetings for this participant” reverse lookups.
-- **MeetingTagAssignment (tag_definition, meeting)** speeds “meetings with this tag” filters.
-  Index names are kept ≤ 30 characters for SQLite compatibility.
+- **``(project, -created_at)``** supports default "newest first" browsing.
+- **ParticipantLink (user, meeting)** speeds "meetings for this participant" reverse lookups.
+- **MeetingTagAssignment (tag_definition, meeting)** speeds "meetings with this tag" filters.
+  Index names are kept <= 30 characters for SQLite compatibility.
 - **FK columns** (`type_definition`, `project`, etc.) get implicit B-tree indexes in Django/Postgres.
 
 Full-text / ranking (next steps, not applied here)
@@ -35,36 +35,9 @@ import uuid
 from core.models import TimeStampedModel
 from meetings.querysets import MeetingManager
 
-from core.models import TimeStampedModel
-from meetings.querysets import MeetingManager
-
 
 class MeetingTypeDefinition(models.Model):
     """
-    Meeting model represents a single meeting scoped to a project.
-    """
-
-    STATUS_DRAFT = "draft"
-    STATUS_PLANNED = "planned"
-    STATUS_IN_PROGRESS = "in_progress"
-    STATUS_COMPLETED = "completed"
-    STATUS_ARCHIVED = "archived"
-
-    STATUS_CHOICES = [
-        (STATUS_DRAFT, "Draft"),
-        (STATUS_PLANNED, "Planned"),
-        (STATUS_IN_PROGRESS, "In Progress"),
-        (STATUS_COMPLETED, "Completed"),
-        (STATUS_ARCHIVED, "Archived"),
-    ]
-
-    VALID_TRANSITIONS = {
-        STATUS_DRAFT:       [STATUS_PLANNED],
-        STATUS_PLANNED:     [STATUS_IN_PROGRESS, STATUS_DRAFT],
-        STATUS_IN_PROGRESS: [STATUS_COMPLETED],
-        STATUS_COMPLETED:   [STATUS_ARCHIVED],
-        STATUS_ARCHIVED:    [],
-    }
     Project-scoped meeting **type** vocabulary (structured filter dimension: ``slug``).
     """
 
@@ -127,6 +100,7 @@ class Meeting(TimeStampedModel):
     ``TimeStampedModel``). Archived meetings are immutable at the API/service layer (enforced
     when write endpoints are updated).
     """
+
     STATUS_DRAFT = "draft"
     STATUS_PLANNED = "planned"
     STATUS_IN_PROGRESS = "in_progress"
@@ -169,8 +143,6 @@ class Meeting(TimeStampedModel):
     scheduled_date = models.DateField(blank=True, null=True)
     scheduled_time = models.TimeField(blank=True, null=True)
     external_reference = models.CharField(max_length=255, blank=True, null=True)
-    # Frontend meeting workspace layout (module blocks order/config).
-    # Stored as JSON-serializable structure from the editor.
     layout_config = models.JSONField(default=list, null=True, blank=True)
     status = models.CharField(
         max_length=32,
@@ -295,7 +267,7 @@ class MeetingTagAssignment(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"Tag {self.tag_definition_id} → meeting {self.meeting_id}"
+        return f"Tag {self.tag_definition_id} -> meeting {self.meeting_id}"
 
 
 class MeetingDecisionOrigin(models.Model):
@@ -420,7 +392,7 @@ class MeetingTemplate(models.Model):
     """
     MeetingTemplate stores reusable workspace templates (layout_config).
     layout_config is expected to be JSON-serializable (e.g. the frontend `blocks` structure).
-    Do not reintroduce block_config — legacy DB columns are dropped via migration 0003.
+    Do not reintroduce block_config - legacy DB columns are dropped via migration 0003.
     """
 
     id = models.CharField(primary_key=True, max_length=64, default=_meeting_template_id, editable=False)
