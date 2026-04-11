@@ -399,6 +399,103 @@ class CustomAPIExecutor(BaseStepExecutor):
             return StepResult(success=False, error=str(e))
 
 
+class DetectColumnsExecutor(BaseStepExecutor):
+    """Detect what each column in the uploaded spreadsheet represents.
+
+    Runs rule-based matching first; falls back to LLM for unknown formats.
+    Stores the detection result in output_data so the next step can use it.
+    Also emits a column_mapping SSE event so the frontend can render a
+    confirmation UI for the user to review or correct the mappings.
+    """
+
+    def execute(self, input_data):
+        from .column_registry import detect_columns
+
+        spreadsheet_data = input_data.get('spreadsheet_data')
+        if not spreadsheet_data:
+            return StepResult(success=False, error='No spreadsheet_data in input')
+
+        try:
+            # Collect headers and sample rows from the first sheet.
+            headers = []
+            sample_rows = []
+            sheets = spreadsheet_data.get('sheets', [])
+            if sheets:
+                first_sheet = sheets[0]
+                headers = first_sheet.get('columns', [])
+                sample_rows = first_sheet.get('rows', [])[:3]
+
+            detection = detect_columns(headers, sample_rows=sample_rows)
+            detection_dict = detection.to_dict()
+
+            return StepResult(
+                success=True,
+                output_data={
+                    **input_data,
+                    'column_detection': detection_dict,
+                    # column_mapping starts as the detected mapping;
+                    # the user may override it via confirm_columns.
+                    'column_mapping': detection_dict['mappings'],
+                },
+                sse_events=[{
+                    'type': 'column_mapping',
+                    'content': (
+                        f"Detected schema: {detection.schema_name} "
+                        f"(confidence {detection.confidence:.0%}, source: {detection.source})"
+                    ),
+                    'data': detection_dict,
+                }],
+            )
+        except Exception as e:
+            logger.exception("DetectColumnsExecutor failed")
+            return StepResult(success=False, error=str(e))
+
+
+class NormalizeDataExecutor(BaseStepExecutor):
+    """Rename spreadsheet columns using the approved column_mapping.
+
+    Reads column_mapping from input_data (set by DetectColumnsExecutor or
+    overridden by the user during the confirm_columns step).
+    """
+
+    def execute(self, input_data):
+        from .column_registry import normalize_spreadsheet
+
+        spreadsheet_data = input_data.get('spreadsheet_data')
+        column_mapping = input_data.get('column_mapping')
+
+        if not spreadsheet_data:
+            return StepResult(success=False, error='No spreadsheet_data in input')
+
+        if not column_mapping:
+            # No mapping provided — pass data through unchanged
+            return StepResult(
+                success=True,
+                output_data=input_data,
+                sse_events=[{
+                    'type': 'text',
+                    'content': 'No column mapping provided; using original column names.',
+                }],
+            )
+
+        try:
+            normalized = normalize_spreadsheet(spreadsheet_data, column_mapping)
+            return StepResult(
+                success=True,
+                output_data={
+                    **input_data,
+                    'spreadsheet_data': normalized,
+                },
+                sse_events=[{
+                    'type': 'text',
+                    'content': 'Column names normalized. Starting analysis...',
+                }],
+            )
+        except Exception as e:
+            logger.exception("NormalizeDataExecutor failed")
+            return StepResult(success=False, error=str(e))
+
+
 # Executor registry — maps step_type to executor class
 EXECUTOR_REGISTRY = {
     'analyze_data': AnalyzeDataExecutor,
@@ -410,6 +507,8 @@ EXECUTOR_REGISTRY = {
     'create_miro_board': CreateMiroBoardExecutor,
     'await_confirmation': AwaitConfirmationExecutor,
     'custom_api': CustomAPIExecutor,
+    'detect_columns': DetectColumnsExecutor,
+    'normalize_data': NormalizeDataExecutor,
 }
 
 

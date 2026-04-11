@@ -139,6 +139,8 @@ class AgentWorkflowStep(TimeStampedModel):
         ('create_miro_board', 'Create Miro Board'),
         ('custom_api', 'Custom API'),
         ('await_confirmation', 'Await Confirmation'),
+        ('detect_columns', 'Detect Columns'),
+        ('normalize_data', 'Normalize Data'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

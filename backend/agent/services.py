@@ -565,7 +565,8 @@ class AgentOrchestrator:
         self.session = session
 
     def handle_message(self, message, spreadsheet_id=None, csv_filename=None,
-                       action=None, file_id=None, calendar_context=None, workflow_id=None):
+                       action=None, file_id=None, calendar_context=None,
+                       workflow_id=None, column_mapping=None):
         """Main entry point. Routes calendar context first, then workflow engine or legacy logic.
 
         Yields SSE chunks as dicts.
@@ -590,6 +591,22 @@ class AgentOrchestrator:
                 yield from self._legacy_confirm(action, latest_run)
                 yield {"type": "done"}
                 return
+
+        # Resume after user confirms / edits the detected column mapping.
+        if action == 'confirm_columns':
+            latest_run = self.session.workflow_runs.filter(
+                is_deleted=False
+            ).order_by('-created_at').first()
+
+            if latest_run and latest_run.workflow_definition:
+                # Inject the user-approved mapping so NormalizeDataExecutor
+                # can pick it up from input_data.
+                extra = {'column_mapping': column_mapping} if column_mapping else {}
+                yield from self._resume_workflow(latest_run, extra_input=extra)
+            else:
+                yield {"type": "error", "content": "No paused workflow to confirm."}
+            yield {"type": "done"}
+            return
 
         if action == 'generate_miro':
             latest_run = self.session.workflow_runs.filter(
@@ -1414,13 +1431,19 @@ class AgentOrchestrator:
         workflow_run.status = 'completed'
         workflow_run.save()
 
-    def _resume_workflow(self, workflow_run):
-        """Resume a paused workflow from the last completed step's output."""
+    def _resume_workflow(self, workflow_run, extra_input=None):
+        """Resume a paused workflow from the last completed step's output.
+
+        extra_input is merged into the input data before execution, allowing
+        callers to inject user-provided values (e.g. confirmed column_mapping).
+        """
         last_execution = workflow_run.step_executions.filter(
             status='completed'
         ).order_by('-step_order').first()
 
         input_data = last_execution.output_data if last_execution else {}
+        if extra_input:
+            input_data = {**input_data, **extra_input}
         yield from self._execute_steps(workflow_run, input_data)
 
     def _legacy_confirm(self, action, workflow_run):
