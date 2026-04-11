@@ -1,6 +1,6 @@
 // frontend/src/types/meeting.ts
 
-export type MeetingStatus = 'draft';
+export type MeetingStatus = 'draft' | 'planned' | 'in_progress' | 'completed' | 'archived';
 
 /** In-app path + label from the API for contextual navigation (meetings ↔ decisions ↔ tasks). */
 export interface KnowledgeNavigationLink {
