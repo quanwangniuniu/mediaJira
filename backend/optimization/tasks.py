@@ -230,28 +230,31 @@ def _stale_meta_account_ids(now):
 
 
 @shared_task
-def recompute_pacing_forecast_batch(campaign_ids, computed_for_date):
+def recompute_pacing_forecast_batch(campaign_ids, computed_for_date, tenant_schema='public'):
     """Recompute one bounded batch so failures/timeouts remain isolated."""
     from campaign.models import Campaign
+    from core.tenant_context import tenant_schema_context
     from .services import PacingService
 
     today = date.fromisoformat(computed_for_date)
-    campaigns = Campaign.objects.filter(id__in=campaign_ids).only(
-        'id', 'platforms', 'start_date', 'end_date', 'budget_estimate'
-    ).order_by('id')
-    recomputed = 0
-    failed = []
-    for campaign in campaigns.iterator(chunk_size=PACING_BATCH_SIZE):
-        try:
-            PacingService.recompute_for_campaign(campaign, today=today)
-            recomputed += 1
-        except Exception as exc:  # one campaign must not abort its batch
-            logger.exception('Failed to recompute pacing for campaign %s', campaign.id)
-            failed.append({'campaign_id': str(campaign.id), 'error': str(exc)})
+    with tenant_schema_context(tenant_schema):
+        campaigns = Campaign.objects.filter(id__in=campaign_ids).only(
+            'id', 'platforms', 'start_date', 'end_date', 'budget_estimate'
+        ).order_by('id')
+        recomputed = 0
+        failed = []
+        for campaign in campaigns.iterator(chunk_size=PACING_BATCH_SIZE):
+            try:
+                PacingService.recompute_for_campaign(campaign, today=today)
+                recomputed += 1
+            except Exception as exc:  # one campaign must not abort its batch
+                logger.exception('Failed to recompute pacing for campaign %s', campaign.id)
+                failed.append({'campaign_id': str(campaign.id), 'error': str(exc)})
     return {
         'status': 'completed',
         'recomputed': recomputed,
         'failed': failed,
+        'tenant_schema': tenant_schema,
         'computed_for_date': computed_for_date,
     }
 
@@ -269,9 +272,42 @@ def recompute_all_pacing_forecasts(self):
         dict: Task execution summary
     """
     from campaign.models import Campaign
+    from core.models import Organization
+    from core.services.tenant import slug_to_schema_name
+    from core.tenant_context import tenant_schema_context
     now = timezone.now()
     today = now.date()
-    stale_account_ids = _stale_meta_account_ids(now)
+    schemas = [
+        slug_to_schema_name(slug)
+        for slug in Organization.objects.filter(is_active=True)
+        .order_by('slug')
+        .values_list('slug', flat=True)
+    ]
+
+    stale_account_ids = []
+    campaign_batches = []
+    campaign_count = 0
+    batch_size = getattr(settings, 'PACING_FORECAST_BATCH_SIZE', PACING_BATCH_SIZE)
+
+    for tenant_schema in schemas:
+        with tenant_schema_context(tenant_schema):
+            tenant_stale_account_ids = _stale_meta_account_ids(now)
+            stale_account_ids.extend(tenant_stale_account_ids)
+            if tenant_stale_account_ids:
+                continue
+            campaign_ids = list(Campaign.objects.filter(
+                is_deleted=False
+            ).exclude(
+                status=Campaign.Status.ARCHIVED
+            ).order_by('id').values_list('id', flat=True))
+
+        campaign_count += len(campaign_ids)
+        campaign_batches.extend(
+            (tenant_schema, campaign_ids[i:i + batch_size])
+            for i in range(0, len(campaign_ids), batch_size)
+        )
+
+    stale_account_ids = sorted(set(stale_account_ids))
     if stale_account_ids:
         if self.request.retries < self.max_retries:
             logger.warning(
@@ -290,27 +326,20 @@ def recompute_all_pacing_forecasts(self):
             'timestamp': now.isoformat(),
         }
 
-    # Archived campaigns are read-only and no longer worth pacing.
-    campaign_ids = list(Campaign.objects.filter(
-        is_deleted=False
-    ).exclude(
-        status=Campaign.Status.ARCHIVED
-    ).order_by('id').values_list('id', flat=True))
-
-    batch_size = getattr(settings, 'PACING_FORECAST_BATCH_SIZE', PACING_BATCH_SIZE)
-    batches = [campaign_ids[i:i + batch_size] for i in range(0, len(campaign_ids), batch_size)]
     job = group(
         recompute_pacing_forecast_batch.s(
             [str(campaign_id) for campaign_id in batch],
             today.isoformat(),
+            tenant_schema,
         )
-        for batch in batches
-    ).apply_async() if batches else None
+        for tenant_schema, batch in campaign_batches
+    ).apply_async() if campaign_batches else None
 
     result = {
         'status': 'queued',
-        'campaigns': len(campaign_ids),
-        'batches': len(batches),
+        'campaigns': campaign_count,
+        'batches': len(campaign_batches),
+        'tenants': len(schemas),
         'group_id': job.id if job else None,
         'computed_for_date': today.isoformat(),
         'timestamp': now.isoformat(),

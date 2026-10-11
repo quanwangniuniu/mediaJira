@@ -28,6 +28,13 @@ from optimization.services import PacingService, compute_dow_factors, forecast_p
 User = get_user_model()
 
 
+class PacingTenantRegistrationTest(SimpleTestCase):
+    def test_forecast_table_is_provisioned_in_each_tenant_schema(self):
+        from core.tenant_config import get_tenant_models
+
+        self.assertIn(CampaignPacingForecast, get_tenant_models())
+
+
 def flat_spend(first: date, last: date, amount) -> dict:
     """Build a {date: Decimal} series with the same spend every day."""
     series = {}
