@@ -16,7 +16,7 @@ User = get_user_model()
 
 
 def notify_campaign_platform_auth_error(*, integration):
-    """Notify the campaign owner once when an account needs authorization."""
+    """Notify the campaign owner when a linked ad account needs reconnecting."""
     from .models import NotificationCategory, NotificationEventType
     from .services import create_notification
 

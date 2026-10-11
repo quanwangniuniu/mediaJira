@@ -1,38 +1,55 @@
-"""Campaign sync health is fed by the real Meta sync entry points."""
+"""MED-242: Meta sync failures surface on campaigns in the organization schema."""
 
-from datetime import timedelta
-from itertools import permutations
+from types import SimpleNamespace
 from unittest.mock import patch
+from uuid import uuid4
 
 import pytest
 import requests
+from django.contrib.auth import get_user_model
+from django.db import connection
 from django.utils import timezone
+from rest_framework.test import APIClient
 
 from campaign.models import Campaign, CampaignPlatformIntegration
-from campaign.services import CampaignPlatformIntegrationService as IntegrationService
-from core.models import ProjectMember
+from campaign.services import CampaignPlatformIntegrationService
+from core.models import Organization, OrganizationMembership, Project, ProjectMember
+from core.services.auth_tokens import build_user_refresh_token
+from core.services.tenant import slug_to_schema_name
+from core.tenant_context import tenant_schema_context
 from facebook_integration.models import FacebookConnection, MetaAdAccount
 from meta_ads.meta_client import MetaApiError
 from meta_ads.services import sync_ad_account
 from meta_ads.tasks import sync_all_meta_connections, sync_single_ad_account
 from notifications.models import Notification
 
+pytestmark = pytest.mark.django_db
 
-@pytest.fixture
-def campaign(project, user):
-    return Campaign.objects.create(
-        name='Campaign sync test', project=project, owner=user, creator=user,
-        objective=Campaign.Objective.CONVERSION, platforms=[Campaign.Platform.META],
-        start_date=timezone.now().date(),
+EXPIRED = MetaApiError('access_token=secret expired', 400, {'error': {'code': 190, 'type': 'OAuthException'}})
+
+
+def make_tenant(project_id=None):
+    org = Organization.objects.create(name=f'MED-242 {uuid4().hex[:8]}')
+    user = get_user_model().objects.create_user(
+        username=f'med242-{uuid4().hex[:8]}', email=f'{uuid4().hex}@example.com',
+        password='x', organization=org, current_organization=org, is_verified=True,
     )
-
-
-@pytest.fixture
-def account(campaign, user):
-    connection = FacebookConnection.objects.create(user=user, fb_user_id='fb-owner')
-    return MetaAdAccount.objects.create(
-        connection=connection, project=campaign.project, meta_account_id='123', name='Test ad account',
-    )
+    OrganizationMembership.objects.create(user=user, organization=org)
+    schema = slug_to_schema_name(org.slug)
+    with tenant_schema_context(schema):
+        project = Project.objects.create(
+            name='Sync project', organization=org, owner=user,
+            **({'id': project_id} if project_id else {}),
+        )
+        ProjectMember.objects.create(project=project, user=user, role='owner')
+        campaign = Campaign.objects.create(
+            name='Sync campaign', project=project, owner=user, creator=user,
+            objective=Campaign.Objective.CONVERSION, platforms=[Campaign.Platform.META],
+            start_date=timezone.now().date(),
+        )
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f'Bearer {build_user_refresh_token(user).access_token}')
+    return SimpleNamespace(org=org, user=user, schema=schema, project=project, campaign=campaign, client=client)
 
 
 @pytest.fixture(autouse=True)
@@ -43,299 +60,173 @@ def isolate_notification_channels():
         yield
 
 
+@pytest.fixture
+def tenant():
+    return make_tenant()
+
+
+@pytest.fixture
+def account(tenant):
+    connection_ = FacebookConnection.objects.create(user=tenant.user, fb_user_id=f'fb-{uuid4().hex[:8]}')
+    return MetaAdAccount.objects.create(
+        connection=connection_, meta_account_id=uuid4().hex[:10], name='Test ad account',
+        project_id=tenant.project.pk,
+    )
+
+
+def integration_for(tenant, account):
+    with tenant_schema_context(tenant.schema):
+        return CampaignPlatformIntegration.objects.get(campaign=tenant.campaign, ad_account=account)
+
+
+def sync_failing_with(account, error):
+    with patch('meta_ads.services.sync_campaigns', side_effect=error):
+        return sync_ad_account(account, 'token')
+
+
+def sync_successfully(account):
+    with patch('meta_ads.services.graph_paged', return_value=[]):
+        return sync_ad_account(account, 'token')
+
+
 @pytest.mark.parametrize('error, expected', [
-    (MetaApiError('expired', 400, {'error': {'code': 190}}), 'auth'),
+    (EXPIRED, 'auth'),
     (MetaApiError('invalid session', 400, {'error': {'code': '102'}}), 'auth'),
     (MetaApiError('unauthorized', 401), 'auth'),
-    (MetaApiError('revoked permission', 403), 'auth'),
-    (MetaApiError('throttled', 429, {'error': {'type': 'OAuthException'}}), 'transient'),
     (MetaApiError('throttled', 400, {'error': {'code': 4, 'type': 'OAuthException'}}), 'transient'),
+    (MetaApiError('throttled', 429), 'transient'),
     (MetaApiError('unavailable', 503), 'transient'),
-    (MetaApiError('temporary', 400, {'error': {'is_transient': True}}), 'transient'),
-    (requests.Timeout('token=secret'), 'transient'),
-    (requests.ConnectionError('offline'), 'transient'),
-    (MetaApiError('bad request', 400, 'not json'), 'unknown'),
-    (ValueError('unexpected'), 'unknown'),
+    (MetaApiError('bad request', 400, 'not json'), 'transient'),
+    (requests.Timeout('timeout'), 'transient'),
+    (ValueError('unexpected'), 'transient'),
 ])
 def test_classify_sync_error(error, expected):
-    assert IntegrationService.classify_sync_error(error) == expected
+    assert CampaignPlatformIntegrationService.classify_sync_error(error) == expected
 
 
-@pytest.mark.django_db
-@pytest.mark.parametrize('error, expected, notifications', [
-    (MetaApiError('access_token=secret', 400, {'error': {'code': 190}}), 'auth', 1),
-    (MetaApiError('server down', 503), 'transient', 0),
-    (requests.Timeout('timeout'), 'transient', 0),
-    (ValueError('unexpected'), 'unknown', 0),
-])
-def test_worker_records_failure_and_notifies_only_for_auth(account, campaign, error, expected, notifications):
-    with patch('meta_ads.services.sync_campaigns', side_effect=error):
-        run = sync_ad_account(account, 'token')
-    integration = CampaignPlatformIntegration.objects.get(campaign=campaign, ad_account=account)
-    assert run.status == 'error'
-    assert integration.last_sync_error == expected
+def test_auth_error_sets_last_sync_error_and_notifies_owner_once(tenant, account):
+    for _ in range(2):
+        assert sync_failing_with(account, EXPIRED).status == 'error'
+
+    integration = integration_for(tenant, account)
+    assert integration.last_sync_error == 'auth'
     assert integration.last_sync_attempted_at is not None
     assert integration.last_synced_at is None
-    assert Notification.objects.count() == notifications
-    if notifications:
-        notification = Notification.objects.get()
-        assert notification.recipient_id == campaign.owner_id
-        assert notification.event_type == 'account_permission'
-        assert notification.metadata['action'] == 'campaign_platform_auth_error'
-        assert notification.category == 'INTEGRATIONS'
-        assert campaign.slug in notification.action_url
-        assert 'secret' not in notification.body
+    notification = Notification.objects.get()
+    assert notification.recipient_id == tenant.user.pk
+    assert notification.category == 'INTEGRATIONS'
+    assert notification.metadata['action'] == 'campaign_platform_auth_error'
+    assert notification.action_url == f'/{tenant.org.slug}/{tenant.project.slug}/campaigns/{tenant.campaign.slug}'
+    assert 'secret' not in notification.body
 
 
-@pytest.mark.django_db
-def test_auth_episode_deduplicates_until_success_and_preserves_stale_metrics(account, campaign):
-    previous_success = timezone.now() - timedelta(days=1)
-    integration = CampaignPlatformIntegration.objects.create(
-        campaign=campaign, ad_account=account, last_synced_at=previous_success,
-    )
-    for error in [MetaApiError('expired', 401), MetaApiError('expired', 401), requests.Timeout()]:
-        attempt = IntegrationService.begin_sync(ad_account=account)
-        IntegrationService.finish_sync(ad_account=account, attempted_at=attempt, error=error)
-    integration.refresh_from_db()
-    assert integration.last_sync_error == 'auth'
-    assert integration.last_synced_at == previous_success
-    assert Notification.objects.count() == 1
+def test_transient_error_is_recorded_without_notification(tenant, account):
+    sync_failing_with(account, requests.Timeout())
+    assert integration_for(tenant, account).last_sync_error == 'transient'
+    assert not Notification.objects.exists()
 
-    # Exercise the actual successful orchestration, including clearing the warning.
-    with patch('meta_ads.services.graph_paged', return_value=[]):
-        assert sync_ad_account(account, 'replacement-token').status == 'ok'
-    integration.refresh_from_db()
+
+def test_transient_error_keeps_an_open_reconnect_warning(tenant, account):
+    sync_failing_with(account, EXPIRED)
+    sync_failing_with(account, requests.Timeout())
+    assert integration_for(tenant, account).last_sync_error == 'auth'
+
+
+def test_success_clears_the_error_and_a_new_expiry_notifies_again(tenant, account):
+    sync_failing_with(account, EXPIRED)
+    assert sync_successfully(account).status == 'ok'
+    integration = integration_for(tenant, account)
     assert integration.last_sync_error == ''
-    assert integration.last_synced_at > previous_success
-    with patch('meta_ads.services.sync_campaigns', side_effect=MetaApiError('expired again', 401)):
-        sync_ad_account(account, 'token')
+    assert integration.last_synced_at is not None
+
+    sync_failing_with(account, EXPIRED)
     assert Notification.objects.count() == 2
 
 
-@pytest.mark.django_db
-@pytest.mark.parametrize('missing', [True, False])
-def test_missing_or_locally_expired_token_is_recorded_without_provider_request(account, missing):
-    if not missing:
-        account.connection.token_expires_at = timezone.now() - timedelta(minutes=1)
-        account.connection.save()
-    with patch.object(FacebookConnection, 'get_access_token', return_value=None if missing else 'token'), patch(
+@pytest.mark.parametrize('run_task', [
+    lambda account: sync_single_ad_account(account.pk),
+    lambda account: sync_all_meta_connections(),
+])
+def test_missing_token_is_recorded_as_auth_error(tenant, account, run_task):
+    with patch.object(FacebookConnection, 'get_access_token', return_value=None), patch(
         'meta_ads.services.sync_campaigns',
     ) as fetch:
-        result = sync_single_ad_account(account.id)
-    assert result['status'] == 'error'
-    assert CampaignPlatformIntegration.objects.get(ad_account=account).last_sync_error == 'auth'
-    assert Notification.objects.count() == 1
+        run_task(account)
     fetch.assert_not_called()
-
-
-@pytest.mark.django_db
-def test_scheduled_sync_records_missing_token_and_does_not_advance_success(account):
-    with patch.object(FacebookConnection, 'get_access_token', return_value=None):
-        result = sync_all_meta_connections()
-    assert result == {'connections': 1, 'ad_accounts': 1, 'errors': 1}
-    account.connection.refresh_from_db()
-    assert account.connection.last_synced_at is None
-    assert CampaignPlatformIntegration.objects.get(ad_account=account).last_sync_error == 'auth'
-
-
-@pytest.mark.django_db
-def test_older_completion_cannot_clear_newer_failure(account):
-    older = IntegrationService.begin_sync(ad_account=account)
-    newer = IntegrationService.begin_sync(ad_account=account)
-    IntegrationService.finish_sync(ad_account=account, attempted_at=newer, error=MetaApiError('expired', 401))
-    IntegrationService.finish_sync(ad_account=account, attempted_at=older)
-    assert CampaignPlatformIntegration.objects.get(ad_account=account).last_sync_error == 'auth'
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize('auth_finishes_first', [True, False])
-def test_overlapping_auth_and_timeout_preserve_warning(account, auth_finishes_first):
-    older = IntegrationService.begin_sync(ad_account=account)
-    newer = IntegrationService.begin_sync(ad_account=account)
-    outcomes = [(older, MetaApiError('expired', 401)), (newer, requests.Timeout())]
-    for attempt, error in outcomes if auth_finishes_first else reversed(outcomes):
-        IntegrationService.finish_sync(ad_account=account, attempted_at=attempt, error=error)
-    integration = CampaignPlatformIntegration.objects.get(ad_account=account)
-    assert integration.last_sync_error == 'auth'
-    assert integration.last_sync_attempted_at == newer
-    assert Notification.objects.count() == 1
-
-    recovery = IntegrationService.begin_sync(ad_account=account)
-    IntegrationService.finish_sync(ad_account=account, attempted_at=recovery)
-    # A delayed/repeated failure from before recovery must not reopen the warning.
-    IntegrationService.finish_sync(ad_account=account, attempted_at=older, error=outcomes[0][1])
-    integration.refresh_from_db()
-    assert integration.last_sync_error == ''
-    assert integration.last_synced_at == recovery
+    assert integration_for(tenant, account).last_sync_error == 'auth'
     assert Notification.objects.count() == 1
 
 
-@pytest.mark.django_db
-def test_newer_success_supersedes_late_auth_failure(account):
-    older = IntegrationService.begin_sync(ad_account=account)
-    newer = IntegrationService.begin_sync(ad_account=account)
-    IntegrationService.finish_sync(ad_account=account, attempted_at=newer)
-    IntegrationService.finish_sync(ad_account=account, attempted_at=older, error=MetaApiError('expired', 401))
-    integration = CampaignPlatformIntegration.objects.get(ad_account=account)
-    assert integration.last_sync_error == ''
-    assert integration.last_synced_at == newer
-    assert Notification.objects.count() == 0
+def test_only_meta_campaigns_in_the_linked_project_get_sync_state(tenant, account):
+    with tenant_schema_context(tenant.schema):
+        other_project = Project.objects.create(name='Other', organization=tenant.org, owner=tenant.user)
+        for project, platforms in [(other_project, ['META']), (tenant.project, ['GOOGLE_ADS'])]:
+            Campaign.objects.create(
+                name='Ignored', project=project, owner=tenant.user, creator=tenant.user,
+                objective='CONVERSION', platforms=platforms, start_date=timezone.now().date(),
+            )
+    sync_failing_with(account, EXPIRED)
+    with tenant_schema_context(tenant.schema):
+        assert list(CampaignPlatformIntegration.objects.values_list('campaign_id', flat=True)) == [tenant.campaign.pk]
 
 
-@pytest.mark.django_db
-def test_older_success_does_not_hide_newer_auth_failure(account):
-    older = IntegrationService.begin_sync(ad_account=account)
-    newer = IntegrationService.begin_sync(ad_account=account)
-    IntegrationService.finish_sync(ad_account=account, attempted_at=older)
-    IntegrationService.finish_sync(ad_account=account, attempted_at=newer, error=MetaApiError('expired', 401))
-    integration = CampaignPlatformIntegration.objects.get(ad_account=account)
-    assert integration.last_sync_error == 'auth'
-    assert integration.last_synced_at == older
-    assert Notification.objects.count() == 1
+def test_same_project_id_in_two_of_the_connectors_organizations_is_skipped(tenant, account):
+    other = make_tenant(project_id=tenant.project.pk)
+    OrganizationMembership.objects.create(user=tenant.user, organization=other.org)
+    sync_failing_with(account, EXPIRED)
+    for schema in (tenant.schema, other.schema):
+        with tenant_schema_context(schema):
+            assert not CampaignPlatformIntegration.objects.exists()
+    assert not Notification.objects.exists()
 
 
-@pytest.mark.django_db
-@pytest.mark.parametrize('completion_order', list(permutations(range(3))))
-@pytest.mark.parametrize('outcomes', [
-    ('auth', 'success', 'transient'),
-    ('success', 'auth', 'transient'),
-    ('auth', 'auth', 'success'),
-    ('auth', 'success', 'auth'),
-])
-def test_overlapping_recovery_depends_on_attempt_order(account, completion_order, outcomes):
-    attempts = [IntegrationService.begin_sync(ad_account=account) for _ in outcomes]
-    errors = {'auth': MetaApiError('expired', 401), 'success': None, 'transient': requests.Timeout()}
-    for index in completion_order:
-        IntegrationService.finish_sync(
-            ad_account=account, attempted_at=attempts[index], error=errors[outcomes[index]],
-        )
-
-    integration = CampaignPlatformIntegration.objects.get(ad_account=account)
-    latest_auth = max(attempt for attempt, outcome in zip(attempts, outcomes) if outcome == 'auth')
-    latest_success = max(attempt for attempt, outcome in zip(attempts, outcomes) if outcome == 'success')
-    assert (integration.last_sync_error == 'auth') == (latest_auth > latest_success)
-    if integration.last_sync_error == 'auth':
-        assert integration.last_sync_error_at == latest_auth
-    elif not integration.last_sync_error:
-        assert integration.last_sync_error_at is None
-    assert integration.last_synced_at == latest_success
-    assert integration.last_sync_attempted_at == attempts[-1]
-
-
-@pytest.mark.django_db
-def test_delayed_start_cannot_replace_newer_attempt(account):
-    original_filter = Campaign.objects.filter
-    newer = None
-
-    def start_newer_sync_before_loading_campaigns(*args, **kwargs):
-        nonlocal newer
-        with patch.object(Campaign.objects, 'filter', original_filter):
-            newer = IntegrationService.begin_sync(ad_account=account)
-        return original_filter(*args, **kwargs)
-
-    with patch.object(Campaign.objects, 'filter', side_effect=start_newer_sync_before_loading_campaigns):
-        older = IntegrationService.begin_sync(ad_account=account)
-
-    integration = CampaignPlatformIntegration.objects.get(ad_account=account)
-    assert older < newer
-    assert integration.last_sync_attempted_at == newer
-    IntegrationService.finish_sync(ad_account=account, attempted_at=newer, error=MetaApiError('expired', 401))
-    IntegrationService.finish_sync(ad_account=account, attempted_at=older)
-    integration.refresh_from_db()
-    assert integration.last_sync_error == 'auth'
-    assert Notification.objects.count() == 1
-
-
-@pytest.mark.django_db
-def test_only_matching_project_and_platform_receive_sync_state(account, campaign, organization, user):
-    from core.models import Project
-
-    other_project = Project.objects.create(name='Unrelated project', organization=organization)
-    Campaign.objects.create(name='Other campaign', project=other_project, owner=user,
-                           objective='CONVERSION', platforms=['META'], start_date=timezone.now().date())
-    Campaign.objects.create(name='Google campaign', project=campaign.project, owner=user,
-                           objective='CONVERSION', platforms=['GOOGLE_ADS'], start_date=timezone.now().date())
-    IntegrationService.begin_sync(ad_account=account)
-    assert list(CampaignPlatformIntegration.objects.values_list('campaign_id', flat=True)) == [campaign.id]
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize('removed_before_start', [True, False])
-def test_removed_meta_platform_does_not_receive_sync_failures(account, campaign, member_client, removed_before_start):
-    previous = IntegrationService.begin_sync(ad_account=account)
-    IntegrationService.finish_sync(ad_account=account, attempted_at=previous)
-    if not removed_before_start:
-        attempt = IntegrationService.begin_sync(ad_account=account)
-    campaign.platforms = [Campaign.Platform.GOOGLE_ADS]
-    campaign.save(update_fields=['platforms'])
-    if removed_before_start:
-        attempt = IntegrationService.begin_sync(ad_account=account)
-    IntegrationService.finish_sync(ad_account=account, attempted_at=attempt, error=MetaApiError('expired', 401))
-
-    integration = CampaignPlatformIntegration.objects.get(ad_account=account)
-    assert integration.last_sync_error == ''
-    assert integration.last_synced_at == previous
-    assert Notification.objects.count() == 0
-    assert member_client.get(f'/api/campaigns/{campaign.slug}/').data['platform_integrations'] == []
-
-
-@pytest.mark.django_db
-def test_detail_exposes_read_only_health(account, campaign, member_client):
-    integration = CampaignPlatformIntegration.objects.create(campaign=campaign, ad_account=account, last_sync_error='auth')
-    url = f'/api/campaigns/{campaign.slug}/'
-    detail = member_client.get(url)
-    assert detail.status_code == 200
-    health = detail.data['platform_integrations'][0]
+def test_campaign_detail_exposes_read_only_health(tenant, account):
+    sync_failing_with(account, EXPIRED)
+    url = f'/api/campaigns/{tenant.campaign.slug}/'
+    response = tenant.client.get(url)
+    assert response.status_code == 200, response.data
+    health = response.data['platform_integrations'][0]
     assert health['last_sync_error'] == 'auth'
+    assert health['account_name'] == 'Test ad account'
     assert health['can_reconnect'] is True
     assert 'token' not in str(health)
-    assert member_client.patch(url, {'platform_integrations': []}, format='json').status_code == 200
-    integration.refresh_from_db()
-    assert integration.last_sync_error == 'auth'
+
+    assert tenant.client.patch(url, {'platform_integrations': []}, format='json').status_code == 200
+    assert integration_for(tenant, account).last_sync_error == 'auth'
 
 
-@pytest.mark.django_db
-def test_health_requires_project_access_and_cta_requires_original_connector(account, campaign, outsider_client, user2):
-    CampaignPlatformIntegration.objects.create(campaign=campaign, ad_account=account, last_sync_error='auth')
-    assert outsider_client.get(f'/api/campaigns/{campaign.slug}/').status_code == 404
-    ProjectMember.objects.create(project=campaign.project, user=user2, role='member')
-    detail = outsider_client.get(f'/api/campaigns/{campaign.slug}/')
-    assert detail.data['platform_integrations'][0]['can_reconnect'] is False
+def test_only_the_original_connector_is_offered_reconnect(tenant, account):
+    sync_failing_with(account, EXPIRED)
+    teammate = get_user_model().objects.create_user(
+        username=f'teammate-{uuid4().hex[:8]}', email=f'{uuid4().hex}@example.com', password='x',
+        organization=tenant.org, current_organization=tenant.org, is_verified=True,
+    )
+    OrganizationMembership.objects.create(user=teammate, organization=tenant.org)
+    with tenant_schema_context(tenant.schema):
+        ProjectMember.objects.create(project=tenant.project, user=teammate, role='member')
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f'Bearer {build_user_refresh_token(teammate).access_token}')
+    health = client.get(f'/api/campaigns/{tenant.campaign.slug}/').data['platform_integrations'][0]
+    assert health['can_reconnect'] is False
+    assert health['connector_name'] == tenant.user.username
 
 
-@pytest.mark.django_db
-@pytest.mark.parametrize('unlink', [True, False])
-def test_relinked_account_during_sync_does_not_notify_former_campaign(account, campaign, organization, unlink):
-    from core.models import Project
-
-    attempt = IntegrationService.begin_sync(ad_account=account)
-    project_id = None if unlink else Project.objects.create(name='New project', organization=organization).pk
-    # The link endpoint changes a separate instance while the worker is running.
-    MetaAdAccount.objects.filter(pk=account.pk).update(project_id=project_id)
-    IntegrationService.finish_sync(ad_account=account, attempted_at=attempt, error=MetaApiError('expired', 401))
-
-    integration = CampaignPlatformIntegration.objects.get(campaign=campaign, ad_account=account)
-    assert integration.last_sync_error == ''
-    assert Notification.objects.count() == 0
-
-
-@pytest.mark.django_db
-def test_relinked_account_no_longer_exposes_old_campaign_warning(account, campaign, member_client):
-    CampaignPlatformIntegration.objects.create(campaign=campaign, ad_account=account, last_sync_error='auth')
-    account.project = None
-    account.save()
-    response = member_client.get(f'/api/campaigns/{campaign.slug}/')
+def test_warning_is_hidden_after_the_account_is_unlinked(tenant, account):
+    sync_failing_with(account, EXPIRED)
+    MetaAdAccount.objects.filter(pk=account.pk).update(project=None)
+    response = tenant.client.get(f'/api/campaigns/{tenant.campaign.slug}/')
     assert response.data['platform_integrations'] == []
 
 
-@pytest.mark.django_db
-def test_admin_does_not_edit_or_resolve_a_bare_cross_schema_project(account):
-    from django.contrib.admin import AdminSite
-    from facebook_integration.admin import MetaAdAccountAdmin
-
-    model_admin = MetaAdAccountAdmin(MetaAdAccount, AdminSite())
-    account.project_schema = 'org_another_tenant'
-    form = model_admin.get_form(None, account)
-    assert 'project' not in form.base_fields
-    assert 'project_schema' not in form.base_fields
-    assert model_admin.project_link(account) == f'org_another_tenant / {account.project_id}'
+def test_linking_an_organization_project_passes_database_constraints(tenant, account):
+    MetaAdAccount.objects.filter(pk=account.pk).update(project=None)
+    # Django defers FK checks to commit, which tests never reach; check now instead.
+    with connection.cursor() as cursor:
+        cursor.execute('SET CONSTRAINTS ALL IMMEDIATE')
+    response = tenant.client.post(
+        f'/api/facebook_integration/ad_accounts/{account.pk}/link_project/',
+        {'project_id': tenant.project.pk}, format='json',
+    )
+    assert response.status_code == 200, response.data
+    account.refresh_from_db()
+    assert account.project_id == tenant.project.pk

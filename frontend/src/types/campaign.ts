@@ -26,7 +26,7 @@ export interface CampaignPlatformIntegration {
   account_name: string;
   connector_name: string;
   can_reconnect: boolean;
-  last_sync_error: '' | 'auth' | 'transient' | 'unknown';
+  last_sync_error: '' | 'auth' | 'transient';
   last_sync_attempted_at: string | null;
   last_synced_at: string | null;
 }

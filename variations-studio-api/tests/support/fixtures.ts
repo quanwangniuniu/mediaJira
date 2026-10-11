@@ -12,9 +12,9 @@ import {
  * Fixtures for the shared dev/CI Postgres. Every row created here hangs off a
  * project this module just created, so teardown can never touch seed data.
  *
- * Projects are mirrored in `public` and the org schema for existing fixtures.
- * Shared meta_ad_accounts links identify the tenant project by project_schema
- * plus project_id. Variations are written to the org schema only.
+ * Projects are written to both `public` and the org schema: meta_ad_accounts
+ * still lives in public and FKs to public.core_project. Variations themselves
+ * are tenant-scoped and are written to the org schema only.
  * Memberships are written to the org schema ONLY — that is what makes these
  * fixtures a regression test for reading membership out of the wrong schema.
  */
@@ -181,17 +181,16 @@ async function createFacebookConnection(userId: number): Promise<bigint> {
 
 async function createAdAccount(
   connectionId: bigint,
-  projectId: bigint,
-  projectSchema: string
+  projectId: bigint
 ): Promise<bigint> {
   const id = await nextPublicId('meta_ad_accounts');
   await prisma.$executeRaw`
     INSERT INTO public.meta_ad_accounts (
       id, meta_account_id, name, currency, timezone_name, business_id,
-      is_owned, created_at, updated_at, connection_id, project_id, project_schema
+      is_owned, created_at, updated_at, connection_id, project_id
     ) VALUES (
       ${id}, ${`act_studio_test_${id}`}, 'Studio test account', 'USD', 'UTC',
-      'studio-test', true, now(), now(), ${connectionId}, ${projectId}, ${projectSchema}
+      'studio-test', true, now(), now(), ${connectionId}, ${projectId}
     )`;
   return id;
 }
@@ -266,8 +265,8 @@ export async function setupStudioFixture(): Promise<StudioFixture> {
   // Nobody is a member of projectB, which is what makes it the "other project".
 
   const connectionId = await createFacebookConnection(memberUserId);
-  const accountA = await createAdAccount(connectionId, projectA, schema);
-  const accountB = await createAdAccount(connectionId, projectB, schema);
+  const accountA = await createAdAccount(connectionId, projectA);
+  const accountB = await createAdAccount(connectionId, projectB);
 
   return {
     schema,

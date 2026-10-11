@@ -592,23 +592,16 @@ class PerformanceSnapshot(TimeStampedModel):
 # ============================================================================
 
 class CampaignPlatformIntegration(models.Model):
-    """Sync health for a campaign's project-linked Meta ad account.
-
-    Meta is currently the only metrics provider with a sync worker. Keep state
-    per account so a successful account cannot hide another account's failure.
-    """
+    """Sync health of a Meta ad account linked to the campaign's project."""
 
     class SyncError(models.TextChoices):
         NONE = '', 'No error'
         AUTH = 'auth', 'Reconnect required'
         TRANSIENT = 'transient', 'Temporary failure'
-        UNKNOWN = 'unknown', 'Sync failed'
 
     campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name='platform_integrations')
     ad_account = models.ForeignKey('facebook_integration.MetaAdAccount', on_delete=models.CASCADE)
     last_sync_error = models.CharField(max_length=16, choices=SyncError.choices, blank=True, default='')
-    # Start of the failed attempt, used to order overlapping sync results.
-    last_sync_error_at = models.DateTimeField(null=True, blank=True)
     last_sync_attempted_at = models.DateTimeField(null=True, blank=True)
     last_synced_at = models.DateTimeField(null=True, blank=True)
 

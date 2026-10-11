@@ -3,12 +3,9 @@ Campaign Management Module - Serializers
 ============================================================================
 """
 
-from functools import cached_property
-
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from core.models import Project
-from core.tenant_context import current_tenant_schema
 from core.utils.project import has_project_access
 from .models import (
     Campaign,
@@ -61,6 +58,7 @@ class CampaignPlatformIntegrationSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_can_reconnect(self, obj):
+        # The OAuth connection belongs to one user; only they can renew it.
         request = self.context.get('request')
         return bool(request and request.user.id == obj.ad_account.connection.user_id)
 
@@ -75,18 +73,6 @@ class CampaignSerializer(serializers.ModelSerializer):
     project = ProjectSummarySerializer(read_only=True)
     project_id = serializers.IntegerField(write_only=True, required=True)
     platform_integrations = serializers.SerializerMethodField()
-
-    @cached_property
-    def _sync_schema(self):
-        return current_tenant_schema()
-
-    def get_platform_integrations(self, obj):
-        if Campaign.Platform.META not in (obj.platforms or []):
-            return []
-        integrations = [integration for integration in obj.platform_integrations.all()
-                        if integration.ad_account.project_id == obj.project_id
-                        and integration.ad_account.project_schema == self._sync_schema]
-        return CampaignPlatformIntegrationSerializer(integrations, many=True, context=self.context).data
     
     class Meta:
         model = Campaign
@@ -102,6 +88,14 @@ class CampaignSerializer(serializers.ModelSerializer):
             'id', 'creator', 'status', 'actual_completion_date',
             'latest_performance_summary', 'created_at', 'updated_at', 'is_deleted'
         ]
+
+    def get_platform_integrations(self, obj):
+        if Campaign.Platform.META not in (obj.platforms or []):
+            return []
+        # Hide rows left behind after the account was linked to another project.
+        integrations = [integration for integration in obj.platform_integrations.all()
+                        if integration.ad_account.project_id == obj.project_id]
+        return CampaignPlatformIntegrationSerializer(integrations, many=True, context=self.context).data
 
     def validate_platforms(self, value):
         """Validate platforms list"""

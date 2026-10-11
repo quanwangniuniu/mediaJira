@@ -12,10 +12,14 @@ from django.utils import timezone
 
 from facebook_integration.models import FacebookConnection, MetaAdAccount
 
-from .services import sync_ad_account
+from .meta_client import MetaApiError
+from .services import record_campaign_sync_result, sync_ad_account
 
 
 logger = logging.getLogger(__name__)
+
+# An unreadable or missing token can only be fixed by reconnecting.
+MISSING_TOKEN_ERROR = MetaApiError("Meta access token missing", status_code=401)
 
 
 # Window in which a still-running MetaSyncRun blocks the daily fan-out from
@@ -31,23 +35,22 @@ def sync_all_meta_connections(kind: str = "hourly", days: int = 30) -> dict:
     summary = {"connections": 0, "ad_accounts": 0, "errors": 0}
     for connection in FacebookConnection.objects.filter(is_active=True):
         token = connection.get_access_token()
+        if not token:
+            for ad_account in MetaAdAccount.objects.filter(connection=connection):
+                record_campaign_sync_result(ad_account, MISSING_TOKEN_ERROR)
+            continue
         summary["connections"] += 1
-        connection_failed = False
         for ad_account in MetaAdAccount.objects.filter(connection=connection):
             summary["ad_accounts"] += 1
             try:
                 run = sync_ad_account(ad_account, token, days=days, kind=kind)
                 if run.status == "error":
-                    connection_failed = True
                     summary["errors"] += 1
             except Exception:  # pragma: no cover - defensive
-                connection_failed = True
                 logger.exception("sync_ad_account crashed for %s", ad_account.meta_account_id)
                 summary["errors"] += 1
-        # Only successful hydration should advance the last successful sync.
-        if not connection_failed:
-            connection.last_synced_at = timezone.now()
-            connection.save(update_fields=["last_synced_at", "updated_at"])
+        connection.last_synced_at = timezone.now()
+        connection.save(update_fields=["last_synced_at", "updated_at"])
     return summary
 
 
@@ -65,6 +68,9 @@ def sync_single_ad_account(ad_account_id: int, days: int = 30) -> dict:
     except MetaAdAccount.DoesNotExist:
         return {"error": "not_found"}
     token = ad_account.connection.get_access_token()
+    if not token:
+        record_campaign_sync_result(ad_account, MISSING_TOKEN_ERROR)
+        return {"error": "no_token"}
     run = sync_ad_account(ad_account, token, days=days, kind="manual")
     return {"status": run.status, "level_counts": run.level_counts, "error": run.error_message}
 

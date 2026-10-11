@@ -210,7 +210,7 @@ components:
                 description: Whether the current user originally connected the account.
               last_sync_error:
                 type: string
-                enum: ['', auth, transient, unknown]
+                enum: ['', auth, transient]
               last_sync_attempted_at:
                 type: string
                 format: date-time

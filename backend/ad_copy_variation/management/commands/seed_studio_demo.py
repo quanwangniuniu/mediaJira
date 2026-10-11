@@ -11,7 +11,6 @@ from django.db import connection
 from ad_copy_variation.models import AdCopyVariation
 from core.models import Project, ProjectMember
 from core.services.tenant import slug_to_schema_name
-from core.tenant_context import current_tenant_schema
 from meta_ads.models import MetaAdCreative
 
 SEED_INSTRUCTION = '[studio-demo-seed]'
@@ -66,10 +65,7 @@ class Command(BaseCommand):
             raise CommandError(f'{user.email} is not an active member of project {project_id}.')
 
         creative = (
-            MetaAdCreative.objects.filter(
-                ad_account__project=project,
-                ad_account__project_schema=current_tenant_schema(),
-            )
+            MetaAdCreative.objects.filter(ad_account__project=project)
             .order_by('id')
             .first()
         )

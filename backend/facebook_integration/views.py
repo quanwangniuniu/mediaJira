@@ -24,7 +24,6 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.models import Project, ProjectMember
-from core.tenant_context import current_tenant_schema
 from core.services.oauth_state import OAuthStateExpired, OAuthStateInvalid
 
 from .access import (
@@ -78,7 +77,7 @@ def _status_payload(request) -> dict:
         ad_accounts = MetaAdAccount.objects.filter(
             connection__user=user,
             connection__is_active=True,
-        ).select_related("connection", "connection__user")
+        ).select_related("connection", "connection__user", "project")
     else:
         ad_accounts = get_accessible_meta_ad_accounts(
             user,
@@ -330,8 +329,7 @@ class MetaAdAccountLinkProjectView(APIView):
             )
 
         account.project = target_project
-        account.project_schema = current_tenant_schema() if target_project else "public"
-        account.save(update_fields=["project", "project_schema", "updated_at"])
+        account.save(update_fields=["project", "updated_at"])
         return Response(
             MetaAdAccountSerializer(
                 account,
