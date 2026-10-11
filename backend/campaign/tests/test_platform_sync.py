@@ -20,7 +20,6 @@ from core.tenant_context import tenant_schema_context
 from facebook_integration.models import FacebookConnection, MetaAdAccount
 from meta_ads.meta_client import MetaApiError
 from meta_ads.services import sync_ad_account
-from meta_ads.tasks import sync_all_meta_connections, sync_single_ad_account
 from notifications.models import Notification
 
 pytestmark = pytest.mark.django_db
@@ -141,20 +140,6 @@ def test_success_clears_the_error_and_a_new_expiry_notifies_again(tenant, accoun
 
     sync_failing_with(account, EXPIRED)
     assert Notification.objects.count() == 2
-
-
-@pytest.mark.parametrize('run_task', [
-    lambda account: sync_single_ad_account(account.pk),
-    lambda account: sync_all_meta_connections(),
-])
-def test_missing_token_is_recorded_as_auth_error(tenant, account, run_task):
-    with patch.object(FacebookConnection, 'get_access_token', return_value=None), patch(
-        'meta_ads.services.sync_campaigns',
-    ) as fetch:
-        run_task(account)
-    fetch.assert_not_called()
-    assert integration_for(tenant, account).last_sync_error == 'auth'
-    assert Notification.objects.count() == 1
 
 
 def test_only_meta_campaigns_in_the_linked_project_get_sync_state(tenant, account):

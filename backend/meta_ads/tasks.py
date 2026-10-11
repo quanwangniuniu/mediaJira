@@ -12,14 +12,10 @@ from django.utils import timezone
 
 from facebook_integration.models import FacebookConnection, MetaAdAccount
 
-from .meta_client import MetaApiError
-from .services import record_campaign_sync_result, sync_ad_account
+from .services import sync_ad_account
 
 
 logger = logging.getLogger(__name__)
-
-# An unreadable or missing token can only be fixed by reconnecting.
-MISSING_TOKEN_ERROR = MetaApiError("Meta access token missing", status_code=401)
 
 
 # Window in which a still-running MetaSyncRun blocks the daily fan-out from
@@ -36,8 +32,6 @@ def sync_all_meta_connections(kind: str = "hourly", days: int = 30) -> dict:
     for connection in FacebookConnection.objects.filter(is_active=True):
         token = connection.get_access_token()
         if not token:
-            for ad_account in MetaAdAccount.objects.filter(connection=connection):
-                record_campaign_sync_result(ad_account, MISSING_TOKEN_ERROR)
             continue
         summary["connections"] += 1
         for ad_account in MetaAdAccount.objects.filter(connection=connection):
@@ -69,7 +63,6 @@ def sync_single_ad_account(ad_account_id: int, days: int = 30) -> dict:
         return {"error": "not_found"}
     token = ad_account.connection.get_access_token()
     if not token:
-        record_campaign_sync_result(ad_account, MISSING_TOKEN_ERROR)
         return {"error": "no_token"}
     run = sync_ad_account(ad_account, token, days=days, kind="manual")
     return {"status": run.status, "level_counts": run.level_counts, "error": run.error_message}
