@@ -34,6 +34,7 @@ from .models import (
     CampaignCalendarLink,
 )
 from .serializers import (
+    CampaignListSerializer,
     CampaignSerializer,
     CampaignCreateSerializer,
     CampaignUpdateSerializer,
@@ -145,6 +146,8 @@ class CampaignViewSet(SlugLookupViewSetMixin, viewsets.ModelViewSet):
         """Return appropriate serializer based on action"""
         if self.action == 'create':
             return CampaignCreateSerializer
+        elif self.action == 'list':
+            return CampaignListSerializer
         elif self.action in ['update', 'partial_update']:
             return CampaignUpdateSerializer
         return CampaignSerializer

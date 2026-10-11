@@ -1,5 +1,5 @@
-from celery import shared_task
-from datetime import timedelta
+from celery import group, shared_task
+from datetime import date, timedelta
 from django.utils import timezone
 from django.conf import settings
 import logging
@@ -195,7 +195,68 @@ def evaluate_scaling_rules(self):
         raise Exception(error_msg)
 
 
-@shared_task(bind=True, max_retries=2, default_retry_delay=600)
+PACING_BATCH_SIZE = 100
+PACING_SYNC_FRESHNESS_HOURS = 2
+
+
+def _stale_meta_account_ids(now):
+    """Return linked active Meta accounts without a recent completed sync."""
+    from facebook_integration.models import MetaAdAccount
+    from meta_ads.models import MetaSyncRun
+
+    freshness_cutoff = now - timedelta(
+        hours=getattr(settings, 'PACING_SYNC_FRESHNESS_HOURS', PACING_SYNC_FRESHNESS_HOURS)
+    )
+    account_ids = set(
+        MetaAdAccount.objects.filter(
+            connection__is_active=True,
+            campaigns__mediajira_campaign__is_deleted=False,
+        )
+        .exclude(account_status__in=[2, 3])
+        .values_list('id', flat=True)
+        .distinct()
+    )
+    if not account_ids:
+        return []
+
+    fresh_ids = set(
+        MetaSyncRun.objects.filter(
+            ad_account_id__in=account_ids,
+            status__in=['ok', 'partial'],
+            finished_at__gte=freshness_cutoff,
+        ).values_list('ad_account_id', flat=True)
+    )
+    return sorted(account_ids - fresh_ids)
+
+
+@shared_task
+def recompute_pacing_forecast_batch(campaign_ids, computed_for_date):
+    """Recompute one bounded batch so failures/timeouts remain isolated."""
+    from campaign.models import Campaign
+    from .services import PacingService
+
+    today = date.fromisoformat(computed_for_date)
+    campaigns = Campaign.objects.filter(id__in=campaign_ids).only(
+        'id', 'platforms', 'start_date', 'end_date', 'budget_estimate'
+    ).order_by('id')
+    recomputed = 0
+    failed = []
+    for campaign in campaigns.iterator(chunk_size=PACING_BATCH_SIZE):
+        try:
+            PacingService.recompute_for_campaign(campaign, today=today)
+            recomputed += 1
+        except Exception as exc:  # one campaign must not abort its batch
+            logger.exception('Failed to recompute pacing for campaign %s', campaign.id)
+            failed.append({'campaign_id': str(campaign.id), 'error': str(exc)})
+    return {
+        'status': 'completed',
+        'recomputed': recomputed,
+        'failed': failed,
+        'computed_for_date': computed_for_date,
+    }
+
+
+@shared_task(bind=True, max_retries=6, default_retry_delay=600)
 def recompute_all_pacing_forecasts(self):
     """
     Nightly task to recompute budget pacing forecasts for active campaigns.
@@ -208,38 +269,51 @@ def recompute_all_pacing_forecasts(self):
         dict: Task execution summary
     """
     from campaign.models import Campaign
-    from .services import PacingService
-
-    logger.info("Starting nightly pacing forecast recomputation")
-
-    today = timezone.now().date()
+    now = timezone.now()
+    today = now.date()
+    stale_account_ids = _stale_meta_account_ids(now)
+    if stale_account_ids:
+        if self.request.retries < self.max_retries:
+            logger.warning(
+                'Pacing deferred: Meta spend is not fresh for account ids %s',
+                stale_account_ids,
+            )
+            raise self.retry(countdown=600)
+        logger.error(
+            'Pacing not recomputed after freshness retries; stale Meta account ids: %s',
+            stale_account_ids,
+        )
+        return {
+            'status': 'deferred_stale_spend',
+            'stale_meta_account_ids': stale_account_ids,
+            'computed_for_date': today.isoformat(),
+            'timestamp': now.isoformat(),
+        }
 
     # Archived campaigns are read-only and no longer worth pacing.
-    campaigns = Campaign.objects.filter(
+    campaign_ids = list(Campaign.objects.filter(
         is_deleted=False
     ).exclude(
         status=Campaign.Status.ARCHIVED
-    ).only('id', 'start_date', 'end_date', 'budget_estimate')
+    ).order_by('id').values_list('id', flat=True))
 
-    recomputed = 0
-    failed = []
-
-    for campaign in campaigns.iterator():
-        try:
-            PacingService.recompute_for_campaign(campaign, today=today)
-            recomputed += 1
-        except Exception as e:
-            logger.error(
-                f"Failed to recompute pacing for campaign {campaign.id}: {e}"
-            )
-            failed.append({'campaign_id': campaign.id, 'error': str(e)})
+    batch_size = getattr(settings, 'PACING_FORECAST_BATCH_SIZE', PACING_BATCH_SIZE)
+    batches = [campaign_ids[i:i + batch_size] for i in range(0, len(campaign_ids), batch_size)]
+    job = group(
+        recompute_pacing_forecast_batch.s(
+            [str(campaign_id) for campaign_id in batch],
+            today.isoformat(),
+        )
+        for batch in batches
+    ).apply_async() if batches else None
 
     result = {
-        'status': 'completed',
-        'recomputed': recomputed,
-        'failed': failed,
+        'status': 'queued',
+        'campaigns': len(campaign_ids),
+        'batches': len(batches),
+        'group_id': job.id if job else None,
         'computed_for_date': today.isoformat(),
-        'timestamp': timezone.now().isoformat(),
+        'timestamp': now.isoformat(),
     }
 
     logger.info(f"Pacing forecast recomputation completed: {result}")

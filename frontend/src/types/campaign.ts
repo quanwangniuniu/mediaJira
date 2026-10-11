@@ -16,10 +16,15 @@ export type PacingStatus =
 
 export type PacingReason =
   | 'missing_budget'
+  | 'missing_start_date'
   | 'missing_end_date'
   | 'missing_budget_and_end_date'
   | 'invalid_period'
-  | 'no_linked_spend';
+  | 'no_linked_spend'
+  | 'no_spend_recorded'
+  | 'unsupported_spend_platform';
+
+export type PacingDataQuality = 'complete' | 'partial' | 'unsupported' | 'not_applicable';
 
 /**
  * Latest budget pacing forecast for a campaign.
@@ -33,6 +38,9 @@ export interface CampaignPacingForecast {
   campaign_slug: string;
   status: PacingStatus;
   reason: PacingReason | '';
+  data_quality?: PacingDataQuality;
+  spend_platforms?: CampaignPlatform[];
+  unsupported_platforms?: CampaignPlatform[];
   budget: string | null;
   spend_to_date: string;
   expected_spend_to_date: string | null;
@@ -313,4 +321,3 @@ export interface SaveCampaignAsTemplateData {
   sharing_scope?: TemplateSharingScope;
   project_id?: number;
 }
-

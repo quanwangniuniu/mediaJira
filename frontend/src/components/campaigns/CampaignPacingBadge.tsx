@@ -24,12 +24,17 @@ const STATUS_CONFIG: Record<PacingStatus, { label: string; className: string }> 
  */
 const REASON_PROMPT: Record<PacingReason, string> = {
   missing_budget: 'Add a budget estimate to this campaign to see pacing.',
+  missing_start_date: 'Add a start date to this campaign to see pacing.',
   missing_end_date: 'Add an end date to this campaign to see pacing.',
   missing_budget_and_end_date:
     'Add a budget estimate and an end date to this campaign to see pacing.',
   invalid_period: 'This campaign ends before it starts — fix the dates to see pacing.',
   no_linked_spend:
-    'No Meta spend is linked to this campaign yet, so there is nothing to pace against.',
+    'No supported spend source is linked to this campaign yet.',
+  no_spend_recorded:
+    'A spend source is linked, but it has not recorded spend for this campaign period yet.',
+  unsupported_spend_platform:
+    'None of this campaign\'s platforms currently has an imported spend source.',
 };
 
 const NOT_STARTED_PROMPT = 'Pacing starts once the campaign is under way.';
@@ -38,6 +43,13 @@ export function pacingPrompt(pacing: CampaignPacingForecast): string | null {
   if (pacing.status === 'not_started') return NOT_STARTED_PROMPT;
   if (pacing.reason && pacing.reason in REASON_PROMPT) {
     return REASON_PROMPT[pacing.reason as PacingReason];
+  }
+  return null;
+}
+
+function pacingCoverageWarning(pacing: CampaignPacingForecast): string | null {
+  if (pacing.data_quality === 'partial' && (pacing.unsupported_platforms?.length ?? 0) > 0) {
+    return `Partial forecast: spend from ${pacing.unsupported_platforms?.join(', ')} is not imported.`;
   }
   return null;
 }
@@ -68,13 +80,14 @@ export default function CampaignPacingBadge({ pacing, variant = 'compact', class
 
   const config = STATUS_CONFIG[pacing.status] ?? STATUS_CONFIG.no_data;
   const prompt = pacingPrompt(pacing);
+  const coverageWarning = pacingCoverageWarning(pacing);
   const projected = formatPaceRatio(pacing.pace_ratio);
 
   const badge = (
     <span
       data-testid="pacing-badge"
       data-pacing-status={pacing.status}
-      title={prompt ?? projected ?? undefined}
+      title={prompt ?? coverageWarning ?? projected ?? undefined}
       className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium ${config.className}`}
     >
       {config.label}
@@ -99,7 +112,13 @@ export default function CampaignPacingBadge({ pacing, variant = 'compact', class
           {prompt}
         </p>
       ) : (
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+        <>
+          {coverageWarning ? (
+            <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+              {coverageWarning}
+            </p>
+          ) : null}
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
           <dt className="text-gray-500">Spent so far</dt>
           <dd className="text-right font-medium text-gray-900">
             {formatMoney(pacing.spend_to_date)}
@@ -128,7 +147,8 @@ export default function CampaignPacingBadge({ pacing, variant = 'compact', class
 
           <dt className="text-gray-500">Days left</dt>
           <dd className="text-right text-gray-700">{pacing.days_remaining}</dd>
-        </dl>
+          </dl>
+        </>
       )}
     </div>
   );

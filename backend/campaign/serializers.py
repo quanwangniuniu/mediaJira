@@ -101,6 +101,12 @@ class CampaignSerializer(serializers.ModelSerializer):
             )
         return value
 
+    def validate_budget_estimate(self, value):
+        """A configured budget must be strictly positive."""
+        if value is not None and value <= 0:
+            raise serializers.ValidationError("Budget estimate must be greater than zero.")
+        return value
+
     def validate(self, data):
         """Cross-field validation"""
         # Validate end_date is after start_date
@@ -213,6 +219,18 @@ class CampaignSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
 
+class CampaignListSerializer(CampaignSerializer):
+    """Campaign rows with only the pacing fields needed by the table badge."""
+
+    def get_pacing(self, obj):
+        from optimization.serializers import CampaignPacingSummarySerializer
+
+        forecast = getattr(obj, 'pacing_forecast', None)
+        if forecast is None:
+            return None
+        return CampaignPacingSummarySerializer(forecast).data
+
+
 class CampaignCreateSerializer(CampaignSerializer):
     """Serializer for campaign creation with required fields"""
     class Meta(CampaignSerializer.Meta):
@@ -230,7 +248,7 @@ class CampaignUpdateSerializer(serializers.ModelSerializer):
         model = Campaign
         fields = [
             'name', 'objective', 'platforms', 'hypothesis', 'tags',
-            'end_date', 'budget_estimate', 'status_note',
+            'start_date', 'end_date', 'budget_estimate', 'status_note',
             'assignee_id'
         ]
         extra_kwargs = {
@@ -251,6 +269,22 @@ class CampaignUpdateSerializer(serializers.ModelSerializer):
                     f"Invalid platforms: {invalid_platforms}. Must be one of: {valid_platforms}"
                 )
         return value
+
+    def validate_budget_estimate(self, value):
+        """Keep the budget rule identical for create and partial-update APIs."""
+        if value is not None and value <= 0:
+            raise serializers.ValidationError("Budget estimate must be greater than zero.")
+        return value
+
+    def validate(self, data):
+        """Validate the effective period, including values omitted by PATCH."""
+        start_date = data.get('start_date', self.instance.start_date if self.instance else None)
+        end_date = data.get('end_date', self.instance.end_date if self.instance else None)
+        if start_date and end_date and end_date < start_date:
+            raise serializers.ValidationError({
+                'end_date': 'End date must be after start date'
+            })
+        return data
 
 
 class CampaignStatusHistorySerializer(serializers.ModelSerializer):
@@ -671,4 +705,3 @@ class CampaignCalendarLinkCreateSerializer(serializers.Serializer):
             link.event_type = event_type
             link.save(update_fields=['event_type', 'updated_at'])
         return link
-

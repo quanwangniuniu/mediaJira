@@ -147,7 +147,7 @@ test.describe('Campaign budget pacing', () => {
       const badge = section.getByTestId('pacing-badge');
       await expect(badge).toHaveAttribute('data-pacing-status', 'no_data', { timeout: 20_000 });
       await expect(badge).toHaveText('No spend data');
-      await expect(section.getByTestId('pacing-prompt')).toContainText('No Meta spend is linked');
+      await expect(section.getByTestId('pacing-prompt')).toContainText('No supported spend source is linked');
     } finally {
       await deleteCampaign(page, campaign.slug);
     }
