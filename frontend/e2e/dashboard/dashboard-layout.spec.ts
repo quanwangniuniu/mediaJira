@@ -61,7 +61,7 @@ async function openDashboard(page: Page, initialPositions: Record<string, Partia
   await page.route('**/api/dashboard/workspace/**', async (route) => {
     if (workspaceMode === 'pending') await workspaceGate;
     if (workspaceMode === 'error') {
-      await route.fulfill({ status: 500, contentType: 'application/json', body: '{}' });
+      await route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ detail: 'You do not have permission' }) });
       return;
     }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
@@ -122,6 +122,7 @@ test('the grid loads while workspace cards are still loading', async ({ page }) 
 test('workspace errors leave the grid and unrelated cards available', async ({ page }) => {
   await openDashboard(page, {}, true, otherDataCatalog, 'error');
   await expect(page.locator('[data-widget-id="decisions-summary"]')).toContainText('Could not load workspace');
+  await expect(page.locator('[data-widget-id="decisions-summary"]')).toContainText('You do not have permission');
   for (const id of otherDataWidgetIds) await expect(page.locator(`[data-widget-id="${id}"]`)).toBeVisible();
 });
 
@@ -249,6 +250,7 @@ test('cards pushed down by an overview card return when it moves back up', async
   expect(layout.saved().find((widget) => widget.id === 'operations-summary')?.y).toBe(5);
 
   await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('button', { name: 'Move Audit' })).toBeVisible({ timeout: 15_000 });
   await expect(page.locator('[data-widget-id="decisions-summary"]')).toHaveCSS('grid-row-start', '6');
 });
 
@@ -456,21 +458,30 @@ test('a card can be dragged across the scrolling dashboard without passing its b
   await expect.poll(() => main.evaluate((element) => element.scrollTop), { timeout: 10_000 }).toBeGreaterThan(800);
   const preview = page.getByTestId('dashboard-drop-preview');
   await expect(preview).toBeVisible();
-  const previewEnd = await preview.evaluate((element) => {
-    const style = getComputedStyle(element);
-    return Number(style.gridRowStart) + Number(style.gridRowEnd.replace('span ', '')) - 1;
-  });
-  expect(previewEnd).toBeLessThanOrEqual(71);
   const dragBounds = await page.evaluate(() => {
     const active = document.querySelector('[data-widget-id="overall-progress"]')!.getBoundingClientRect();
     const grid = document.querySelector('[data-widget-id="overall-progress"]')!.parentElement!.getBoundingClientRect();
     return { cardBottom: active.bottom, limitBottom: grid.top + 71 * 32 - 8 };
   });
   expect(dragBounds.cardBottom).toBeLessThanOrEqual(dragBounds.limitBottom + 1);
+  // Auto-scroll can advance between two Playwright calls. Read the preview
+  // when the pointer is released, before dnd-kit removes it from the DOM.
+  await page.evaluate(() => {
+    window.addEventListener('pointerup', () => {
+      const preview = document.querySelector('[data-testid="dashboard-drop-preview"]');
+      if (!preview) return;
+      const style = getComputedStyle(preview);
+      document.documentElement.dataset.previewEndAtRelease = String(
+        Number(style.gridRowStart) + Number(style.gridRowEnd.replace('span ', '')) - 1,
+      );
+    }, { capture: true, once: true });
+  });
   await page.mouse.up();
 
   await expect.poll(() => layout.saved().find((widget) => widget.id === 'overall-progress')?.y).toBeGreaterThan(15);
   const savedCard = layout.saved().find((widget) => widget.id === 'overall-progress')!;
+  const previewEnd = await page.evaluate(() => Number(document.documentElement.dataset.previewEndAtRelease));
+  expect(previewEnd).toBeLessThanOrEqual(71);
   expect(savedCard.y + savedCard.h).toBe(previewEnd);
   expect(layout.saved().every((widget) => widget.y + widget.h <= 71)).toBe(true);
 });

@@ -50,6 +50,23 @@ class DashboardLayoutAPITest(TestCase):
         other_url = f'/api/dashboard/layout/?project_id={self.second_project.pk}'
         self.assertEqual(self.client.get(other_url).data['widgets'], DEFAULT_WIDGETS)
 
+    def test_repeated_put_updates_the_existing_widget_row(self):
+        first = [{'id': 'meetings', 'x': 0, 'y': 0, 'w': 6, 'h': 8}]
+        second = [{'id': 'meetings', 'x': 6, 'y': 4, 'w': 6, 'h': 10}]
+
+        self.assertEqual(self.client.put(self.url, {'widgets': first}, format='json').status_code, 200)
+        first_row = DashboardLayout.objects.get(project=self.project, user=self.owner, widget_id='meetings')
+        response = self.client.put(self.url, {'widgets': second}, format='json')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['widgets'], second)
+        rows = DashboardLayout.objects.filter(project=self.project, user=self.owner, widget_id='meetings')
+        self.assertEqual(rows.count(), 1)
+        updated_row = rows.get()
+        self.assertEqual(updated_row.pk, first_row.pk)
+        self.assertEqual((updated_row.x, updated_row.y, updated_row.w, updated_row.h), (6, 4, 6, 10))
+        self.assertGreater(updated_row.updated_at, first_row.updated_at)
+
     def test_new_cards_keep_previous_layout_records(self):
         DashboardLayout.objects.create(
             project=self.project, user=self.owner, widget_id='workspace',

@@ -622,13 +622,19 @@ class DashboardLayoutView(ProjectScopedViewSetMixin, APIView):
         serializer.is_valid(raise_exception=True)
         widgets = serializer.validated_data['widgets']
         with transaction.atomic():
-            # Serialize writes for this project before touching individual widget rows.
-            Project.objects.select_for_update().get(pk=project.pk)
-            for widget in widgets:
-                DashboardLayout.objects.update_or_create(
-                    project=project, user=request.user, widget_id=widget['id'],
-                    defaults={key: widget[key] for key in ('x', 'y', 'w', 'h')},
-                )
+            # Acquire widget row locks in a stable order across concurrent saves.
+            DashboardLayout.objects.bulk_create(
+                [
+                    DashboardLayout(
+                        project=project, user=request.user, widget_id=widget['id'],
+                        **{key: widget[key] for key in ('x', 'y', 'w', 'h')},
+                    )
+                    for widget in sorted(widgets, key=lambda item: item['id'])
+                ],
+                update_conflicts=True,
+                unique_fields=['project', 'user', 'widget_id'],
+                update_fields=['x', 'y', 'w', 'h', 'updated_at'],
+            )
             saved_rows = DashboardLayout.objects.filter(
                 project=project, user=request.user, widget_id__in=[item['id'] for item in widgets],
             ).values('widget_id', 'x', 'y', 'w', 'h', 'updated_at')

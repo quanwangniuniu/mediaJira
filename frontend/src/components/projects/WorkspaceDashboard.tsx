@@ -836,11 +836,32 @@ export interface WorkspaceDashboardWidget {
   content: React.ReactNode;
 }
 
-const WORKSPACE_WIDGET_IDS = [
+export const WORKSPACE_WIDGET_IDS = [
   'overall-progress', 'task-completion-rate', 'overdue-tasks', 'needs-attention',
   'decisions-summary', 'tasks-summary', 'operations-summary',
   'status-breakdown', 'priority-distribution', 'created-vs-completed',
-];
+] as const;
+
+type WorkspaceWidgetId = (typeof WORKSPACE_WIDGET_IDS)[number];
+
+const toWidgets = (content: (id: WorkspaceWidgetId) => React.ReactNode): WorkspaceDashboardWidget[] =>
+  WORKSPACE_WIDGET_IDS.map((id) => ({ id, content: content(id) }));
+
+function WorkspaceCardPlaceholder({ loading, error }: { loading: boolean; error: string | null }) {
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center gap-2 text-sm text-gray-500">
+        <Loader2 className="h-4 w-4 animate-spin" /> Loading workspace…
+      </div>
+    );
+  }
+  return (
+    <div role="alert" className="flex h-full flex-col items-center justify-center text-center text-sm text-rose-500">
+      <span className="font-medium">Could not load workspace</span>
+      {error && <span className="mt-1 line-clamp-2 text-xs text-rose-400" title={error}>{error}</span>}
+    </div>
+  );
+}
 
 interface Props {
   projectId: Id;
@@ -904,11 +925,7 @@ export default function WorkspaceDashboard({ projectId, renderWidgets }: Props) 
   }, [trendDays]);
 
   if (renderWidgets && (loading || error || !workspace || !summary)) {
-    const message = loading ? 'Loading workspace…' : 'Could not load workspace';
-    return <>{renderWidgets(WORKSPACE_WIDGET_IDS.map((id) => ({
-      id,
-      content: <div className="flex h-full items-center justify-center text-sm text-gray-500">{message}</div>,
-    })))}</>;
+    return <>{renderWidgets(toWidgets(() => <WorkspaceCardPlaceholder loading={loading} error={error} />))}</>;
   }
   if (loading) {
     return (
@@ -966,24 +983,24 @@ export default function WorkspaceDashboard({ projectId, renderWidgets }: Props) 
   const trendCreated = (summary?.daily_task_activity ?? []).map((d) => d.created);
   const trendCompleted = (summary?.daily_task_activity ?? []).map((d) => d.completed);
 
-  const widgets: WorkspaceDashboardWidget[] = [
-    { id: 'overall-progress', content: (
+  const contentById: Record<WorkspaceWidgetId, React.ReactNode> = {
+    'overall-progress': (
         <SummaryCard
           label="Overall Progress"
           rawValue={completionPct} displayValue={`${completionPct}%`}
           barFill={completionPct} barColor={COLOR.green}
           sub={`${doneTasks} / ${totalTasks} tasks done`}
         />
-    ) },
-    { id: 'task-completion-rate', content: (
+    ),
+    'task-completion-rate': (
         <SummaryCard
           label="Task Completion Rate"
           rawValue={completionPct} displayValue={`${completionPct}%`}
           valueColor={COLOR.green} barFill={completionPct} barColor={COLOR.green}
           sub={`+${summary.time_metrics.completed_last_7_days} completed last 7d`} subColor={COLOR.green}
         />
-    ) },
-    { id: 'overdue-tasks', content: (
+    ),
+    'overdue-tasks': (
         <SummaryCard
           label="Overdue Tasks"
           rawValue={task.overdueCount}
@@ -991,8 +1008,8 @@ export default function WorkspaceDashboard({ projectId, renderWidgets }: Props) 
           barFill={pct(task.overdueCount, totalTasks)} barColor={COLOR.red}
           sub={`${pct(task.overdueCount, totalTasks)}% of active tasks`}
         />
-    ) },
-    { id: 'needs-attention', content: (
+    ),
+    'needs-attention': (
         <SummaryCard
           label="Needs Attention"
           rawValue={needsAttention}
@@ -1000,8 +1017,8 @@ export default function WorkspaceDashboard({ projectId, renderWidgets }: Props) 
           barFill={pct(needsAttention, totalTasks)} barColor={COLOR.orange}
           sub={`${dec.highRiskCount} high-risk · ${task.overdueCount} overdue · ${task.blockedCount} blocked`}
         />
-    ) },
-    { id: 'decisions-summary', content: (
+    ),
+    'decisions-summary': (
         <ZonePanel
           iconSvg={
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#14b8a6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -1037,8 +1054,8 @@ export default function WorkspaceDashboard({ projectId, renderWidgets }: Props) 
             {dec.lowRiskCount > 0 && <span style={{ fontSize: 10, color: '#888' }}>Low {pct(dec.lowRiskCount, dec.activeCount)}%</span>}
           </div>
         </ZonePanel>
-    ) },
-    { id: 'tasks-summary', content: (
+    ),
+    'tasks-summary': (
         <ZonePanel
           iconSvg={
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -1095,8 +1112,8 @@ export default function WorkspaceDashboard({ projectId, renderWidgets }: Props) 
           }))} />
           <p style={{ fontSize: 10, color: '#bbb', marginTop: 5 }}>Hover to see breakdown · full chart below</p>
         </ZonePanel>
-    ) },
-    { id: 'operations-summary', content: (
+    ),
+    'operations-summary': (
         <ZonePanel
           iconSvg={
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -1121,8 +1138,8 @@ export default function WorkspaceDashboard({ projectId, renderWidgets }: Props) 
           <p style={{ fontSize: 10, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Active sheets — last 7 days</p>
           <SheetMiniBarChart spreadsheets={workspace.spreadsheets} />
         </ZonePanel>
-    ) },
-    { id: 'status-breakdown', content: (
+    ),
+    'status-breakdown': (
         <ChartPanel section="Tasks" title="Status breakdown">
           <HorizontalBarChart labels={statusLabels} values={statusValues} colors={statusColors} />
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
@@ -1136,8 +1153,8 @@ export default function WorkspaceDashboard({ projectId, renderWidgets }: Props) 
             ))}
           </div>
         </ChartPanel>
-    ) },
-    { id: 'priority-distribution', content: (
+    ),
+    'priority-distribution': (
         <ChartPanel section="Tasks" title="Priority distribution">
           <div style={{ padding: '2px 0 10px' }}>
             {PRIORITY_CONFIG.map((p) => {
@@ -1150,8 +1167,8 @@ export default function WorkspaceDashboard({ projectId, renderWidgets }: Props) 
           <p style={{ fontSize: 13, fontWeight: 600, color: TEXT_PRIMARY, marginBottom: 10 }}>Type breakdown</p>
           <DonutChart labels={typeLabels} values={typeValues} colors={typeColors} />
         </ChartPanel>
-    ) },
-    { id: 'created-vs-completed', content: (
+    ),
+    'created-vs-completed': (
       <ChartPanel
         section="Tasks" title="Created vs Completed — last 7 days" full
         right={
@@ -1191,14 +1208,14 @@ export default function WorkspaceDashboard({ projectId, renderWidgets }: Props) 
           <LegendItem color={COLOR.green} label="Completed" />
         </div>
       </ChartPanel>
-    ) },
-  ];
+    ),
+  };
+  const widgets = toWidgets((id) => contentById[id]);
 
   if (renderWidgets) return <>{renderWidgets(widgets)}</>;
 
-  const widgetContent = new Map(widgets.map((widget) => [widget.id, widget.content]));
-  const renderGroup = (ids: string[]) =>
-    ids.map((id) => <Fragment key={id}>{widgetContent.get(id)}</Fragment>);
+  const renderGroup = (ids: readonly WorkspaceWidgetId[]) =>
+    ids.map((id) => <Fragment key={id}>{contentById[id]}</Fragment>);
 
   return (
     <div>
@@ -1213,7 +1230,7 @@ export default function WorkspaceDashboard({ projectId, renderWidgets }: Props) 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 12, marginBottom: 12 }}>
         {renderGroup(['status-breakdown', 'priority-distribution'])}
       </div>
-      {widgetContent.get('created-vs-completed')}
+      {contentById['created-vs-completed']}
     </div>
   );
 }
