@@ -55,10 +55,10 @@ class CampaignSerializer(serializers.ModelSerializer):
     project = ProjectSummarySerializer(read_only=True)
     project_id = serializers.IntegerField(write_only=True, required=True)
     pacing = serializers.SerializerMethodField(read_only=True)
-
+    
     class Meta:
         model = Campaign
-        fields = ['slug',
+        fields = ['slug', 
             'id', 'name', 'objective', 'platforms', 'hypothesis', 'tags',
             'start_date', 'end_date', 'actual_completion_date',
             'owner', 'owner_id', 'creator', 'assignee', 'assignee_id',
@@ -67,7 +67,7 @@ class CampaignSerializer(serializers.ModelSerializer):
             'pacing',
             'created_at', 'updated_at', 'is_deleted'
         ]
-        read_only_fields = ['slug',
+        read_only_fields = ['slug', 
             'id', 'creator', 'status', 'actual_completion_date',
             'latest_performance_summary', 'pacing',
             'created_at', 'updated_at', 'is_deleted'
@@ -705,3 +705,4 @@ class CampaignCalendarLinkCreateSerializer(serializers.Serializer):
             link.event_type = event_type
             link.save(update_fields=['event_type', 'updated_at'])
         return link
+

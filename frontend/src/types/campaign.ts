@@ -321,3 +321,4 @@ export interface SaveCampaignAsTemplateData {
   sharing_scope?: TemplateSharingScope;
   project_id?: number;
 }
+

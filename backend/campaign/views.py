@@ -173,13 +173,13 @@ class CampaignViewSet(SlugLookupViewSetMixin, viewsets.ModelViewSet):
             raise DRFValidationError({
                 'status': 'Archived campaigns cannot be edited. Use restore() to move back to Completed status.'
             })
-
+        
         pacing_inputs_before = {f: getattr(instance, f) for f in PACING_INPUT_FIELDS}
         campaign = serializer.save()
 
         if any(getattr(campaign, f) != pacing_inputs_before[f] for f in PACING_INPUT_FIELDS):
             self._refresh_pacing(campaign)
-
+    
     def _refresh_pacing(self, campaign):
         """Recompute the pacing forecast after its inputs changed.
 

@@ -128,10 +128,10 @@ function InlineDateController({
       setError('Date must be before maximum date');
       return;
     }
-
+    
     const normalizedNew = normalizeDate(newValue);
     const normalizedOriginal = normalizeDate(originalValueRef.current);
-
+    
     if (normalizedNew === normalizedOriginal && !savingRef.current) {
       setIsEditing(false);
       return;
@@ -169,6 +169,7 @@ function InlineDateController({
 
   const handleClear = useCallback(() => {
     setDateValue('');
+    
     queueSave(null);
   }, [queueSave]);
 
@@ -248,3 +249,4 @@ function InlineDateController({
 }
 
 export default InlineDateController;
+

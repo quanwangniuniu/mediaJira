@@ -475,10 +475,10 @@ class Optimization(models.Model):
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-
+    
     class Meta:
         db_table = "optimization"
-
+    
     def __str__(self) -> str:
         return f"Optimization(task={self.task_id}, status={self.execution_status})"
 
