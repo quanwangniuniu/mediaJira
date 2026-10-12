@@ -158,12 +158,17 @@ ERASURE_POLICIES = {
         _model("csm.CustomerUser", delete=("user",)),
         _model("csm.CsmNotification", delete=("recipient",), anonymize=("sender",)),
         _model("csm.Ticket", anonymize=("assigned_to",)),
+        _model(
+            "csm.ConversationQualityReview",
+            anonymize=("reviewer", "agent_user"),
+        ),
         _model("csm.GuidanceEntry", anonymize=("created_by",)),
         _model("csm.QuickReplyTemplate", anonymize=("created_by",)),
         _model("csm.QuickReplyTemplateHistory", anonymize=("edited_by",)),
         _model("csm.TicketForm", anonymize=("created_by",)),
         _model("csm.TicketFormSubmission", anonymize=("submitted_by",)),
         _model("csm.CSMInvitation", anonymize=("invited_by",)),
+        _model("csm.RoutingRule", anonymize=("created_by",)),
     ),
     "customer": (
         _model("customer.Customer", anonymize=("user",)),
@@ -263,6 +268,7 @@ ERASURE_POLICIES = {
     ),
     "report": (
         _model("report.CustomKPI", anonymize=("created_by",)),
+        _model("report.ReportShareLink", anonymize=("created_by",)),
     ),
     "spreadsheet": (
         _model("spreadsheet.SheetStructureOperation", anonymize=("created_by",)),
