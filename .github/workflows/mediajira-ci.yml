@@ -746,6 +746,7 @@ jobs:
               npm ci &&
               npx prisma generate &&
               npx tsc --noEmit &&
+              npm run migrate &&
               npm test
             "
 
