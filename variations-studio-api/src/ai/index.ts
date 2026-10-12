@@ -9,9 +9,6 @@ export {
   MODEL_NAME,
   PROMPT_VERSION,
   AI_QUOTA_MESSAGE,
-  CTA_ENUM,
-  CTA_ENUM_ALLOWLIST,
-  SYSTEM_PROMPT,
   buildExternalUrlPrompt,
   buildUserPrompt,
 } from './prompts';
@@ -22,13 +19,6 @@ export {
   getOllamaConfig,
   getOllamaErrorMessage,
 } from './providers/ollama';
-
-export {
-  GeminiError,
-  callGeminiJson,
-  isGeminiQuotaError,
-  geminiCopyGenerator,
-} from './providers/gemini';
 
 /**
  * Build the default CopyGenerator for Ads Generation.
