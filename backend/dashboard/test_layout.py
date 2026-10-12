@@ -47,6 +47,30 @@ class DashboardLayoutAPITest(TestCase):
         other_url = f'/api/dashboard/layout/?project_id={self.second_project.pk}'
         self.assertEqual(self.client.get(other_url).data['widgets'], DEFAULT_WIDGETS)
 
+    def test_new_cards_keep_previous_layout_records(self):
+        DashboardLayout.objects.create(
+            project=self.project, user=self.owner, widget_id='workspace',
+            x=0, y=66, w=12, h=40,
+        )
+        existing = DashboardLayout.objects.create(
+            project=self.project, user=self.owner, widget_id='meetings',
+            x=0, y=48, w=6, h=8,
+        )
+
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        widgets = response.data['widgets']
+        self.assertNotIn('workspace', {widget['id'] for widget in widgets})
+        self.assertEqual(len(widgets), len(DEFAULT_WIDGETS))
+        self.assertIn({'id': 'meetings', 'x': 0, 'y': 48, 'w': 6, 'h': 8}, widgets)
+
+        saved = self.client.put(self.url, {'widgets': widgets}, format='json')
+        self.assertEqual(saved.status_code, 200)
+        self.assertTrue(DashboardLayout.objects.filter(pk=existing.pk).exists())
+        self.assertTrue(DashboardLayout.objects.filter(
+            project=self.project, user=self.owner, widget_id='workspace',
+        ).exists())
+
     def test_inaccessible_project_is_not_exposed(self):
         self.client.force_authenticate(user=self.stranger)
         self.assertEqual(self.client.get(self.url).status_code, 404)
@@ -60,6 +84,7 @@ class DashboardLayoutAPITest(TestCase):
             [{'id': 'meetings', 'x': 0, 'y': 0, 'w': 6, 'h': 8},
              {'id': 'activity', 'x': 3, 'y': 0, 'w': 6, 'h': 8}],
             [{'id': 'meetings', 'x': 11, 'y': 0, 'w': 6, 'h': 8}],
+            [{'id': 'meetings', 'x': 0, 'y': 0, 'w': 2, 'h': 8}],
             [{'id': 'meetings', 'x': 0, 'y': 0, 'w': 6, 'h': 2}],
         ]
         for widgets in invalid_layouts:

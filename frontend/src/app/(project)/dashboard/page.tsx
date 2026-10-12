@@ -12,7 +12,7 @@ export default function DashboardPage() {
   const { data, alerts, loading, errors } = useOverviewData(projectId);
 
   return (
-    <DashboardLayout alerts={alerts} upcomingMeetings={data.upcomingMeetings} mainClassName="dashboard-scrollbar">
+    <DashboardLayout alerts={alerts} upcomingMeetings={data.upcomingMeetings} mainClassName="dashboard-scrollbar [overflow-anchor:none]">
       {projectId == null ? (
         <p className="rounded-lg border bg-white p-4 text-sm text-gray-600">Select a project to view its dashboard.</p>
       ) : (

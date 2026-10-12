@@ -17,6 +17,7 @@ export interface DashboardLayoutResponse {
   widgets: DashboardWidgetPosition[];
   catalog: DashboardWidgetDefinition[];
   columns: number;
+  min_width: number;
   max_rows: number;
   updated_at: string | null;
 }

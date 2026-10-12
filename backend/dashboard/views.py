@@ -19,7 +19,7 @@ from spreadsheet.models import Spreadsheet
 
 from .models import DashboardLayout
 from .serializers import DashboardSummarySerializer, ProjectWorkspaceDashboardSerializer, DashboardLayoutSerializer
-from .widget_catalog import GRID_COLUMNS, MAX_ROWS, WIDGET_CATALOG, DEFAULT_WIDGETS
+from .widget_catalog import GRID_COLUMNS, MAX_ROWS, MIN_WIDGET_WIDTH, WIDGET_CATALOG, WIDGET_BY_ID, DEFAULT_WIDGETS
 
 
 logger = logging.getLogger(__name__)
@@ -570,14 +570,40 @@ class DashboardLayoutView(APIView):
             'widgets': widgets,
             'catalog': WIDGET_CATALOG,
             'columns': GRID_COLUMNS,
+            'min_width': MIN_WIDGET_WIDTH,
             'max_rows': MAX_ROWS,
             'updated_at': updated_at,
         }
 
+    @staticmethod
+    def merge_missing_widgets(saved_widgets):
+        """Keep saved positions and place newly registered cards in free grid cells."""
+        placed = list(saved_widgets)
+        known_ids = {widget['id'] for widget in placed}
+
+        def overlaps(left, right):
+            return (left['x'] < right['x'] + right['w']
+                    and right['x'] < left['x'] + left['w']
+                    and left['y'] < right['y'] + right['h']
+                    and right['y'] < left['y'] + left['h'])
+
+        for default in DEFAULT_WIDGETS:
+            if default['id'] in known_ids:
+                continue
+            candidate = default.copy()
+            for y in list(range(default['y'], MAX_ROWS - default['h'] + 1)) + list(range(default['y'])):
+                candidate['y'] = y
+                if all(not overlaps(candidate, widget) for widget in placed):
+                    placed.append(candidate)
+                    break
+        return sorted(placed, key=lambda widget: (widget['y'], widget['x']))
+
     def get(self, request):
         project = self.get_project(request)
         rows = list(
-            DashboardLayout.objects.filter(project=project, user=request.user)
+            DashboardLayout.objects.filter(
+                project=project, user=request.user, widget_id__in=WIDGET_BY_ID,
+            )
             .order_by('y', 'x')
             .values('widget_id', 'x', 'y', 'w', 'h', 'updated_at')
         )
@@ -588,7 +614,7 @@ class DashboardLayoutView(APIView):
         return Response(
             self.response_data(
                 project,
-                widgets if widgets else DEFAULT_WIDGETS,
+                self.merge_missing_widgets(widgets),
                 max(row['updated_at'] for row in rows) if rows else None,
             ),
             headers={'Cache-Control': 'private, no-store'},
@@ -600,12 +626,11 @@ class DashboardLayoutView(APIView):
         serializer.is_valid(raise_exception=True)
         widgets = serializer.validated_data['widgets']
         with transaction.atomic():
-            DashboardLayout.objects.filter(project=project, user=request.user).delete()
-            DashboardLayout.objects.bulk_create([
-                DashboardLayout(project=project, user=request.user, widget_id=widget['id'],
-                                x=widget['x'], y=widget['y'], w=widget['w'], h=widget['h'])
-                for widget in widgets
-            ])
+            for widget in widgets:
+                DashboardLayout.objects.update_or_create(
+                    project=project, user=request.user, widget_id=widget['id'],
+                    defaults={key: widget[key] for key in ('x', 'y', 'w', 'h')},
+                )
         return Response(
             self.response_data(project, widgets, timezone.now()),
             headers={'Cache-Control': 'private, no-store'},

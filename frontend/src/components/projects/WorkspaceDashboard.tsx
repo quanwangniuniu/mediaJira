@@ -6,7 +6,7 @@
 //   Zone metrics  → ProjectWorkspaceDashboardView  (/api/dashboard/workspace/)
 //   Chart metrics → DashboardSummaryView           (/api/dashboard/summary/)
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { Id } from '@/types/common';
@@ -249,7 +249,7 @@ function SummaryCard({
   const shownValue = `${animated}${suffix}`;
 
   return (
-    <div style={{ position: 'relative', minWidth: 0 }}>
+    <div data-dashboard-summary-card style={{ position: 'relative', minWidth: 0 }}>
       <div
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
@@ -831,9 +831,17 @@ function deriveOpsMetrics(
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-interface Props { projectId: Id; }
+export interface WorkspaceDashboardWidget {
+  id: string;
+  content: React.ReactNode;
+}
 
-export default function WorkspaceDashboard({ projectId }: Props) {
+interface Props {
+  projectId: Id;
+  renderWidgets?: (widgets: WorkspaceDashboardWidget[]) => React.ReactNode;
+}
+
+export default function WorkspaceDashboard({ projectId, renderWidgets }: Props) {
   const [workspace, setWorkspace] = useState<WorkspaceDashboardData | null>(null);
   const [summary, setSummary] = useState<DashboardSummaryData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -945,29 +953,24 @@ export default function WorkspaceDashboard({ projectId }: Props) {
   const trendCreated = (summary?.daily_task_activity ?? []).map((d) => d.created);
   const trendCompleted = (summary?.daily_task_activity ?? []).map((d) => d.completed);
 
-  return (
-    <div>
-      {/* PROJECT OVERVIEW */}
-      <SectionLabel>Project Overview</SectionLabel>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 210px), 1fr))', gap: 10, marginBottom: 20 }}>
-
-        {/* Overall Progress */}
+  const widgets: WorkspaceDashboardWidget[] = [
+    { id: 'overall-progress', content: (
         <SummaryCard
           label="Overall Progress"
           rawValue={completionPct} displayValue={`${completionPct}%`}
           barFill={completionPct} barColor={COLOR.green}
           sub={`${doneTasks} / ${totalTasks} tasks done`}
         />
-
-        {/* Task Completion Rate */}
+    ) },
+    { id: 'task-completion-rate', content: (
         <SummaryCard
           label="Task Completion Rate"
           rawValue={completionPct} displayValue={`${completionPct}%`}
           valueColor={COLOR.green} barFill={completionPct} barColor={COLOR.green}
           sub={`+${summary.time_metrics.completed_last_7_days} completed last 7d`} subColor={COLOR.green}
         />
-
-        {/* Overdue Tasks */}
+    ) },
+    { id: 'overdue-tasks', content: (
         <SummaryCard
           label="Overdue Tasks"
           rawValue={task.overdueCount}
@@ -975,8 +978,8 @@ export default function WorkspaceDashboard({ projectId }: Props) {
           barFill={pct(task.overdueCount, totalTasks)} barColor={COLOR.red}
           sub={`${pct(task.overdueCount, totalTasks)}% of active tasks`}
         />
-
-        {/* Needs Attention */}
+    ) },
+    { id: 'needs-attention', content: (
         <SummaryCard
           label="Needs Attention"
           rawValue={needsAttention}
@@ -984,14 +987,8 @@ export default function WorkspaceDashboard({ projectId }: Props) {
           barFill={pct(needsAttention, totalTasks)} barColor={COLOR.orange}
           sub={`${dec.highRiskCount} high-risk · ${task.overdueCount} overdue · ${task.blockedCount} blocked`}
         />
-
-      </div>
-
-      {/* MODULE SUMMARY */}
-      <SectionLabel>Module Summary</SectionLabel>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: 10, marginBottom: 12 }}>
-
-        {/* DECISIONS */}
+    ) },
+    { id: 'decisions-summary', content: (
         <ZonePanel
           iconSvg={
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#14b8a6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -1027,8 +1024,8 @@ export default function WorkspaceDashboard({ projectId }: Props) {
             {dec.lowRiskCount > 0 && <span style={{ fontSize: 10, color: '#888' }}>Low {pct(dec.lowRiskCount, dec.activeCount)}%</span>}
           </div>
         </ZonePanel>
-
-        {/* TASKS */}
+    ) },
+    { id: 'tasks-summary', content: (
         <ZonePanel
           iconSvg={
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -1085,8 +1082,8 @@ export default function WorkspaceDashboard({ projectId }: Props) {
           }))} />
           <p style={{ fontSize: 10, color: '#bbb', marginTop: 5 }}>Hover to see breakdown · full chart below</p>
         </ZonePanel>
-
-        {/* OPERATIONS */}
+    ) },
+    { id: 'operations-summary', content: (
         <ZonePanel
           iconSvg={
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -1111,11 +1108,8 @@ export default function WorkspaceDashboard({ projectId }: Props) {
           <p style={{ fontSize: 10, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Active sheets — last 7 days</p>
           <SheetMiniBarChart spreadsheets={workspace.spreadsheets} />
         </ZonePanel>
-
-      </div>
-
-      {/* CHART ROW */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 12, marginBottom: 12 }}>
+    ) },
+    { id: 'status-breakdown', content: (
         <ChartPanel section="Tasks" title="Status breakdown">
           <HorizontalBarChart labels={statusLabels} values={statusValues} colors={statusColors} />
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
@@ -1129,6 +1123,8 @@ export default function WorkspaceDashboard({ projectId }: Props) {
             ))}
           </div>
         </ChartPanel>
+    ) },
+    { id: 'priority-distribution', content: (
         <ChartPanel section="Tasks" title="Priority distribution">
           <div style={{ padding: '2px 0 10px' }}>
             {PRIORITY_CONFIG.map((p) => {
@@ -1141,9 +1137,8 @@ export default function WorkspaceDashboard({ projectId }: Props) {
           <p style={{ fontSize: 13, fontWeight: 600, color: TEXT_PRIMARY, marginBottom: 10 }}>Type breakdown</p>
           <DonutChart labels={typeLabels} values={typeValues} colors={typeColors} />
         </ChartPanel>
-      </div>
-
-      {/* TREND */}
+    ) },
+    { id: 'created-vs-completed', content: (
       <ChartPanel
         section="Tasks" title="Created vs Completed — last 7 days" full
         right={
@@ -1183,6 +1178,29 @@ export default function WorkspaceDashboard({ projectId }: Props) {
           <LegendItem color={COLOR.green} label="Completed" />
         </div>
       </ChartPanel>
+    ) },
+  ];
+
+  if (renderWidgets) return <>{renderWidgets(widgets)}</>;
+
+  const widgetContent = new Map(widgets.map((widget) => [widget.id, widget.content]));
+  const renderGroup = (ids: string[]) =>
+    ids.map((id) => <Fragment key={id}>{widgetContent.get(id)}</Fragment>);
+
+  return (
+    <div>
+      <SectionLabel>Project Overview</SectionLabel>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 210px), 1fr))', gap: 10, marginBottom: 20 }}>
+        {renderGroup(['overall-progress', 'task-completion-rate', 'overdue-tasks', 'needs-attention'])}
+      </div>
+      <SectionLabel>Module Summary</SectionLabel>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: 10, marginBottom: 12 }}>
+        {renderGroup(['decisions-summary', 'tasks-summary', 'operations-summary'])}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 12, marginBottom: 12 }}>
+        {renderGroup(['status-breakdown', 'priority-distribution'])}
+      </div>
+      {widgetContent.get('created-vs-completed')}
     </div>
   );
 }

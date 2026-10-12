@@ -2,14 +2,14 @@ from rest_framework import serializers
 from django.utils import timezone
 from task.models import Task
 from core.models import CustomUser
-from .widget_catalog import GRID_COLUMNS, MAX_ROWS, MAX_WIDGETS, WIDGET_BY_ID
+from .widget_catalog import GRID_COLUMNS, MAX_ROWS, MAX_WIDGETS, MIN_WIDGET_WIDTH, WIDGET_BY_ID
 
 
 class DashboardWidgetPositionSerializer(serializers.Serializer):
     id = serializers.CharField()
     x = serializers.IntegerField(min_value=0)
     y = serializers.IntegerField(min_value=0)
-    w = serializers.IntegerField(min_value=1)
+    w = serializers.IntegerField(min_value=MIN_WIDGET_WIDTH)
     h = serializers.IntegerField(min_value=1)
 
 

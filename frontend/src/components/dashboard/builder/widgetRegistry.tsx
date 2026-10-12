@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import WorkspaceDashboard from '@/components/projects/WorkspaceDashboard';
 import CustomKPIPanel from '@/components/dashboard/kpi/CustomKPIPanel';
 import MeetingsCard from '@/components/overview/MeetingsCard';
 import RecentActivityCard from '@/components/overview/RecentActivityCard';
@@ -16,7 +15,6 @@ export interface DashboardWidgetContext {
 
 /** Add a renderer here and a catalogue entry on the API to make a card available. */
 export const widgetRegistry: Record<string, (context: DashboardWidgetContext) => ReactNode> = {
-  workspace: ({ projectId }) => <WorkspaceDashboard projectId={projectId} />,
   'custom-kpis': ({ projectSlug }) => <CustomKPIPanel projectSlug={projectSlug} />,
   meetings: ({ data }) => <MeetingsCard upcoming={data.upcomingMeetings} actions={data.actionItems} />,
   activity: ({ data }) => <RecentActivityCard activities={data.taskSummary.recent_activity ?? []} />,
