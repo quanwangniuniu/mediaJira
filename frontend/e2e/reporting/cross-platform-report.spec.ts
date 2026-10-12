@@ -22,14 +22,51 @@ test('compares Meta, Google and TikTok with a selectable canonical KPI', async (
 
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await waitForWorkspaceReady(page);
-  await getActiveProjectSlug(page);
-  await page.goto('/overview', { waitUntil: 'domcontentloaded' });
+  const projectSlug = await getActiveProjectSlug(page);
+  const context = await page.evaluate(() => {
+    let organization: { id: number; name: string; slug: string } | null = null;
+    for (const key of ['auth-storage-v1', 'auth-storage']) {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const candidate = JSON.parse(raw)?.state?.user?.current_organization;
+      if (candidate?.id && candidate?.name && candidate?.slug) {
+        organization = candidate;
+        break;
+      }
+    }
+    let project = null;
+    for (const key of ['project-storage-v1', 'project-storage']) {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const candidate = JSON.parse(raw)?.state?.activeProject;
+      if (candidate?.id && candidate?.name && candidate?.slug) {
+        project = candidate;
+        break;
+      }
+    }
+    return { organization, project };
+  });
+  if (!context.organization || !context.project) {
+    throw new Error('No active organization/project found after storage hydration');
+  }
+
+  const { organization, project } = context;
+  await page.route(`**/api/core/organizations/${organization.slug}/`, (route) =>
+    route.fulfill({ json: organization })
+  );
+  await page.route(`**/api/core/projects/${projectSlug}/`, (route) =>
+    route.fulfill({ json: project })
+  );
+  await page.goto(
+    `/${encodeURIComponent(organization.slug)}/${encodeURIComponent(projectSlug)}/overview`,
+    { waitUntil: 'domcontentloaded' }
+  );
 
   const widget = page.getByTestId('cross-platform-performance');
   await expect(widget).toBeVisible({ timeout: 30_000 });
-  await expect(widget.getByText('Meta', { exact: true })).toBeVisible();
-  await expect(widget.getByText('Google', { exact: true })).toBeVisible();
-  await expect(widget.getByText('TikTok', { exact: true })).toBeVisible();
+  await expect(widget.getByTestId('platform-meta')).toContainText('Meta');
+  await expect(widget.getByTestId('platform-google')).toContainText('Google');
+  await expect(widget.getByTestId('platform-tiktok')).toContainText('TikTok');
 
   await widget.getByRole('button', { name: 'ROAS' }).click();
   await expect(widget.getByRole('button', { name: 'ROAS' })).toHaveAttribute(
