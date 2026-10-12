@@ -19,7 +19,7 @@ import styles from './DashboardBuilder.module.css';
 const ROW_HEIGHT = 24;
 const GRID_GAP = 8;
 const OVERVIEW_ROWS = 5;
-// Reserve one small card's height for collision push-down, then stop the grid.
+// Keep empty rows visible below the last card for dragging.
 const BOTTOM_MARGIN_ROWS = 8;
 
 function matchesSavedWidgets(expected: DashboardWidgetPosition[], actual: DashboardWidgetPosition[]) {
@@ -37,7 +37,6 @@ interface DashboardBuilderProps {
   projectId: number | string;
   projectName?: string | null;
   projectSlug?: string | null;
-  contentLoading: boolean;
 }
 
 function WidgetCard({
@@ -83,7 +82,7 @@ function WidgetCard({
 }
 
 function DashboardGrid(props: DashboardBuilderProps & { workspaceWidgets: WorkspaceDashboardWidget[] }) {
-  const { projectId, contentLoading } = props;
+  const { projectId } = props;
   const [layout, setLayout] = useState<DashboardLayoutResponse | null>(null);
   const [layoutState, dispatchLayout] = useReducer(layoutReducer, initialLayoutState);
   const { widgets, rowLimit, saveState } = layoutState;
@@ -224,7 +223,7 @@ function DashboardGrid(props: DashboardBuilderProps & { workspaceWidgets: Worksp
         w: Math.max(minWidth, widget.w + Math.round((clientX - startX) / columnStep)),
         h: Math.max(definition?.min_h ?? 1, widget.h + Math.round((clientY - startY) / (ROW_HEIGHT + GRID_GAP))),
       };
-      return placeWidget(widgets, candidate, layout.columns, rowLimit);
+      return placeWidget(widgets, candidate, layout.columns, layout.max_rows);
     };
     const onPointerMove = (moveEvent: PointerEvent) => {
       setResizePreview(resizedLayout(moveEvent.clientX, moveEvent.clientY));
@@ -266,7 +265,6 @@ function DashboardGrid(props: DashboardBuilderProps & { workspaceWidgets: Worksp
           {saveState === 'error' && <button type="button" className="text-xs underline" onClick={() => persist(widgets)}>Retry</button>}
         </div>
       )}
-      {contentLoading && <p role="status" className="mb-3 text-xs text-gray-500">Loading card data…</p>}
       <DndContext sensors={sensors} modifiers={[restrictToDashboard]} autoScroll={{
         acceleration: 6,
         interval: 16,

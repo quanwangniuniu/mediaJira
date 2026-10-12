@@ -836,6 +836,12 @@ export interface WorkspaceDashboardWidget {
   content: React.ReactNode;
 }
 
+const WORKSPACE_WIDGET_IDS = [
+  'overall-progress', 'task-completion-rate', 'overdue-tasks', 'needs-attention',
+  'decisions-summary', 'tasks-summary', 'operations-summary',
+  'status-breakdown', 'priority-distribution', 'created-vs-completed',
+];
+
 interface Props {
   projectId: Id;
   renderWidgets?: (widgets: WorkspaceDashboardWidget[]) => React.ReactNode;
@@ -897,6 +903,13 @@ export default function WorkspaceDashboard({ projectId, renderWidgets }: Props) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trendDays]);
 
+  if (renderWidgets && (loading || error || !workspace || !summary)) {
+    const message = loading ? 'Loading workspace…' : 'Could not load workspace';
+    return <>{renderWidgets(WORKSPACE_WIDGET_IDS.map((id) => ({
+      id,
+      content: <div className="flex h-full items-center justify-center text-sm text-gray-500">{message}</div>,
+    })))}</>;
+  }
   if (loading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRadius: 16, border: '1px dashed #E5E7EB', background: '#fff', padding: 40 }}>

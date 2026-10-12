@@ -20,10 +20,17 @@ const catalog = [
   { id: 'activity', label: 'Recent activity', x: 6, y: 15, w: 6, h: 6, min_h: 4 },
   { id: 'meetings', label: 'Meetings & action items', x: 0, y: 55, w: 6, h: 8, min_h: 4 },
 ];
+const otherDataCatalog = [
+  { id: 'custom-kpis', label: 'Custom KPIs', x: 0, y: 43, w: 12, h: 8, min_h: 4 },
+  { id: 'project-team', label: 'Project team', x: 6, y: 65, w: 6, h: 10, min_h: 6 },
+];
+const otherDataWidgetIds = ['custom-kpis', 'meetings', 'activity', 'audit', 'project-team'];
 
 test.use({ storageState: { cookies: [], origins: [] }, screenshot: 'off' });
 
-async function openDashboard(page: Page, initialPositions: Record<string, Partial<DashboardWidgetPosition>> = {}, includeMinWidth = true, extraCatalog: typeof catalog = []) {
+async function openDashboard(page: Page, initialPositions: Record<string, Partial<DashboardWidgetPosition>> = {}, includeMinWidth = true, extraCatalog: typeof catalog = [], workspaceMode: 'success' | 'pending' | 'error' = 'success') {
+  let releaseWorkspace = () => {};
+  const workspaceGate = new Promise<void>((resolve) => { releaseWorkspace = resolve; });
   const user = { ...DEFAULT_MESSAGES_E2E_USER, current_organization: project.organization };
   await installApiMockSafetyNet(page);
   await seedAuthenticatedUser(page, user);
@@ -52,6 +59,11 @@ async function openDashboard(page: Page, initialPositions: Record<string, Partia
     }) });
   });
   await page.route('**/api/dashboard/workspace/**', async (route) => {
+    if (workspaceMode === 'pending') await workspaceGate;
+    if (workspaceMode === 'error') {
+      await route.fulfill({ status: 500, contentType: 'application/json', body: '{}' });
+      return;
+    }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
       decisions: [], tasks: [], spreadsheets: [], patterns: [],
     }) });
@@ -76,7 +88,7 @@ async function openDashboard(page: Page, initialPositions: Record<string, Partia
   await page.goto('/dashboard-test-org/med-287/overview', { waitUntil: 'domcontentloaded', timeout: 90_000 });
   await waitForLayoutMain(page);
   await expect(page.getByRole('button', { name: 'Move Audit' })).toBeVisible();
-  return { saved: () => persisted, writes: () => writes, reads: () => reads };
+  return { saved: () => persisted, writes: () => writes, reads: () => reads, releaseWorkspace };
 }
 
 test('Overview navigation opens the resizable grid at the original route', async ({ page }) => {
@@ -84,6 +96,51 @@ test('Overview navigation opens the resizable grid at the original route', async
   await page.getByRole('button', { name: 'Overview', exact: true }).click();
   await expect(page).toHaveURL(/\/overview$/, { timeout: 30_000 });
   await expect(page.getByRole('button', { name: 'Move Audit' })).toBeVisible();
+});
+
+test('Overview hash scroll reaches the Project team widget', async ({ page }) => {
+  await openDashboard(page, {}, true, [
+    { id: 'project-team', label: 'Project team', x: 0, y: 65, w: 6, h: 10, min_h: 4 },
+  ]);
+  await page.evaluate(() => {
+    sessionStorage.setItem('overview-pending-section', 'project-team');
+    window.location.hash = 'project-team';
+  });
+  await expect.poll(() => page.locator('main.dashboard-scrollbar').evaluate((main) => main.scrollTop)).toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem('overview-pending-section'))).toBeNull();
+});
+
+test('the grid loads while workspace cards are still loading', async ({ page }) => {
+  const layout = await openDashboard(page, {}, true, otherDataCatalog, 'pending');
+  expect(layout.reads()).toBeGreaterThan(0);
+  await expect(page.locator('[data-widget-id="decisions-summary"]')).toContainText('Loading workspace…');
+  for (const id of otherDataWidgetIds) await expect(page.locator(`[data-widget-id="${id}"]`)).toBeVisible();
+  layout.releaseWorkspace();
+  await expect(page.locator('[data-widget-id="decisions-summary"]')).not.toContainText('Loading workspace…');
+});
+
+test('workspace errors leave the grid and unrelated cards available', async ({ page }) => {
+  await openDashboard(page, {}, true, otherDataCatalog, 'error');
+  await expect(page.locator('[data-widget-id="decisions-summary"]')).toContainText('Could not load workspace');
+  for (const id of otherDataWidgetIds) await expect(page.locator(`[data-widget-id="${id}"]`)).toBeVisible();
+});
+
+test('resizing past the display margin can push cards farther down', async ({ page }) => {
+  const layout = await openDashboard(page, {
+    audit: { x: 0, y: 15 },
+    meetings: { x: 0, y: 21 },
+    activity: { x: 0, y: 29 },
+  });
+  const resize = page.getByRole('button', { name: 'Resize Overall progress' });
+  const box = (await resize.boundingBox())!;
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, y + 10 * 32, { steps: 10 });
+  await page.mouse.up();
+  await expect.poll(() => layout.saved().find((widget) => widget.id === 'overall-progress')?.h).toBe(15);
+  await expect.poll(() => layout.saved().find((widget) => widget.id === 'activity')?.y).toBe(39);
 });
 
 test('a catalog entry without a renderer does not occupy invisible grid rows', async ({ page }) => {
