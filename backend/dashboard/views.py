@@ -13,12 +13,14 @@ from rest_framework.exceptions import NotFound, ValidationError
 from core.admin_utils import get_org_admin_org_ids
 from core.models import Project, ProjectMember
 from core.slug_mixins import resolve_project_pk
+from core.viewset_mixins import ProjectScopedViewSetMixin
 from task.models import Task, ApprovalRecord, TaskComment
 from decision.models import Decision
 from spreadsheet.models import Spreadsheet
 
 from .models import DashboardLayout
 from .serializers import DashboardSummarySerializer, ProjectWorkspaceDashboardSerializer, DashboardLayoutSerializer
+from .services import get_rollup, ALL_FIELDS
 from .widget_catalog import GRID_COLUMNS, MAX_ROWS, MIN_WIDGET_WIDTH, WIDGET_CATALOG, WIDGET_BY_ID, DEFAULT_WIDGETS
 
 
@@ -635,3 +637,18 @@ class DashboardLayoutView(APIView):
             self.response_data(project, widgets, timezone.now()),
             headers={'Cache-Control': 'private, no-store'},
         )
+
+class CrossProjectRollupView(ProjectScopedViewSetMixin, APIView):
+    """
+    GET /api/dashboard/rollup/
+
+    Returns rollup metrics for all projects the authenticated user can access.
+    No query parameters required — the project scope is derived server-side from
+    the user's active project memberships.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        project_ids = self._accessible_project_ids()
+        data = get_rollup(project_ids, ALL_FIELDS)
+        return Response(data)
