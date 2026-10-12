@@ -73,17 +73,17 @@ async function openDashboard(page: Page, initialPositions: Record<string, Partia
     }) });
   });
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto('/dashboard-test-org/med-287/dashboard', { waitUntil: 'domcontentloaded', timeout: 90_000 });
+  await page.goto('/dashboard-test-org/med-287/overview', { waitUntil: 'domcontentloaded', timeout: 90_000 });
   await waitForLayoutMain(page);
   await expect(page.getByRole('button', { name: 'Move Audit' })).toBeVisible();
   return { saved: () => persisted, writes: () => writes, reads: () => reads };
 }
 
-test('Overview navigation keeps the original static page', async ({ page }) => {
+test('Overview navigation opens the resizable grid at the original route', async ({ page }) => {
   await openDashboard(page);
   await page.getByRole('button', { name: 'Overview', exact: true }).click();
   await expect(page).toHaveURL(/\/overview$/, { timeout: 30_000 });
-  await expect(page.getByRole('button', { name: 'Move Audit' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Move Audit' })).toBeVisible();
 });
 
 test('a catalog entry without a renderer does not occupy invisible grid rows', async ({ page }) => {
