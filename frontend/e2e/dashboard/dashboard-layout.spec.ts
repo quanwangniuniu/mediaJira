@@ -23,7 +23,7 @@ const catalog = [
 
 test.use({ storageState: { cookies: [], origins: [] }, screenshot: 'off' });
 
-async function openDashboard(page: Page, initialPositions: Record<string, Partial<DashboardWidgetPosition>> = {}, includeMinWidth = true) {
+async function openDashboard(page: Page, initialPositions: Record<string, Partial<DashboardWidgetPosition>> = {}, includeMinWidth = true, extraCatalog: typeof catalog = []) {
   const user = { ...DEFAULT_MESSAGES_E2E_USER, current_organization: project.organization };
   await installApiMockSafetyNet(page);
   await seedAuthenticatedUser(page, user);
@@ -56,34 +56,53 @@ async function openDashboard(page: Page, initialPositions: Record<string, Partia
       decisions: [], tasks: [], spreadsheets: [], patterns: [],
     }) });
   });
-  let persisted: DashboardWidgetPosition[] = catalog.map(({ id, x, y, w, h }) => ({ id, x, y, w, h, ...initialPositions[id] }));
+  const activeCatalog = [...catalog, ...extraCatalog];
+  let persisted: DashboardWidgetPosition[] = activeCatalog.map(({ id, x, y, w, h }) => ({ id, x, y, w, h, ...initialPositions[id] }));
   let writes = 0;
+  let reads = 0;
   await page.route('**/api/dashboard/layout/**', async (route) => {
     if (route.request().method() === 'PUT') {
       writes += 1;
       persisted = route.request().postDataJSON().widgets;
+    } else if (route.request().method() === 'GET') {
+      reads += 1;
     }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
       project_id: project.id, project_slug: project.slug, widgets: persisted,
-      catalog, columns: 12, ...(includeMinWidth ? { min_width: 3 } : {}), max_rows: 200, updated_at: null,
+      catalog: activeCatalog, columns: 12, ...(includeMinWidth ? { min_width: 3 } : {}), max_rows: 200, updated_at: null,
     }) });
   });
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/dashboard-test-org/med-287/dashboard', { waitUntil: 'domcontentloaded', timeout: 90_000 });
   await waitForLayoutMain(page);
   await expect(page.getByRole('button', { name: 'Move Audit' })).toBeVisible();
-  return { saved: () => persisted, writes: () => writes };
+  return { saved: () => persisted, writes: () => writes, reads: () => reads };
 }
 
-test('Overview navigation opens the draggable dashboard', async ({ page }) => {
+test('Overview navigation keeps the original static page', async ({ page }) => {
   await openDashboard(page);
   await page.getByRole('button', { name: 'Overview', exact: true }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(page.getByRole('button', { name: 'Move Audit' })).toBeVisible();
+  await expect(page).toHaveURL(/\/overview$/, { timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Move Audit' })).toHaveCount(0);
+});
+
+test('a catalog entry without a renderer does not occupy invisible grid rows', async ({ page }) => {
+  const warnings: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'warning') warnings.push(message.text());
+  });
+  await openDashboard(page, {}, true, [
+    { id: 'missing-renderer', label: 'Missing renderer', x: 0, y: 80, w: 6, h: 8, min_h: 4 },
+  ]);
+  await expect(page.locator('[data-widget-id="missing-renderer"]')).toHaveCount(0);
+  const grid = page.locator('[data-widget-id="audit"]').locator('..');
+  expect(await grid.evaluate((element) => element.getBoundingClientRect().height)).toBe(71 * 32 - 8);
+  expect(warnings.some((message) => message.includes('missing-renderer'))).toBe(true);
 });
 
 test('moving and resizing cards saves their layout after each gesture', async ({ page }) => {
   const layout = await openDashboard(page);
+  const readsBeforeMove = layout.reads();
   const move = page.getByRole('button', { name: 'Move Audit' });
   await move.scrollIntoViewIfNeeded();
   const moveBox = (await move.boundingBox())!;
@@ -97,6 +116,8 @@ test('moving and resizing cards saves their layout after each gesture', async ({
   await page.mouse.up();
   await expect(page.getByTestId('dashboard-drop-preview')).toHaveCount(0);
   await expect.poll(() => layout.saved().find((widget) => widget.id === 'audit')?.y).toBeGreaterThan(15);
+  await expect(page.getByRole('status').getByText('Saved')).toBeVisible();
+  expect(layout.reads()).toBe(readsBeforeMove);
 
   const resize = page.getByRole('button', { name: 'Resize Audit' });
   await resize.scrollIntoViewIfNeeded();

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
 import { DndContext, PointerSensor, useDraggable, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent, DragMoveEvent, Modifier } from '@dnd-kit/core';
@@ -12,6 +12,7 @@ import type { WorkspaceDashboardWidget } from '@/components/projects/WorkspaceDa
 import type { OverviewMock } from '@/types/overview';
 import type { DashboardLayoutResponse, DashboardWidgetDefinition, DashboardWidgetPosition } from '@/types/dashboardLayout';
 import { moveWidget, placeWidget } from './layout';
+import { initialLayoutState, layoutReducer } from './layoutReducer';
 import { widgetRegistry } from './widgetRegistry';
 import styles from './DashboardBuilder.module.css';
 
@@ -84,32 +85,39 @@ function WidgetCard({
 function DashboardGrid(props: DashboardBuilderProps & { workspaceWidgets: WorkspaceDashboardWidget[] }) {
   const { projectId, contentLoading } = props;
   const [layout, setLayout] = useState<DashboardLayoutResponse | null>(null);
-  const [widgets, setWidgets] = useState<DashboardWidgetPosition[]>([]);
-  const [rowLimit, setRowLimit] = useState(0);
+  const [layoutState, dispatchLayout] = useReducer(layoutReducer, initialLayoutState);
+  const { widgets, rowLimit, saveState } = layoutState;
   const [resizePreview, setResizePreview] = useState<DashboardWidgetPosition[] | null>(null);
   const [dropLayout, setDropLayout] = useState<DashboardWidgetPosition[] | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [loadError, setLoadError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const gridRef = useRef<HTMLDivElement>(null);
   const dragPointer = useRef<{ x: number; y: number } | null>(null);
   const saveChain = useRef<Promise<void>>(Promise.resolve());
   const revision = useRef(0);
+  const renderableIds = useRef<Set<string>>(new Set());
+  renderableIds.current = new Set([
+    ...Object.keys(widgetRegistry),
+    ...props.workspaceWidgets.map((widget) => widget.id),
+  ]);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   useEffect(() => {
     let cancelled = false;
-    revision.current += 1;
+    const loadRevision = ++revision.current;
+    dispatchLayout({ type: 'reset', revision: loadRevision });
     setLayout(null);
     setLoadError(false);
     DashboardAPI.getLayout(projectId).then(({ data }) => {
       if (cancelled) return;
+      const visibleWidgets = data.widgets.filter((widget) => renderableIds.current.has(widget.id));
+      if (process.env.NODE_ENV !== 'production' && visibleWidgets.length !== data.widgets.length) {
+        const missing = data.widgets.filter((widget) => !renderableIds.current.has(widget.id));
+        console.warn('Dashboard widgets have no renderer:', missing.map((widget) => widget.id));
+      }
       setLayout(data);
-      setWidgets(data.widgets);
-      const contentBottom = Math.max(0, ...data.widgets.map((widget) => widget.y + widget.h));
-      setRowLimit(Math.min(data.max_rows, contentBottom + BOTTOM_MARGIN_ROWS));
-      setSaveState('idle');
+      dispatchLayout({ type: 'loaded', widgets: visibleWidgets, maxRows: data.max_rows, marginRows: BOTTOM_MARGIN_ROWS, revision: loadRevision });
     }).catch(() => {
       if (!cancelled) setLoadError(true);
     });
@@ -141,20 +149,16 @@ function DashboardGrid(props: DashboardBuilderProps & { workspaceWidgets: Worksp
   };
 
   function persist(next: DashboardWidgetPosition[]) {
-    setWidgets(next);
-    const contentBottom = Math.max(...next.map((widget) => widget.y + widget.h));
-    setRowLimit((current) => Math.min(layout?.max_rows ?? current, contentBottom + BOTTOM_MARGIN_ROWS));
-    setSaveState('saving');
     const currentRevision = ++revision.current;
+    dispatchLayout({ type: 'changed', widgets: next, maxRows: layout?.max_rows ?? rowLimit, marginRows: BOTTOM_MARGIN_ROWS, revision: currentRevision });
     saveChain.current = saveChain.current.catch(() => undefined).then(async () => {
-      await DashboardAPI.saveLayout(projectId, next);
-      const { data } = await DashboardAPI.getLayout(projectId);
+      const { data } = await DashboardAPI.saveLayout(projectId, next);
       if (!matchesSavedWidgets(next, data.widgets)) {
         throw new Error('Dashboard layout did not match the saved version.');
       }
-      if (currentRevision === revision.current) setSaveState('saved');
+      dispatchLayout({ type: 'saved', revision: currentRevision });
     }).catch(() => {
-      if (currentRevision === revision.current) setSaveState('error');
+      dispatchLayout({ type: 'failed', revision: currentRevision });
     });
   }
 
@@ -204,8 +208,7 @@ function DashboardGrid(props: DashboardBuilderProps & { workspaceWidgets: Worksp
 
   function onResizeStart(event: ReactPointerEvent<HTMLButtonElement>, widget: DashboardWidgetPosition) {
     if (!layout || !gridRef.current || event.button !== 0) return;
-    revision.current += 1;
-    setSaveState('idle');
+    dispatchLayout({ type: 'invalidate', revision: ++revision.current });
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     const startX = event.clientX;
@@ -249,7 +252,8 @@ function DashboardGrid(props: DashboardBuilderProps & { workspaceWidgets: Worksp
   if (!layout) return <div className="rounded-lg border bg-white p-4 text-sm text-gray-500">Loading dashboard layout…</div>;
 
   const definitions = new Map(layout.catalog.map((definition) => [definition.id, definition]));
-  const workspaceContent = new Map(props.workspaceWidgets.map((widget) => [widget.id, widget.content]));
+  const contentById = new Map(Object.entries(widgetRegistry).map(([id, render]) => [id, render(props)]));
+  for (const widget of props.workspaceWidgets) contentById.set(widget.id, widget.content);
   const dropPreview = dropLayout?.find((widget) => widget.id === draggingId);
 
   return (
@@ -269,8 +273,7 @@ function DashboardGrid(props: DashboardBuilderProps & { workspaceWidgets: Worksp
         threshold: { x: 0.1, y: 0.16 },
         canScroll: (element) => element === gridRef.current?.closest('main.dashboard-scrollbar'),
       }} onDragStart={(event) => {
-        revision.current += 1;
-        setSaveState('idle');
+        dispatchLayout({ type: 'invalidate', revision: ++revision.current });
         const activation = event.activatorEvent;
         dragPointer.current = 'clientX' in activation && 'clientY' in activation
           ? { x: Number(activation.clientX), y: Number(activation.clientY) }
@@ -287,9 +290,7 @@ function DashboardGrid(props: DashboardBuilderProps & { workspaceWidgets: Worksp
           {(resizePreview ?? widgets).map((widget) => {
             const definition = definitions.get(widget.id);
             if (!definition) return null;
-            const content = workspaceContent.has(widget.id)
-              ? workspaceContent.get(widget.id)
-              : widgetRegistry[widget.id]?.(props);
+            const content = contentById.get(widget.id);
             if (content === undefined) return null;
             return <WidgetCard key={widget.id} widget={widget} definition={definition} content={content} onResizeStart={onResizeStart} />;
           })}

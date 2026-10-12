@@ -99,6 +99,7 @@
 }
 
 @media (max-width: 767px) {
+  /* TODO: Keep the mobile stack in saved (y, x) order; mobile drag polish is a separate ticket. */
   .grid {
     display: flex;
     flex-direction: column;

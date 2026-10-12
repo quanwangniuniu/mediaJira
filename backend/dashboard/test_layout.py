@@ -36,7 +36,10 @@ class DashboardLayoutAPITest(TestCase):
 
     def test_layout_is_scoped_to_user_and_project(self):
         widgets = [{'id': 'meetings', 'x': 0, 'y': 0, 'w': 6, 'h': 8}]
-        self.assertEqual(self.client.put(self.url, {'widgets': widgets}, format='json').status_code, 200)
+        response = self.client.put(self.url, {'widgets': widgets}, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['widgets'], widgets)
+        self.assertIsNotNone(response.data['updated_at'])
         saved_widget = DashboardLayout.objects.get(project=self.project, user=self.owner)
         self.assertEqual((saved_widget.widget_id, saved_widget.x, saved_widget.y, saved_widget.w, saved_widget.h),
                          ('meetings', 0, 0, 6, 8))

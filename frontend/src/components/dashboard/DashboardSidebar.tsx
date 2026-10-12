@@ -72,7 +72,7 @@ const navGroups: NavGroup[] = [
   {
     title: 'OVERVIEW',
     items: [
-      { label: 'Overview', href: '/dashboard', icon: LayoutDashboard },
+      { label: 'Overview', href: '/overview', icon: LayoutDashboard },
       { label: 'AI Agent', href: AGENT_PANEL_NAV_HREF, icon: Bot },
     ],
   },
