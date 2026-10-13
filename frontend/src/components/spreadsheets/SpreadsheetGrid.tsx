@@ -26,6 +26,7 @@ import { adjustFormulaReferences, colLabelToIndex } from '@/lib/spreadsheet/form
 import { ApplyHighlightParams } from '@/types/patterns';
 import BrandSelect from '@/components/ui/BrandSelect';
 import type { SheetPresenceUser } from '@/lib/sheetSocketStore';
+import { parseSheetStyles } from '@/components/spreadsheets/xlsx_style_import'; 
 
 export type SpreadsheetSelectionChange = {
   row: number;
@@ -726,6 +727,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
   const [xlsxImport, setXlsxImport] = useState<XLSXParseResult | null>(null);
   const [selectedXlsxSheet, setSelectedXlsxSheet] = useState<string>('');
+  const [xlsxImportFile, setXlsxImportFile] = useState<File | null>(null);    // added - stores the file to the backend for openpyxl to inspect its styling
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [exportMenuAnchor, setExportMenuAnchor] = useState<{ top: number; left: number; width: number } | null>(null);
   const [sheetsImportModalOpen, setSheetsImportModalOpen] = useState(false);
@@ -4810,6 +4812,62 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     ]
   );
 
+  const applyImportedStyles = async (
+    formatOps: Array<{
+      row: number;
+      column: number;
+      bold: boolean;
+      italic: boolean;
+      strikethrough: boolean;
+      text_color: string | null;
+      font_family: string | null;
+      font_size: number | null;
+      number_format: { type?: NumberFormatType; currency_code?: string | null; decimal_places?: number | null } | null;
+    }>,
+    highlightOps: Array<{ scope: 'CELL'; operation: 'SET'; row: number; col: number; color: string }>,
+  ) => {
+    // save the imported cell formating to the backend for both the format and highlight
+    for (let i = 0; i < formatOps.length; i += 2000) {
+      await SpreadsheetAPI.batchUpdateCellFormats(spreadsheetId, sheetId, formatOps.slice(i, i + 2000));
+    }
+    for (let i = 0; i < highlightOps.length; i += 2000) {
+      await SpreadsheetAPI.batchUpdateHighlights(spreadsheetId, sheetId, highlightOps.slice(i, i + 2000));
+    }
+    
+    // reflect the new cell formating to frontend/local state for both format and highlight
+    if (formatOps.length) {
+      setCellFormatsBySheet((prev) => {
+        const next = new Map(prev[sheetId] ?? new Map());
+        for (const op of formatOps) {
+          const nf = op.number_format;
+          next.set(getCellKey(op.row, op.column), {
+            bold: op.bold,
+            italic: op.italic,
+            strikethrough: op.strikethrough,
+            textColor: op.text_color,
+            fontFamily: op.font_family,
+            fontSize: op.font_size,
+            numberFormat: nf?.type
+              ? { type: nf.type, currencyCode: nf.currency_code ?? null, decimalPlaces: nf.decimal_places ?? null }
+              : null,
+          });
+        }
+        return { ...prev, [sheetId]: next };
+      });
+    }
+  
+    if (highlightOps.length) {
+      setCellHighlightsBySheet((prev) => {
+        const next = new Map(prev[sheetId] ?? new Map());
+        for (const op of highlightOps) {
+          next.set(getCellKey(op.row, op.col), op.color);
+        }
+        return { ...prev, [sheetId]: next };
+      });
+    }
+  };
+
+
   const handleFileChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -4844,14 +4902,39 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         }
 
         if (parsed.sheetNames.length === 1) {
-          const matrix = parsed.sheets[parsed.sheetNames[0]] || [];
-          await runImportMatrix(matrix);
+          // Get the only worksheet name from the parsed XLSX file
+          const sheetname = parsed.sheetNames[0]; // added 
+          // Send the original XLSX file + sheet name to the backend.
+          // openpyxl reads the selected sheet's values and formatting.
+          const preview = await parseSheetStyles(file, sheetname)
+
+          // Original behaviour:
+          // if there was only one sheet, use the values parsed by SheetJS
+          // and immediately import them.
+          // 
+          // const matrix = parsed.sheets[parsed.sheetNames[0]] || [];
+          // await runImportMatrix(matrix);
+
+          // New behaviour: - added
+          // save the cell values returned by openpyxl
+          await runImportMatrix(preview.matrix); // added - save the cell values that openpyxl found
+          // save the formatting/highlights returned by openpyxl
+          await applyImportedStyles(preview.format_ops, preview.highlight_ops);
+          
           toast.success('Import complete');
           return;
         }
 
+        // Multiple sheets:
+        // keep the parsed sheet information so the existing sheet picker can show the names
         setXlsxImport(parsed);
+        // Keep the original XLSX file while the user chooses a worksheet.
+        // It will be sent to the backend later after they confirm their selection.
+        setXlsxImportFile(file);  // added 
+        // Default the picker to the first worksheet
         setSelectedXlsxSheet(parsed.sheetNames[0]);
+
+
       } catch (error: any) {
         if (error?.name === 'AbortError') return;
         // If error has response, or is timeout/network (no response), runImportMatrix already showed a toast
@@ -4874,21 +4957,31 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         e.target.value = '';
       }
     },
-    [runImportMatrix, parseImportError]
+    [runImportMatrix, parseImportError, spreadsheetId, sheetId]
   );
 
   const handleConfirmXlsxImport = useCallback(async () => {
-    if (!xlsxImport || !selectedXlsxSheet) {
+    // if (!xlsxImport || !selectedXlsxSheet) {
+    //   return;
+    // }
+    if (!xlsxImportFile || !selectedXlsxSheet) {
       return;
-    }
+    }   // added 
 
-    const matrix = xlsxImport.sheets[selectedXlsxSheet] || [];
+    // const matrix = xlsxImport.sheets[selectedXlsxSheet] || [];
+    // added 
     try {
       setIsImporting(true);
       setImportProgress({ current: 0, total: 0 });
-      await runImportMatrix(matrix);
+      const preview = await parseSheetStyles(xlsxImportFile, selectedXlsxSheet);
+
+
+      // await runImportMatrix(matrix);
+      await runImportMatrix(preview.matrix); // added save the cell values that openpyxl found
+      await applyImportedStyles(preview.format_ops, preview.highlight_ops); // added save the cell formating that openpyxl found
       toast.success('Import complete');
       setXlsxImport(null);
+      setXlsxImportFile(null); // added 
       setSelectedXlsxSheet('');
     } catch (error: any) {
       if (error?.name === 'AbortError') {
@@ -4907,7 +5000,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       setIsImporting(false);
       setImportProgress(null);
     }
-  }, [xlsxImport, selectedXlsxSheet, runImportMatrix, parseImportError]);
+  }, [xlsxImport, selectedXlsxSheet, runImportMatrix, parseImportError, spreadsheetId, sheetId]);
 
   const handleCancelXlsxImport = useCallback(() => {
     importAbortControllerRef.current?.abort();
@@ -6722,7 +6815,9 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                               textDecoration: getCellFormat(row, col).strikethrough ? 'line-through' : undefined,
                               color: getCellFormat(row, col).textColor ?? undefined,
                               fontFamily: getCellFormat(row, col).fontFamily ?? undefined,
-                              fontSize: getCellFormat(row, col).fontSize != null ? `${getCellFormat(row, col).fontSize}px` : undefined,
+                              ...(getCellFormat(row, col).fontSize != null
+                                ? { fontSize: `${getCellFormat(row, col).fontSize}px` }
+                                : {}),
                             }}
                           >
                             {sparkline ? (
@@ -6948,7 +7043,9 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                               textDecoration: getCellFormat(row, col).strikethrough ? 'line-through' : undefined,
                               color: getCellFormat(row, col).textColor ?? undefined,
                               fontFamily: getCellFormat(row, col).fontFamily ?? undefined,
-                              fontSize: getCellFormat(row, col).fontSize != null ? `${getCellFormat(row, col).fontSize}px` : undefined,
+                              ...(getCellFormat(row, col).fontSize != null
+                                ? { fontSize: `${getCellFormat(row, col).fontSize}px` }
+                                : {}),
                             }}
                           >
                             {sparkline ? (

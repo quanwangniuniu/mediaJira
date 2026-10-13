@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import SpreadsheetGrid, { SpreadsheetGridHandle } from '@/components/spreadsheets/SpreadsheetGrid';
+import { SpreadsheetAPI } from '@/lib/api/spreadsheetApi';
 
 const readCellRangeMock = jest.fn().mockResolvedValue({ cells: [] });
 const deleteRowsMock = jest.fn().mockResolvedValue({ operation_id: 1 });
@@ -891,5 +892,63 @@ describe('SpreadsheetGrid collaboration reconciliation', () => {
 
     expect(screen.getByText('newer-commit')).toBeInTheDocument();
     expect(screen.queryByText('older-commit')).not.toBeInTheDocument();
+  });
+});
+
+describe('SpreadsheetGrid font size rendering', () => {
+  const getCellFormatsMock = SpreadsheetAPI.getCellFormats as jest.Mock;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    readCellRangeMock.mockResolvedValue({
+      cells: [
+        {
+          row_position: 0,
+          column_position: 0,
+          raw_input: 'plain',
+          computed_type: 'string',
+        },
+        {
+          row_position: 0,
+          column_position: 1,
+          raw_input: 'eleven',
+          computed_type: 'string',
+        },
+      ],
+    });
+    getCellFormatsMock.mockResolvedValue({
+      formats: [
+        {
+          row_index: 0,
+          column_index: 1,
+          bold: false,
+          italic: false,
+          strikethrough: false,
+          text_color: null,
+          font_family: null,
+          font_size: 11,
+          number_format: null,
+        },
+      ],
+    });
+  });
+
+  afterEach(() => {
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    jest.useRealTimers();
+    readCellRangeMock.mockReset();
+    getCellFormatsMock.mockResolvedValue({ formats: [] });
+  });
+
+  it('renders the grid default 12px when no font size is saved, and 11px when one is', async () => {
+    render(<SpreadsheetGrid spreadsheetId={1} sheetId={452} />);
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+
+    expect(screen.getByText('plain')).toHaveStyle({ fontSize: '12px' });
+    expect(screen.getByText('eleven')).toHaveStyle({ fontSize: '11px' });
   });
 });
