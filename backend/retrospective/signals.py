@@ -4,11 +4,10 @@
 import logging
 
 from django.contrib.auth import get_user_model
-from django.db import transaction
 from django.db.models.signals import post_delete, post_save, pre_delete
 from django.dispatch import receiver
 
-from core.tenant_context import current_tenant_schema
+from rag.enqueue import clear_source_now, enqueue_source_index
 from rag.models import DocumentSourceType
 
 from .models import Insight, RetrospectiveStatus, RetrospectiveTask
@@ -38,48 +37,16 @@ logger = logging.getLogger(__name__)
 #
 # RetrospectiveTask/Insight are tenant-scoped models (registered in
 # core.tenant_config.get_tenant_models()), same as Meeting/Draft/Project.
-# `current_tenant_schema()` is still captured here and passed through
-# explicitly because the Celery task runs in a separate worker process and
-# must re-establish the org schema itself -- it can't inherit the request's
-# search_path.
+# The Celery task runs in a separate worker and cannot inherit this
+# request's search_path. rag.enqueue captures current_tenant_schema() when
+# the signal fires and passes that schema into the task.
 
 def _enqueue_retrospective_index(project_id, retrospective_id, tenant_schema=None) -> None:
-    from rag.indexing import mark_source_dirty
-
-    try:
-        mark_source_dirty(project_id, DocumentSourceType.RETROSPECTIVE, str(retrospective_id))
-    except Exception:
-        logger.exception('Failed to mark RAG state dirty for retrospective %s', retrospective_id)
-
-    schema = tenant_schema or current_tenant_schema()
-
-    def enqueue() -> None:
-        try:
-            from rag.tasks import index_document_task
-            index_document_task.delay(
-                tenant_schema=schema,
-                project_id=project_id,
-                source_type=DocumentSourceType.RETROSPECTIVE,
-                source_id=str(retrospective_id),
-            )
-        except Exception:
-            logger.exception('Failed to enqueue RAG indexing for retrospective %s', retrospective_id)
-
-    transaction.on_commit(enqueue)
+    enqueue_source_index(project_id, DocumentSourceType.RETROSPECTIVE, retrospective_id, tenant_schema)
 
 
-def _synchronous_retrospective_cleanup(project_id, retrospective_id) -> None:
-    """DB-only fast path for a hard delete or a cancellation/exclusion
-    transition -- see meetings/signals.py's module docstring for the shared
-    rationale. Never lets a failure here propagate into the request that
-    triggered it, matching the `.delay()` convention above.
-    """
-    from rag.indexing import clear_source_index
-
-    try:
-        clear_source_index(project_id, DocumentSourceType.RETROSPECTIVE, str(retrospective_id))
-    except Exception:
-        logger.exception('Failed synchronous RAG cleanup for retrospective %s', retrospective_id)
+def _clear_retrospective_index(project_id, retrospective_id) -> None:
+    clear_source_now(project_id, DocumentSourceType.RETROSPECTIVE, retrospective_id)
 
 
 @receiver(pre_delete, sender=Insight)
@@ -111,7 +78,7 @@ def handle_retrospective_status_change(sender, instance, created, **kwargs):
         # `core.Project`'s id (see the field's own comment in models.py) --
         # the same resolution extract_retrospective() and
         # rebuild_project_index_task() already use, not a separate mapping.
-        _synchronous_retrospective_cleanup(instance.campaign_id, instance.id)
+        _clear_retrospective_index(instance.campaign_id, instance.id)
 
     if created:
         # New retrospective task created
@@ -152,7 +119,7 @@ def handle_retrospective_deletion(sender, instance, **kwargs):
     # missing and take the EXCLUDED path (hard-delete any existing chunks);
     # the synchronous fast path below just removes that latency window.
     _enqueue_retrospective_index(instance.campaign_id, instance.id)
-    _synchronous_retrospective_cleanup(instance.campaign_id, instance.id)
+    _clear_retrospective_index(instance.campaign_id, instance.id)
     # Clean up related data if needed
     pass
 

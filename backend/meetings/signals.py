@@ -68,56 +68,20 @@ Transcript FTS
 A separate post_save handler keeps `Meeting.search_vector` in sync via
 `meetings.tasks.update_meeting_search_vector` (prod-preview).
 """
-import logging
-
-from django.db import transaction
 from django.db.models.signals import post_delete, post_save, pre_delete
 from django.dispatch import receiver
 
-from core.tenant_context import current_tenant_schema
 from meetings.models import Meeting, MeetingDocument
+from rag.enqueue import clear_source_now, enqueue_source_index
 from rag.models import DocumentSourceType
-
-logger = logging.getLogger(__name__)
 
 
 def _enqueue_meeting_index(project_id: int, meeting_id: int) -> None:
-    from rag.indexing import mark_source_dirty
-
-    try:
-        mark_source_dirty(project_id, DocumentSourceType.MEETING, str(meeting_id))
-    except Exception:
-        logger.exception('Failed to mark RAG state dirty for meeting %s', meeting_id)
-
-    tenant_schema = current_tenant_schema()
-
-    def enqueue() -> None:
-        try:
-            from rag.tasks import index_document_task
-            index_document_task.delay(
-                tenant_schema=tenant_schema,
-                project_id=project_id,
-                source_type=DocumentSourceType.MEETING,
-                source_id=str(meeting_id),
-            )
-        except Exception:
-            logger.exception('Failed to enqueue RAG indexing for meeting %s', meeting_id)
-
-    transaction.on_commit(enqueue)
+    enqueue_source_index(project_id, DocumentSourceType.MEETING, meeting_id)
 
 
-def _synchronous_meeting_cleanup(project_id: int, meeting_id: int) -> None:
-    """DB-only fast path for a hard delete or a soft-delete/exclusion
-    transition -- see module docstring. Never lets a failure here propagate
-    into the request that triggered it, matching the `.delay()` convention
-    above.
-    """
-    from rag.indexing import clear_source_index
-
-    try:
-        clear_source_index(project_id, DocumentSourceType.MEETING, str(meeting_id))
-    except Exception:
-        logger.exception('Failed synchronous RAG cleanup for meeting %s', meeting_id)
+def _clear_meeting_index(project_id: int, meeting_id: int) -> None:
+    clear_source_now(project_id, DocumentSourceType.MEETING, meeting_id)
 
 
 @receiver(post_save, sender=Meeting)
@@ -127,7 +91,7 @@ def handle_meeting_saved(sender, instance: Meeting, **kwargs) -> None:
         # Soft-delete/exclusion transition -- extract_meeting() already
         # excludes is_deleted=True Meetings, so the async task would reach
         # the same EXCLUDED outcome; this just removes that latency window.
-        _synchronous_meeting_cleanup(instance.project_id, instance.id)
+        _clear_meeting_index(instance.project_id, instance.id)
 
 
 @receiver(post_delete, sender=Meeting)
@@ -137,7 +101,7 @@ def handle_meeting_deleted(sender, instance: Meeting, **kwargs) -> None:
     # is a plain column already loaded on `instance` -- no relation query,
     # no cascade-ordering concern.
     _enqueue_meeting_index(instance.project_id, instance.id)
-    _synchronous_meeting_cleanup(instance.project_id, instance.id)
+    _clear_meeting_index(instance.project_id, instance.id)
 
 
 @receiver(pre_delete, sender=MeetingDocument)

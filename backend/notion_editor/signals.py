@@ -29,56 +29,21 @@ discover the draft now belongs elsewhere and clean up — the synchronous
 fast path below just removes the latency window before that async
 confirmation runs).
 """
-import logging
-
-from django.db import transaction
 from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 
 from core.tenant_context import current_tenant_schema
 from notion_editor.models import ContentBlock, Draft, DraftProjectLink
+from rag.enqueue import clear_source_now, enqueue_source_index
 from rag.models import DocumentSourceType
-
-logger = logging.getLogger(__name__)
 
 
 def _enqueue_draft_index(project_id: int, draft_id, tenant_schema: str | None = None) -> None:
-    from rag.indexing import mark_source_dirty
-
-    try:
-        mark_source_dirty(project_id, DocumentSourceType.NOTION_DRAFT, str(draft_id))
-    except Exception:
-        logger.exception('Failed to mark RAG state dirty for draft %s', draft_id)
-
-    schema = tenant_schema or current_tenant_schema()
-
-    def enqueue() -> None:
-        try:
-            from rag.tasks import index_document_task
-            index_document_task.delay(
-                tenant_schema=schema,
-                project_id=project_id,
-                source_type=DocumentSourceType.NOTION_DRAFT,
-                source_id=str(draft_id),
-            )
-        except Exception:
-            logger.exception('Failed to enqueue RAG indexing for draft %s', draft_id)
-
-    transaction.on_commit(enqueue)
+    enqueue_source_index(project_id, DocumentSourceType.NOTION_DRAFT, draft_id, tenant_schema)
 
 
-def _synchronous_draft_cleanup(project_id: int, draft_id) -> None:
-    """DB-only fast path for an unlink, a soft-delete/exclusion transition,
-    or the OLD-project side of a DraftProjectLink move -- see module
-    docstring. Never lets a failure here propagate into the request that
-    triggered it, matching the `.delay()` convention above.
-    """
-    from rag.indexing import clear_source_index
-
-    try:
-        clear_source_index(project_id, DocumentSourceType.NOTION_DRAFT, str(draft_id))
-    except Exception:
-        logger.exception('Failed synchronous RAG cleanup for draft %s', draft_id)
+def _clear_draft_index(project_id: int, draft_id) -> None:
+    clear_source_now(project_id, DocumentSourceType.NOTION_DRAFT, draft_id)
 
 
 def _enqueue_draft_index_if_linked(draft_id) -> int | None:
@@ -108,7 +73,7 @@ def handle_draft_saved(sender, instance: Draft, **kwargs) -> None:
         # Soft-delete/exclusion transition -- extract_notion_draft() already
         # excludes is_deleted=True Drafts, so the async task would reach the
         # same EXCLUDED outcome; this just removes that latency window.
-        _synchronous_draft_cleanup(project_id, instance.pk)
+        _clear_draft_index(project_id, instance.pk)
 
 
 @receiver(post_save, sender=ContentBlock)
@@ -152,7 +117,7 @@ def handle_draft_project_link_saved(sender, instance: DraftProjectLink, created:
         # (hard-delete old_project_id's chunks, reset its state) — the
         # synchronous fast path below just removes that latency window.
         _enqueue_draft_index(old_project_id, draft_id, tenant_schema)
-        _synchronous_draft_cleanup(old_project_id, draft_id)
+        _clear_draft_index(old_project_id, draft_id)
 
     _enqueue_draft_index(new_project_id, draft_id, tenant_schema)
 
@@ -166,4 +131,4 @@ def handle_draft_project_link_deleted(sender, instance: DraftProjectLink, **kwar
     # the EXCLUDED path; the synchronous fast path below just removes that
     # latency window.
     _enqueue_draft_index(instance.project_id, instance.draft_id)
-    _synchronous_draft_cleanup(instance.project_id, instance.draft_id)
+    _clear_draft_index(instance.project_id, instance.draft_id)
