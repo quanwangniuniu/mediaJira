@@ -3,6 +3,8 @@
 import * as Popover from '@radix-ui/react-popover';
 import { Check, ChevronDown } from 'lucide-react';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
+import { isTriggerMeaningfullyVisible } from '@/components/spreadsheets/toolbarMenuPosition';
+
 
 export interface BrandSelectOption {
   value: string;
@@ -53,21 +55,26 @@ export default function BrandSelect({
 
   useEffect(() => {
     if (!resolvedOpen || !confineToRef) return;
-    let rafId = 0;
-    const loop = () => {
-      const bar = confineToRef.current?.getBoundingClientRect();
+    const bar = confineToRef.current;
+    if (!bar) return;
+  
+    const closeIfMostlyHidden = () => {
+      const barRect = confineToRef.current?.getBoundingClientRect();
       const rect = triggerRef.current?.getBoundingClientRect();
-      if (bar && rect) {
-        const fullyOnBar = rect.left >= bar.left && rect.right <= bar.right;
-        if (!fullyOnBar) {
-          setResolvedOpen(false);
-          return;
-        }
+      if (!barRect || !rect) return;
+      if (!isTriggerMeaningfullyVisible(rect, barRect)) {
+        setResolvedOpen(false);
       }
-      rafId = requestAnimationFrame(loop);
     };
-    rafId = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(rafId);
+  
+    bar.addEventListener('scroll', closeIfMostlyHidden);
+    window.addEventListener('scroll', closeIfMostlyHidden, true);
+    window.addEventListener('resize', closeIfMostlyHidden);
+    return () => {
+      bar.removeEventListener('scroll', closeIfMostlyHidden);
+      window.removeEventListener('scroll', closeIfMostlyHidden, true);
+      window.removeEventListener('resize', closeIfMostlyHidden);
+    };
   }, [resolvedOpen, confineToRef]);
 
   return (
@@ -77,10 +84,7 @@ export default function BrandSelect({
         if (next && confineToRef) {
           const bar = confineToRef.current?.getBoundingClientRect();
           const rect = triggerRef.current?.getBoundingClientRect();
-          if (bar && rect) {
-            const fullyOnBar = rect.left >= bar.left && rect.right <= bar.right;
-            if (!fullyOnBar) return;
-          }
+          if (bar && rect && !isTriggerMeaningfullyVisible(rect, bar)) return;
         }
         setResolvedOpen(next);
       }}
@@ -105,12 +109,12 @@ export default function BrandSelect({
         <Popover.Content
           sideOffset={6}
           align={align}
-          avoidCollisions={false}
-          className="z-[120] overflow-hidden rounded-lg bg-white shadow-lg ring-1 ring-gray-100 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
-          style={{ minWidth: 'var(--radix-popover-trigger-width)' }}
+          collisionPadding={8}
+          className="z-[120] flex flex-col overflow-hidden rounded-lg bg-white shadow-lg ring-1 ring-gray-100 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
+          style={{ minWidth: 'var(--radix-popover-trigger-width)', maxHeight: 'min(15rem, var(--radix-popover-content-available-height))' }}
         >
           <div className="h-[3px] w-full bg-gradient-to-r from-[#3CCED7] to-[#A6E661]" />
-          <div role="listbox" aria-label={ariaLabel} className="max-h-60 overflow-y-auto py-1">
+          <div role="listbox" aria-label={ariaLabel} className="min-h-0 flex-1 overflow-y-auto py-1">
             {options.map((opt) => {
               const selected = opt.value === value;
               return (

@@ -2,6 +2,13 @@ import React from 'react';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import SpreadsheetGrid, { SpreadsheetGridHandle } from '@/components/spreadsheets/SpreadsheetGrid';
+import { useRef } from 'react';
+import BrandSelect from '@/components/ui/BrandSelect';
+import {
+  isTriggerMeaningfullyVisible,
+  placeMenuInViewport,
+  triggerVisibleFraction,
+} from '@/components/spreadsheets/toolbarMenuPosition';
 
 const readCellRangeMock = jest.fn().mockResolvedValue({ cells: [] });
 const deleteRowsMock = jest.fn().mockResolvedValue({ operation_id: 1 });
@@ -48,6 +55,34 @@ function dispatchPointerEvent(
   Object.defineProperty(event, 'clientX', { value: init.clientX ?? 0, configurable: true });
   Object.defineProperty(event, 'clientY', { value: init.clientY ?? 0, configurable: true });
   element.dispatchEvent(event);
+}
+
+function setRect(
+  el: Element,
+  rect: { left: number; top: number; width: number; height: number },
+) {
+  el.getBoundingClientRect = () =>
+    ({
+      x: rect.left,
+      y: rect.top,
+      left: rect.left,
+      top: rect.top,
+      right: rect.left + rect.width,
+      bottom: rect.top + rect.height,
+      width: rect.width,
+      height: rect.height,
+      toJSON() {},
+    }) as DOMRect;
+}
+
+function mockToolbarAndButton(
+  button: HTMLElement,
+  buttonRect: { left: number; top: number; width: number; height: number },
+  toolbarRect = { left: 0, top: 0, width: 800, height: 40 },
+) {
+  const toolbar = document.getElementById('spreadsheet-toolbar');
+  if (toolbar) setRect(toolbar, toolbarRect);
+  setRect(button, buttonRect);
 }
 
 function expectMenuPortaled(selector: string) {
@@ -201,6 +236,8 @@ describe('SpreadsheetGrid highlight toolbar', () => {
     fireEvent.mouseDown(cell);
 
     const button = screen.getByTestId('highlight-button');
+    mockToolbarAndButton(screen.getByTestId('highlight-button'), { left: 20, top: 0, width: 32, height: 32 });
+    
     fireEvent.click(button);
     fireEvent.click(screen.getByTestId('highlight-color-yellow'));
 
@@ -217,6 +254,7 @@ describe('SpreadsheetGrid highlight toolbar', () => {
     fireEvent.click(rowHeader);
 
     const button = screen.getByTestId('highlight-button');
+    mockToolbarAndButton(button, { left: 20, top: 0, width: 32, height: 32 });
     fireEvent.click(button);
     fireEvent.click(screen.getByTestId('highlight-color-green'));
 
@@ -234,6 +272,7 @@ describe('SpreadsheetGrid highlight toolbar', () => {
     fireEvent.click(colHeader);
 
     const button = screen.getByTestId('highlight-button');
+    mockToolbarAndButton(button, { left: 20, top: 0, width: 32, height: 32 });
     fireEvent.click(button);
     fireEvent.click(screen.getByTestId('highlight-color-blue'));
 
@@ -251,6 +290,7 @@ describe('SpreadsheetGrid highlight toolbar', () => {
     fireEvent.mouseDown(cell);
 
     const button = screen.getByTestId('highlight-button');
+    mockToolbarAndButton(button, { left: 20, top: 0, width: 32, height: 32 });
     fireEvent.click(button);
     fireEvent.click(screen.getByTestId('highlight-color-pink'));
     expect(cell).toHaveStyle({ backgroundColor: '#FBCFE8' });
@@ -277,7 +317,9 @@ describe('SpreadsheetGrid highlight toolbar', () => {
     const colHeader = screen.getByTestId('col-header-0');
     fireEvent.click(colHeader);
 
-    fireEvent.click(screen.getByTestId('highlight-button'));
+    const button = screen.getByTestId('highlight-button');
+    mockToolbarAndButton(button, { left: 20, top: 0, width: 32, height: 32 });
+    fireEvent.click(button);
     fireEvent.click(screen.getByTestId('highlight-color-yellow'));
 
     expect(onHighlightCommit).toHaveBeenCalled();
@@ -350,7 +392,9 @@ describe('SpreadsheetGrid highlight toolbar', () => {
     const cell = container.querySelector('td[data-row="0"][data-col="0"]') as HTMLElement;
     fireEvent.mouseDown(cell);
 
-    fireEvent.click(screen.getByTestId('highlight-button'));
+    const button = screen.getByTestId('highlight-button');
+    mockToolbarAndButton(button, { left: 20, top: 0, width: 32, height: 32 });
+    fireEvent.click(button);
     fireEvent.click(screen.getByTestId('highlight-clear'));
 
     expect(onHighlightCommit).toHaveBeenCalled();
@@ -925,7 +969,9 @@ describe('SpreadsheetGrid toolbar menus to document.body', () => {
     const cell = container.querySelector('td[data-row="0"][data-col="0"]') as HTMLTableCellElement;
     fireEvent.mouseDown(cell);
 
-    fireEvent.click(screen.getByTestId('highlight-button'));
+    const button = screen.getByTestId('highlight-button');
+    mockToolbarAndButton(button, { left: 20, top: 0, width: 32, height: 32 });
+    fireEvent.click(button);
     expectMenuPortaled('[data-highlight-menu]');
   });
 
@@ -938,7 +984,9 @@ describe('SpreadsheetGrid toolbar menus to document.body', () => {
     const cell = container.querySelector('td[data-row="0"][data-col="0"]') as HTMLTableCellElement;
     fireEvent.mouseDown(cell);
 
-    fireEvent.click(screen.getByTestId('format-text-color'));
+    const button = screen.getByTestId('format-text-color');
+    mockToolbarAndButton(button, { left: 20, top: 0, width: 32, height: 32 });
+    fireEvent.click(button);
     expectMenuPortaled('[data-text-color-menu]');
   });
 
@@ -951,7 +999,9 @@ describe('SpreadsheetGrid toolbar menus to document.body', () => {
     const cell = container.querySelector('td[data-row="0"][data-col="0"]') as HTMLTableCellElement;
     fireEvent.mouseDown(cell);
 
-    fireEvent.click(screen.getByTestId('format-currency'));
+    const button = screen.getByTestId('format-currency');
+    mockToolbarAndButton(button, { left: 20, top: 0, width: 32, height: 32 });
+    fireEvent.click(button);
     expectMenuPortaled('[data-currency-menu]');
   });
 
@@ -960,7 +1010,10 @@ describe('SpreadsheetGrid toolbar menus to document.body', () => {
     act(() => {
       jest.runOnlyPendingTimers();
     });
-    fireEvent.click(screen.getByRole('button', { name: /^Export$/i }));
+    
+    const button = screen.getByRole('button', { name: /^Export$/i });
+    mockToolbarAndButton(button, { left: 20, top: 0, width: 80, height: 32 });
+    fireEvent.click(button);
     expectMenuPortaled('[data-export-menu]');
   });
 
@@ -996,10 +1049,13 @@ describe('SpreadsheetGrid toolbar menus to document.body', () => {
     const cell = container.querySelector('td[data-row="0"][data-col="0"]') as HTMLTableCellElement;
     fireEvent.mouseDown(cell);
   
-    fireEvent.click(screen.getByTestId('highlight-button'));
+    const highlight = screen.getByTestId('highlight-button');
+    const textColor = screen.getByTestId('format-text-color');
+    mockToolbarAndButton(highlight, { left: 20, top: 0, width: 32, height: 32 });
+    mockToolbarAndButton(textColor, { left: 60, top: 0, width: 32, height: 32 });
+    fireEvent.click(highlight);
     expect(document.querySelector('[data-highlight-menu]')).toBeInTheDocument();
-  
-    fireEvent.click(screen.getByTestId('format-text-color'));
+    fireEvent.click(textColor);
     expect(document.querySelector('[data-highlight-menu]')).not.toBeInTheDocument();
     expectMenuPortaled('[data-text-color-menu]');
   });
@@ -1013,13 +1069,172 @@ describe('SpreadsheetGrid toolbar menus to document.body', () => {
     const cell = container.querySelector('td[data-row="0"][data-col="0"]') as HTMLTableCellElement;
     fireEvent.mouseDown(cell);
   
-    fireEvent.click(screen.getByTestId('highlight-button'));
+    const highlight = screen.getByTestId('highlight-button');
+    const textColor = screen.getByTestId('format-text-color');
+    mockToolbarAndButton(highlight, { left: 20, top: 0, width: 32, height: 32 });
+    mockToolbarAndButton(textColor, { left: 60, top: 0, width: 32, height: 32 });
+    fireEvent.click(highlight);
+    expect(document.querySelector('[data-highlight-menu]')).toBeInTheDocument();
+    fireEvent.click(textColor);
+    expect(document.querySelector('[data-highlight-menu]')).not.toBeInTheDocument();
+    expectMenuPortaled('[data-text-color-menu]');
+  });
+
+  it('opens the highlight menu when the trigger is partially visible', () => {
+    const { container } = render(<SpreadsheetGrid spreadsheetId={1} sheetId={37} />);
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const cell = container.querySelector('td[data-row="0"][data-col="0"]') as HTMLTableCellElement;
+    fireEvent.mouseDown(cell);
+  
+    const button = screen.getByTestId('highlight-button');
+    mockToolbarAndButton(button, { left: -10, top: 0, width: 32, height: 32 });
+    fireEvent.click(button);
+  
+    expectMenuPortaled('[data-highlight-menu]');
+  });
+
+  it('closes the highlight menu when the trigger scrolls out of the toolbar', () => {
+    const { container } = render(<SpreadsheetGrid spreadsheetId={1} sheetId={38} />);
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const cell = container.querySelector('td[data-row="0"][data-col="0"]') as HTMLTableCellElement;
+    fireEvent.mouseDown(cell);
+  
+    const button = screen.getByTestId('highlight-button');
+    mockToolbarAndButton(button, { left: 20, top: 0, width: 32, height: 32 });
+    fireEvent.click(button);
     expect(document.querySelector('[data-highlight-menu]')).toBeInTheDocument();
   
-    fireEvent.mouseDown(document.body);
+    mockToolbarAndButton(button, { left: -40, top: 0, width: 32, height: 32 });
+    fireEvent.scroll(document.getElementById('spreadsheet-toolbar')!);
+  
     expect(document.querySelector('[data-highlight-menu]')).not.toBeInTheDocument();
   });
 
+  it('keeps the highlight menu inside the right edge of the window', () => {
+    const { container } = render(<SpreadsheetGrid spreadsheetId={1} sheetId={39} />);
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const cell = container.querySelector('td[data-row="0"][data-col="0"]') as HTMLTableCellElement;
+    fireEvent.mouseDown(cell);
+  
+    window.innerWidth = 400;
+    const button = screen.getByTestId('highlight-button');
+    mockToolbarAndButton(button, { left: 360, top: 0, width: 32, height: 32 });
+    fireEvent.click(button);
+  
+    const menu = document.querySelector('[data-highlight-menu]') as HTMLElement;
+    expect(parseFloat(menu.style.left)).toBe(216);
+  });
 
-
+  it('places the export menu above the button when the bottom does not fit', () => {
+    render(<SpreadsheetGrid spreadsheetId={1} sheetId={40} />);
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+  
+    window.innerHeight = 400;
+    const button = screen.getByRole('button', { name: /^Export$/i });
+    mockToolbarAndButton(button, { left: 20, top: 300, width: 80, height: 32 });
+    fireEvent.click(button);
+  
+    const menu = document.querySelector('[data-export-menu]') as HTMLElement;
+    expect(parseFloat(menu.style.top)).toBe(162);
+  });
 })
+
+function rect(left: number, top: number, width: number, height: number): DOMRect {
+  return {
+    x: left,
+    y: top,
+    left,
+    top,
+    right: left + width,
+    bottom: top + height,
+    width,
+    height,
+    toJSON() {},
+  } as DOMRect;
+}
+
+describe('toolbar menu position', () => {
+  const toolbar = rect(0, 0, 400, 40);
+
+  it('treats a fully visible trigger as openable', () => {
+    expect(triggerVisibleFraction(rect(10, 0, 32, 32), toolbar)).toBe(1);
+    expect(isTriggerMeaningfullyVisible(rect(10, 0, 32, 32), toolbar)).toBe(true);
+  });
+
+  it('allows a trigger that is still more than half visible', () => {
+    expect(triggerVisibleFraction(rect(-10, 0, 32, 32), toolbar)).toBeCloseTo(22 / 32);
+    expect(isTriggerMeaningfullyVisible(rect(-10, 0, 32, 32), toolbar)).toBe(true);
+  });
+
+  it('rejects a trigger that is mostly scrolled away', () => {
+    expect(isTriggerMeaningfullyVisible(rect(-24, 0, 32, 32), toolbar)).toBe(false);
+    expect(isTriggerMeaningfullyVisible(rect(-40, 0, 32, 32), toolbar)).toBe(false);
+  });
+
+  it('shifts a menu left when it would pass the right edge', () => {
+    const placed = placeMenuInViewport({
+      trigger: rect(360, 0, 32, 32),
+      menuWidth: 176,
+      menuHeight: 80,
+      viewportWidth: 400,
+      viewportHeight: 800,
+    });
+    expect(placed.left).toBe(216);
+    expect(placed.top).toBe(38);
+  });
+
+  it('places a menu above the trigger when the bottom does not fit', () => {
+    const placed = placeMenuInViewport({
+      trigger: rect(20, 300, 80, 32),
+      menuWidth: 160,
+      menuHeight: 132,
+      viewportWidth: 800,
+      viewportHeight: 400,
+    });
+    expect(placed.top).toBe(162);
+  });
+});
+
+function FontSizeHarness() {
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  return (
+    <div ref={toolbarRef} data-testid="font-toolbar">
+      <BrandSelect
+        value="12"
+        onValueChange={() => {}}
+        ariaLabel="Font size"
+        confineToRef={toolbarRef}
+        options={[
+          { value: '12', label: '12' },
+          { value: '14', label: '14' },
+        ]}
+      />
+    </div>
+  );
+}
+
+describe('BrandSelect toolbar scroll', () => {
+  it('closes the font menu when the trigger scrolls out of the toolbar', () => {
+    render(<FontSizeHarness />);
+    const toolbar = screen.getByTestId('font-toolbar');
+    const button = screen.getByRole('button', { name: 'Font size' });
+
+    setRect(toolbar, { left: 0, top: 0, width: 400, height: 40 });
+    setRect(button, { left: 20, top: 0, width: 64, height: 32 });
+    fireEvent.click(button);
+    expect(screen.getByRole('listbox', { name: 'Font size' })).toBeInTheDocument();
+
+    setRect(button, { left: -80, top: 0, width: 64, height: 32 });
+    fireEvent.scroll(toolbar);
+
+    expect(screen.queryByRole('listbox', { name: 'Font size' })).not.toBeInTheDocument();
+  });
+});

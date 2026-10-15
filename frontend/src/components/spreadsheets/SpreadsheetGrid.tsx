@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
 import { Undo2, Redo2, Bold, Italic, Strikethrough, Palette, ChevronLeft, ChevronRight, ChevronDown, Snowflake, Check, Table2, Upload, Download, FileSpreadsheet, Loader2, FunctionSquare } from 'lucide-react';
 import { SpreadsheetAPI } from '@/lib/api/spreadsheetApi';
@@ -27,6 +27,11 @@ import { ApplyHighlightParams } from '@/types/patterns';
 import BrandSelect from '@/components/ui/BrandSelect';
 import type { SheetPresenceUser } from '@/lib/sheetSocketStore';
 import { create } from 'node:domain';
+import {
+  isTriggerMeaningfullyVisible,
+  placeMenuInViewport,
+} from '@/components/spreadsheets/toolbarMenuPosition';
+
 
 export type SpreadsheetSelectionChange = {
   row: number;
@@ -5038,7 +5043,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     return () => document.removeEventListener('mousedown', handleClick);
   }, [currencyMenuOpen]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!exportMenuOpen && !highlightMenuOpen && !textColorMenuOpen && !currencyMenuOpen) {
       return;
     }
@@ -5047,41 +5052,62 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       const measure = (
         open: boolean,
         trigger: HTMLButtonElement | null,
-        setAnchor: (next: { top: number; left: number; width: number }) => void,
+        menuSelector: string,
+        fallback: { width: number; height: number },
+        setAnchor: (
+          next:
+            | { top: number; left: number; width: number }
+            | ((
+                prev: { top: number; left: number; width: number } | null,
+              ) => { top: number; left: number; width: number } | null),
+        ) => void,
         setOpen: (next: boolean) => void,
       ) => {
         if (!open || !trigger) return;
         const rect = trigger.getBoundingClientRect();
         const bar = toolbarRef.current?.getBoundingClientRect();
-        if (bar) {
-          const fullyOnBar = rect.left >= bar.left && rect.right <= bar.right;
-          if (!fullyOnBar) {
-            setOpen(false);
-            return;
-          }
+        if (bar && !isTriggerMeaningfullyVisible(rect, bar)) {
+          setOpen(false);
+          return;
         }
-        setAnchor({
-          top: rect.bottom + 6,
-          left: rect.right,
-          width: rect.width,
-        });
+        const menu = document.querySelector(menuSelector) as HTMLElement | null;
+        const next = {
+          ...placeMenuInViewport({
+            trigger: rect,
+            menuWidth: menu?.offsetWidth || fallback.width,
+            menuHeight: menu?.offsetHeight || fallback.height,
+            viewportWidth: window.innerWidth,
+            viewportHeight: window.innerHeight,
+          }),
+          width: 0,
+        };
+        setAnchor((prev) =>
+          prev && prev.top === next.top && prev.left === next.left ? prev : next,
+        );
       };
   
-      measure(exportMenuOpen, exportTriggerRef.current, setExportMenuAnchor, setExportMenuOpen);
-      measure(highlightMenuOpen, highlightTriggerRef.current, setHighlightMenuAnchor, setHighlightMenuOpen);
-      measure(textColorMenuOpen, textColorTriggerRef.current, setTextColorMenuAnchor, setTextColorMenuOpen);
-      measure(currencyMenuOpen, currencyTriggerRef.current, setCurrencyMenuAnchor, setCurrencyMenuOpen);
+      measure(exportMenuOpen, exportTriggerRef.current, '[data-export-menu]', { width: 160, height: 132 }, setExportMenuAnchor, setExportMenuOpen);
+      measure(highlightMenuOpen, highlightTriggerRef.current, '[data-highlight-menu]', { width: 176, height: 248 }, setHighlightMenuAnchor, setHighlightMenuOpen);
+      measure(textColorMenuOpen, textColorTriggerRef.current, '[data-text-color-menu]', { width: 176, height: 88 }, setTextColorMenuAnchor, setTextColorMenuOpen);
+      measure(currencyMenuOpen, currencyTriggerRef.current, '[data-currency-menu]', { width: 128, height: 168 }, setCurrencyMenuAnchor, setCurrencyMenuOpen);
     };
+
+    syncAnchors();
   
-    let rafId = 0;
-    const loop = () => {
-      syncAnchors();
-      rafId = requestAnimationFrame(loop);
-    };
-    rafId = requestAnimationFrame(loop);
-  
-    return () => cancelAnimationFrame(rafId);
-  }, [exportMenuOpen, highlightMenuOpen, textColorMenuOpen, currencyMenuOpen]);
+  const bar = toolbarRef.current;
+  bar?.addEventListener('scroll', syncAnchors);
+  window.addEventListener('scroll', syncAnchors, true);
+  window.addEventListener('resize', syncAnchors);
+  const observer = new ResizeObserver(syncAnchors);
+  if (bar) observer.observe(bar);
+  return () => {
+    bar?.removeEventListener('scroll', syncAnchors);
+    window.removeEventListener('scroll', syncAnchors, true);
+    window.removeEventListener('resize', syncAnchors);
+    observer.disconnect();
+  };
+}, [exportMenuOpen, highlightMenuOpen, textColorMenuOpen, currencyMenuOpen]);
+
 
   useEffect(() => {
     if (!headerMenu) return;
@@ -5760,15 +5786,18 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               e.stopPropagation();
               const bar = toolbarRef.current?.getBoundingClientRect();
               const rect = exportTriggerRef.current?.getBoundingClientRect();
-              if (bar && rect) {
-                const fullyOnBar = rect.left >= bar.left && rect.right <= bar.right;
-                if (!fullyOnBar) return;
-              }
+              if (bar && rect && !isTriggerMeaningfullyVisible(rect, bar)) return;
               if (rect) {
+                const menu = document.querySelector('[data-export-menu]') as HTMLElement | null;
                 setExportMenuAnchor({
-                  top: rect.bottom + 6,
-                  left: rect.right,
-                  width: rect.width,
+                  ...placeMenuInViewport({
+                    trigger: rect,
+                    menuWidth: menu?.offsetWidth || 160,
+                    menuHeight: menu?.offsetHeight || 132,
+                    viewportWidth: window.innerWidth,
+                    viewportHeight: window.innerHeight,
+                  }),
+                  width: 0,
                 });
               }
               setExportMenuOpen((prev) => !prev);
@@ -5793,7 +5822,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                 className="fixed z-[1000] w-40 overflow-hidden rounded-lg bg-white shadow-lg ring-1 ring-gray-100"
                 style={{
                   top: exportMenuAnchor.top,
-                  left: exportMenuAnchor.left - exportMenuAnchor.width,
+                  left: exportMenuAnchor.left,
                 }}
                 role="menu"
                 data-export-menu
@@ -5879,15 +5908,18 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                 e.stopPropagation();
                 const bar = toolbarRef.current?.getBoundingClientRect();
                 const rect = highlightTriggerRef.current?.getBoundingClientRect();
-                if (bar && rect) {
-                  const fullyOnBar = rect.left >= bar.left && rect.right <= bar.right;
-                  if (!fullyOnBar) return;
-                }
+                if (bar && rect && !isTriggerMeaningfullyVisible(rect, bar)) return;
                 if (rect) {
+                  const menu = document.querySelector('[data-highlight-menu]') as HTMLElement | null;
                   setHighlightMenuAnchor({
-                    top: rect.bottom + 6,
-                    left: rect.right,
-                    width: rect.width,
+                    ...placeMenuInViewport({
+                      trigger: rect,
+                      menuWidth: menu?.offsetWidth || 176,
+                      menuHeight: menu?.offsetHeight || 248,
+                      viewportWidth: window.innerWidth,
+                      viewportHeight: window.innerHeight,
+                    }),
+                    width: 0,
                   });
                 }
                 setHighlightMenuOpen((prev) => !prev);
@@ -5913,7 +5945,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               {highlightMenuOpen && highlightMenuAnchor && createPortal (
                 <div
                   className="fixed z-[1000] w-44 overflow-hidden rounded-lg bg-white shadow-lg ring-1 ring-gray-100"
-                  style={{ top: highlightMenuAnchor.top, left: highlightMenuAnchor.left - highlightMenuAnchor.width }}
+                  style={{ top: highlightMenuAnchor.top, left: highlightMenuAnchor.left}}
                   role="menu"
                   data-highlight-menu
                 >
@@ -6002,15 +6034,18 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                   e.stopPropagation();
                   const bar = toolbarRef.current?.getBoundingClientRect();
                   const rect = textColorTriggerRef.current?.getBoundingClientRect();
-                  if (bar && rect) {
-                    const fullyOnBar = rect.left >= bar.left && rect.right <= bar.right;
-                    if (!fullyOnBar) return;
-                  }
+                  if (bar && rect && !isTriggerMeaningfullyVisible(rect, bar)) return;
                   if (rect) {
+                    const menu = document.querySelector('[data-text-color-menu]') as HTMLElement | null;
                     setTextColorMenuAnchor({
-                      top: rect.bottom + 6,
-                      left: rect.right,
-                      width: rect.width,
+                      ...placeMenuInViewport({
+                        trigger: rect,
+                        menuWidth: menu?.offsetWidth || 176,
+                        menuHeight: menu?.offsetHeight || 88,
+                        viewportWidth: window.innerWidth,
+                        viewportHeight: window.innerHeight,
+                      }),
+                      width: 0,
                     });
                   }
                   setTextColorMenuOpen((prev) => !prev);
@@ -6031,7 +6066,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               {textColorMenuOpen && textColorMenuAnchor && createPortal (
                 <div
                   className="fixed z-[1000] w-44 overflow-hidden rounded-lg bg-white shadow-lg ring-1 ring-gray-100"
-                  style={{top: textColorMenuAnchor.top, left: textColorMenuAnchor.left - textColorMenuAnchor.width }}
+                  style={{top: textColorMenuAnchor.top, left: textColorMenuAnchor.left }}
                   role="menu"
                   data-text-color-menu
                 >
@@ -6138,15 +6173,18 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
                   e.stopPropagation();
                   const bar = toolbarRef.current?.getBoundingClientRect();
                   const rect = currencyTriggerRef.current?.getBoundingClientRect();
-                  if (bar && rect) {
-                    const fullyOnBar = rect.left >= bar.left && rect.right <= bar.right;
-                    if (!fullyOnBar) return;
-                  }
+                  if (bar && rect && !isTriggerMeaningfullyVisible(rect, bar)) return;
                   if (rect) {
+                    const menu = document.querySelector('[data-currency-menu]') as HTMLElement | null;
                     setCurrencyMenuAnchor({
-                      top: rect.bottom + 6,
-                      left: rect.right,
-                      width: rect.width,
+                      ...placeMenuInViewport({
+                        trigger: rect,
+                        menuWidth: menu?.offsetWidth || 128,
+                        menuHeight: menu?.offsetHeight || 168,
+                        viewportWidth: window.innerWidth,
+                        viewportHeight: window.innerHeight,
+                      }),
+                      width: 0,
                     });
                   }
                   setCurrencyMenuOpen((prev) => !prev);
@@ -6171,7 +6209,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               {currencyMenuOpen && currencyMenuAnchor && createPortal (
                 <div
                   className="fixed z-[1000] w-32 overflow-hidden rounded-lg bg-white shadow-lg ring-1 ring-gray-100"
-                  style={{ top: currencyMenuAnchor.top, left: currencyMenuAnchor.left - currencyMenuAnchor.width }}
+                  style={{ top: currencyMenuAnchor.top, left: currencyMenuAnchor.left }}
                   role="menu"
                   data-currency-menu
                 >
