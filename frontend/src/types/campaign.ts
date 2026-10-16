@@ -21,16 +21,6 @@ export interface ProjectSummary {
 }
 
 // Campaign data types
-export interface CampaignPlatformIntegration {
-  id: number;
-  account_name: string;
-  connector_name: string;
-  can_reconnect: boolean;
-  last_sync_error: '' | 'auth' | 'transient';
-  last_sync_attempted_at: string | null;
-  last_synced_at: string | null;
-}
-
 export interface CampaignData {
   id: string;
   slug: string;
@@ -53,7 +43,8 @@ export interface CampaignData {
   status: CampaignStatus;
   status_note?: string;
   latest_performance_summary?: Record<string, any>;
-  platform_integrations?: CampaignPlatformIntegration[];
+  last_sync_error?: '' | 'auth' | 'transient';
+  last_sync_attempted_at?: string | null;
   created_at: string;
   updated_at: string;
   is_deleted?: boolean;

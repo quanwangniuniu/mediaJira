@@ -9,7 +9,6 @@ from core.models import Project
 from core.utils.project import has_project_access
 from .models import (
     Campaign,
-    CampaignPlatformIntegration,
     CampaignStatusHistory,
     PerformanceCheckIn,
     PerformanceSnapshot,
@@ -46,23 +45,6 @@ class ProjectSummarySerializer(serializers.ModelSerializer):
 # Campaign Serializers
 # ============================================================================
 
-class CampaignPlatformIntegrationSerializer(serializers.ModelSerializer):
-    account_name = serializers.CharField(source='ad_account.name', read_only=True)
-    connector_name = serializers.CharField(source='ad_account.connection.user.username', read_only=True)
-    can_reconnect = serializers.SerializerMethodField()
-
-    class Meta:
-        model = CampaignPlatformIntegration
-        fields = ['id', 'account_name', 'connector_name', 'can_reconnect',
-                  'last_sync_error', 'last_sync_attempted_at', 'last_synced_at']
-        read_only_fields = fields
-
-    def get_can_reconnect(self, obj):
-        # The OAuth connection belongs to one user; only they can renew it.
-        request = self.context.get('request')
-        return bool(request and request.user.id == obj.ad_account.connection.user_id)
-
-
 class CampaignSerializer(serializers.ModelSerializer):
     """Full Campaign serializer with all fields"""
     owner = UserSummarySerializer(read_only=True)
@@ -72,7 +54,6 @@ class CampaignSerializer(serializers.ModelSerializer):
     assignee_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     project = ProjectSummarySerializer(read_only=True)
     project_id = serializers.IntegerField(write_only=True, required=True)
-    platform_integrations = serializers.SerializerMethodField()
     
     class Meta:
         model = Campaign
@@ -82,20 +63,14 @@ class CampaignSerializer(serializers.ModelSerializer):
             'owner', 'owner_id', 'creator', 'assignee', 'assignee_id',
             'project', 'project_id', 'budget_estimate',
             'status', 'status_note', 'latest_performance_summary',
-            'created_at', 'updated_at', 'is_deleted', 'platform_integrations'
+            'created_at', 'updated_at', 'is_deleted',
+            'last_sync_error', 'last_sync_attempted_at',
         ]
         read_only_fields = ['slug', 
             'id', 'creator', 'status', 'actual_completion_date',
-            'latest_performance_summary', 'created_at', 'updated_at', 'is_deleted'
+            'latest_performance_summary', 'created_at', 'updated_at', 'is_deleted',
+            'last_sync_error', 'last_sync_attempted_at',
         ]
-
-    def get_platform_integrations(self, obj):
-        if Campaign.Platform.META not in (obj.platforms or []):
-            return []
-        # Hide rows left behind after the account was linked to another project.
-        integrations = [integration for integration in obj.platform_integrations.all()
-                        if integration.ad_account.project_id == obj.project_id]
-        return CampaignPlatformIntegrationSerializer(integrations, many=True, context=self.context).data
 
     def validate_platforms(self, value):
         """Validate platforms list"""

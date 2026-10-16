@@ -268,11 +268,11 @@ def sync_ad_account(ad_account: MetaAdAccount, access_token: str, *, days: int =
         updated_at=timezone.now(),
     )
     run.refresh_from_db()
-    from campaign.services import CampaignPlatformIntegrationService
+    from campaign.services import CampaignSyncService
 
     try:
         # Surface the outcome on linked campaigns; never fail the sync because of it.
-        CampaignPlatformIntegrationService.record_sync_result(ad_account=ad_account, error=sync_error)
+        CampaignSyncService.record_sync_result(ad_account=ad_account, error=sync_error)
     except Exception:
         logger.exception("Recording campaign sync health failed for %s", ad_account.meta_account_id)
     return run

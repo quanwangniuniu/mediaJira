@@ -13,31 +13,30 @@ from typing import Optional
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.db import connection, transaction
+from django.db import transaction
 from django.utils import timezone
-from psycopg2 import sql
 from rest_framework.exceptions import PermissionDenied, ValidationError as DRFValidationError
 
-from core.models import Organization, OrganizationMembership, Project
+from core.admin_utils import get_user_organizations
+from core.models import Project
 from core.services.tenant import slug_to_schema_name
 from core.tenant_context import tenant_schema_context
 from core.utils.project import has_project_access
 from core.models import ProjectMember
 from task.models import Task
 from .models import Campaign, CampaignTemplate, CampaignTaskLink, AutomationTrigger, AutomationExecution
-from .models import CampaignPlatformIntegration
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
-class CampaignPlatformIntegrationService:
+class CampaignSyncService:
     @staticmethod
     def classify_sync_error(error: Exception) -> str:
         """Auth errors need the user to reconnect; anything else is retried by the next sync."""
         from meta_ads.meta_client import MetaApiError
 
-        codes = CampaignPlatformIntegration.SyncError
+        codes = Campaign.SyncError
         if not isinstance(error, MetaApiError):
             return codes.TRANSIENT
         detail = error.body.get('error') if isinstance(error.body, dict) else None
@@ -56,24 +55,11 @@ class CampaignPlatformIntegrationService:
         """
         if not ad_account.project_id:
             return None
-        user = ad_account.connection.user
-        org_ids = set(OrganizationMembership.objects.filter(user=user, is_active=True)
-                      .values_list('organization_id', flat=True))
-        org_ids.update(org_id for org_id in (user.organization_id, user.current_organization_id) if org_id)
         matches = []
-        with connection.cursor() as cursor:
-            for slug in Organization.objects.filter(id__in=org_ids).values_list('slug', flat=True):
-                schema = slug_to_schema_name(slug)
-                cursor.execute('SELECT to_regclass(%s)', [f'{schema}.core_project'])
-                if cursor.fetchone()[0] is None:
-                    continue
-                cursor.execute(
-                    sql.SQL('SELECT 1 FROM {}.core_project WHERE id = %s AND NOT is_deleted').format(
-                        sql.Identifier(schema),
-                    ),
-                    [ad_account.project_id],
-                )
-                if cursor.fetchone():
+        for organization in get_user_organizations(ad_account.connection.user):
+            schema = slug_to_schema_name(organization.slug)
+            with tenant_schema_context(schema):
+                if Project.objects.filter(pk=ad_account.project_id, is_deleted=False).exists():
                     matches.append(schema)
         if len(matches) > 1:
             logger.warning('Meta account %s matches project %s in several organizations: %s',
@@ -82,33 +68,29 @@ class CampaignPlatformIntegrationService:
 
     @staticmethod
     def record_sync_result(*, ad_account, error: Exception | None = None) -> None:
-        from notifications.dispatch import notify_campaign_platform_auth_error
+        from .notifications import notify_campaign_sync_auth_error
 
-        schema = CampaignPlatformIntegrationService.tenant_schema_for_account(ad_account)
+        schema = CampaignSyncService.tenant_schema_for_account(ad_account)
         if schema is None:
             return
-        codes = CampaignPlatformIntegration.SyncError
-        error_code = codes.NONE if error is None else CampaignPlatformIntegrationService.classify_sync_error(error)
-        now = timezone.now()
+        codes = Campaign.SyncError
+        error_code = codes.NONE if error is None else CampaignSyncService.classify_sync_error(error)
         with tenant_schema_context(schema), transaction.atomic():
-            campaigns = Campaign.objects.filter(project_id=ad_account.project_id, is_deleted=False)
-            for campaign in campaigns.select_related('project__organization'):
+            campaigns = Campaign.objects.select_for_update().filter(
+                project_id=ad_account.project_id, is_deleted=False,
+            )
+            for campaign in campaigns:
                 if Campaign.Platform.META not in (campaign.platforms or []):
                     continue
-                integration, _ = CampaignPlatformIntegration.objects.select_for_update().get_or_create(
-                    campaign=campaign, ad_account=ad_account,
+                was_auth_error = campaign.last_sync_error == codes.AUTH
+                # A timeout does not prove the credentials work again.
+                new_error = campaign.last_sync_error if was_auth_error and error_code == codes.TRANSIENT else error_code
+                # update() so a sync does not bump updated_at or run save hooks.
+                Campaign.objects.filter(pk=campaign.pk).update(
+                    last_sync_error=new_error, last_sync_attempted_at=timezone.now(),
                 )
-                was_auth_error = integration.last_sync_error == codes.AUTH
-                integration.last_sync_attempted_at = now
-                if error is None:
-                    integration.last_synced_at = now
-                    integration.last_sync_error = codes.NONE
-                elif not (was_auth_error and error_code == codes.TRANSIENT):
-                    # A timeout does not prove the credentials work again.
-                    integration.last_sync_error = error_code
-                integration.save()
-                if integration.last_sync_error == codes.AUTH and not was_auth_error:
-                    notify_campaign_platform_auth_error(integration=integration)
+                if new_error == codes.AUTH and not was_auth_error:
+                    notify_campaign_sync_auth_error(campaign, ad_account=ad_account)
 
 
 class CampaignService:
