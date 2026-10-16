@@ -2,7 +2,9 @@
 
 import * as Popover from '@radix-ui/react-popover';
 import { Check, ChevronDown } from 'lucide-react';
-import type { CSSProperties, ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
+import { isTriggerMeaningfullyVisible } from '@/components/spreadsheets/toolbarMenuPosition';
+
 
 export interface BrandSelectOption {
   value: string;
@@ -20,6 +22,9 @@ interface Props {
   widthClass?: string;
   renderValue?: (value: string) => ReactNode;
   align?: 'start' | 'center' | 'end';
+  confineToRef?: RefObject<HTMLElement | null>;
+  open?: boolean;
+  onOpenChange?: (next: boolean) => void;
 }
 
 export default function BrandSelect({
@@ -32,13 +37,61 @@ export default function BrandSelect({
   widthClass = 'min-w-[6rem]',
   renderValue,
   align = 'start',
+  confineToRef,
+  open: openProp,
+  onOpenChange,
 }: Props) {
   const current = options.find((o) => o.value === value);
   const displayLabel = renderValue ? renderValue(value) : current?.label ?? value ?? '';
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const isControlled = openProp !== undefined;
+  const resolvedOpen = isControlled ? openProp : uncontrolledOpen;
+
+  const setResolvedOpen = (next: boolean) => {
+    if (!isControlled) setUncontrolledOpen(next);
+    onOpenChange?.(next);
+  };
+
+  useEffect(() => {
+    if (!resolvedOpen || !confineToRef) return;
+    const bar = confineToRef.current;
+    if (!bar) return;
+  
+    const closeIfMostlyHidden = () => {
+      const barRect = confineToRef.current?.getBoundingClientRect();
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!barRect || !rect) return;
+      if (!isTriggerMeaningfullyVisible(rect, barRect)) {
+        setResolvedOpen(false);
+      }
+    };
+  
+    bar.addEventListener('scroll', closeIfMostlyHidden);
+    window.addEventListener('scroll', closeIfMostlyHidden, true);
+    window.addEventListener('resize', closeIfMostlyHidden);
+    return () => {
+      bar.removeEventListener('scroll', closeIfMostlyHidden);
+      window.removeEventListener('scroll', closeIfMostlyHidden, true);
+      window.removeEventListener('resize', closeIfMostlyHidden);
+    };
+  }, [resolvedOpen, confineToRef]);
+
   return (
-    <Popover.Root>
+    <Popover.Root
+      open={resolvedOpen}
+      onOpenChange={(next) => {
+        if (next && confineToRef) {
+          const bar = confineToRef.current?.getBoundingClientRect();
+          const rect = triggerRef.current?.getBoundingClientRect();
+          if (bar && rect && !isTriggerMeaningfullyVisible(rect, bar)) return;
+        }
+        setResolvedOpen(next);
+      }}
+    >
       <Popover.Trigger asChild>
         <button
+          ref={triggerRef}
           type="button"
           aria-label={ariaLabel}
           title={ariaLabel}
@@ -56,11 +109,12 @@ export default function BrandSelect({
         <Popover.Content
           sideOffset={6}
           align={align}
-          className="z-[120] overflow-hidden rounded-lg bg-white shadow-lg ring-1 ring-gray-100 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
-          style={{ minWidth: 'var(--radix-popover-trigger-width)' }}
+          collisionPadding={8}
+          className="z-[120] flex flex-col overflow-hidden rounded-lg bg-white shadow-lg ring-1 ring-gray-100 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
+          style={{ minWidth: 'var(--radix-popover-trigger-width)', maxHeight: 'min(15rem, var(--radix-popover-content-available-height))' }}
         >
           <div className="h-[3px] w-full bg-gradient-to-r from-[#3CCED7] to-[#A6E661]" />
-          <div role="listbox" aria-label={ariaLabel} className="max-h-60 overflow-y-auto py-1">
+          <div role="listbox" aria-label={ariaLabel} className="min-h-0 flex-1 overflow-y-auto py-1">
             {options.map((opt) => {
               const selected = opt.value === value;
               return (
