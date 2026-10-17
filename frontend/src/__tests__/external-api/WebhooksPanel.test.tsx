@@ -1,14 +1,14 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import WebhooksPanel from '@/components/csm-settings/integrations/WebhooksPanel';
-import { validateWebhookUrl } from '@/components/csm-settings/integrations/WebhookEndpointDrawer';
-import { CsmIntegrationsAPI } from '@/lib/api/csmIntegrationsApi';
-import type { WebhookDelivery, WebhookEndpoint } from '@/types/csmIntegrations';
+import WebhooksPanel from '@/external-api/components/WebhooksPanel';
+import { validateWebhookUrl } from '@/external-api/components/WebhookFormModal';
+import { ExternalApiAdminAPI } from '@/external-api/api';
+import type { WebhookDelivery, WebhookEndpoint } from '@/external-api/types';
 
-jest.mock('@/lib/api/csmIntegrationsApi', () => ({
+jest.mock('@/external-api/api', () => ({
   __esModule: true,
-  CsmIntegrationsAPI: {
+  ExternalApiAdminAPI: {
     listWebhooks: jest.fn(),
     createWebhook: jest.fn(),
     deleteWebhook: jest.fn(),
@@ -21,7 +21,7 @@ jest.mock('react-hot-toast', () => ({
   default: { success: jest.fn(), error: jest.fn() },
 }));
 
-const api = CsmIntegrationsAPI as jest.Mocked<typeof CsmIntegrationsAPI>;
+const api = ExternalApiAdminAPI as jest.Mocked<typeof ExternalApiAdminAPI>;
 const EVENTS = [
   { value: 'ticket.created', label: 'Ticket created' },
   { value: 'ticket.status_changed', label: 'Ticket status changed' },

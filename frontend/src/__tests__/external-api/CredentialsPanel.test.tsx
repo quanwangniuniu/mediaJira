@@ -2,13 +2,13 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import toast from 'react-hot-toast';
-import CredentialsPanel from '@/components/csm-settings/integrations/CredentialsPanel';
-import { CsmIntegrationsAPI } from '@/lib/api/csmIntegrationsApi';
-import type { ApiKey } from '@/types/csmIntegrations';
+import CredentialsPanel from '@/external-api/components/CredentialsPanel';
+import { ExternalApiAdminAPI } from '@/external-api/api';
+import type { ApiKey } from '@/external-api/types';
 
-jest.mock('@/lib/api/csmIntegrationsApi', () => ({
+jest.mock('@/external-api/api', () => ({
   __esModule: true,
-  CsmIntegrationsAPI: {
+  ExternalApiAdminAPI: {
     listApiKeys: jest.fn(),
     createApiKey: jest.fn(),
     revokeApiKey: jest.fn(),
@@ -23,7 +23,7 @@ jest.mock('react-hot-toast', () => ({
   default: { success: jest.fn(), error: jest.fn() },
 }));
 
-const api = CsmIntegrationsAPI as jest.Mocked<typeof CsmIntegrationsAPI>;
+const api = ExternalApiAdminAPI as jest.Mocked<typeof ExternalApiAdminAPI>;
 const RESOURCES = [
   { value: 'tickets', label: 'Tickets' },
   { value: 'queues', label: 'Queues' },

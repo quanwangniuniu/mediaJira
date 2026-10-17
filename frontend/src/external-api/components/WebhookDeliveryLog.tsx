@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, RefreshCw } from 'lucide-react';
-import { CsmIntegrationsAPI } from '@/lib/api/csmIntegrationsApi';
-import type { VocabularyOption, WebhookDelivery, WebhookDeliveryStatus } from '@/types/csmIntegrations';
+import { ExternalApiAdminAPI } from '@/external-api/api';
+import type { VocabularyOption, WebhookDelivery, WebhookDeliveryStatus } from '@/external-api/types';
 import { SECONDARY_BUTTON_CLASS } from '@/components/csm-settings/constants';
 import { formatDateTime } from '@/components/csm/quality/formatDates';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
@@ -21,7 +21,7 @@ const STATUS_CLASS: Record<WebhookDeliveryStatus, string> = {
 };
 
 interface Props {
-  projectId: number;
+  projectId: number | string;
   events: VocabularyOption[];
 }
 
@@ -35,7 +35,7 @@ export default function WebhookDeliveryLog({ projectId, events }: Props) {
     setLoading(true);
     setError(null);
     try {
-      setRows(await CsmIntegrationsAPI.listDeliveries(projectId));
+      setRows(await ExternalApiAdminAPI.listDeliveries(projectId));
     } catch {
       setError('Failed to load the delivery log.');
     } finally {

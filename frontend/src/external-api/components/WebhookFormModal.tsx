@@ -2,15 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import { AlertCircle } from 'lucide-react';
-import CsmSettingsDrawerShell from '@/components/csm-settings/CsmSettingsDrawerShell';
+import Modal from '@/components/ui/Modal';
 import {
   BUILDER_CONTROL_CLASS,
-  DRAWER_PRIMARY_BUTTON_CLASS,
+  BUILDER_PRIMARY_BUTTON_CLASS,
   FORM_LABEL_CLASS,
   SECONDARY_BUTTON_CLASS,
 } from '@/components/csm-settings/constants';
 import { parseFieldErrors } from '@/components/ticket-form/formErrors';
-import type { VocabularyOption, WebhookEndpointData } from '@/types/csmIntegrations';
+import type { VocabularyOption, WebhookEndpointData } from '@/external-api/types';
 
 /** Client-side check only; the server also rejects hosts that resolve to private addresses. */
 export function validateWebhookUrl(url: string): string | null {
@@ -33,7 +33,7 @@ interface Props {
   onSubmit: (data: WebhookEndpointData) => Promise<void>;
 }
 
-export default function WebhookEndpointDrawer({ isOpen, events, onClose, onSubmit }: Props) {
+export default function WebhookFormModal({ isOpen, events, onClose, onSubmit }: Props) {
   const [url, setUrl] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -85,28 +85,12 @@ export default function WebhookEndpointDrawer({ isOpen, events, onClose, onSubmi
   };
 
   return (
-    <CsmSettingsDrawerShell
-      open={isOpen}
-      onClose={onClose}
-      title="New webhook"
-      footer={
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} disabled={submitting} className={SECONDARY_BUTTON_CLASS}>
-            Cancel
-          </button>
-          <button type="submit" form="webhook-endpoint-form" disabled={submitting} className={DRAWER_PRIMARY_BUTTON_CLASS}>
-            {submitting ? 'Saving…' : 'Create webhook'}
-          </button>
+    <Modal isOpen={isOpen} onClose={onClose}>
+      <div className="mx-4 w-full max-w-lg rounded-xl bg-white shadow-xl">
+        <div className="border-b border-gray-200 px-6 py-4">
+          <h2 className="text-lg font-semibold text-gray-900">New webhook</h2>
         </div>
-      }
-    >
-      <form
-        id="webhook-endpoint-form"
-        onSubmit={handleSubmit}
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto"
-        noValidate
-      >
-        <div className="flex flex-col gap-6 px-6 pb-6">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-5 p-6" noValidate>
           {serverError && (
             <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               <AlertCircle className="h-4 w-4 shrink-0" aria-hidden />
@@ -151,8 +135,17 @@ export default function WebhookEndpointDrawer({ isOpen, events, onClose, onSubmi
             </div>
             {fieldErrors.events && <p className="mt-1 text-xs text-red-600">{fieldErrors.events}</p>}
           </fieldset>
-        </div>
-      </form>
-    </CsmSettingsDrawerShell>
+
+          <div className="flex justify-end gap-2 border-t border-gray-200 pt-3">
+            <button type="button" onClick={onClose} disabled={submitting} className={SECONDARY_BUTTON_CLASS}>
+              Cancel
+            </button>
+            <button type="submit" disabled={submitting} className={BUILDER_PRIMARY_BUTTON_CLASS}>
+              {submitting ? 'Saving…' : 'Create webhook'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </Modal>
   );
 }

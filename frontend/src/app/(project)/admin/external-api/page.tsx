@@ -3,14 +3,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
-import CsmSettingsPageRoot, { CsmSettingsProjectGuard } from '@/components/csm-settings/CsmSettingsPageRoot';
-import SettingsHubLink from '@/components/csm-settings/SettingsHubLink';
-import CredentialsPanel from '@/components/csm-settings/integrations/CredentialsPanel';
-import WebhooksPanel from '@/components/csm-settings/integrations/WebhooksPanel';
-import { useProjectIdFromUrl } from '@/components/csm-settings/useProjectIdFromUrl';
+import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
-import { CsmIntegrationsAPI } from '@/lib/api/csmIntegrationsApi';
-import type { IntegrationsVocabulary } from '@/types/csmIntegrations';
+import { ExternalApiAdminAPI } from '@/external-api/api';
+import CredentialsPanel from '@/external-api/components/CredentialsPanel';
+import WebhooksPanel from '@/external-api/components/WebhooksPanel';
+import type { IntegrationsVocabulary } from '@/external-api/types';
+import { useActiveProjectForFlatRoute } from '@/lib/useActiveProjectForFlatRoute';
 
 const TABS = [
   { id: 'api-key', label: 'API keys' },
@@ -20,8 +19,10 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]['id'];
 
-function IntegrationsSettings() {
-  const { projectId, projectValid } = useProjectIdFromUrl();
+function ExternalApiAdmin() {
+  const { activeProject } = useActiveProjectForFlatRoute();
+  const projectId = activeProject?.id ?? '';
+  const projectValid = Boolean(activeProject?.id);
   const [tab, setTab] = useState<TabId>('api-key');
   const [vocabulary, setVocabulary] = useState<IntegrationsVocabulary | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +31,7 @@ function IntegrationsSettings() {
     if (!projectValid) return;
     setError(null);
     try {
-      setVocabulary(await CsmIntegrationsAPI.vocabulary(projectId));
+      setVocabulary(await ExternalApiAdminAPI.vocabulary(projectId));
     } catch (err: unknown) {
       const forbidden = (err as { response?: { status?: number } })?.response?.status === 403;
       setError(forbidden
@@ -42,20 +43,17 @@ function IntegrationsSettings() {
   useEffect(() => { load(); }, [load]);
 
   return (
-    <CsmSettingsPageRoot>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">API &amp; Webhooks</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Let external systems use the REST API at <code className="font-mono">/api/v1/csm/</code>, and send them
-            signed events when tickets change.
-          </p>
-        </div>
-        {projectValid && <SettingsHubLink projectId={projectId} />}
+    <div className="mx-auto flex max-w-6xl flex-col gap-6 p-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">API &amp; Webhooks</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          Let external systems use the REST API at <code className="font-mono">/api/v1/csm/</code>, and send them
+          signed events when tickets change.
+        </p>
       </div>
 
       {!projectValid ? (
-        <CsmSettingsProjectGuard />
+        <p className="text-sm text-gray-500">Select a project to manage its API access and webhooks.</p>
       ) : error ? (
         <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           <AlertCircle className="h-4 w-4 shrink-0" aria-hidden />
@@ -71,9 +69,9 @@ function IntegrationsSettings() {
                 key={id}
                 type="button"
                 role="tab"
-                id={`integrations-tab-${id}`}
+                id={`external-api-tab-${id}`}
                 aria-selected={tab === id}
-                aria-controls={`integrations-panel-${id}`}
+                aria-controls={`external-api-panel-${id}`}
                 onClick={() => setTab(id)}
                 className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${
                   tab === id
@@ -85,7 +83,7 @@ function IntegrationsSettings() {
               </button>
             ))}
           </div>
-          <div role="tabpanel" id={`integrations-panel-${tab}`} aria-labelledby={`integrations-tab-${tab}`}>
+          <div role="tabpanel" id={`external-api-panel-${tab}`} aria-labelledby={`external-api-tab-${tab}`}>
             {tab === 'webhooks' ? (
               <WebhooksPanel projectId={projectId} events={vocabulary.events} />
             ) : (
@@ -99,14 +97,16 @@ function IntegrationsSettings() {
           </div>
         </>
       )}
-    </CsmSettingsPageRoot>
+    </div>
   );
 }
 
-export default function IntegrationsSettingsPage() {
+export default function ExternalApiPage() {
   return (
     <ProtectedRoute requiredAuth requireAdmin fallback="/unauthorized">
-      <IntegrationsSettings />
+      <DashboardLayout alerts={[]} upcomingMeetings={[]}>
+        <ExternalApiAdmin />
+      </DashboardLayout>
     </ProtectedRoute>
   );
 }

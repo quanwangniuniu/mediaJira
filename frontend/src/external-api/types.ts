@@ -1,4 +1,4 @@
-/** CSM settings → API & Webhooks. Mirrors public_api/serializers_admin.py. */
+/** External API admin console types. Mirror external_api/serializers.py. */
 
 export type CredentialKind = 'api-key' | 'oauth-client';
 

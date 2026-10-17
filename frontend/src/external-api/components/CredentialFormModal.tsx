@@ -9,7 +9,7 @@ import {
   BUILDER_PRIMARY_BUTTON_CLASS,
   SECONDARY_BUTTON_CLASS,
 } from '@/components/csm-settings/constants';
-import type { CreateCredentialData, VocabularyOption } from '@/types/csmIntegrations';
+import type { CreateCredentialData, VocabularyOption } from '@/external-api/types';
 
 interface Props {
   isOpen: boolean;

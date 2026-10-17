@@ -1,12 +1,12 @@
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import IntegrationsSettingsPage from '@/app/(project)/admin/csm/settings/integrations/page';
-import { CsmIntegrationsAPI } from '@/lib/api/csmIntegrationsApi';
+import ExternalApiPage from '@/app/(project)/admin/external-api/page';
+import { ExternalApiAdminAPI } from '@/external-api/api';
 
-jest.mock('@/lib/api/csmIntegrationsApi', () => ({
+jest.mock('@/external-api/api', () => ({
   __esModule: true,
-  CsmIntegrationsAPI: { vocabulary: jest.fn() },
+  ExternalApiAdminAPI: { vocabulary: jest.fn() },
 }));
 
 jest.mock('@/components/auth/ProtectedRoute', () => ({
@@ -14,35 +14,39 @@ jest.mock('@/components/auth/ProtectedRoute', () => ({
   ProtectedRoute: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
-jest.mock('@/components/csm-settings/useProjectIdFromUrl', () => ({
-  useProjectIdFromUrl: () => ({ projectId: 1, projectValid: true }),
+jest.mock('@/lib/useActiveProjectForFlatRoute', () => ({
+  useActiveProjectForFlatRoute: () => ({ activeProject: { id: 1 }, projectId: 1, projectContextLoading: false }),
 }));
 
-jest.mock('@/components/csm-settings/SettingsHubLink', () => ({ __esModule: true, default: () => null }));
+jest.mock('@/components/dashboard/DashboardLayout', () => ({
+  __esModule: true,
+  default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
 
 // Each panel has its own test; stub them so this file stays on the page.
-jest.mock('@/components/csm-settings/integrations/CredentialsPanel', () => ({
+jest.mock('@/external-api/components/CredentialsPanel', () => ({
   __esModule: true,
   default: ({ kind, resources }: { kind: string; resources: { value: string }[] }) => (
     <div>credentials:{kind}:{resources.map((r) => r.value).join(',')}</div>
   ),
 }));
-jest.mock('@/components/csm-settings/integrations/WebhooksPanel', () => ({
+jest.mock('@/external-api/components/WebhooksPanel', () => ({
   __esModule: true,
   default: ({ events }: { events: { value: string }[] }) => <div>webhooks:{events.map((e) => e.value).join(',')}</div>,
 }));
 
-const vocabulary = CsmIntegrationsAPI.vocabulary as jest.Mock;
+const vocabulary = ExternalApiAdminAPI.vocabulary as jest.Mock;
 
 beforeEach(() => jest.clearAllMocks());
 
-describe('IntegrationsSettingsPage', () => {
+describe('ExternalApiPage', () => {
   it('switches between API keys, OAuth clients and webhooks', async () => {
     vocabulary.mockResolvedValue({
       resources: [{ value: 'tickets', label: 'Tickets' }],
       events: [{ value: 'ticket.created', label: 'Ticket created' }],
     });
-    render(<IntegrationsSettingsPage />);
+    render(<ExternalApiPage />);
 
     expect(await screen.findByText('credentials:api-key:tickets')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: 'OAuth clients' }));
@@ -54,7 +58,7 @@ describe('IntegrationsSettingsPage', () => {
 
   it('explains a 403 instead of showing the panels', async () => {
     vocabulary.mockRejectedValue({ response: { status: 403 } });
-    render(<IntegrationsSettingsPage />);
+    render(<ExternalApiPage />);
 
     expect(await screen.findByText(/Only an organisation admin or a CSM admin/)).toBeInTheDocument();
     expect(screen.queryByRole('tab')).not.toBeInTheDocument();

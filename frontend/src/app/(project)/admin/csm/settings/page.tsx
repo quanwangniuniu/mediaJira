@@ -103,7 +103,7 @@ export default function CsmSettingsHubPage() {
             description="Simulate a conversation, trace rule evaluation, and preview templates. Nothing is saved."
           />
           <CsmSettingsNavCard
-            href={buildUrl('/admin/csm/settings/integrations')}
+            href={buildUrl('/admin/external-api')}
             icon={Webhook}
             title="API & Webhooks"
             description="API keys and OAuth clients for external systems, and signed webhooks for ticket and SLA events."

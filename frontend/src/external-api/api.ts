@@ -1,4 +1,4 @@
-import api from '../api';
+import api from '@/lib/api';
 import type {
   ApiKey,
   CreateCredentialData,
@@ -10,69 +10,69 @@ import type {
   WebhookEndpoint,
   WebhookEndpointData,
   WebhookEndpointWithSecret,
-} from '@/types/csmIntegrations';
+} from '@/external-api/types';
 
-const BASE = '/api/csm/integrations';
+const BASE = '/api/external-api';
 
-export const CsmIntegrationsAPI = {
-  vocabulary(projectId: number) {
+export const ExternalApiAdminAPI = {
+  vocabulary(projectId: number | string) {
     return api
       .get<IntegrationsVocabulary>(`${BASE}/vocabulary/`, { params: { project: projectId } })
       .then((res) => res.data);
   },
 
-  listApiKeys(projectId: number) {
+  listApiKeys(projectId: number | string) {
     return api.get<ApiKey[]>(`${BASE}/api-keys/`, { params: { project: projectId } }).then((res) => res.data);
   },
 
-  createApiKey(projectId: number, data: CreateCredentialData) {
+  createApiKey(projectId: number | string, data: CreateCredentialData) {
     return api
       .post<CreatedApiKey>(`${BASE}/api-keys/`, data, { params: { project: projectId } })
       .then((res) => res.data);
   },
 
-  revokeApiKey(projectId: number, id: number) {
+  revokeApiKey(projectId: number | string, id: number) {
     return api
       .post<ApiKey>(`${BASE}/api-keys/${id}/revoke/`, null, { params: { project: projectId } })
       .then((res) => res.data);
   },
 
-  listOAuthClients(projectId: number) {
+  listOAuthClients(projectId: number | string) {
     return api
       .get<OAuthClient[]>(`${BASE}/oauth-clients/`, { params: { project: projectId } })
       .then((res) => res.data);
   },
 
-  createOAuthClient(projectId: number, data: CreateCredentialData) {
+  createOAuthClient(projectId: number | string, data: CreateCredentialData) {
     return api
       .post<CreatedOAuthClient>(`${BASE}/oauth-clients/`, data, { params: { project: projectId } })
       .then((res) => res.data);
   },
 
-  revokeOAuthClient(projectId: number, id: number) {
+  revokeOAuthClient(projectId: number | string, id: number) {
     return api
       .post<OAuthClient>(`${BASE}/oauth-clients/${id}/revoke/`, null, { params: { project: projectId } })
       .then((res) => res.data);
   },
 
-  listWebhooks(projectId: number) {
+  listWebhooks(projectId: number | string) {
     return api
       .get<WebhookEndpoint[]>(`${BASE}/webhooks/`, { params: { project: projectId } })
       .then((res) => res.data);
   },
 
-  createWebhook(projectId: number, data: WebhookEndpointData) {
+  createWebhook(projectId: number | string, data: WebhookEndpointData) {
     return api
       .post<WebhookEndpointWithSecret>(`${BASE}/webhooks/`, data, { params: { project: projectId } })
       .then((res) => res.data);
   },
 
-  deleteWebhook(projectId: number, id: number) {
+  deleteWebhook(projectId: number | string, id: number) {
     return api.delete(`${BASE}/webhooks/${id}/`, { params: { project: projectId } });
   },
 
   /** The newest 20 attempts. */
-  listDeliveries(projectId: number) {
+  listDeliveries(projectId: number | string) {
     return api
       .get<{ results: WebhookDelivery[] }>(`${BASE}/webhook-deliveries/`, { params: { project: projectId } })
       .then((res) => res.data.results);

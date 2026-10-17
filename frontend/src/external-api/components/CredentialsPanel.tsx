@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { AlertCircle, Ban, Plus } from 'lucide-react';
-import { CsmIntegrationsAPI } from '@/lib/api/csmIntegrationsApi';
+import { ExternalApiAdminAPI } from '@/external-api/api';
 import type {
   ApiKey, CreateCredentialData, CredentialKind, OAuthClient, VocabularyOption,
-} from '@/types/csmIntegrations';
+} from '@/external-api/types';
 import { PORTAL_SUBMIT_BUTTON_CLASS } from '@/components/ticket-form/constants';
 import StatusBadge from '@/components/csm-settings/StatusBadge';
 import { formatDateTime } from '@/components/csm/quality/formatDates';
@@ -47,7 +47,7 @@ const COPY: Record<CredentialKind, { noun: string; newLabel: string; empty: stri
 
 interface Props {
   kind: CredentialKind;
-  projectId: number;
+  projectId: number | string;
   resources: VocabularyOption[];
 }
 
@@ -67,8 +67,8 @@ export default function CredentialsPanel({ kind, projectId, resources }: Props) 
     try {
       setRows(
         kind === 'api-key'
-          ? await CsmIntegrationsAPI.listApiKeys(projectId)
-          : await CsmIntegrationsAPI.listOAuthClients(projectId),
+          ? await ExternalApiAdminAPI.listApiKeys(projectId)
+          : await ExternalApiAdminAPI.listOAuthClients(projectId),
       );
     } catch {
       setError(`Failed to load ${copy.noun}s.`);
@@ -81,7 +81,7 @@ export default function CredentialsPanel({ kind, projectId, resources }: Props) 
 
   const handleCreate = async (data: CreateCredentialData) => {
     if (kind === 'api-key') {
-      const created = await CsmIntegrationsAPI.createApiKey(projectId, data);
+      const created = await ExternalApiAdminAPI.createApiKey(projectId, data);
       setRows((prev) => [created, ...prev]);
       setRevealed({
         title: 'API key created',
@@ -89,7 +89,7 @@ export default function CredentialsPanel({ kind, projectId, resources }: Props) 
         values: [{ label: 'API key', value: created.key, secret: true }],
       });
     } else {
-      const created = await CsmIntegrationsAPI.createOAuthClient(projectId, data);
+      const created = await ExternalApiAdminAPI.createOAuthClient(projectId, data);
       setRows((prev) => [created, ...prev]);
       setRevealed({
         title: 'OAuth client created',
@@ -108,8 +108,8 @@ export default function CredentialsPanel({ kind, projectId, resources }: Props) 
     setRevokeBusy(true);
     try {
       const updated = kind === 'api-key'
-        ? await CsmIntegrationsAPI.revokeApiKey(projectId, revoking.id)
-        : await CsmIntegrationsAPI.revokeOAuthClient(projectId, revoking.id);
+        ? await ExternalApiAdminAPI.revokeApiKey(projectId, revoking.id)
+        : await ExternalApiAdminAPI.revokeOAuthClient(projectId, revoking.id);
       setRows((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
       toast.success(`${copy.noun} revoked.`);
       setRevoking(null);

@@ -3,18 +3,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { AlertCircle, Plus, Trash2 } from 'lucide-react';
-import { CsmIntegrationsAPI } from '@/lib/api/csmIntegrationsApi';
-import type { VocabularyOption, WebhookEndpoint, WebhookEndpointData } from '@/types/csmIntegrations';
+import { ExternalApiAdminAPI } from '@/external-api/api';
+import type { VocabularyOption, WebhookEndpoint, WebhookEndpointData } from '@/external-api/types';
 import { formatDateTime } from '@/components/csm/quality/formatDates';
 import { PORTAL_SUBMIT_BUTTON_CLASS } from '@/components/ticket-form/constants';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import SecretRevealModal, { type RevealedSecret } from './SecretRevealModal';
 import WebhookDeliveryLog from './WebhookDeliveryLog';
-import WebhookEndpointDrawer from './WebhookEndpointDrawer';
+import WebhookFormModal from './WebhookFormModal';
 
 interface Props {
-  projectId: number;
+  projectId: number | string;
   events: VocabularyOption[];
 }
 
@@ -43,7 +43,7 @@ export default function WebhooksPanel({ projectId, events }: Props) {
     setLoading(true);
     setError(null);
     try {
-      setEndpoints(await CsmIntegrationsAPI.listWebhooks(projectId));
+      setEndpoints(await ExternalApiAdminAPI.listWebhooks(projectId));
     } catch {
       setError('Failed to load webhooks.');
     } finally {
@@ -54,7 +54,7 @@ export default function WebhooksPanel({ projectId, events }: Props) {
   useEffect(() => { load(); }, [load]);
 
   const handleSubmit = async (data: WebhookEndpointData) => {
-    const { secret, ...created } = await CsmIntegrationsAPI.createWebhook(projectId, data);
+    const { secret, ...created } = await ExternalApiAdminAPI.createWebhook(projectId, data);
     setEndpoints((prev) => [created, ...prev]);
     setRevealed(secretReveal(created, secret));
     setDrawerOpen(false);
@@ -64,7 +64,7 @@ export default function WebhooksPanel({ projectId, events }: Props) {
     if (!deleting) return;
     setDeleteBusy(true);
     try {
-      await CsmIntegrationsAPI.deleteWebhook(projectId, deleting.id);
+      await ExternalApiAdminAPI.deleteWebhook(projectId, deleting.id);
       setEndpoints((prev) => prev.filter((row) => row.id !== deleting.id));
       toast.success('Webhook deleted.');
       setDeleting(null);
@@ -164,7 +164,7 @@ export default function WebhooksPanel({ projectId, events }: Props) {
         <WebhookDeliveryLog projectId={projectId} events={events} />
       </div>
 
-      <WebhookEndpointDrawer
+      <WebhookFormModal
         isOpen={drawerOpen}
         events={events}
         onClose={() => setDrawerOpen(false)}
