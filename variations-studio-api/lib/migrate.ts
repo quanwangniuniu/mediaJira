@@ -9,9 +9,20 @@ export type MigrationCommand = 'apply' | 'status' | 'dry-run';
 type Migration = { version: string; file: string; sql: string; checksum: string };
 type History = { version: string; checksum: string };
 
+// Outcome reported for each tenant in the JSON report.
+const TENANT_STATUS = {
+  pending: 'pending',
+  upToDate: 'up_to_date',
+  applied: 'applied',
+  skippedMissingSchema: 'skipped_missing_schema',
+  failed: 'failed',
+  commitUnknown: 'commit_unknown',
+} as const;
+type TenantStatus = (typeof TENANT_STATUS)[keyof typeof TENANT_STATUS];
+
 type TenantMigrationResult = {
   schema: string;
-  status: 'pending' | 'up_to_date' | 'applied' | 'skipped_missing_schema' | 'failed' | 'commit_unknown';
+  status: TenantStatus;
   appliedBefore: string[];
   /** Files pending when this invocation planned the tenant, before execution. */
   pending: string[];
@@ -69,7 +80,7 @@ async function runTenant(
   schema: string, migrations: Migration[], options: MigrationOptions, connectionString: string
 ): Promise<TenantMigrationResult> {
   const result: TenantMigrationResult = {
-    schema, status: 'failed', appliedBefore: [], pending: [], appliedNow: [],
+    schema, status: TENANT_STATUS.failed, appliedBefore: [], pending: [], appliedNow: [],
   };
   const client = new Client({ connectionString, connectionTimeoutMillis: 10_000 });
   const quotedSchema = escapeIdentifier(schema);
@@ -93,7 +104,7 @@ async function runTenant(
     const namespace = await client.query(
       'SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = left($1, 63)', [schema]);
     if (namespace.rows.length === 0) {
-      result.status = 'skipped_missing_schema';
+      result.status = TENANT_STATUS.skippedMissingSchema;
       return result;
     }
     await client.query(`SET LOCAL search_path TO ${quotedSchema}`);
@@ -107,7 +118,7 @@ async function runTenant(
     result.pending = pending.map(migration => migration.file);
     if (options.command === 'dry-run') result.plannedSql = pending.map(({ file, sql }) => ({ file, sql }));
     if (options.command !== 'apply' || pending.length === 0) {
-      result.status = pending.length ? 'pending' : 'up_to_date';
+      result.status = pending.length ? TENANT_STATUS.pending : TENANT_STATUS.upToDate;
       return result;
     }
     await client.query(`CREATE TABLE IF NOT EXISTS ${ledger} (
@@ -128,9 +139,9 @@ async function runTenant(
     commitAttempted = true;
     await client.query('COMMIT');
     result.appliedNow = pending.map(migration => migration.version);
-    result.status = 'applied';
+    result.status = TENANT_STATUS.applied;
   } catch (error) {
-    result.status = commitAttempted ? 'commit_unknown' : 'failed';
+    result.status = commitAttempted ? TENANT_STATUS.commitUnknown : TENANT_STATUS.failed;
     result.error = {
       file: currentMigration?.file,
       code: error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
@@ -159,7 +170,7 @@ export async function runMigrations(options: MigrationOptions): Promise<{
   for (const schema of options.schemas) results.push(await runTenant(schema, migrations, options, connectionString));
   return {
     command: options.command,
-    ok: results.every(result => result.status !== 'failed' && result.status !== 'commit_unknown'),
+    ok: results.every(result => result.status !== TENANT_STATUS.failed && result.status !== TENANT_STATUS.commitUnknown),
     results,
   };
 }
