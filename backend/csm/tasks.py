@@ -3,6 +3,7 @@ from django.utils import timezone
 
 from csm.models import ConversationMessage, Ticket
 from csm.services.sla import notify_sla_breach
+from csm.signals import sla_breached
 from csm.services.status_machine import (
     tickets_due_for_auto_resolve,
     RESOLVED_STATUS,
@@ -48,8 +49,6 @@ def notify_sla_breaches():
     live breach. Returns the count notified.
     """
     from csm.services.sla import _policy_for_ticket
-    from public_api.models import WebhookEvent
-    from public_api.services import emit_ticket_event
 
     now = timezone.now()
     notified = 0
@@ -65,7 +64,7 @@ def notify_sla_breaches():
         notify_sla_breach(ticket, 'first_response')
         ticket.first_response_breach_notified = True
         ticket.save(update_fields=['first_response_breach_notified'])
-        emit_ticket_event(WebhookEvent.SLA_BREACHED, ticket, breach_type='first_response')
+        sla_breached.send(sender=Ticket, ticket=ticket, breach_type='first_response')
         notified += 1
 
     resolution = Ticket.objects.filter(
@@ -78,7 +77,7 @@ def notify_sla_breaches():
         notify_sla_breach(ticket, 'resolution')
         ticket.resolution_breach_notified = True
         ticket.save(update_fields=['resolution_breach_notified'])
-        emit_ticket_event(WebhookEvent.SLA_BREACHED, ticket, breach_type='resolution')
+        sla_breached.send(sender=Ticket, ticket=ticket, breach_type='resolution')
         notified += 1
 
     return notified

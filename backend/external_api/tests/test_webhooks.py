@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
+from celery.exceptions import Retry
 from django.urls import reverse
 from django.utils import timezone
 
@@ -13,10 +14,10 @@ from chat.services import UnsafeUrlError
 from core.crypto import decrypt_token
 from csm.models import SLAPolicy, SLAPriorityTarget, Ticket, TicketStatus
 from csm.tasks import auto_resolve_pending_tickets, notify_sla_breaches
-from public_api.models import WebhookDelivery, WebhookEvent
-from public_api.services import build_event, create_endpoint, post_json_safely, validate_webhook_url
-from public_api.tasks import BACKOFF_SECONDS, deliver_webhook
-from public_api.tests.conftest import resolving_to
+from external_api.models import WebhookDelivery, WebhookEvent
+from external_api.services import build_event, create_endpoint, post_json_safely, validate_webhook_url
+from external_api.tasks import deliver_webhook
+from external_api.tests.conftest import resolving_to
 
 pytestmark = pytest.mark.django_db
 
@@ -37,8 +38,8 @@ def sent():
     TestRouting.test_rolled_back_write_sends_nothing covers the real on-commit path.
     """
     calls = []
-    with patch('public_api.tasks.deliver_webhook.delay', side_effect=lambda *args: calls.append(args)), \
-            patch('public_api.services.transaction.on_commit', side_effect=lambda fn: fn()):
+    with patch('external_api.tasks.deliver_webhook.delay', side_effect=lambda *args: calls.append(args)), \
+            patch('external_api.services.transaction.on_commit', side_effect=lambda fn: fn()):
         yield calls
 
 
@@ -64,8 +65,8 @@ class TestTicketCreated:
         assert response.status_code == 201, response.data
         assert _types(sent) == ['ticket.created']
 
-    def test_public_api_create_emits(self, endpoint, csm_queue, key_client, sent):
-        response = key_client.post(reverse('public-api-ticket-list'), {'queue': csm_queue.id, 'title': 'From API'}, format='json')
+    def test_external_api_create_emits(self, endpoint, csm_queue, key_client, sent):
+        response = key_client.post(reverse('external-api-ticket-list'), {'queue': csm_queue.id, 'title': 'From API'}, format='json')
         assert response.status_code == 201, response.data
         assert _types(sent) == ['ticket.created']
 
@@ -178,7 +179,7 @@ class TestRouting:
 
     def test_rolled_back_write_sends_nothing(self, endpoint, csm_queue, django_capture_on_commit_callbacks):
         from django.db import transaction
-        with patch('public_api.tasks.deliver_webhook.delay') as delay:
+        with patch('external_api.tasks.deliver_webhook.delay') as delay:
             with django_capture_on_commit_callbacks(execute=False) as callbacks:
                 try:
                     with transaction.atomic():
@@ -201,10 +202,25 @@ def _response(code):
     return response
 
 
+def _attempt(endpoint_id, payload, retries=0):
+    """Run the task as Celery would on its (retries + 1)th attempt."""
+    deliver_webhook.push_request(retries=retries)
+    try:
+        return deliver_webhook.run(endpoint_id, payload)
+    finally:
+        deliver_webhook.pop_request()
+
+
+@pytest.fixture
+def retry():
+    with patch.object(deliver_webhook, 'retry', side_effect=lambda countdown: Retry()) as mock:
+        yield mock
+
+
 class TestDelivery:
     def test_success_is_signed_and_logged(self, endpoint, payload):
-        with patch('public_api.tasks.post_json_safely', return_value=_response(204)) as post:
-            assert deliver_webhook(endpoint.id, payload) == WebhookDelivery.Status.SUCCEEDED
+        with patch('external_api.tasks.post_json_safely', return_value=_response(204)) as post:
+            assert _attempt(endpoint.id, payload) == WebhookDelivery.Status.SUCCEEDED
 
         url, body, headers = post.call_args.args
         assert url == endpoint.url
@@ -222,43 +238,37 @@ class TestDelivery:
         assert decrypt_token(endpoint.secret_encrypted).startswith('whsec_')
         assert decrypt_token(endpoint.secret_encrypted) not in endpoint.secret_encrypted
 
-    def test_failures_retry_three_times_with_backoff_then_fail(self, endpoint, payload):
-        countdowns = []
-        with patch('public_api.tasks.post_json_safely', return_value=_response(500)), \
-                patch('public_api.tasks.deliver_webhook.apply_async',
-                      side_effect=lambda args, countdown: countdowns.append(countdown)):
-            for attempt in (1, 2, 3, 4):
-                deliver_webhook(endpoint.id, payload, attempt)
+    def test_failures_retry_three_times_with_backoff_then_fail(self, endpoint, payload, retry):
+        with patch('external_api.tasks.post_json_safely', return_value=_response(500)):
+            for retries in (0, 1, 2):
+                with pytest.raises(Retry):
+                    _attempt(endpoint.id, payload, retries)
+            assert _attempt(endpoint.id, payload, 3) == WebhookDelivery.Status.FAILED
 
         rows = list(WebhookDelivery.objects.order_by('attempt'))
         assert [r.attempt for r in rows] == [1, 2, 3, 4]
         assert [r.status for r in rows] == ['retrying', 'retrying', 'retrying', 'failed']
         assert all(r.response_code == 500 and r.event_id == rows[0].event_id for r in rows)
-        assert countdowns == [BACKOFF_SECONDS[1], BACKOFF_SECONDS[2], BACKOFF_SECONDS[3]]
-        assert countdowns[0] < countdowns[1] < countdowns[2]
+        assert [c.kwargs['countdown'] for c in retry.call_args_list] == [30, 120, 480]
 
-    def test_network_error_is_retried(self, endpoint, payload):
-        with patch('public_api.tasks.post_json_safely', side_effect=requests.ConnectTimeout('slow')), \
-                patch('public_api.tasks.deliver_webhook.apply_async') as retry:
-            deliver_webhook(endpoint.id, payload)
+    def test_network_error_is_retried(self, endpoint, payload, retry):
+        with patch('external_api.tasks.post_json_safely', side_effect=requests.ConnectTimeout('slow')), \
+                pytest.raises(Retry):
+            _attempt(endpoint.id, payload)
 
         row = WebhookDelivery.objects.get()
         assert row.status == 'retrying' and row.response_code is None and 'ConnectTimeout' in row.error
-        retry.assert_called_once()
 
-    def test_blocked_target_is_not_retried(self, endpoint, payload):
-        with patch('public_api.tasks.post_json_safely', side_effect=UnsafeUrlError('private')), \
-                patch('public_api.tasks.deliver_webhook.apply_async') as retry:
-            deliver_webhook(endpoint.id, payload)
-
-        assert WebhookDelivery.objects.get().status == 'failed'
+    def test_blocked_target_is_not_retried(self, endpoint, payload, retry):
+        with patch('external_api.tasks.post_json_safely', side_effect=UnsafeUrlError('private')):
+            assert _attempt(endpoint.id, payload) == WebhookDelivery.Status.FAILED
         retry.assert_not_called()
 
     def test_deleted_endpoint_stops_the_chain(self, endpoint, payload):
         endpoint_id = endpoint.id
         endpoint.delete()
-        with patch('public_api.tasks.post_json_safely') as post:
-            assert deliver_webhook(endpoint_id, payload, 2) is None
+        with patch('external_api.tasks.post_json_safely') as post:
+            assert _attempt(endpoint_id, payload, 1) is None
         post.assert_not_called()
         assert not WebhookDelivery.objects.exists()
 
@@ -278,6 +288,6 @@ class TestUrlGuard:
             validate_webhook_url('http://hooks.example.com/x')
 
     def test_redirects_are_not_followed(self):
-        with resolving_to('93.184.216.34'), patch('public_api.services.requests.post') as post:
+        with resolving_to('93.184.216.34'), patch('external_api.services.requests.post') as post:
             post_json_safely('https://hooks.example.com/x', b'{}', {})
         assert post.call_args.kwargs['allow_redirects'] is False

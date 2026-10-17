@@ -33,7 +33,7 @@ class ApiKey(TimeStampedModel):
     class Meta:
         ordering = ['-created_at', '-id']
         indexes = [
-            models.Index(fields=['organization', 'project_id'], name='papi_key_org_project_idx'),
+            models.Index(fields=['organization', 'project_id'], name='extapi_key_org_project_idx'),
         ]
 
     @property
@@ -73,7 +73,7 @@ class OAuthClient(TimeStampedModel):
     class Meta:
         ordering = ['-created_at', '-id']
         indexes = [
-            models.Index(fields=['organization', 'project_id'], name='papi_oauth_org_project_idx'),
+            models.Index(fields=['organization', 'project_id'], name='extapi_oauth_org_project_idx'),
         ]
 
     @property
@@ -110,7 +110,7 @@ class WebhookEndpoint(TimeStampedModel):
     class Meta:
         ordering = ['-created_at', '-id']
         indexes = [
-            models.Index(fields=['organization', 'project_id'], name='papi_hook_org_project_idx'),
+            models.Index(fields=['organization', 'project_id'], name='extapi_hook_org_project_idx'),
         ]
 
     def __str__(self):
@@ -139,7 +139,7 @@ class WebhookDelivery(models.Model):
     class Meta:
         ordering = ['-created_at', '-id']
         indexes = [
-            models.Index(fields=['endpoint', '-created_at'], name='papi_delivery_endpoint_idx'),
+            models.Index(fields=['endpoint', '-created_at'], name='extapi_delivery_endpoint_idx'),
         ]
 
     def __str__(self):

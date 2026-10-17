@@ -3,7 +3,7 @@ from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 from core.admin_utils import get_org_admin_org_ids
 from csm.models import CustomerUser
-from public_api.authentication import ApiPrincipal
+from external_api.authentication import ApiPrincipal
 
 
 # Scope vocabulary: `<resource>:read` / `<resource>:write`; a write scope implies read.

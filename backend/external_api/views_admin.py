@@ -1,5 +1,5 @@
 """
-Admin console endpoints under /api/csm/integrations/ (JWT, `?project=`).
+Admin console endpoints under /api/external-api/ (JWT, `?project=`).
 
 Every view is bound to the requested project and its organisation, and only an
 org admin or a CSM admin of that organisation gets past `initial()`.
@@ -15,9 +15,9 @@ from rest_framework.views import APIView
 
 from core.viewset_mixins import ProjectScopedViewSetMixin
 from csm.services.routing_rules import project_organization_id
-from public_api.models import ApiKey, OAuthClient, WebhookDelivery, WebhookEndpoint, WebhookEvent
-from public_api.permissions import RESOURCES, require_integrations_admin
-from public_api.serializers import (
+from external_api.models import ApiKey, OAuthClient, WebhookDelivery, WebhookEndpoint, WebhookEvent
+from external_api.permissions import RESOURCES, require_integrations_admin
+from external_api.serializers import (
     ApiKeySerializer,
     CredentialWriteSerializer,
     OAuthClientSerializer,
@@ -25,7 +25,7 @@ from public_api.serializers import (
     WebhookEndpointSerializer,
     WebhookEndpointWriteSerializer,
 )
-from public_api.services import (
+from external_api.services import (
     create_api_key,
     create_endpoint,
     create_oauth_client,
@@ -51,9 +51,9 @@ class IntegrationsAdminMixin(ProjectScopedViewSetMixin):
 @method_decorator(csrf_exempt, name='dispatch')
 class ApiKeyViewSet(IntegrationsAdminMixin, mixins.ListModelMixin, viewsets.GenericViewSet):
     """
-    - GET  /api/csm/integrations/api-keys/?project={id}
-    - POST /api/csm/integrations/api-keys/?project={id}              returns the full key once
-    - POST /api/csm/integrations/api-keys/{id}/revoke/?project={id}
+    - GET  /api/external-api/api-keys/?project={id}
+    - POST /api/external-api/api-keys/?project={id}              returns the full key once
+    - POST /api/external-api/api-keys/{id}/revoke/?project={id}
     """
 
     serializer_class = ApiKeySerializer
@@ -81,9 +81,9 @@ class ApiKeyViewSet(IntegrationsAdminMixin, mixins.ListModelMixin, viewsets.Gene
 @method_decorator(csrf_exempt, name='dispatch')
 class OAuthClientViewSet(IntegrationsAdminMixin, mixins.ListModelMixin, viewsets.GenericViewSet):
     """
-    - GET  /api/csm/integrations/oauth-clients/?project={id}
-    - POST /api/csm/integrations/oauth-clients/?project={id}         returns the client secret once
-    - POST /api/csm/integrations/oauth-clients/{id}/revoke/?project={id}
+    - GET  /api/external-api/oauth-clients/?project={id}
+    - POST /api/external-api/oauth-clients/?project={id}         returns the client secret once
+    - POST /api/external-api/oauth-clients/{id}/revoke/?project={id}
     """
 
     serializer_class = OAuthClientSerializer
@@ -114,8 +114,8 @@ class OAuthClientViewSet(IntegrationsAdminMixin, mixins.ListModelMixin, viewsets
 @method_decorator(csrf_exempt, name='dispatch')
 class WebhookEndpointViewSet(IntegrationsAdminMixin, viewsets.ModelViewSet):
     """
-    - GET/POST    /api/csm/integrations/webhooks/?project={id}     POST returns the signing secret once
-    - GET/DELETE  /api/csm/integrations/webhooks/{id}/?project={id}
+    - GET/POST    /api/external-api/webhooks/?project={id}     POST returns the signing secret once
+    - GET/DELETE  /api/external-api/webhooks/{id}/?project={id}
     """
 
     serializer_class = WebhookEndpointSerializer
@@ -142,7 +142,7 @@ class WebhookDeliveryViewSet(IntegrationsAdminMixin, mixins.ListModelMixin, view
     """
     The delivery log: one row per attempt, newest first.
 
-    - GET /api/csm/integrations/webhook-deliveries/?project={id}
+    - GET /api/external-api/webhook-deliveries/?project={id}
     """
 
     serializer_class = WebhookDeliverySerializer
@@ -156,7 +156,7 @@ class WebhookDeliveryViewSet(IntegrationsAdminMixin, mixins.ListModelMixin, view
 
 @method_decorator(csrf_exempt, name='dispatch')
 class IntegrationsVocabularyView(IntegrationsAdminMixin, APIView):
-    """GET /api/csm/integrations/vocabulary/?project={id}: resources and webhook events the UI offers."""
+    """GET /api/external-api/vocabulary/?project={id}: resources and webhook events the UI offers."""
 
     def get(self, request):
         return Response({

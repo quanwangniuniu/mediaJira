@@ -1,18 +1,18 @@
-"""Admin console (/api/csm/integrations/): credentials, webhook endpoints and the delivery log."""
+"""Admin console (/api/external-api/): credentials, webhook endpoints and the delivery log."""
 import pytest
 from django.urls import reverse
 
 from core.crypto import decrypt_token
 from core.models import OrganizationMembership, ProjectMember
 from csm.models import CustomerUser
-from public_api.models import ApiKey, OAuthClient, WebhookDelivery, WebhookEndpoint
-from public_api.services import create_endpoint
-from public_api.tests.conftest import client_for, resolving_to
+from external_api.models import ApiKey, OAuthClient, WebhookDelivery, WebhookEndpoint
+from external_api.services import create_endpoint
+from external_api.tests.conftest import client_for, resolving_to
 
 pytestmark = pytest.mark.django_db
 
 def _keys(project):
-    return f"{reverse('integrations-api-key-list')}?project={project.id}"
+    return f"{reverse('external-api-admin-api-key-list')}?project={project.id}"
 
 
 @pytest.fixture
@@ -50,12 +50,12 @@ class TestApiKeys:
         key, raw = make_key()
 
         response = admin_client.post(
-            f"{reverse('integrations-api-key-revoke', args=[key.id])}?project={project.id}",
+            f"{reverse('external-api-admin-api-key-revoke', args=[key.id])}?project={project.id}",
         )
 
         assert response.status_code == 200
         assert response.data['is_active'] is False
-        assert client_for(raw).get(reverse('public-api-ticket-list')).status_code == 401
+        assert client_for(raw).get(reverse('external-api-ticket-list')).status_code == 401
 
     def test_keys_of_another_workspace_are_invisible(self, admin_client, project, make_key, other_workspace):
         make_key(organization_id=other_workspace['organization'].id, project_id=project.id)
@@ -87,7 +87,7 @@ class TestApiKeys:
 
 
 def test_oauth_client_secret_shown_once_and_revoke_deletes_application(admin_client, project):
-    url = f"{reverse('integrations-oauth-client-list')}?project={project.id}"
+    url = f"{reverse('external-api-admin-oauth-client-list')}?project={project.id}"
     response = admin_client.post(url, {'name': 'CRM', 'scopes': ['customers:read']}, format='json')
 
     assert response.status_code == 201, response.data
@@ -96,14 +96,14 @@ def test_oauth_client_secret_shown_once_and_revoke_deletes_application(admin_cli
     assert client.application.client_id == response.data['client_id']
     assert 'client_secret' not in admin_client.get(url).data[0]
 
-    revoked = admin_client.post(f"{reverse('integrations-oauth-client-revoke', args=[client.id])}?project={project.id}")
+    revoked = admin_client.post(f"{reverse('external-api-admin-oauth-client-revoke', args=[client.id])}?project={project.id}")
     assert revoked.status_code == 200
     client.refresh_from_db()
     assert client.application is None and client.revoked_at is not None
 
 
 def test_vocabulary_lists_resources_and_events(admin_client, project):
-    response = admin_client.get(f"{reverse('integrations-vocabulary')}?project={project.id}")
+    response = admin_client.get(f"{reverse('external-api-admin-vocabulary')}?project={project.id}")
 
     assert response.status_code == 200
     assert {'value': 'routing_rules', 'label': 'Routing rules'} in response.data['resources']
@@ -131,7 +131,7 @@ def endpoint(organization, project):
 
 class TestEndpoints:
     def test_register_returns_secret_once(self, admin_client, project):
-        response = admin_client.post(_url('integrations-webhook-list', project), {
+        response = admin_client.post(_url('external-api-admin-webhook-list', project), {
             'url': 'https://hooks.example.com/zmarkio', 'events': ['sla.breached', 'ticket.created'],
         }, format='json')
 
@@ -141,12 +141,12 @@ class TestEndpoints:
         endpoint = WebhookEndpoint.objects.get(pk=response.data['id'])
         assert decrypt_token(endpoint.secret_encrypted) == response.data['secret']
 
-        listing = admin_client.get(_url('integrations-webhook-list', project))
+        listing = admin_client.get(_url('external-api-admin-webhook-list', project))
         assert [row['id'] for row in listing.data] == [endpoint.id]
         assert 'secret' not in listing.data[0]
 
     def test_rejects_unknown_event_unsafe_url_and_http(self, admin_client, project):
-        url = _url('integrations-webhook-list', project)
+        url = _url('external-api-admin-webhook-list', project)
         bad_event = admin_client.post(url, {'url': 'https://hooks.example.com/x', 'events': ['ticket.deleted']}, format='json')
         assert bad_event.status_code == 400 and 'events' in bad_event.data
 
@@ -158,7 +158,7 @@ class TestEndpoints:
         assert private.status_code == 400 and 'url' in private.data
 
     def test_delete_and_no_edit(self, admin_client, project, endpoint):
-        detail = _url('integrations-webhook-detail', project, endpoint.id)
+        detail = _url('external-api-admin-webhook-detail', project, endpoint.id)
 
         assert admin_client.patch(detail, {'events': ['sla.breached']}, format='json').status_code == 405
         assert admin_client.delete(detail).status_code == 204
@@ -168,8 +168,8 @@ class TestEndpoints:
         ProjectMember.objects.create(user=user2, project=project, role='member', is_active=True)
         CustomerUser.objects.create(user=user2, user_type='supervisor', organisation=customer_organisation, is_active=True)
         api_client.force_authenticate(user=user2)
-        assert api_client.get(_url('integrations-webhook-list', project)).status_code == 403
-        assert api_client.get(_url('integrations-webhook-delivery-list', project)).status_code == 403
+        assert api_client.get(_url('external-api-admin-webhook-list', project)).status_code == 403
+        assert api_client.get(_url('external-api-admin-webhook-delivery-list', project)).status_code == 403
 
 
 class TestDeliveryLog:
@@ -188,7 +188,7 @@ class TestDeliveryLog:
         )
         self._attempt(other, 1, 'succeeded', 204)
 
-        rows = admin_client.get(_url('integrations-webhook-delivery-list', project)).data['results']
+        rows = admin_client.get(_url('external-api-admin-webhook-delivery-list', project)).data['results']
         assert [(r['target_url'], r['attempt'], r['response_code']) for r in rows] == [
             (other.url, 1, 204), (endpoint.url, 2, 200), (endpoint.url, 1, 500),
         ]
@@ -200,4 +200,4 @@ class TestDeliveryLog:
             url='https://hooks.example.com/b', events=['ticket.created'], user=None,
         )
         self._attempt(foreign, 1, 'failed', 500)
-        assert admin_client.get(_url('integrations-webhook-delivery-list', project)).data['results'] == []
+        assert admin_client.get(_url('external-api-admin-webhook-delivery-list', project)).data['results'] == []

@@ -10,16 +10,16 @@ import pytest
 from django.urls import reverse
 
 from csm.models import RoutingRule
-from public_api.services import revoke_api_key, revoke_oauth_client
-from public_api.tests.conftest import client_for
+from external_api.services import revoke_api_key, revoke_oauth_client
+from external_api.tests.conftest import client_for
 
 pytestmark = pytest.mark.django_db
 
-TICKETS = reverse('public-api-ticket-list')
+TICKETS = reverse('external-api-ticket-list')
 
 
 def _token(api_client, client_id, secret):
-    return api_client.post(reverse('public-api-oauth-token'), {
+    return api_client.post(reverse('external-api-oauth-token'), {
         'grant_type': 'client_credentials', 'client_id': client_id, 'client_secret': secret,
     })
 
@@ -90,16 +90,17 @@ RESOURCES = ['customer', 'organisation', 'ticket', 'conversation', 'template', '
 
 
 def _list(resource):
-    return reverse(f'public-api-{resource}-list')
+    return reverse(f'external-api-{resource}-list')
 
 
 def _detail(resource, pk):
-    return reverse(f'public-api-{resource}-detail', args=[pk])
+    return reverse(f'external-api-{resource}-detail', args=[pk])
 
 
 def _ids(response):
     assert response.status_code == 200, response.data
-    return [row['id'] for row in response.data['results']]
+    rows = response.data['results'] if isinstance(response.data, dict) else response.data  # routing rules are not paginated
+    return [row['id'] for row in rows]
 
 
 @pytest.fixture

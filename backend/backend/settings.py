@@ -130,7 +130,7 @@ INSTALLED_APPS = [
     'csm',
     'portal',
     'oauth2_provider',
-    'public_api.apps.PublicApiConfig',
+    'external_api.apps.ExternalApiConfig',
 ]
 
 MIDDLEWARE = [
@@ -518,13 +518,13 @@ REST_FRAMEWORK = {
 
 # Public API OAuth 2.0 (django-oauth-toolkit). Clients are created in the CSM
 # admin console with the client-credentials grant only; what a token may do is
-# decided by its public_api.OAuthClient scopes, not the OAuth scope parameter.
+# decided by its external_api.OAuthClient scopes, not the OAuth scope parameter.
 OAUTH2_PROVIDER = {
     'ACCESS_TOKEN_EXPIRE_SECONDS': 3600,
     'SCOPES': {'api': 'Zmarkio public API'},
     'DEFAULT_SCOPES': ['api'],
 }
-# Referenced by public_api.OAuthClient; the toolkit's default model.
+# Referenced by external_api.OAuthClient; the toolkit's default model.
 OAUTH2_PROVIDER_APPLICATION_MODEL = 'oauth2_provider.Application'
 
 SPREADSHEET_WS_CONNECTION_MAX_SECONDS = config(

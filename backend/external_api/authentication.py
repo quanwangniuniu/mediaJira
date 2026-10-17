@@ -16,8 +16,8 @@ from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 
 from core.services.tenant import slug_to_schema_name
-from public_api.models import OAuthClient
-from public_api.services import verify_api_key
+from external_api.models import OAuthClient
+from external_api.services import verify_api_key
 
 
 class ApiPrincipal:

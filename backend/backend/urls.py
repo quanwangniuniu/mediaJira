@@ -35,10 +35,9 @@ urlpatterns = [
     path('api/access_control/', include('access_control.urls')),
     path('api/audit/', include('audit.urls')),
     path('api/teams/', include('teams.urls')),
-    path('api/csm/integrations/', include('public_api.urls_admin')),
+    # External API (API key / OAuth 2.0) and its admin console: see backend/external_urls.py.
+    path('', include('backend.external_urls')),
     path('api/csm/', include('csm.urls')),
-    # Public API for external systems (API key / OAuth 2.0); see public_api.
-    path('api/v1/', include('public_api.urls')),
     path('auth/', include('authentication.urls')),
     path('users/', include('user_preferences.urls')),
     path('api/assets/', include('asset.urls')),

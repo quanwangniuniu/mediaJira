@@ -2,25 +2,25 @@ import requests
 from celery import shared_task
 
 from chat.services import UnsafeUrlError
-from public_api.models import WebhookDelivery, WebhookEndpoint
-from public_api.services import canonical_json, delivery_headers, post_json_safely
+from external_api.models import WebhookDelivery, WebhookEndpoint
+from external_api.services import canonical_json, delivery_headers, post_json_safely
 
-# Seconds to wait before attempts 2, 3 and 4: three retries, each 4x longer.
-BACKOFF_SECONDS = {1: 30, 2: 120, 3: 480}
-MAX_ATTEMPTS = 1 + len(BACKOFF_SECONDS)
+# Three retries, each 4x later than the one before: 30 s, 2 min, 8 min.
+RETRY_BASE_SECONDS = 30
 
 
-@shared_task
-def deliver_webhook(endpoint_id, payload, attempt=1):
+@shared_task(bind=True, max_retries=3)
+def deliver_webhook(self, endpoint_id, payload):
     """
-    POST one event to one endpoint, log the attempt, and schedule the next one
-    on failure. Every table touched here is in the public schema, so no tenant
-    schema context is needed.
+    POST one event to one endpoint and log the attempt; a failed attempt is
+    retried by Celery. Every table touched here is in the public schema, so no
+    tenant schema context is needed.
     """
     endpoint = WebhookEndpoint.objects.filter(pk=endpoint_id).first()
     if endpoint is None:
         return None  # deleted since the event: stop
 
+    attempt = self.request.retries + 1
     body = canonical_json(payload).encode()
     response_code, error, retryable = None, '', True
     try:
@@ -34,13 +34,11 @@ def deliver_webhook(endpoint_id, payload, attempt=1):
     except requests.RequestException as exc:
         error = f'{type(exc).__name__}: {exc}'
 
+    retry = bool(error) and retryable and self.request.retries < self.max_retries
     if not error:
         status = WebhookDelivery.Status.SUCCEEDED
-    elif retryable and attempt < MAX_ATTEMPTS:
-        status = WebhookDelivery.Status.RETRYING
-        deliver_webhook.apply_async(args=(endpoint_id, payload, attempt + 1), countdown=BACKOFF_SECONDS[attempt])
     else:
-        status = WebhookDelivery.Status.FAILED
+        status = WebhookDelivery.Status.RETRYING if retry else WebhookDelivery.Status.FAILED
     WebhookDelivery.objects.create(
         endpoint=endpoint,
         event_id=payload['id'],
@@ -51,4 +49,6 @@ def deliver_webhook(endpoint_id, payload, attempt=1):
         response_code=response_code,
         error=error[:1000],
     )
+    if retry:
+        raise self.retry(countdown=RETRY_BASE_SECONDS * 4 ** self.request.retries)
     return status

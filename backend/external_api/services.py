@@ -35,12 +35,13 @@ from oauth2_provider.models import get_application_model
 
 from chat.services import UnsafeUrlError, _pinned_address, resolve_public_url
 from core.crypto import decrypt_token, encrypt_token
+from core.models import Organization, Project
 from csm.models import (
     Conversation, CustomerUser, Queue, QuickReplyTemplate, RoutingRule, SLAPolicy, Ticket,
 )
 from customer.models import Customer, CustomerOrganisation, CustomerStatusLabel, Region
 from experience_group.models import ExperienceGroup
-from public_api.models import ApiKey, OAuthClient, WebhookEndpoint
+from external_api.models import ApiKey, OAuthClient, WebhookEndpoint
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -117,6 +118,14 @@ def scoped_regions(principal):
 
 def scoped_sla_policies(principal):
     return SLAPolicy.objects.filter(project_id=principal.project_id)
+
+
+def scoped_workspace(principal):
+    return Organization.objects.filter(pk=principal.organization_id)
+
+
+def scoped_project(principal):
+    return Project.objects.filter(pk=principal.project_id)
 
 
 def scoped_assignable_users(principal):
@@ -293,7 +302,7 @@ def build_event(event_type, *, organization_id, project_id, data):
 
 
 def _enqueue(endpoint_ids, payload):
-    from public_api.tasks import deliver_webhook
+    from external_api.tasks import deliver_webhook
 
     for endpoint_id in endpoint_ids:
         # After commit: nothing is announced for a write that rolls back.
@@ -302,7 +311,7 @@ def _enqueue(endpoint_ids, payload):
 
 def emit_ticket_event(event_type, ticket, **extra):
     """Queue `event_type` for every active endpoint of the ticket's workspace subscribed to it."""
-    from public_api.serializers import PublicTicketSerializer
+    from csm.serializers import TicketSerializer
 
     queue = ticket.queue
     if queue is None or queue.organisation is None or queue.project_id is None:
@@ -318,5 +327,5 @@ def emit_ticket_event(event_type, ticket, **extra):
     )
     if not endpoint_ids:
         return
-    data = {'ticket': PublicTicketSerializer(ticket).data, **extra}
+    data = {'ticket': TicketSerializer(ticket).data, **extra}
     _enqueue(endpoint_ids, build_event(event_type, organization_id=organization_id, project_id=queue.project_id, data=data))

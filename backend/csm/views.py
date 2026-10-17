@@ -19,6 +19,7 @@ from core.permissions import IsProjectMember, IsProjectOwner
 from core.viewset_mixins import ProjectScopedViewSetMixin
 from core.slug_mixins import SlugLookupViewSetMixin
 from csm.services.scope import accessible_queues_for
+from csm.signals import ticket_status_changed
 
 from .models import (
     Queue, QueueAgent, QueueTeam, CustomerUser, Ticket, CsmNotification,
@@ -119,6 +120,12 @@ from .services.routing_sandbox import run_sandbox
 
 def _raise_drf_validation(exc):
     raise ValidationError(exc.message_dict if hasattr(exc, 'message_dict') else exc.messages)
+
+
+def _acting_user(request):
+    """The person making the request, or None when it isn't a person (e.g. an external API credential)."""
+    from django.contrib.auth import get_user_model
+    return request.user if isinstance(request.user, get_user_model()) else None
 
 
 SUPPORTED_MESSAGE_IMAGE_TYPES = {
@@ -987,14 +994,14 @@ class QuickReplyTemplateViewSet(SlugLookupViewSetMixin, viewsets.ModelViewSet):
         return Response(list(teams))
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        serializer.save(created_by=_acting_user(self.request))
 
     def perform_update(self, serializer):
         instance = serializer.instance
         # Snapshot the current state BEFORE applying changes
         QuickReplyTemplateHistory.objects.create(
             template=instance,
-            edited_by=self.request.user,
+            edited_by=_acting_user(self.request),
             title=instance.title,
             content=instance.content,
             rich_body=instance.rich_body,
@@ -1650,7 +1657,7 @@ class RoutingRuleViewSet(ProjectScopedViewSetMixin, viewsets.ModelViewSet):
         try:
             rule = create_rule(
                 self.get_required_project_id(),
-                user=request.user,
+                user=_acting_user(request),
                 experience_group=data['experience_group'],
                 name=data['name'],
                 target_queue=data['target_queue'],
@@ -2006,8 +2013,6 @@ class TicketStatusViewSet(ProjectScopedViewSetMixin, viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         from csm.services.status_machine import tickets_using_status
-        from public_api.models import WebhookEvent
-        from public_api.services import emit_ticket_event
         instance = self.get_object()
         if instance.is_builtin:
             raise ValidationError(
@@ -2029,10 +2034,10 @@ class TicketStatusViewSet(ProjectScopedViewSetMixin, viewsets.ModelViewSet):
         stranded = tickets_using_status(instance.project_id, instance.slug)
         moved = list(stranded.select_related('queue__organisation'))
         stranded.update(status='in_progress')
-        # The bulk update skips Ticket.save(), so announce each move to webhooks here.
+        # The bulk update skips Ticket.save(), so announce each move here.
         for ticket in moved:
             ticket.status = 'in_progress'
-            emit_ticket_event(WebhookEvent.TICKET_STATUS_CHANGED, ticket, previous_status=instance.slug)
+            ticket_status_changed.send(sender=Ticket, ticket=ticket, previous_status=instance.slug)
         # Drop transitions referencing the deleted slug so the machine stays clean.
         TicketStatusTransition.objects.filter(
             Q(project_id=instance.project_id),

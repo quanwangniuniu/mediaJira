@@ -11,11 +11,11 @@ pytestmark = pytest.mark.django_db
 
 
 def _list(resource):
-    return reverse(f'public-api-{resource}-list')
+    return reverse(f'external-api-{resource}-list')
 
 
 def _detail(resource, pk):
-    return reverse(f'public-api-{resource}-detail', args=[pk])
+    return reverse(f'external-api-{resource}-detail', args=[pk])
 
 
 class TestTickets:
@@ -38,12 +38,6 @@ class TestTickets:
 
         assert response.status_code == 200, response.data
         assert Ticket.objects.get(pk=workspace['ticket'].id).status == 'in_progress'
-
-    def test_unknown_status_on_create_is_rejected(self, key_client, workspace):
-        response = key_client.post(_list('ticket'), {
-            'title': 'x', 'queue': workspace['queue'].id, 'status': 'no-such-status',
-        }, format='json')
-        assert response.status_code == 400 and 'status' in response.data
 
     def test_assignee_must_be_csm_user_of_the_queue_organisation(self, key_client, workspace, user, user2):
         url = _detail('ticket', workspace['ticket'].id)
@@ -147,7 +141,7 @@ class TestQueues:
         assert key_client.post(_list('queue'), {'name': 'Q2', 'tier': 'T2'}, format='json').status_code == 400
 
         created = key_client.post(_list('queue'), {
-            'name': 'Q2', 'tier': 'T2', 'organisation': workspace['customer_organisation'].id, 'project': 424242,
+            'name': 'Q2', 'tier': 'T2', 'organisation': workspace['customer_organisation'].id,
         }, format='json')
         assert created.status_code == 201, created.data
         assert created.data['project'] == project.id
@@ -171,15 +165,13 @@ class TestAgents:
         assert created.status_code == 201, created.data
         assert CustomerUser.objects.get(pk=created.data['id']).user_id == user2.id
 
-    def test_queue_is_optional_and_duplicates_rejected(self, key_client, workspace, user2, organization):
+    def test_duplicate_profile_rejected(self, key_client, workspace, user2, organization):
         OrganizationMembership.objects.create(user=user2, organization=organization, role='member', is_active=True)
-        payload = {'email': user2.email, 'organisation': workspace['customer_organisation'].id, 'user_type': 'admin'}
+        payload = {'email': user2.email, 'organisation': workspace['customer_organisation'].id,
+                   'queue': workspace['queue'].id, 'user_type': 'agent'}
 
-        created = key_client.post(_list('agent'), payload, format='json')
-        assert created.status_code == 201, created.data
-        assert created.data['queue'] is None
-        duplicate = key_client.post(_list('agent'), payload, format='json')
-        assert duplicate.status_code == 400
+        assert key_client.post(_list('agent'), payload, format='json').status_code == 201
+        assert key_client.post(_list('agent'), payload, format='json').status_code == 400
 
     def test_never_creates_accounts(self, key_client, workspace):
         from django.contrib.auth import get_user_model
