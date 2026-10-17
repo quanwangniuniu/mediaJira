@@ -516,15 +516,8 @@ REST_FRAMEWORK = {
     },
 }
 
-# Public API OAuth 2.0 (django-oauth-toolkit). Clients are created in the CSM
-# admin console with the client-credentials grant only; what a token may do is
-# decided by its external_api.OAuthClient scopes, not the OAuth scope parameter.
-OAUTH2_PROVIDER = {
-    'ACCESS_TOKEN_EXPIRE_SECONDS': 3600,
-    'SCOPES': {'api': 'Zmarkio public API'},
-    'DEFAULT_SCOPES': ['api'],
-}
-# Referenced by external_api.OAuthClient; the toolkit's default model.
+# External API OAuth 2.0 (client credentials). A token's access comes from external_api.OAuthClient.scopes.
+OAUTH2_PROVIDER = {'ACCESS_TOKEN_EXPIRE_SECONDS': 3600}
 OAUTH2_PROVIDER_APPLICATION_MODEL = 'oauth2_provider.Application'
 
 SPREADSHEET_WS_CONNECTION_MAX_SECONDS = config(

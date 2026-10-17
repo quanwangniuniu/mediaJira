@@ -17,18 +17,6 @@ import SecretRevealModal, { type RevealedSecret } from './SecretRevealModal';
 
 type Credential = ApiKey | OAuthClient;
 
-/** "Tickets (write), Queues (read)": a resource with both scopes shows as write. */
-function summarizeScopes(scopes: string[], resources: VocabularyOption[]): string {
-  return resources
-    .map(({ value, label }) => {
-      if (scopes.includes(`${value}:write`)) return `${label} (write)`;
-      if (scopes.includes(`${value}:read`)) return `${label} (read)`;
-      return null;
-    })
-    .filter(Boolean)
-    .join(', ');
-}
-
 const COPY: Record<CredentialKind, { noun: string; newLabel: string; empty: string; intro: string }> = {
   'api-key': {
     noun: 'API key',
@@ -86,7 +74,7 @@ export default function CredentialsPanel({ kind, projectId, resources }: Props) 
       setRevealed({
         title: 'API key created',
         description: `Send it as the X-API-Key header from "${created.name}".`,
-        values: [{ label: 'API key', value: created.key, secret: true }],
+        values: [{ label: 'API key', value: created.key }],
       });
     } else {
       const created = await ExternalApiAdminAPI.createOAuthClient(projectId, data);
@@ -96,7 +84,7 @@ export default function CredentialsPanel({ kind, projectId, resources }: Props) 
         description: `Use these with the client credentials grant at /api/v1/oauth/token/ from "${created.name}".`,
         values: [
           { label: 'Client ID', value: created.client_id },
-          { label: 'Client secret', value: created.client_secret, secret: true },
+          { label: 'Client secret', value: created.client_secret },
         ],
       });
     }
@@ -164,12 +152,11 @@ export default function CredentialsPanel({ kind, projectId, resources }: Props) 
                 <tr key={row.id} className={`border-t border-gray-100 ${row.is_active ? '' : 'opacity-60'}`}>
                   <td className="px-4 py-3">
                     <div className="font-medium text-gray-900">{row.name}</div>
-                    {row.created_by_name && <div className="text-xs text-gray-500">by {row.created_by_name}</div>}
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-gray-700">
                     {'display_key' in row ? row.display_key : row.client_id}
                   </td>
-                  <td className="max-w-xs px-4 py-3 text-xs text-gray-600">{summarizeScopes(row.scopes, resources)}</td>
+                  <td className="max-w-xs px-4 py-3 text-xs text-gray-600">{row.scopes.join(', ')}</td>
                   <td className="px-4 py-3 text-gray-700">
                     {formatDateTime(row.created_at)}
                   </td>

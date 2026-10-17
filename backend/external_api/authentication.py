@@ -1,12 +1,8 @@
 """
-Authentication for the public API: `X-API-Key` keys and OAuth 2.0 bearer tokens.
+API-key and OAuth bearer authentication for the external API.
 
-Both resolve to an ApiPrincipal bound to one (organization, project) and switch
-the connection to that organisation's tenant schema for the rest of the
-request. TenantSchemaMiddleware only understands JWTs, so it leaves these
-requests on `public`; its `finally` still resets the search_path afterwards.
-Credential rows live in `public` only, so the lookups resolve there whatever the
-search_path is when DRF authenticates.
+Both switch to the credential's tenant schema; TenantSchemaMiddleware only reads
+JWTs but its `finally` still resets the search_path after the request.
 """
 
 from django.db import connection
@@ -21,13 +17,7 @@ from external_api.services import verify_api_key
 
 
 class ApiPrincipal:
-    """
-    `request.user` for a request authenticated by an API key or OAuth client.
-
-    It is deliberately not a user: no human's role, membership or staff flag
-    applies, so internal permission checks that look at a user cannot grant it
-    anything. Everything it may see is derived from (organization_id, project_id).
-    """
+    """`request.user` for a credential: deliberately not a User, so no human's role applies."""
 
     is_authenticated = True
     is_anonymous = False
@@ -37,16 +27,10 @@ class ApiPrincipal:
     pk = None
     id = None
 
-    def __init__(self, *, kind, credential_id, name, organization_id, project_id, scopes):
-        self.kind = kind
-        self.credential_id = credential_id
-        self.name = name
-        self.organization_id = organization_id
-        self.project_id = project_id
-        self.scopes = list(scopes)
-
-    def __str__(self):
-        return f'{self.kind} {self.name}'
+    def __init__(self, credential):
+        self.organization_id = credential.organization_id
+        self.project_id = credential.project_id
+        self.scopes = list(credential.scopes)
 
 
 def activate_tenant(organization):
@@ -56,17 +40,6 @@ def activate_tenant(organization):
                 sql.Identifier(slug_to_schema_name(organization.slug)),
             )
         )
-
-
-def _principal(kind, credential):
-    return ApiPrincipal(
-        kind=kind,
-        credential_id=credential.pk,
-        name=credential.name,
-        organization_id=credential.organization_id,
-        project_id=credential.project_id,
-        scopes=credential.scopes,
-    )
 
 
 class ApiKeyAuthentication(BaseAuthentication):
@@ -80,7 +53,7 @@ class ApiKeyAuthentication(BaseAuthentication):
         if key is None:
             raise AuthenticationFailed('Invalid, expired or revoked API key.')
         activate_tenant(key.organization)
-        return _principal('api_key', key), key
+        return ApiPrincipal(key), key
 
     def authenticate_header(self, request):
         # Makes DRF answer a missing or bad credential with 401, not 403.
@@ -103,4 +76,4 @@ class OAuthClientAuthentication(OAuth2Authentication):
         if client is None or not client.organization.is_active:
             raise AuthenticationFailed('Invalid or revoked OAuth client.')
         activate_tenant(client.organization)
-        return _principal('oauth_client', client), token
+        return ApiPrincipal(client), token

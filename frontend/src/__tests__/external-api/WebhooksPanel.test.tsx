@@ -2,7 +2,6 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import WebhooksPanel from '@/external-api/components/WebhooksPanel';
-import { validateWebhookUrl } from '@/external-api/components/WebhookFormModal';
 import { ExternalApiAdminAPI } from '@/external-api/api';
 import type { WebhookDelivery, WebhookEndpoint } from '@/external-api/types';
 
@@ -57,15 +56,6 @@ const renderPanel = async () => {
   render(<WebhooksPanel projectId={1} events={EVENTS} />);
   await screen.findByRole('button', { name: `Delete ${endpoint.url}` });
 };
-
-describe('validateWebhookUrl', () => {
-  it('accepts https and rejects everything else', () => {
-    expect(validateWebhookUrl('https://example.com/hook')).toBeNull();
-    expect(validateWebhookUrl('')).toBe('URL is required.');
-    expect(validateWebhookUrl('http://example.com')).toBe('Use an https:// URL.');
-    expect(validateWebhookUrl('not a url')).toBe('Enter a valid URL.');
-  });
-});
 
 describe('WebhooksPanel', () => {
   it('lists endpoints and the delivery log with url, event, code, attempt and time', async () => {

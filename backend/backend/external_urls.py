@@ -1,9 +1,4 @@
-"""
-Routes of the external API, kept apart from the internal API in urls.py.
-
-- /api/v1/...            called by external systems with an API key or OAuth 2.0 token
-- /api/external-api/...  the admin console that manages credentials and webhooks
-"""
+"""External API routes (/api/v1/) and their admin console (/api/external-api/), kept out of urls.py."""
 
 from django.urls import include, path
 

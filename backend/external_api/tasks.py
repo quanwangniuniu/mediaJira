@@ -24,7 +24,7 @@ def deliver_webhook(self, endpoint_id, payload):
     body = canonical_json(payload).encode()
     response_code, error, retryable = None, '', True
     try:
-        response = post_json_safely(endpoint.url, body, delivery_headers(endpoint, payload, body, attempt))
+        response = post_json_safely(endpoint.url, body, delivery_headers(endpoint, payload, body))
         response_code = response.status_code
         response.close()  # the body is never read or stored
         if not 200 <= response_code < 300:
@@ -41,9 +41,7 @@ def deliver_webhook(self, endpoint_id, payload):
         status = WebhookDelivery.Status.RETRYING if retry else WebhookDelivery.Status.FAILED
     WebhookDelivery.objects.create(
         endpoint=endpoint,
-        event_id=payload['id'],
         event_type=payload['type'],
-        target_url=endpoint.url,
         attempt=attempt,
         status=status,
         response_code=response_code,

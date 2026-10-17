@@ -18,15 +18,12 @@ interface Props {
   events: VocabularyOption[];
 }
 
-function secretReveal(endpoint: WebhookEndpoint, secret: string): RevealedSecret {
+function secretReveal(secret: string): RevealedSecret {
   return {
     title: 'Webhook created',
     description:
       'Verify each request: X-Zmarkio-Signature is t=<timestamp>,v1=<HMAC-SHA256 of "<timestamp>.<raw body>" with this secret>.',
-    values: [
-      { label: 'Endpoint', value: endpoint.url },
-      { label: 'Signing secret', value: secret, secret: true },
-    ],
+    values: [{ label: 'Signing secret', value: secret }],
   };
 }
 
@@ -56,7 +53,7 @@ export default function WebhooksPanel({ projectId, events }: Props) {
   const handleSubmit = async (data: WebhookEndpointData) => {
     const { secret, ...created } = await ExternalApiAdminAPI.createWebhook(projectId, data);
     setEndpoints((prev) => [created, ...prev]);
-    setRevealed(secretReveal(created, secret));
+    setRevealed(secretReveal(secret));
     setDrawerOpen(false);
   };
 

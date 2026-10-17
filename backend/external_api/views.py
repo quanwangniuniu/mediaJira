@@ -1,13 +1,4 @@
-"""
-External REST API under /api/v1/csm/, for systems holding an API key or OAuth client.
-
-Each resource is the internal CSM viewset itself (serializers, SLA handling,
-status machine, soft deletes, routing-rule services), wrapped by
-ExternalResourceMixin. The mixin only swaps what differs for an external
-caller: who is authenticated, which rows and related rows it may touch, and
-that only plain CRUD is exposed. Adding a resource is one subclass below plus
-one router line.
-"""
+"""External REST API under /api/v1/csm/: the internal CSM viewsets behind ExternalResourceMixin."""
 
 from django.contrib.auth import get_user_model
 from rest_framework import status
@@ -35,13 +26,8 @@ User = get_user_model()
 
 class ExternalResourceMixin:
     """
-    Puts an internal CSM viewset behind credential authentication.
-
-    Subclasses set:
-    - api_resource: the scope name (`<api_resource>:read` / `:write`)
-    - rows: the services.scoped_* function giving the rows the credential may see
-    - relations: {writable FK field: services.scoped_* function} limiting what a write may reference
-    - hidden_fields: internal fields not exposed externally
+    Subclasses set `api_resource` (scope name), `rows` (visible queryset), `relations`
+    ({writable FK: scoped queryset}) and `hidden_fields`.
     """
 
     authentication_classes = [ApiKeyAuthentication, OAuthClientAuthentication]

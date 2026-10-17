@@ -5,12 +5,7 @@ import django.db.models.deletion
 
 
 def backfill_organization(apps, schema_editor):
-    """
-    Attribute existing customers to their workspace through their customer
-    organisation, which records it unambiguously. project_id is not used: project
-    ids repeat across organisation schemas, so guessing from it could pin a
-    customer to the wrong workspace. Customers without an organisation stay NULL.
-    """
+    # Via the customer organisation, not project_id: project ids repeat across org schemas.
     Customer = apps.get_model('customer', 'Customer')
     CustomerOrganisation = apps.get_model('customer', 'CustomerOrganisation')
     for organisation in CustomerOrganisation.objects.exclude(organization_id=None).only('id', 'organization_id'):

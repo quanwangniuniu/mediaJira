@@ -18,9 +18,7 @@ interface CredentialBase {
   /** `<resource>:read` | `<resource>:write`; write implies read. */
   scopes: string[];
   is_active: boolean;
-  created_by_name: string | null;
   created_at: string;
-  revoked_at: string | null;
 }
 
 export interface ApiKey extends CredentialBase {

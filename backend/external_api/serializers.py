@@ -8,56 +8,33 @@ from external_api.models import ApiKey, OAuthClient, WebhookDelivery, WebhookEnd
 from external_api.permissions import ALL_SCOPES
 
 
-def _creator_name(obj):
-    user = obj.created_by
-    if user is None:
-        return None
-    return user.get_full_name() or user.email or user.username
-
-
 class CredentialWriteSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=200)
     scopes = serializers.ListField(
         child=serializers.ChoiceField(choices=ALL_SCOPES), allow_empty=False, max_length=len(ALL_SCOPES),
     )
 
-    def validate_scopes(self, value):
-        # Stable order regardless of how the client sent them.
-        chosen = set(value)
-        return [scope for scope in ALL_SCOPES if scope in chosen]
-
 
 class ApiKeySerializer(serializers.ModelSerializer):
     display_key = serializers.SerializerMethodField()
-    created_by_name = serializers.SerializerMethodField()
     is_active = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = ApiKey
-        fields = [
-            'id', 'name', 'display_key', 'scopes', 'is_active',
-            'created_by_name', 'created_at', 'revoked_at',
-        ]
+        fields = ['id', 'name', 'display_key', 'scopes', 'is_active', 'created_at']
         read_only_fields = fields
 
     def get_display_key(self, obj):
         return f'zmk_{obj.prefix}_…'
 
-    def get_created_by_name(self, obj):
-        return _creator_name(obj)
-
 
 class OAuthClientSerializer(serializers.ModelSerializer):
-    created_by_name = serializers.SerializerMethodField()
     is_active = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = OAuthClient
-        fields = ['id', 'name', 'client_id', 'scopes', 'is_active', 'created_by_name', 'created_at', 'revoked_at']
+        fields = ['id', 'name', 'client_id', 'scopes', 'is_active', 'created_at']
         read_only_fields = fields
-
-    def get_created_by_name(self, obj):
-        return _creator_name(obj)
 
 
 class WebhookEndpointWriteSerializer(serializers.Serializer):
@@ -74,10 +51,6 @@ class WebhookEndpointWriteSerializer(serializers.Serializer):
             raise serializers.ValidationError(str(exc)) from exc
         return value
 
-    def validate_events(self, value):
-        chosen = set(value)
-        return [event for event in WebhookEvent.values if event in chosen]
-
 
 class WebhookEndpointSerializer(serializers.ModelSerializer):
     class Meta:
@@ -87,6 +60,8 @@ class WebhookEndpointSerializer(serializers.ModelSerializer):
 
 
 class WebhookDeliverySerializer(serializers.ModelSerializer):
+    target_url = serializers.CharField(source='endpoint.url', read_only=True)
+
     class Meta:
         model = WebhookDelivery
         fields = ['id', 'event_type', 'target_url', 'attempt', 'status', 'response_code', 'error', 'created_at']

@@ -1,17 +1,6 @@
 """
-Business logic for the public API: what a credential may see, credentials, and outbound webhooks.
-
-Scoping: CSM tables live in the public schema and project ids repeat across
-organisation schemas, so a project id alone never identifies a workspace. Every
-`scoped_*` queryset pins the credential's organisation as well as its project,
-and every public view and write validator builds on them.
-
-Webhook signature: `X-Zmarkio-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256(secret, "<t>.<body>")>`,
-where body is the exact request body. Receivers recompute it with their secret,
-compare in constant time, and reject stale timestamps to stop replays. A webhook
-URL is an SSRF surface like a chat link preview, so the chat link-preview guard
-is reused: a target is judged by its resolved IP, the connection is pinned to
-that address, and redirects are never followed.
+External API logic: what a credential may see (scoped_* querysets pin organisation and project,
+because project ids repeat across organisation schemas), credentials, and signed webhook delivery.
 """
 
 import hashlib
@@ -49,10 +38,6 @@ User = get_user_model()
 KEY_PREFIX = 'zmk'
 WEBHOOK_TIMEOUT_SECONDS = 10
 
-
-# ---------------------------------------------------------------------------
-# Scoping
-# ---------------------------------------------------------------------------
 
 def scoped_customer_organisations(principal):
     return CustomerOrganisation.objects.filter(organization_id=principal.organization_id)
@@ -136,24 +121,13 @@ def scoped_assignable_users(principal):
     ).distinct()
 
 
-# ---------------------------------------------------------------------------
-# Credentials
-# ---------------------------------------------------------------------------
-
 def _hash_secret(secret):
     return hashlib.sha256(secret.encode()).hexdigest()
 
 
-def _new_prefix():
-    while True:
-        prefix = secrets.token_hex(4)
-        if not ApiKey.objects.filter(prefix=prefix).exists():
-            return prefix
-
-
 def create_api_key(*, organization_id, project_id, name, scopes, user):
     """Return (ApiKey, full key). The full key is not recoverable afterwards."""
-    prefix = _new_prefix()
+    prefix = secrets.token_hex(4)  # unique=True on the column guards the rare clash
     secret = secrets.token_urlsafe(32)
     key = ApiKey.objects.create(
         organization_id=organization_id,
@@ -224,10 +198,6 @@ def revoke_oauth_client(client):
     return client
 
 
-# ---------------------------------------------------------------------------
-# Webhooks: signing and delivery
-# ---------------------------------------------------------------------------
-
 def canonical_json(payload):
     return json.dumps(payload, sort_keys=True, separators=(',', ':'), cls=DjangoJSONEncoder)
 
@@ -236,16 +206,14 @@ def sign(secret, timestamp, body):
     return hmac.new(secret.encode(), f'{timestamp}.'.encode() + body, hashlib.sha256).hexdigest()
 
 
-def delivery_headers(endpoint, payload, body, attempt):
+def delivery_headers(endpoint, payload, body):
     timestamp = int(time.time())
     signature = sign(decrypt_token(endpoint.secret_encrypted), timestamp, body)
     return {
         'Content-Type': 'application/json',
-        'User-Agent': 'Zmarkio-Webhooks/1',
         'X-Zmarkio-Signature': f't={timestamp},v1={signature}',
         'X-Zmarkio-Event': payload['type'],
         'X-Zmarkio-Delivery': payload['id'],
-        'X-Zmarkio-Attempt': str(attempt),
     }
 
 
@@ -266,10 +234,6 @@ def post_json_safely(url, body, headers):
         )
 
 
-# ---------------------------------------------------------------------------
-# Webhook endpoints
-# ---------------------------------------------------------------------------
-
 def create_endpoint(*, organization_id, project_id, url, events, user):
     """Return (endpoint, signing secret). The secret is not recoverable from the API afterwards."""
     secret = f'whsec_{secrets.token_urlsafe(32)}'
@@ -284,10 +248,6 @@ def create_endpoint(*, organization_id, project_id, url, events, user):
     return endpoint, secret
 
 
-# ---------------------------------------------------------------------------
-# Webhook events
-# ---------------------------------------------------------------------------
-
 def build_event(event_type, *, organization_id, project_id, data):
     payload = {
         'id': str(uuid.uuid4()),
@@ -301,17 +261,10 @@ def build_event(event_type, *, organization_id, project_id, data):
     return json.loads(canonical_json(payload))
 
 
-def _enqueue(endpoint_ids, payload):
-    from external_api.tasks import deliver_webhook
-
-    for endpoint_id in endpoint_ids:
-        # After commit: nothing is announced for a write that rolls back.
-        transaction.on_commit(partial(deliver_webhook.delay, endpoint_id, payload))
-
-
 def emit_ticket_event(event_type, ticket, **extra):
     """Queue `event_type` for every active endpoint of the ticket's workspace subscribed to it."""
     from csm.serializers import TicketSerializer
+    from external_api.tasks import deliver_webhook
 
     queue = ticket.queue
     if queue is None or queue.organisation is None or queue.project_id is None:
@@ -328,4 +281,7 @@ def emit_ticket_event(event_type, ticket, **extra):
     if not endpoint_ids:
         return
     data = {'ticket': TicketSerializer(ticket).data, **extra}
-    _enqueue(endpoint_ids, build_event(event_type, organization_id=organization_id, project_id=queue.project_id, data=data))
+    payload = build_event(event_type, organization_id=organization_id, project_id=queue.project_id, data=data)
+    for endpoint_id in endpoint_ids:
+        # After commit: nothing is announced for a write that rolls back.
+        transaction.on_commit(partial(deliver_webhook.delay, endpoint_id, payload))

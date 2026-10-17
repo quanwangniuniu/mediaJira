@@ -1,164 +1,96 @@
-"""CRUD behaviour of each /api/v1/csm/ resource."""
+"""
+What the external layer adds on top of the reused CSM viewsets: the per-resource
+overrides and relation limits. CRUD behaviour itself is the internal viewsets'
+and is covered by the csm and customer tests.
+"""
 import pytest
+from django.contrib.auth import get_user_model
 from django.urls import reverse
 
 from core.models import OrganizationMembership
-from csm.models import CustomerUser, QuickReplyTemplateHistory, RoutingRule, Ticket
-from customer.models import Customer
+from csm.models import CustomerUser, QuickReplyTemplateHistory, RoutingRule
+from customer.models import Customer, CustomerOrganisation
+from external_api.tests.conftest import _detail, _list
 
 pytestmark = pytest.mark.django_db
 
 
+def test_ticket_create_and_assignee_limited_to_workspace_csm_users(key_client, workspace, user, user2):
+    created = key_client.post(_list('ticket'), {'title': 'API ticket', 'queue': workspace['queue'].id}, format='json')
+    assert created.status_code == 201, created.data
 
-def _list(resource):
-    return reverse(f'external-api-{resource}-list')
-
-
-def _detail(resource, pk):
-    return reverse(f'external-api-{resource}-detail', args=[pk])
-
-
-class TestTickets:
-    def test_create_and_list(self, key_client, workspace):
-        created = key_client.post(_list('ticket'), {
-            'title': 'API ticket', 'queue': workspace['queue'].id, 'priority': 'high',
-        }, format='json')
-
-        assert created.status_code == 201, created.data
-        assert created.data['status'] == 'todo'
-        assert created.data['status_display'] == 'To Do'
-        listed = key_client.get(_list('ticket'))
-        assert {row['id'] for row in listed.data['results']} == {created.data['id'], workspace['ticket'].id}
-
-    def test_status_change_follows_the_status_machine(self, key_client, workspace):
-        url = _detail('ticket', workspace['ticket'].id)
-
-        assert key_client.patch(url, {'status': 'resolved'}, format='json').status_code == 400
-        response = key_client.patch(url, {'status': 'in_progress'}, format='json')
-
-        assert response.status_code == 200, response.data
-        assert Ticket.objects.get(pk=workspace['ticket'].id).status == 'in_progress'
-
-    def test_assignee_must_be_csm_user_of_the_queue_organisation(self, key_client, workspace, user, user2):
-        url = _detail('ticket', workspace['ticket'].id)
-        assert key_client.patch(url, {'assigned_to': user2.id}, format='json').status_code == 400
-        assert key_client.patch(url, {'assigned_to': user.id}, format='json').status_code == 200
-
-    def test_no_delete(self, key_client, workspace):
-        assert key_client.delete(_detail('ticket', workspace['ticket'].id)).status_code == 405
+    url = _detail('ticket', created.data['id'])
+    assert key_client.patch(url, {'assigned_to': user2.id}, format='json').status_code == 400  # no CSM profile here
+    assert key_client.patch(url, {'assigned_to': user.id}, format='json').status_code == 200
 
 
-class TestConversations:
-    def test_create_and_patch(self, key_client, workspace):
-        created = key_client.post(_list('conversation'), {
-            'queue': workspace['queue'].id, 'customer': workspace['customer'].id, 'channel': 'email',
-        }, format='json')
-        assert created.status_code == 201, created.data
-
-        patched = key_client.patch(
-            _detail('conversation', created.data['id']),
-            {'status': 'resolved', 'tags': ['refund'], 'assigned_to': workspace['agent'].id},
-            format='json',
-        )
-        assert patched.status_code == 200, patched.data
-        assert patched.data['status'] == 'resolved'
-
-    def test_queue_is_required(self, key_client, workspace):
-        response = key_client.post(_list('conversation'), {'customer': workspace['customer'].id}, format='json')
-        assert response.status_code == 400 and 'queue' in response.data
+def test_conversation_requires_a_queue(key_client, workspace):
+    customer = workspace['customer'].id
+    missing = key_client.post(_list('conversation'), {'customer': customer}, format='json')
+    assert missing.status_code == 400 and 'queue' in missing.data
+    created = key_client.post(_list('conversation'), {'customer': customer, 'queue': workspace['queue'].id}, format='json')
+    assert created.status_code == 201, created.data
 
 
+def test_customer_create_pins_workspace_and_project(key_client, workspace, organization, project):
+    response = key_client.post(_list('customer'), {
+        'email': 'bob@example.com', 'full_name': 'Bob', 'organisation': workspace['customer_organisation'].id,
+    }, format='json')
 
-class TestCustomers:
-    def test_create_pins_workspace_and_project(self, key_client, workspace, organization, project):
-        response = key_client.post(_list('customer'), {
-            'email': 'Bob@Example.com', 'full_name': 'Bob', 'organisation': workspace['customer_organisation'].id,
-        }, format='json')
-
-        assert response.status_code == 201, response.data
-        customer = Customer.objects.get(pk=response.data['id'])
-        assert (customer.organization_id, customer.project_id) == (organization.id, project.id)
-        assert customer.email == 'bob@example.com'
-
-    def test_list_update_delete(self, key_client, workspace):
-        listed = key_client.get(_list('customer'))
-        assert [row['id'] for row in listed.data['results']] == [workspace['customer'].id]
-
-        url = _detail('customer', workspace['customer'].id)
-        assert key_client.patch(url, {'phone': '123'}, format='json').status_code == 200
-        assert key_client.delete(url).status_code == 204
-        assert not Customer.objects.filter(pk=workspace['customer'].id).exists()
-
-    def test_duplicate_email_in_project_rejected(self, key_client, workspace):
-        response = key_client.post(_list('customer'), {'email': 'alice@example.com', 'full_name': 'A'}, format='json')
-        assert response.status_code == 400 and 'email' in response.data
+    assert response.status_code == 201, response.data
+    customer = Customer.objects.get(pk=response.data['id'])
+    assert (customer.organization_id, customer.project_id) == (organization.id, project.id)
 
 
 class TestOrganisations:
-    def test_create_is_pinned_to_workspace(self, key_client, organization):
-        response = key_client.post(
-            _list('organisation'), {'name': 'Acme', 'organization': 999999}, format='json',
-        )
+    def test_create_is_pinned_to_workspace_and_makes_no_admin(self, key_client, organization):
+        response = key_client.post(_list('organisation'), {'name': 'Acme', 'organization': 999999}, format='json')
 
         assert response.status_code == 201, response.data
         assert response.data['organization'] == organization.id
         assert 'customers' not in response.data
+        assert not CustomerUser.objects.filter(organisation_id=response.data['id']).exists()
 
-    def test_delete_refused_while_customers_exist(self, key_client, workspace):
-        url = _detail('organisation', workspace['customer_organisation'].id)
-        assert key_client.delete(url).status_code == 400
-
-    def test_duplicate_name_rejected(self, key_client, workspace):
+    def test_duplicate_name_in_workspace_rejected(self, key_client, workspace):
         response = key_client.post(_list('organisation'), {'name': 'test org'}, format='json')
         assert response.status_code == 400 and 'name' in response.data
 
-
-class TestTemplates:
-    def test_create_update_writes_history_and_soft_delete(self, key_client, workspace):
-        created = key_client.post(_list('template'), {
-            'organisation': workspace['customer_organisation'].id, 'title': 'Hi', 'content': 'Hello', 'tags': ['billing'],
-        }, format='json')
-        assert created.status_code == 201, created.data
-        assert created.data['created_by'] is None
-
-        url = _detail('template', created.data['id'])
-        assert key_client.patch(url, {'content': 'Hello there'}, format='json').status_code == 200
-        history = QuickReplyTemplateHistory.objects.get(template_id=created.data['id'])
-        assert history.content == 'Hello' and history.edited_by is None
-
-        assert key_client.delete(url).status_code == 204
-        assert key_client.get(url).data['is_active'] is False
-
-    def test_unknown_tag_rejected(self, key_client, workspace):
-        response = key_client.post(_list('template'), {
-            'organisation': workspace['customer_organisation'].id, 'title': 'x', 'content': 'y', 'tags': ['nope'],
-        }, format='json')
-        assert response.status_code == 400 and 'tags' in response.data
+    def test_delete_refused_while_customers_exist(self, key_client, workspace):
+        assert key_client.delete(_detail('organisation', workspace['customer_organisation'].id)).status_code == 400
+        empty = CustomerOrganisation.objects.create(name='Empty', organization=workspace['customer_organisation'].organization)
+        assert key_client.delete(_detail('organisation', empty.id)).status_code == 204
 
 
-class TestQueues:
-    def test_create_requires_organisation_and_soft_deletes(self, key_client, workspace, project):
-        assert key_client.post(_list('queue'), {'name': 'Q2', 'tier': 'T2'}, format='json').status_code == 400
+def test_template_create_and_edit_record_no_person(key_client, workspace):
+    created = key_client.post(_list('template'), {
+        'organisation': workspace['customer_organisation'].id, 'title': 'Hi', 'content': 'Hello', 'tags': ['billing'],
+    }, format='json')
+    assert created.status_code == 201, created.data
+    assert created.data['created_by'] is None
 
-        created = key_client.post(_list('queue'), {
-            'name': 'Q2', 'tier': 'T2', 'organisation': workspace['customer_organisation'].id,
-        }, format='json')
-        assert created.status_code == 201, created.data
-        assert created.data['project'] == project.id
+    assert key_client.patch(_detail('template', created.data['id']), {'content': 'Hi there'}, format='json').status_code == 200
+    assert QuickReplyTemplateHistory.objects.get(template_id=created.data['id']).edited_by is None
 
-        url = _detail('queue', created.data['id'])
-        assert key_client.delete(url).status_code == 204
-        assert key_client.get(url).data['is_active'] is False
+
+def test_queue_requires_organisation_and_is_pinned_to_project(key_client, workspace, project):
+    assert key_client.post(_list('queue'), {'name': 'Q2', 'tier': 'T2'}, format='json').status_code == 400
+    created = key_client.post(_list('queue'), {
+        'name': 'Q2', 'tier': 'T2', 'organisation': workspace['customer_organisation'].id,
+    }, format='json')
+    assert created.status_code == 201, created.data
+    assert created.data['project'] == project.id
 
 
 class TestAgents:
-    def test_create_for_existing_workspace_member_only(self, key_client, workspace, user2, organization):
-        payload = {
-            'email': user2.email, 'organisation': workspace['customer_organisation'].id,
-            'queue': workspace['queue'].id, 'user_type': 'supervisor',
-        }
-        refused = key_client.post(_list('agent'), payload, format='json')
+    def test_only_existing_workspace_members_and_no_new_accounts(self, key_client, workspace, user2, organization):
+        payload = {'email': user2.email, 'organisation': workspace['customer_organisation'].id,
+                   'queue': workspace['queue'].id, 'user_type': 'agent'}
+        accounts = get_user_model().objects.count()
+
+        refused = key_client.post(_list('agent'), {**payload, 'email': 'stranger@example.com'}, format='json')
         assert refused.status_code == 400 and 'email' in refused.data
+        assert key_client.post(_list('agent'), payload, format='json').status_code == 400  # not a member yet
+        assert get_user_model().objects.count() == accounts
 
         OrganizationMembership.objects.create(user=user2, organization=organization, role='member', is_active=True)
         created = key_client.post(_list('agent'), payload, format='json')
@@ -173,42 +105,20 @@ class TestAgents:
         assert key_client.post(_list('agent'), payload, format='json').status_code == 201
         assert key_client.post(_list('agent'), payload, format='json').status_code == 400
 
-    def test_never_creates_accounts(self, key_client, workspace):
-        from django.contrib.auth import get_user_model
-        before = get_user_model().objects.count()
 
-        response = key_client.post(_list('agent'), {
-            'email': 'stranger@example.com', 'organisation': workspace['customer_organisation'].id,
-        }, format='json')
+def test_routing_rule_create_uses_credential_project_and_records_no_person(
+    key_client, workspace, tenant_project, experience_group,
+):
+    created = key_client.post(_list('routing-rule'), {
+        'experience_group': experience_group.id, 'name': 'Refunds', 'target_queue': workspace['queue'].id,
+    }, format='json')
 
-        assert response.status_code == 400
-        assert get_user_model().objects.count() == before
-
-    def test_creator_cannot_be_deleted(self, key_client, workspace):
-        agent = workspace['agent']
-        agent.is_creator = True
-        agent.save(update_fields=['is_creator'])
-        assert key_client.delete(_detail('agent', agent.id)).status_code == 400
+    assert created.status_code == 201, created.data
+    rule = RoutingRule.objects.get(pk=created.data['id'])
+    assert (rule.project_id, rule.created_by) == (tenant_project.id, None)
 
 
-class TestRoutingRules:
-    def test_create_update_delete(self, key_client, workspace, tenant_project, experience_group):
-        first = key_client.post(_list('routing-rule'), {
-            'experience_group': experience_group.id, 'name': 'Refunds', 'target_queue': workspace['queue'].id,
-            'conditions': [{'field': 'latest_message', 'operator': 'contains_any', 'value': ['refund']}],
-        }, format='json')
-        assert first.status_code == 201, first.data
-        assert RoutingRule.objects.get(pk=first.data['id']).created_by is None
-
-        patched = key_client.patch(_detail('routing-rule', first.data['id']), {'is_enabled': False}, format='json')
-        assert patched.status_code == 200 and patched.data['is_enabled'] is False
-
-        assert key_client.delete(_detail('routing-rule', first.data['id'])).status_code == 204
-        assert not RoutingRule.objects.filter(pk=first.data['id']).exists()
-
-    def test_invalid_condition_is_400(self, key_client, workspace, tenant_project, experience_group):
-        response = key_client.post(_list('routing-rule'), {
-            'experience_group': experience_group.id, 'name': 'Bad', 'target_queue': workspace['queue'].id,
-            'conditions': [{'field': 'nope', 'operator': 'eq', 'value': 'x'}],
-        }, format='json')
-        assert response.status_code == 400
+def test_user_only_actions_are_not_exposed(key_client, workspace):
+    ticket = workspace['ticket'].id
+    assert key_client.post(f"{_detail('ticket', ticket)}claim/").status_code == 404
+    assert key_client.post(f"{_list('agent')}invite/", {}, format='json').status_code in (404, 405)

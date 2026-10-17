@@ -6,13 +6,7 @@ from core.models import TimeStampedModel
 
 
 class ApiKey(TimeStampedModel):
-    """
-    A key an external system sends as `X-API-Key: zmk_<prefix>_<secret>`.
-
-    Only a SHA-256 of the secret is stored; the full key is shown once, on
-    creation. The prefix is stored in clear so a request finds its row with one
-    indexed lookup and admins can tell keys apart.
-    """
+    """Sent as `X-API-Key: zmk_<prefix>_<secret>`; only a SHA-256 of the secret is stored."""
 
     organization = models.ForeignKey(
         'core.Organization', on_delete=models.CASCADE, related_name='api_keys',
@@ -32,9 +26,6 @@ class ApiKey(TimeStampedModel):
 
     class Meta:
         ordering = ['-created_at', '-id']
-        indexes = [
-            models.Index(fields=['organization', 'project_id'], name='extapi_key_org_project_idx'),
-        ]
 
     @property
     def is_active(self):
@@ -45,11 +36,7 @@ class ApiKey(TimeStampedModel):
 
 
 class OAuthClient(TimeStampedModel):
-    """
-    Binds a django-oauth-toolkit client-credentials Application to one
-    (organization, project) and a set of scopes. Bearer tokens issued to the
-    application act as this client, never as the admin who created it.
-    """
+    """Binds a toolkit client-credentials Application to one (organization, project) and its scopes."""
 
     organization = models.ForeignKey(
         'core.Organization', on_delete=models.CASCADE, related_name='oauth_clients',
@@ -72,9 +59,6 @@ class OAuthClient(TimeStampedModel):
 
     class Meta:
         ordering = ['-created_at', '-id']
-        indexes = [
-            models.Index(fields=['organization', 'project_id'], name='extapi_oauth_org_project_idx'),
-        ]
 
     @property
     def is_active(self):
@@ -109,16 +93,13 @@ class WebhookEndpoint(TimeStampedModel):
 
     class Meta:
         ordering = ['-created_at', '-id']
-        indexes = [
-            models.Index(fields=['organization', 'project_id'], name='extapi_hook_org_project_idx'),
-        ]
 
     def __str__(self):
         return f'WebhookEndpoint {self.url}'
 
 
 class WebhookDelivery(models.Model):
-    """One delivery attempt. Retries of an event are further rows with the same event_id."""
+    """One delivery attempt; each retry is a further row."""
 
     class Status(models.TextChoices):
         SUCCEEDED = 'succeeded', 'Succeeded'
@@ -126,10 +107,7 @@ class WebhookDelivery(models.Model):
         FAILED = 'failed', 'Failed'
 
     endpoint = models.ForeignKey(WebhookEndpoint, on_delete=models.CASCADE, related_name='deliveries')
-    event_id = models.UUIDField()
     event_type = models.CharField(max_length=64)
-    # Snapshot: the endpoint's URL may be edited after the attempt.
-    target_url = models.URLField(max_length=2000)
     attempt = models.PositiveSmallIntegerField(default=1)
     status = models.CharField(max_length=16, choices=Status.choices)
     response_code = models.PositiveSmallIntegerField(null=True, blank=True)
@@ -138,9 +116,6 @@ class WebhookDelivery(models.Model):
 
     class Meta:
         ordering = ['-created_at', '-id']
-        indexes = [
-            models.Index(fields=['endpoint', '-created_at'], name='extapi_delivery_endpoint_idx'),
-        ]
 
     def __str__(self):
-        return f'{self.event_type} → {self.target_url} (attempt {self.attempt}, {self.status})'
+        return f'{self.event_type} attempt {self.attempt} ({self.status})'

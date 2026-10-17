@@ -35,9 +35,7 @@ const key: ApiKey = {
   display_key: 'zmk_abcd1234_…',
   scopes: ['tickets:read', 'tickets:write', 'queues:read'],
   is_active: true,
-  created_by_name: 'Ada Admin',
   created_at: '2026-10-01T00:00:00Z',
-  revoked_at: null,
 };
 
 beforeEach(() => {
@@ -51,12 +49,12 @@ const renderPanel = async () => {
 };
 
 describe('CredentialsPanel (API keys)', () => {
-  it('lists keys with their masked key and a scope summary, never the secret', async () => {
+  it('lists keys with their masked key and scopes, never the secret', async () => {
     await renderPanel();
 
     expect(api.listApiKeys).toHaveBeenCalledWith(1);
     expect(screen.getByText('zmk_abcd1234_…')).toBeInTheDocument();
-    expect(screen.getByText('Tickets (write), Queues (read)')).toBeInTheDocument();
+    expect(screen.getByText('tickets:read, tickets:write, queues:read')).toBeInTheDocument();
   });
 
   it('requires a name and at least one permission before creating', async () => {
@@ -108,7 +106,7 @@ describe('CredentialsPanel (API keys)', () => {
 
   it('revokes through the confirm dialog, not a native confirm', async () => {
     const confirmSpy = jest.spyOn(window, 'confirm');
-    api.revokeApiKey.mockResolvedValue({ ...key, is_active: false, revoked_at: '2026-10-02T00:00:00Z' });
+    api.revokeApiKey.mockResolvedValue({ ...key, is_active: false });
     await renderPanel();
 
     fireEvent.click(screen.getByRole('button', { name: 'Revoke Zapier' }));
@@ -128,7 +126,7 @@ describe('CredentialsPanel (OAuth clients)', () => {
     api.listOAuthClients.mockResolvedValue([]);
     api.createOAuthClient.mockResolvedValue({
       id: 9, name: 'CRM', client_id: 'cid-123', client_secret: 'sec-456', scopes: ['tickets:read'],
-      is_active: true, created_by_name: null, created_at: '2026-10-01T00:00:00Z', revoked_at: null,
+      is_active: true, created_at: '2026-10-01T00:00:00Z',
     });
     render(<CredentialsPanel kind="oauth-client" projectId={1} resources={RESOURCES} />);
     await screen.findByText('No OAuth clients yet.');

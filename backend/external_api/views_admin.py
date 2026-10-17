@@ -1,9 +1,4 @@
-"""
-Admin console endpoints under /api/external-api/ (JWT, `?project=`).
-
-Every view is bound to the requested project and its organisation, and only an
-org admin or a CSM admin of that organisation gets past `initial()`.
-"""
+"""Admin console endpoints under /api/external-api/ (JWT, `?project=`), for org and CSM admins."""
 
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
@@ -50,17 +45,11 @@ class IntegrationsAdminMixin(ProjectScopedViewSetMixin):
 
 @method_decorator(csrf_exempt, name='dispatch')
 class ApiKeyViewSet(IntegrationsAdminMixin, mixins.ListModelMixin, viewsets.GenericViewSet):
-    """
-    - GET  /api/external-api/api-keys/?project={id}
-    - POST /api/external-api/api-keys/?project={id}              returns the full key once
-    - POST /api/external-api/api-keys/{id}/revoke/?project={id}
-    """
-
     serializer_class = ApiKeySerializer
     pagination_class = None
 
     def get_queryset(self):
-        return self.scoped(ApiKey.objects.select_related('created_by'))
+        return self.scoped(ApiKey.objects.all())
 
     def create(self, request, *args, **kwargs):
         serializer = CredentialWriteSerializer(data=request.data)
@@ -80,17 +69,11 @@ class ApiKeyViewSet(IntegrationsAdminMixin, mixins.ListModelMixin, viewsets.Gene
 
 @method_decorator(csrf_exempt, name='dispatch')
 class OAuthClientViewSet(IntegrationsAdminMixin, mixins.ListModelMixin, viewsets.GenericViewSet):
-    """
-    - GET  /api/external-api/oauth-clients/?project={id}
-    - POST /api/external-api/oauth-clients/?project={id}         returns the client secret once
-    - POST /api/external-api/oauth-clients/{id}/revoke/?project={id}
-    """
-
     serializer_class = OAuthClientSerializer
     pagination_class = None
 
     def get_queryset(self):
-        return self.scoped(OAuthClient.objects.select_related('created_by'))
+        return self.scoped(OAuthClient.objects.all())
 
     def create(self, request, *args, **kwargs):
         serializer = CredentialWriteSerializer(data=request.data)
@@ -113,11 +96,6 @@ class OAuthClientViewSet(IntegrationsAdminMixin, mixins.ListModelMixin, viewsets
 
 @method_decorator(csrf_exempt, name='dispatch')
 class WebhookEndpointViewSet(IntegrationsAdminMixin, viewsets.ModelViewSet):
-    """
-    - GET/POST    /api/external-api/webhooks/?project={id}     POST returns the signing secret once
-    - GET/DELETE  /api/external-api/webhooks/{id}/?project={id}
-    """
-
     serializer_class = WebhookEndpointSerializer
     pagination_class = None
     http_method_names = ['get', 'post', 'delete', 'head', 'options']
@@ -139,12 +117,6 @@ class WebhookEndpointViewSet(IntegrationsAdminMixin, viewsets.ModelViewSet):
 
 @method_decorator(csrf_exempt, name='dispatch')
 class WebhookDeliveryViewSet(IntegrationsAdminMixin, mixins.ListModelMixin, viewsets.GenericViewSet):
-    """
-    The delivery log: one row per attempt, newest first.
-
-    - GET /api/external-api/webhook-deliveries/?project={id}
-    """
-
     serializer_class = WebhookDeliverySerializer
 
     def get_queryset(self):
@@ -156,8 +128,6 @@ class WebhookDeliveryViewSet(IntegrationsAdminMixin, mixins.ListModelMixin, view
 
 @method_decorator(csrf_exempt, name='dispatch')
 class IntegrationsVocabularyView(IntegrationsAdminMixin, APIView):
-    """GET /api/external-api/vocabulary/?project={id}: resources and webhook events the UI offers."""
-
     def get(self, request):
         return Response({
             'resources': [{'value': value, 'label': label} for value, label in RESOURCES.items()],

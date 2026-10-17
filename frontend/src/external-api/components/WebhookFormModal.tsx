@@ -12,19 +12,6 @@ import {
 import { parseFieldErrors } from '@/components/ticket-form/formErrors';
 import type { VocabularyOption, WebhookEndpointData } from '@/external-api/types';
 
-/** Client-side check only; the server also rejects hosts that resolve to private addresses. */
-export function validateWebhookUrl(url: string): string | null {
-  const trimmed = url.trim();
-  if (!trimmed) return 'URL is required.';
-  try {
-    const parsed = new URL(trimmed);
-    if (parsed.protocol !== 'https:') return 'Use an https:// URL.';
-  } catch {
-    return 'Enter a valid URL.';
-  }
-  return null;
-}
-
 interface Props {
   isOpen: boolean;
   events: VocabularyOption[];
@@ -60,8 +47,7 @@ export default function WebhookFormModal({ isOpen, events, onClose, onSubmit }: 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const errors: Record<string, string> = {};
-    const urlError = validateWebhookUrl(url);
-    if (urlError) errors.url = urlError;
+    if (!url.trim()) errors.url = 'URL is required.';
     if (selected.size === 0) errors.events = 'Subscribe to at least one event.';
     if (Object.keys(errors).length) {
       setFieldErrors(errors);
@@ -73,7 +59,7 @@ export default function WebhookFormModal({ isOpen, events, onClose, onSubmit }: 
     try {
       await onSubmit({
         url: url.trim(),
-        events: events.map(({ value }) => value).filter((event) => selected.has(event)),
+        events: Array.from(selected),
       });
     } catch (err: unknown) {
       const parsed = parseFieldErrors((err as { response?: { data?: unknown } })?.response?.data);

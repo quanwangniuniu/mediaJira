@@ -1,5 +1,6 @@
 """Fixtures for the public API: credentials bound to (organization, project)."""
 import pytest
+from django.urls import reverse
 from rest_framework.test import APIClient
 
 from core.models import Organization, Project
@@ -65,6 +66,14 @@ def other_workspace(db):
     project = Project.objects.create(name='Other Project', organization=organization)
     customer_organisation = CustomerOrganisation.objects.create(name='Other Customers', organization=organization)
     return {'organization': organization, 'project': project, 'customer_organisation': customer_organisation}
+
+
+def _list(resource):
+    return reverse(f'external-api-{resource}-list')
+
+
+def _detail(resource, pk):
+    return reverse(f'external-api-{resource}-detail', args=[pk])
 
 
 def client_for(raw_key):

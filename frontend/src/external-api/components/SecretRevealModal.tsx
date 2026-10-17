@@ -9,7 +9,7 @@ export interface RevealedSecret {
   title: string;
   /** Shown above the values, e.g. how to use them. */
   description: string;
-  values: { label: string; value: string; secret?: boolean }[];
+  values: { label: string; value: string }[];
 }
 
 interface Props {
@@ -40,14 +40,12 @@ export default function SecretRevealModal({ revealed, onClose }: Props) {
           <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
             Copy it now. For security it is stored hashed or encrypted and will not be shown again.
           </p>
-          {revealed?.values.map(({ label, value, secret }) => (
+          {revealed?.values.map(({ label, value }) => (
             <div key={label} className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-gray-700">{label}</span>
               <div className="flex items-center gap-2">
                 <code
-                  className={`flex-1 break-all rounded-lg border px-3 py-2 font-mono text-xs ${
-                    secret ? 'border-indigo-200 bg-indigo-50 text-indigo-900' : 'border-gray-200 bg-gray-50 text-gray-800'
-                  }`}
+                  className="flex-1 break-all rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-800"
                   data-testid={`revealed-${label}`}
                 >
                   {value}

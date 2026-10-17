@@ -11,7 +11,7 @@ from django.urls import reverse
 
 from csm.models import RoutingRule
 from external_api.services import revoke_api_key, revoke_oauth_client
-from external_api.tests.conftest import client_for
+from external_api.tests.conftest import _detail, _list, client_for
 
 pytestmark = pytest.mark.django_db
 
@@ -87,14 +87,6 @@ class TestOAuthClient:
 
 
 RESOURCES = ['customer', 'organisation', 'ticket', 'conversation', 'template', 'routing-rule', 'queue', 'agent']
-
-
-def _list(resource):
-    return reverse(f'external-api-{resource}-list')
-
-
-def _detail(resource, pk):
-    return reverse(f'external-api-{resource}-detail', args=[pk])
 
 
 def _ids(response):
