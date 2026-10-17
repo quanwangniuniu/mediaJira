@@ -55,14 +55,13 @@ class OAuthClient(TimeStampedModel):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='+',
     )
-    revoked_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-created_at', '-id']
 
     @property
     def is_active(self):
-        return self.revoked_at is None and self.application_id is not None
+        return self.application_id is not None
 
     def __str__(self):
         return f"OAuthClient '{self.name}' ({self.client_id})"
@@ -103,7 +102,7 @@ class WebhookDelivery(models.Model):
 
     class Status(models.TextChoices):
         SUCCEEDED = 'succeeded', 'Succeeded'
-        RETRYING = 'retrying', 'Failed, retry scheduled'
+        RETRYING = 'retrying', 'Retry scheduled'
         FAILED = 'failed', 'Failed'
 
     endpoint = models.ForeignKey(WebhookEndpoint, on_delete=models.CASCADE, related_name='deliveries')

@@ -70,7 +70,7 @@ class OAuthClientAuthentication(OAuth2Authentication):
         token = result[1]
         client = (
             OAuthClient.objects.select_related('organization')
-            .filter(application_id=token.application_id, revoked_at__isnull=True)
+            .filter(application_id=token.application_id)
             .first()
         )
         if client is None or not client.organization.is_active:

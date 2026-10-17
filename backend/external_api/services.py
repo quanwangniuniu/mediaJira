@@ -6,7 +6,6 @@ because project ids repeat across organisation schemas), credentials, and signed
 import hashlib
 import hmac
 import json
-import logging
 import secrets
 import time
 import uuid
@@ -32,7 +31,6 @@ from customer.models import Customer, CustomerOrganisation, CustomerStatusLabel,
 from experience_group.models import ExperienceGroup
 from external_api.models import ApiKey, OAuthClient, WebhookEndpoint
 
-logger = logging.getLogger(__name__)
 User = get_user_model()
 
 KEY_PREFIX = 'zmk'
@@ -190,10 +188,9 @@ def create_oauth_client(*, organization_id, project_id, name, scopes, user):
 def revoke_oauth_client(client):
     """Delete the toolkit application, which invalidates every token it was issued."""
     application = client.application
-    client.application = None
-    client.revoked_at = client.revoked_at or timezone.now()
-    client.save(update_fields=['application', 'revoked_at', 'updated_at'])
     if application is not None:
+        client.application = None
+        client.save(update_fields=['application', 'updated_at'])
         application.delete()
     return client
 
@@ -202,13 +199,10 @@ def canonical_json(payload):
     return json.dumps(payload, sort_keys=True, separators=(',', ':'), cls=DjangoJSONEncoder)
 
 
-def sign(secret, timestamp, body):
-    return hmac.new(secret.encode(), f'{timestamp}.'.encode() + body, hashlib.sha256).hexdigest()
-
-
 def delivery_headers(endpoint, payload, body):
     timestamp = int(time.time())
-    signature = sign(decrypt_token(endpoint.secret_encrypted), timestamp, body)
+    secret = decrypt_token(endpoint.secret_encrypted)
+    signature = hmac.new(secret.encode(), f'{timestamp}.'.encode() + body, hashlib.sha256).hexdigest()
     return {
         'Content-Type': 'application/json',
         'X-Zmarkio-Signature': f't={timestamp},v1={signature}',
@@ -268,8 +262,7 @@ def emit_ticket_event(event_type, ticket, **extra):
 
     queue = ticket.queue
     if queue is None or queue.organisation is None or queue.project_id is None:
-        logger.debug('Ticket %s has no workspace; %s not sent', ticket.pk, event_type)
-        return
+        return  # no workspace to announce it to
     organization_id = queue.organisation.organization_id
     endpoint_ids = list(
         WebhookEndpoint.objects.filter(

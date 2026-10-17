@@ -96,7 +96,7 @@ def test_oauth_client_secret_shown_once_and_revoke_deletes_application(admin_cli
     revoked = admin_client.post(f"{reverse('external-api-admin-oauth-client-revoke', args=[client.id])}?project={project.id}")
     assert revoked.status_code == 200
     client.refresh_from_db()
-    assert client.application is None and client.revoked_at is not None
+    assert client.application is None and not client.is_active
 
 
 def test_vocabulary_lists_resources_and_events(admin_client, project):

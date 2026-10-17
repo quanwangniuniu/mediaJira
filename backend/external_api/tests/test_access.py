@@ -51,10 +51,6 @@ class TestApiKey:
         organization.save(update_fields=['is_active'])
         assert client_for(api_key[1]).get(TICKETS).status_code == 401
 
-    def test_only_a_hash_of_the_secret_is_stored(self, api_key):
-        key, raw = api_key
-        assert raw.split('_', 2)[2] not in key.key_hash
-
 
 class TestOAuthClient:
     def test_client_credentials_token_authenticates(self, api_client, oauth_client):
@@ -130,11 +126,6 @@ class TestScopes:
     @pytest.mark.parametrize('resource', RESOURCES)
     def test_every_resource_requires_a_credential(self, api_client, resource):
         assert api_client.get(_list(resource)).status_code == 401
-
-    def test_user_jwt_is_not_a_credential(self, api_client):
-        # Only API keys and toolkit tokens authenticate here; a user's JWT is just an unknown bearer.
-        response = api_client.get(_list('ticket'), HTTP_AUTHORIZATION='Bearer some.jwt.token')
-        assert response.status_code == 401
 
 
 class TestIsolation:

@@ -39,20 +39,10 @@ class HasApiScope(BasePermission):
         return write in principal.scopes
 
 
-def can_manage_integrations(user, organization_id):
-    """Org admins and CSM admins of the organisation manage its credentials and webhooks."""
-    if user.is_superuser:
-        return True
-    if organization_id in get_org_admin_org_ids(user):
-        return True
-    return CustomerUser.objects.filter(
-        user=user,
-        user_type='admin',
-        is_active=True,
-        organisation__organization_id=organization_id,
-    ).exists()
-
-
 def require_integrations_admin(user, organization_id):
-    if not can_manage_integrations(user, organization_id):
+    """Org admins and CSM admins of the organisation manage its credentials and webhooks."""
+    allowed = user.is_superuser or organization_id in get_org_admin_org_ids(user) or CustomerUser.objects.filter(
+        user=user, user_type='admin', is_active=True, organisation__organization_id=organization_id,
+    ).exists()
+    if not allowed:
         raise PermissionDenied('Only an organisation admin or CSM admin can manage API access and webhooks.')

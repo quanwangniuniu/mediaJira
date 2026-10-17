@@ -5,6 +5,7 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Count, Q, Case, When, IntegerField, Value
 from django.utils import timezone
@@ -124,7 +125,6 @@ def _raise_drf_validation(exc):
 
 def _acting_user(request):
     """The person making the request, or None when it isn't a person (e.g. an external API credential)."""
-    from django.contrib.auth import get_user_model
     return request.user if isinstance(request.user, get_user_model()) else None
 
 

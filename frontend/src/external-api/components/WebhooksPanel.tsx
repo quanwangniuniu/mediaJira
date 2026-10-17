@@ -31,7 +31,7 @@ export default function WebhooksPanel({ projectId, events }: Props) {
   const [endpoints, setEndpoints] = useState<WebhookEndpoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
   const [revealed, setRevealed] = useState<RevealedSecret | null>(null);
   const [deleting, setDeleting] = useState<WebhookEndpoint | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -54,7 +54,7 @@ export default function WebhooksPanel({ projectId, events }: Props) {
     const { secret, ...created } = await ExternalApiAdminAPI.createWebhook(projectId, data);
     setEndpoints((prev) => [created, ...prev]);
     setRevealed(secretReveal(secret));
-    setDrawerOpen(false);
+    setFormOpen(false);
   };
 
   const handleDelete = async () => {
@@ -81,7 +81,7 @@ export default function WebhooksPanel({ projectId, events }: Props) {
           </p>
           <button
             type="button"
-            onClick={() => setDrawerOpen(true)}
+            onClick={() => setFormOpen(true)}
             className={`gap-2 ${PORTAL_SUBMIT_BUTTON_CLASS}`}
           >
             <Plus className="h-4 w-4" aria-hidden />
@@ -162,9 +162,9 @@ export default function WebhooksPanel({ projectId, events }: Props) {
       </div>
 
       <WebhookFormModal
-        isOpen={drawerOpen}
+        isOpen={formOpen}
         events={events}
-        onClose={() => setDrawerOpen(false)}
+        onClose={() => setFormOpen(false)}
         onSubmit={handleSubmit}
       />
       <SecretRevealModal revealed={revealed} onClose={() => setRevealed(null)} />
