@@ -273,7 +273,7 @@ class DraftViewSet(SlugLookupViewSetMixin, viewsets.ModelViewSet):
         return Draft.objects.filter(
             user=self.request.user, 
             is_deleted=False
-        ).select_related('user').prefetch_related('blocks__actions')
+        ).select_related('user', 'project_link__project').prefetch_related('blocks__actions')
     
     def get_serializer_class(self):
         """Return appropriate serializer based on action"""

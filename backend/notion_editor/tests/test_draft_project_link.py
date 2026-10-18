@@ -61,6 +61,21 @@ class DraftProjectLinkApiTests(TestCase):
         self.draft = Draft.objects.create(title='Linked later', user=self.user, status='draft')
         self.url = reverse('notion_editor:draft-project', kwargs={'pk': self.draft.slug})
 
+    def test_detail_reports_linked_project(self):
+        self.client.force_authenticate(user=self.user)
+        detail_url = reverse('notion_editor:draft-detail', kwargs={'pk': self.draft.slug})
+
+        unlinked = self.client.get(detail_url)
+        self.assertEqual(unlinked.status_code, status.HTTP_200_OK)
+        self.assertIsNone(unlinked.data['project_id'])
+        self.assertIsNone(unlinked.data['project_slug'])
+
+        DraftProjectLink.objects.create(draft=self.draft, project=self.project)
+        linked = self.client.get(detail_url)
+        self.assertEqual(linked.status_code, status.HTTP_200_OK)
+        self.assertEqual(linked.data['project_id'], self.project.id)
+        self.assertEqual(linked.data['project_slug'], self.project.slug)
+
     def test_member_can_link_and_enqueue_index(self):
         self.client.force_authenticate(user=self.user)
         with patch('rag.tasks.index_document_task.delay') as mock_delay:
