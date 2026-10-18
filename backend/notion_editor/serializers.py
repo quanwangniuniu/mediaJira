@@ -274,6 +274,10 @@ class NotionImportSerializer(serializers.Serializer):
     draft_id = serializers.IntegerField(required=False, allow_null=True, min_value=1)
 
 
+class LinkDraftProjectSerializer(serializers.Serializer):
+    project_id = serializers.IntegerField(min_value=1)
+
+
 class NotionExportSerializer(serializers.Serializer):
     draft_id = serializers.IntegerField(min_value=1)
     parent_page_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
