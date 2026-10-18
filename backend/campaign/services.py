@@ -22,6 +22,7 @@ from core.models import Project
 from core.services.tenant import slug_to_schema_name
 from core.tenant_context import tenant_schema_context
 from core.utils.project import has_project_access
+from notifications.services import notify_campaign_sync_auth_error
 from core.models import ProjectMember
 from task.models import Task
 from .models import Campaign, CampaignTemplate, CampaignTaskLink, AutomationTrigger, AutomationExecution
@@ -68,8 +69,6 @@ class CampaignSyncService:
 
     @staticmethod
     def record_sync_result(*, ad_account, error: Exception | None = None) -> None:
-        from .notifications import notify_campaign_sync_auth_error
-
         schema = CampaignSyncService.tenant_schema_for_account(ad_account)
         if schema is None:
             return
