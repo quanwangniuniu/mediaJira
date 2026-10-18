@@ -90,10 +90,12 @@ class DraftProjectLinkApiTests(TestCase):
         )
 
     def test_non_member_is_rejected(self):
+        draft = Draft.objects.create(title='Outsider draft', user=self.outsider, status='draft')
+        url = reverse('notion_editor:draft-project', kwargs={'pk': draft.slug})
         self.client.force_authenticate(user=self.outsider)
-        response = self.client.post(self.url, {'project_id': self.project.id}, format='json')
+        response = self.client.post(url, {'project_id': self.project.id}, format='json')
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-        self.assertFalse(DraftProjectLink.objects.filter(draft=self.draft).exists())
+        self.assertFalse(DraftProjectLink.objects.filter(draft=draft).exists())
 
     def test_other_users_draft_is_hidden(self):
         self.client.force_authenticate(user=self.outsider)
