@@ -116,8 +116,8 @@ class CreateDraftSerializer(serializers.ModelSerializer):
     """Serializer for creating new drafts"""
     class Meta:
         model = Draft
-        fields = ['id', 'title', 'status', 'content_blocks']
-        read_only_fields = ['id']
+        fields = ['id', 'slug', 'title', 'status', 'content_blocks']
+        read_only_fields = ['id', 'slug']
     
     def create(self, validated_data):
         """Create a new draft with the current user"""
