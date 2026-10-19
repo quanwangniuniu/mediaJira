@@ -474,6 +474,29 @@ RAG_RETRIEVAL_MIN_SIMILARITY = config(
     cast=lambda v: float(v) if v not in (None, '') else None,
 )
 
+# Query rewrite for project RAG (agent.answer_project_question). Only the
+# knobs we expect to retune live here. The rewrite model and temperature stay
+# fixed in code (gemini-2.5-flash-lite, temperature 0). History turns are
+# completed user+assistant pairs before the current question. Assistant
+# replies are truncated before they are sent to the rewrite model. The
+# timeout is shorter than GEMINI_TIMEOUT_SECONDS because a failed or slow
+# rewrite falls back to the original question instead of blocking the answer.
+RAG_QUERY_REWRITE_HISTORY_TURNS = config(
+    'RAG_QUERY_REWRITE_HISTORY_TURNS', default=3, cast=int
+)
+RAG_QUERY_REWRITE_ASSISTANT_MAX_CHARS = config(
+    'RAG_QUERY_REWRITE_ASSISTANT_MAX_CHARS', default=500, cast=int
+)
+RAG_QUERY_REWRITE_TIMEOUT_SECONDS = config(
+    'RAG_QUERY_REWRITE_TIMEOUT_SECONDS', default=15, cast=int
+)
+if RAG_QUERY_REWRITE_HISTORY_TURNS < 1:
+    raise ImproperlyConfigured("RAG_QUERY_REWRITE_HISTORY_TURNS must be >= 1")
+if RAG_QUERY_REWRITE_ASSISTANT_MAX_CHARS < 1:
+    raise ImproperlyConfigured("RAG_QUERY_REWRITE_ASSISTANT_MAX_CHARS must be >= 1")
+if RAG_QUERY_REWRITE_TIMEOUT_SECONDS < 1:
+    raise ImproperlyConfigured("RAG_QUERY_REWRITE_TIMEOUT_SECONDS must be >= 1")
+
 # Reliability backstop for a lost Celery publish / never-reconciled indexing
 # attempt (rag.tasks.reconcile_dirty_rag_states, MED-264 Problem 7). How long
 # a DocumentIndexState row may sit with dirty_since set before the periodic
