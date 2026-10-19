@@ -179,3 +179,34 @@ class AnswerProjectQuestionTest(TestCase):
         self.assertIn('text', types)
         self.assertIn('done', types)
         mock_retrieve.assert_called_once_with(self.project.id, "What is this project about?")
+
+    @patch('agent.query_rewrite.rewrite_project_question', return_value='Why did we pick vendor A?')
+    @patch('agent.llm_client.call_llm')
+    @patch('rag.retrieval.retrieve_chunks')
+    def test_rewritten_question_is_searched_and_both_questions_are_in_the_prompt(
+        self, mock_retrieve, mock_llm, mock_rewrite,
+    ):
+        mock_retrieve.return_value = [_chunk(content='Vendor A was cheaper.')]
+        mock_llm.return_value = {'text': 'answer', 'usage': {'input': 1, 'output': 1}}
+
+        list(self.orch.answer_project_question('Why was that?'))
+
+        mock_rewrite.assert_called_once_with(self.session, self.project, 'Why was that?')
+        mock_retrieve.assert_called_once_with(self.project.id, 'Why did we pick vendor A?')
+        user_prompt = mock_llm.call_args.kwargs['user_prompt']
+        self.assertIn('Question to answer: Why did we pick vendor A?', user_prompt)
+        self.assertIn("User's exact wording: Why was that?", user_prompt)
+
+    @patch('agent.query_rewrite.rewrite_project_question', return_value='Why was that?')
+    @patch('agent.llm_client.call_llm')
+    @patch('rag.retrieval.retrieve_chunks')
+    def test_rewrite_fallback_uses_the_original_question(self, mock_retrieve, mock_llm, _rewrite):
+        mock_retrieve.return_value = [_chunk()]
+        mock_llm.return_value = {'text': 'answer', 'usage': {'input': 1, 'output': 1}}
+
+        list(self.orch.answer_project_question('Why was that?'))
+
+        mock_retrieve.assert_called_once_with(self.project.id, 'Why was that?')
+        user_prompt = mock_llm.call_args.kwargs['user_prompt']
+        self.assertIn('Question to answer: Why was that?', user_prompt)
+        self.assertIn("User's exact wording: Why was that?", user_prompt)

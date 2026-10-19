@@ -1786,12 +1786,19 @@ class AgentOrchestrator:
         "nothing relevant". Relevance is left entirely to the prompt-level
         abstention instruction below; no threshold is introduced yet pending
         eval data on real no-answer questions.
+
+        The search text is the rewritten question when earlier turns exist.
+        A rewrite that falls back leaves both retrieval and the answer
+        prompt on the original question.
         """
         from rag.retrieval import retrieve_chunks
+        from agent.query_rewrite import rewrite_project_question
         from .llm_client import call_llm as _call_llm_unified
 
+        search_question = rewrite_project_question(self.session, self.project, message)
+
         try:
-            retrieved = retrieve_chunks(self.project.id, message)
+            retrieved = retrieve_chunks(self.project.id, search_question)
         except Exception as e:
             logger.error(f"Project RAG retrieval failed: {e}")
             yield {"type": "error", "content": "Failed to search project documents. Please try again."}
@@ -1814,12 +1821,17 @@ class AgentOrchestrator:
         )
         system_prompt = (
             "You are a helpful assistant embedded in a project management platform. "
-            "Answer the user's question using ONLY the numbered context excerpts below, "
+            "Answer the question in 'Question to answer' using ONLY the numbered context excerpts below, "
             "drawn from this project's meetings, drafts, and retrospectives. "
+            "'User's exact wording' is how the user phrased it. "
             "Cite sources inline as [n] matching the excerpt numbers. "
             "If the retrieved context does not support the answer, say so instead of guessing."
         )
-        user_prompt = f"Context:\n{context_block}\n\nUser question: {message}"
+        user_prompt = (
+            f"Context:\n{context_block}\n\n"
+            f"Question to answer: {search_question}\n"
+            f"User's exact wording: {message}"
+        )
 
         try:
             result = _call_llm_unified(
