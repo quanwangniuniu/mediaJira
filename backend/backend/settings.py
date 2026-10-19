@@ -1036,6 +1036,10 @@ GOOGLE_CALENDAR_OAUTH_REDIRECT_URI = config(
     'GOOGLE_CALENDAR_OAUTH_REDIRECT_URI',
     default='http://localhost:8000/api/google-calendar/callback/',
 ).strip()
+GOOGLE_DOCS_OAUTH_REDIRECT_URI = config(
+    'GOOGLE_DOCS_OAUTH_REDIRECT_URI',
+    default='http://localhost:8000/api/google-docs/callback/',
+).strip()   
 
 # Notion OAuth Configuration
 NOTION_OAUTH_CLIENT_ID = config('NOTION_CLIENT_ID', default='').strip()

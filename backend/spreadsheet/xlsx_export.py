@@ -151,6 +151,11 @@ def build_sheet_workbook(sheet) -> bytes:
         if is_sparkline(cell.raw_input):
             sparkline_cells.append(cell)
             continue  # the chart is added below; never write its JSON payload
+            
+        raw = (cell.raw_input or "").strip()
+        if raw.startswith("="):
+            worksheet.cell(row=row, column=col, value=raw)
+            continue
         value = _cell_export_value(cell)
         if value is not None:
             worksheet.cell(row=row, column=col, value=value)

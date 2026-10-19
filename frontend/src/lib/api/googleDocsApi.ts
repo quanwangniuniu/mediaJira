@@ -1,4 +1,6 @@
-import api from "../api";
+import api, { SYNC_TIMEOUT_MS } from "../api";
+import type { GoogleSheetCell } from '@/components/spreadsheets/google_sheet_style_import';
+import type { GoogleSheetExportFormat } from '@/components/spreadsheets/google_sheet_style_export';
 
 export interface GoogleDocsStatus {
   connected: boolean;
@@ -61,17 +63,26 @@ export const googleDocsApi = {
   },
 
   importFromGoogleSheets: async (sheetUrl: string) => {
-    const response = await api.post("/api/google-docs/sheets/import/", {
-      sheet_url: sheetUrl,
-    });
-    return response.data as { title: string; matrix: string[][] };
+    const response = await api.post(
+      "/api/google-docs/sheets/import/", 
+      { sheet_url: sheetUrl },
+      { timeout: SYNC_TIMEOUT_MS }  
+    );
+
+    return response.data as {
+      title: string;
+      matrix: string[][];
+      cells?: GoogleSheetCell[];
+      default_font_size?: number | null;
+    };
   },
 
-  exportToGoogleSheets: async (title: string, matrix: string[][]) => {
-    const response = await api.post("/api/google-docs/sheets/export/", {
-      title,
-      matrix,
-    });
+  exportToGoogleSheets: async (title: string, matrix: string[][], formats: GoogleSheetExportFormat[] = []) => {
+    const response = await api.post(
+      "/api/google-docs/sheets/export/", 
+      { title, matrix, formats },
+      { timeout: SYNC_TIMEOUT_MS }
+    );
     return response.data as { spreadsheet_id: string; url: string };
   },
 };

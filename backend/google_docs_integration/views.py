@@ -327,7 +327,7 @@ class GoogleSheetsImportView(APIView):
         spreadsheet_id = match.group(1) if match else sheet_url.strip()
 
         try:
-            title, matrix = run_google_api_with_token_retry(
+            title, matrix, cells, default_font_size = run_google_api_with_token_retry(
                 connection, lambda token: fetch_google_sheet(spreadsheet_id, token)
             )
         except requests.HTTPError as exc:
@@ -337,7 +337,10 @@ class GoogleSheetsImportView(APIView):
                 {"error": "Google Sheets service is temporarily unavailable. Please try again."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
-        return Response({"title": title, "matrix": matrix}, status=status.HTTP_200_OK)
+        return Response(
+            {"title": title, "matrix": matrix, "cells": cells, "default_font_size": default_font_size,},
+            status=status.HTTP_200_OK,
+        )
 
 
 class GoogleSheetsExportView(APIView):
@@ -352,10 +355,11 @@ class GoogleSheetsExportView(APIView):
 
         title = serializer.validated_data.get("title") or "Exported Sheet"
         matrix = serializer.validated_data.get("matrix") or []
-
+        formats = serializer.validated_data.get("formats") or []    
+        
         try:
             result = run_google_api_with_token_retry(
-                connection, lambda token: export_to_google_sheet(title, matrix, token)
+                connection, lambda token: export_to_google_sheet(title, matrix, token, formats)
             )
         except requests.HTTPError as exc:
             return _google_api_error_response(exc)

@@ -27,6 +27,8 @@ import { ApplyHighlightParams } from '@/types/patterns';
 import BrandSelect from '@/components/ui/BrandSelect';
 import type { SheetPresenceUser } from '@/lib/sheetSocketStore';
 import { parseSheetStyles } from '@/components/spreadsheets/xlsx_style_import'; 
+import { mapGoogleSheetStyles } from '@/components/spreadsheets/google_sheet_style_import';
+import { buildGoogleSheetExport, type AppCellFormat, type ExportCell, type ExportHighlight } from '@/components/spreadsheets/google_sheet_style_export';
 
 export type SpreadsheetSelectionChange = {
   row: number;
@@ -4902,36 +4904,22 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         }
 
         if (parsed.sheetNames.length === 1) {
-          // Get the only worksheet name from the parsed XLSX file
-          const sheetname = parsed.sheetNames[0]; // added 
-          // Send the original XLSX file + sheet name to the backend.
-          // openpyxl reads the selected sheet's values and formatting.
+          const sheetname = parsed.sheetNames[0]; 
+          // ExcelJS reads this worksheet in the browser, including values and formatting.
           const preview = await parseSheetStyles(file, sheetname)
-
-          // Original behaviour:
-          // if there was only one sheet, use the values parsed by SheetJS
-          // and immediately import them.
-          // 
-          // const matrix = parsed.sheets[parsed.sheetNames[0]] || [];
-          // await runImportMatrix(matrix);
-
-          // New behaviour: - added
-          // save the cell values returned by openpyxl
-          await runImportMatrix(preview.matrix); // added - save the cell values that openpyxl found
-          // save the formatting/highlights returned by openpyxl
+          // Save the values ExcelJS extracted.
+          await runImportMatrix(preview.matrix);
+          // Save the formatting and highlights ExcelJS extracted.
           await applyImportedStyles(preview.format_ops, preview.highlight_ops);
-          
           toast.success('Import complete');
           return;
         }
 
-        // Multiple sheets:
-        // keep the parsed sheet information so the existing sheet picker can show the names
+        // Several worksheets: keep the names for the picker.
         setXlsxImport(parsed);
-        // Keep the original XLSX file while the user chooses a worksheet.
-        // It will be sent to the backend later after they confirm their selection.
+        // Keep the file until the user picks a worksheet. ExcelJS reads it in the browser after they confirm.
         setXlsxImportFile(file);  // added 
-        // Default the picker to the first worksheet
+        // Start the picker on the first worksheet.
         setSelectedXlsxSheet(parsed.sheetNames[0]);
 
 
@@ -4961,27 +4949,21 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   );
 
   const handleConfirmXlsxImport = useCallback(async () => {
-    // if (!xlsxImport || !selectedXlsxSheet) {
-    //   return;
-    // }
     if (!xlsxImportFile || !selectedXlsxSheet) {
       return;
-    }   // added 
+    }   
 
-    // const matrix = xlsxImport.sheets[selectedXlsxSheet] || [];
-    // added 
     try {
       setIsImporting(true);
       setImportProgress({ current: 0, total: 0 });
       const preview = await parseSheetStyles(xlsxImportFile, selectedXlsxSheet);
-
-
-      // await runImportMatrix(matrix);
-      await runImportMatrix(preview.matrix); // added save the cell values that openpyxl found
+      // Save the values ExcelJS extracted from the chosen worksheet.
+      await runImportMatrix(preview.matrix); 
+      // Save the formatting and highlights ExcelJS extracted.
       await applyImportedStyles(preview.format_ops, preview.highlight_ops); // added save the cell formating that openpyxl found
       toast.success('Import complete');
       setXlsxImport(null);
-      setXlsxImportFile(null); // added 
+      setXlsxImportFile(null); 
       setSelectedXlsxSheet('');
     } catch (error: any) {
       if (error?.name === 'AbortError') {
@@ -5013,12 +4995,14 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     if (!url) return;
     setSheetsImportLoading(true);
     try {
-      const { matrix } = await googleDocsApi.importFromGoogleSheets(url);
+      const imported = await googleDocsApi.importFromGoogleSheets(url);
+      const preview = mapGoogleSheetStyles(imported); 
       setSheetsImportModalOpen(false);
       setSheetsImportUrl('');
       setIsImporting(true);
       setImportProgress({ current: 0, total: 0 });
-      await runImportMatrix(matrix);
+      await runImportMatrix(preview.matrix);
+      await applyImportedStyles(preview.format_ops, preview.highlight_ops); // added save the cell formating that google sheets found
       toast.success('Google Sheets import complete');
     } catch (err: any) {
       const msg = err?.response?.data?.error || 'Google Sheets import failed. Please try again.';
@@ -5031,11 +5015,60 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   }, [sheetsImportUrl, runImportMatrix]);
 
   const handleExportGoogleSheets = useCallback(async () => {
-    const matrix = buildUsedRangeMatrix();
+    const exportCells: ExportCell[] = [];
+    cells.forEach((cell, key) => {
+      if (!cell.rawInput) return;
+      const { row, col } = parseCellKey(key);
+      exportCells.push({ row, column: col, raw: cell.rawInput });
+    });
+    
+    const exportFormats: Array<{ row: number; column: number; format: AppCellFormat }> = [];
+    cellFormats.forEach((format, key) => {
+      const { row, col } = parseCellKey(key);
+      exportFormats.push({
+        row,
+        column: col,
+        format: {
+          bold: format.bold,
+          italic: format.italic,
+          strikethrough: format.strikethrough,
+          textColor: format.textColor,
+          fontFamily: format.fontFamily,
+          fontSize: format.fontSize,
+          numberFormat: format.numberFormat
+            ? {
+                type: format.numberFormat.type,
+                currencyCode: format.numberFormat.currencyCode ?? null,
+                decimalPlaces: format.numberFormat.decimalPlaces ?? null,
+              }
+            : null,
+        },
+      });
+    });
+
+
+    const exportHighlights: ExportHighlight[] = [];
+    cellHighlights.forEach((color, key) => {
+      const { row, col } = parseCellKey(key);
+      exportHighlights.push({ scope: 'CELL', row, column: col, color });
+    });
+    Object.entries(rowHighlights).forEach(([row, color]) => {
+      exportHighlights.push({ scope: 'ROW', row: Number(row), color });
+    });
+    Object.entries(colHighlights).forEach(([column, color]) => {
+      exportHighlights.push({ scope: 'COLUMN', column: Number(column), color });
+    });
+    const { matrix, formats } = buildGoogleSheetExport({
+      cells: exportCells,
+      formats: exportFormats,
+      highlights: exportHighlights,
+    });
+    
     const title = getExportFileBaseName();
     const toastId = toast.loading('Exporting to Google Sheets...');
+
     try {
-      const result = await googleDocsApi.exportToGoogleSheets(title, matrix);
+      const result = await googleDocsApi.exportToGoogleSheets(title, matrix, formats);
       toast.dismiss(toastId);
       toast.success(
         (t) => (
@@ -5059,7 +5092,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       const msg = err?.response?.data?.error || 'Google Sheets export failed. Please try again.';
       toast.error(msg);
     }
-  }, [buildUsedRangeMatrix, getExportFileBaseName]);
+  }, [cells, cellFormats, cellHighlights, rowHighlights, colHighlights, getExportFileBaseName]);
 
   useEffect(() => {
     if (!exportMenuOpen) return;

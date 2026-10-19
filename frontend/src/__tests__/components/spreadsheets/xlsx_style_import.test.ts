@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
 import { parseSheetStyles } from '@/components/spreadsheets/xlsx_style_import';
+import { parseNumberFormat, parseSheetStyles } from '@/components/spreadsheets/xlsx_style_import';
 
 function xlsxFile(bytes: Uint8Array): File {
   const file = new File([new Uint8Array(bytes)], 'book.xlsx');
@@ -335,16 +336,9 @@ describe('xlsx import number formats', () => {
       currency_code: 'JPY',
       decimal_places: 0,
     });
-    expect(formatAt(format_ops, 4, 0)?.number_format).toEqual({
-      type: 'NUMBER',
-      currency_code: null,
-      decimal_places: 2,
-    });
-    expect(formatAt(format_ops, 5, 0)?.number_format).toEqual({
-      type: 'NUMBER',
-      currency_code: null,
-      decimal_places: 1,
-    });
+    expect(formatAt(format_ops, 4, 0)?.number_format ?? null).toBeNull();
+    expect(formatAt(format_ops, 5, 0)?.number_format ?? null).toBeNull();
+
   });
 });
 
@@ -397,5 +391,33 @@ describe('xlsx import rich text and other cell objects', () => {
       sheet.getCell('A1').value = { error: '#DIV/0!' };
     });
     expect(matrix[0][0]).toBe('#DIV/0!');
+  });
+});
+
+describe('parseNumberFormat currencies', () => {
+  it('keeps the four supported currencies and does not treat a dong token as USD', () => {
+    expect(parseNumberFormat('$#,##0.00')).toEqual({ type: 'CURRENCY', currency_code: 'USD', decimal_places: 2 });
+    expect(parseNumberFormat('[$$-409]#,##0.00')).toEqual({ type: 'CURRENCY', currency_code: 'USD', decimal_places: 2 });
+    expect(parseNumberFormat('£#,##0.00')).toEqual({ type: 'CURRENCY', currency_code: 'GBP', decimal_places: 2 });
+    expect(parseNumberFormat('[$£-809]#,##0.00')).toEqual({ type: 'CURRENCY', currency_code: 'GBP', decimal_places: 2 });
+    expect(parseNumberFormat('€#,##0.00')).toEqual({ type: 'CURRENCY', currency_code: 'EUR', decimal_places: 2 });
+    expect(parseNumberFormat('[$€-407]#,##0.00')).toEqual({ type: 'CURRENCY', currency_code: 'EUR', decimal_places: 2 });
+    expect(parseNumberFormat('¥#,##0')).toEqual({ type: 'CURRENCY', currency_code: 'JPY', decimal_places: 0 });
+    expect(parseNumberFormat('[$¥-411]#,##0')).toEqual({ type: 'CURRENCY', currency_code: 'JPY', decimal_places: 0 });
+    expect(parseNumberFormat('[$¥]#,##0')).toEqual({ type: 'CURRENCY', currency_code: 'JPY', decimal_places: 0 });
+    expect(parseNumberFormat('[$$-C09]#,##0.00')).toBeNull();
+    expect(parseNumberFormat('[$$-1009]#,##0.0')).toBeNull();
+    expect(parseNumberFormat('"AUD" #,##0.00')).toBeNull();
+    expect(parseNumberFormat('[$₫]#,##0')).toBeNull();
+    expect(parseNumberFormat('[$₫-42A]#,##0')).toBeNull();
+  });
+
+  it('keeps a dong amount as a number and drops the currency format', async () => {
+    const { matrix, format_ops } = await parse((sheet) => {
+      sheet.getCell('A1').value = 80;
+      sheet.getCell('A1').numFmt = '[$₫]#,##0';
+    });
+    expect(matrix[0][0]).toBe('80');
+    expect(formatAt(format_ops, 0, 0)?.number_format ?? null).toBeNull();
   });
 });
