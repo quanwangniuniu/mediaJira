@@ -151,7 +151,7 @@ describe('xlsx import text colours', () => {
     expect(formatAt(format_ops, 0, 0)?.text_color).toBe('#DC2626');
   });
 
-  it('snaps a nearby colour to the nearest toolbar colour', async () => {
+  it('keeps a pure red text colour', async () => {
     const { format_ops } = await parse((sheet) => {
       sheet.getCell('A1').value = 'pure red';
       sheet.getCell('A1').font = { color: { argb: 'FFFF0000' } };
@@ -159,7 +159,7 @@ describe('xlsx import text colours', () => {
     expect(formatAt(format_ops, 0, 0)?.text_color).toBe('#FF0000');
   });
 
-  it('snaps a dark blue text colour to blue', async () => {
+  it('keeps a dark blue text colour', async () => {
     const { format_ops } = await parse((sheet) => {
       sheet.getCell('A1').value = 'navy';
       sheet.getCell('A1').font = { color: { argb: 'FF376092' } };
@@ -192,7 +192,7 @@ describe('xlsx import fills', () => {
     expect(highlightAt(highlight_ops, 0, 0)?.color).toBe('#FEF08A');
   });
 
-  it('snaps a nearby fill to the nearest highlighter', async () => {
+  it('keeps a nearby yellow fill', async () => {
     const { highlight_ops } = await parse((sheet) => {
       sheet.getCell('A1').value = 'near yellow';
       sheet.getCell('A1').fill = {
@@ -204,7 +204,7 @@ describe('xlsx import fills', () => {
     expect(highlightAt(highlight_ops, 0, 0)?.color).toBe('#FDE047');
   });
 
-  it('snaps a dark blue fill to the blue highlighter', async () => {
+  it('keeps a dark blue fill', async () => {
     const { highlight_ops } = await parse((sheet) => {
       sheet.getCell('A1').value = 'navy';
       sheet.getCell('A1').fill = {
@@ -216,7 +216,7 @@ describe('xlsx import fills', () => {
     expect(highlightAt(highlight_ops, 0, 0)?.color).toBe('#376092');
   });
 
-  it('snaps a distant fill because there is no distance cutoff', async () => {
+  it('keeps a pure red fill', async () => {
     const { highlight_ops } = await parse((sheet) => {
       sheet.getCell('A1').value = 'red fill';
       sheet.getCell('A1').fill = {
