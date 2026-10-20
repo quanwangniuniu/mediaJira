@@ -74,6 +74,9 @@ export const googleDocsApi = {
       matrix: string[][];
       cells?: GoogleSheetCell[];
       default_font_size?: number | null;
+      google_spreadsheet_id: string;
+      google_sheet_id: number | null;
+      worksheet_name: string;
     };
   },
 

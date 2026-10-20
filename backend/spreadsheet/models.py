@@ -496,6 +496,39 @@ class SpreadsheetCellFormat(TimeStampedModel):
     def __str__(self):
         return f"Cell format at ({self.row_index},{self.column_index}) on sheet {self.sheet_id}"
 
+class SheetImportSource(TimeStampedModel):
+    """Original Excel file or Google Sheet linked to one imported web sheet."""
+
+    class Origin(models.TextChoices):
+        EXCEL = 'EXCEL', 'Excel'
+        GOOGLE = 'GOOGLE', 'Google'
+
+    sheet = models.OneToOneField(
+        Sheet,
+        on_delete=models.CASCADE,
+        related_name='import_source',
+    )
+    origin = models.CharField(max_length=10, choices=Origin.choices)
+    file = models.FileField(
+        upload_to='spreadsheet/sources/%Y/%m/%d/',
+        max_length=500,
+        null=True,
+        blank=True,
+    )
+    original_filename = models.CharField(max_length=255, blank=True, default='')
+    worksheet_name = models.CharField(max_length=200)
+    google_spreadsheet_id = models.CharField(max_length=128, blank=True, default='')
+    google_sheet_id = models.IntegerField(null=True, blank=True)
+    source_url = models.TextField(blank=True, default='')
+    baseline = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['sheet', 'origin']),
+        ]
+
+    def __str__(self):
+        return f"{self.origin} source for sheet {self.sheet_id}"
 
 class WorkflowPattern(TimeStampedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

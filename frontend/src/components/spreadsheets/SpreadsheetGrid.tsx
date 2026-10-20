@@ -4511,7 +4511,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     async (matrix: string[][]) => {
       if (!matrix.length) {
         toast.error('Import file is empty');
-        return;
+        return false;
       }
 
       setHydrationStatus('importing');
@@ -4538,7 +4538,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       });
       if (!operations.length) {
         toast.error('No non-empty cells found to import');
-        return;
+        return false;
       }
 
       // Calculate required dimensions (1-based to 0-based conversion: maxRow/maxCol are already 0-based from buildCellOperations)
@@ -4548,11 +4548,11 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       // Check if import exceeds max limits
       if (requiredRows > MAX_ROWS) {
         toast.error(`Import requires ${requiredRows} rows, but maximum is ${MAX_ROWS}. Please split the file.`);
-        return;
+        return false;
       }
       if (requiredCols > MAX_COLUMNS) {
         toast.error(`Import requires ${requiredCols} columns, but maximum is ${MAX_COLUMNS}. Please split the file.`);
-        return;
+        return false;
       }
 
       // Step 1: update the grid's local dimensions synchronously so optimistic apply
@@ -4565,7 +4565,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       );
       if (wasClamped) {
         toast.error('Failed to resize grid for import');
-        return;
+        return false;
       }
 
       // Step 2: record the reverse history entry (prev -> next) so the user can undo,
@@ -4646,7 +4646,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         }
         importAbortControllerRef.current = null;
         toast.error('Failed to resize grid for import');
-        return;
+        return false;
       }
 
       // Error reporting strategy:
@@ -4747,6 +4747,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           }
         }
         importAbortControllerRef.current = null;
+        return true;
       } catch (error: any) {
         importAbortControllerRef.current = null;
         setHydrationStatus('ready');
@@ -4787,7 +4788,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
               true
             );
             // Return successfully - caller will show success toast
-            return;
+            return true;
           } else {
             // Import didn't succeed, show network error
             console.log('[Import] Reconciliation failed - import did not complete');
@@ -4917,9 +4918,18 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           // ExcelJS reads this worksheet in the browser, including values and formatting.
           const preview = await parseSheetStyles(file, sheetname)
           // Save the values ExcelJS extracted.
-          await runImportMatrix(preview.matrix);
+          const imported = await runImportMatrix(preview.matrix);
+          if (!imported) return;
           // Save the formatting and highlights ExcelJS extracted.
           await applyImportedStyles(preview.format_ops, preview.highlight_ops);
+          try {
+            // NEW: file is still the local argument; this path never uses xlsxImportFile
+            await SpreadsheetAPI.saveExcelImportSource(spreadsheetId, sheetId, file, sheetname);
+          } catch (sourceError) {
+            console.error('[Import] Source save failed:', sourceError);
+            // toast('Import complete, but the original Excel file was not stored. Export will rebuild from the web sheet.');
+            // return;
+          }
           toast.success('Import complete');
           return;
         }
@@ -4967,9 +4977,23 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       setImportProgress({ current: 0, total: 0 });
       const preview = await parseSheetStyles(xlsxImportFile, selectedXlsxSheet);
       // Save the values ExcelJS extracted from the chosen worksheet.
-      await runImportMatrix(preview.matrix); 
+      const imported = await runImportMatrix(preview.matrix);
+      if (!imported) return;
       // Save the formatting and highlights ExcelJS extracted.
       await applyImportedStyles(preview.format_ops, preview.highlight_ops); // added save the cell formating that openpyxl found
+      try {
+        // NEW: xlsxImportFile is cleared only after this attempt
+        await SpreadsheetAPI.saveExcelImportSource(
+          spreadsheetId,
+          sheetId,
+          xlsxImportFile,
+          selectedXlsxSheet,
+        );
+        // toast.success('Import complete');
+      } catch (sourceError) {
+        console.error('[Import] Source save failed:', sourceError);
+        // toast('Import complete, but the original Excel file was not stored. Export will rebuild from the web sheet.');
+      }
       toast.success('Import complete');
       setXlsxImport(null);
       setXlsxImportFile(null); 
@@ -4991,11 +5015,12 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       setIsImporting(false);
       setImportProgress(null);
     }
-  }, [xlsxImport, selectedXlsxSheet, runImportMatrix, parseImportError, spreadsheetId, sheetId]);
+  }, [xlsxImport, xlsxImportFile, selectedXlsxSheet, runImportMatrix, parseImportError, spreadsheetId, sheetId]);
 
   const handleCancelXlsxImport = useCallback(() => {
     importAbortControllerRef.current?.abort();
     setXlsxImport(null);
+    setXlsxImportFile(null);
     setSelectedXlsxSheet('');
   }, []);
 
@@ -5010,8 +5035,23 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       setSheetsImportUrl('');
       setIsImporting(true);
       setImportProgress({ current: 0, total: 0 });
-      await runImportMatrix(preview.matrix);
+      const importedOk = await runImportMatrix(preview.matrix);
+      if (!importedOk) return;
       await applyImportedStyles(preview.format_ops, preview.highlight_ops); // added save the cell formating that google sheets found
+      try {
+        if (imported.google_spreadsheet_id && imported.google_sheet_id != null && imported.worksheet_name) {
+          await SpreadsheetAPI.saveGoogleImportSource(spreadsheetId, sheetId, {
+            google_spreadsheet_id: imported.google_spreadsheet_id,
+            google_sheet_id: imported.google_sheet_id,
+            worksheet_name: imported.worksheet_name,
+            source_url: url,
+          });
+        } else {
+          console.error('[Import] Google source ids were missing from the import response.');
+        }
+      } catch (sourceError) {
+        console.error('[Import] Google source save failed:', sourceError);
+      }
       toast.success('Google Sheets import complete');
     } catch (err: any) {
       const msg = err?.response?.data?.error || 'Google Sheets import failed. Please try again.';
@@ -5021,7 +5061,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       setIsImporting(false);
       setImportProgress(null);
     }
-  }, [sheetsImportUrl, runImportMatrix]);
+  }, [sheetsImportUrl, runImportMatrix, spreadsheetId, sheetId]);
 
   const handleExportGoogleSheets = useCallback(async () => {
     const exportCells: ExportCell[] = [];

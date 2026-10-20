@@ -422,7 +422,18 @@ class TestGoogleSheetsImportView:
 
     def test_successful_import_returns_matrix(self, api_client, connection):
         matrix = [["A", "B"], ["1", "2"]]
-        with patch("google_docs_integration.views.run_google_api_with_token_retry", return_value=("My Sheet", matrix, [], None)):
+        with patch(
+            "google_docs_integration.views.run_google_api_with_token_retry",
+            return_value={
+                "title": "My Sheet",
+                "matrix": matrix,
+                "cells": [],
+                "default_font_size": None,
+                "worksheet_name": "Sheet1",
+                "google_sheet_id": 0,
+                "google_spreadsheet_id": "sheet123",
+            },
+        ):
             response = api_client.post(
                 SHEETS_IMPORT_URL,
                 {"sheet_url": "https://docs.google.com/spreadsheets/d/sheet123/edit"},
@@ -432,17 +443,58 @@ class TestGoogleSheetsImportView:
         assert response.data["title"] == "My Sheet"
         assert response.data["matrix"] == matrix
         assert response.data["cells"] == []
+        assert response.data["google_spreadsheet_id"] == "sheet123"
+        assert response.data["google_sheet_id"] == 0
+        assert response.data["worksheet_name"] == "Sheet1"
 
     def test_sheet_url_extracts_id(self, api_client, connection):
         """Ensure URL regex extracts spreadsheet ID correctly."""
         with patch("google_docs_integration.views.run_google_api_with_token_retry") as mock_api:
-            mock_api.return_value = ("Sheet", [], [], None)
+            mock_api.return_value = {
+                "title": "Sheet",
+                "matrix": [],
+                "cells": [],
+                "default_font_size": None,
+                "worksheet_name": "Sheet1",
+                "google_sheet_id": 0,
+                "google_spreadsheet_id": "mySheetId123",
+}
             response = api_client.post(
                 SHEETS_IMPORT_URL,
                 {"sheet_url": "https://docs.google.com/spreadsheets/d/mySheetId123/edit#gid=0"},
                 format="json",
             )
         assert response.status_code == status.HTTP_200_OK
+        assert response.data["google_spreadsheet_id"] == "mySheetId123"
+        assert response.data["google_sheet_id"] == 0
+        assert response.data["worksheet_name"] == "Sheet1"
+
+    def test_fetch_google_sheet_reads_first_tab_id(self):
+        from google_docs_integration.services import fetch_google_sheet
+
+        meta = {
+            "properties": {"title": "Workbook", "defaultFormat": {"textFormat": {"fontSize": 10}}},
+            "sheets": [
+                {"properties": {"title": "Budget", "sheetId": 42}},
+                {"properties": {"title": "Other", "sheetId": 99}},
+            ],
+        }
+        grid = {"sheets": [{"data": [{"rowData": []}]}]}
+
+        def fake_get(url, headers=None, params=None, timeout=None):
+            response = MagicMock()
+            response.raise_for_status.return_value = None
+            response.json.return_value = grid if params and params.get("includeGridData") else meta
+            return response
+
+        with patch("google_docs_integration.services.requests.get", side_effect=fake_get) as mocked:
+            result = fetch_google_sheet("sheet123", "token")
+
+        assert result["worksheet_name"] == "Budget"
+        assert result["google_sheet_id"] == 42
+        assert result["google_spreadsheet_id"] == "sheet123"
+        range_call = mocked.call_args_list[1]
+        assert range_call.kwargs["params"]["ranges"] == "Budget"
 
     def test_grid_parser_keeps_raw_numbers_and_user_formats(self):
         from google_docs_integration.services import _grid_to_matrix_and_cells

@@ -434,7 +434,7 @@ def fetch_google_sheet(spreadsheet_id: str, access_token: str) -> tuple[str, lis
     meta_response = requests.get(
         f"{GOOGLE_SHEETS_URL}/{spreadsheet_id}",
         headers={"Authorization": f"Bearer {access_token}"},
-        params={"fields": "properties.title,properties.defaultFormat.textFormat.fontSize,sheets.properties.title"},
+        params={"fields":"properties.title,properties.defaultFormat.textFormat.fontSize,sheets.properties(title,sheetId)"},
         timeout=20,
     )
     meta_response.raise_for_status()
@@ -442,7 +442,10 @@ def fetch_google_sheet(spreadsheet_id: str, access_token: str) -> tuple[str, lis
     title = metadata.get("properties", {}).get("title") or "Imported Sheet"
     sheets = metadata.get("sheets", [])
     first_sheet = sheets[0]["properties"]["title"] if sheets else "Sheet1"
-
+    first_properties = sheets[0]["properties"] if sheets else {}
+    worksheet_name = first_properties.get("title") or "Sheet1"
+    google_sheet_id = first_properties.get("sheetId")
+    
     grid_response = requests.get(
         f"{GOOGLE_SHEETS_URL}/{spreadsheet_id}",
         headers={"Authorization": f"Bearer {access_token}"},
@@ -456,7 +459,15 @@ def fetch_google_sheet(spreadsheet_id: str, access_token: str) -> tuple[str, lis
     grid_response.raise_for_status()
     default_font_size = _default_font_size(metadata)
     matrix, cells = _grid_to_matrix_and_cells(grid_response.json())
-    return title, matrix, cells, default_font_size
+    return {
+        "title": title,
+        "matrix": matrix,
+        "cells": cells,
+        "default_font_size": default_font_size,
+        "worksheet_name": worksheet_name,
+        "google_sheet_id": google_sheet_id,
+        "google_spreadsheet_id": spreadsheet_id,
+    }
 
 def _repeat_cell(sheet_id: int, item: dict) -> dict:
     fmt = item["userEnteredFormat"]

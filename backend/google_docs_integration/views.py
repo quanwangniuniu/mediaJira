@@ -327,7 +327,7 @@ class GoogleSheetsImportView(APIView):
         spreadsheet_id = match.group(1) if match else sheet_url.strip()
 
         try:
-            title, matrix, cells, default_font_size = run_google_api_with_token_retry(
+            payload = run_google_api_with_token_retry(
                 connection, lambda token: fetch_google_sheet(spreadsheet_id, token)
             )
         except requests.HTTPError as exc:
@@ -338,7 +338,16 @@ class GoogleSheetsImportView(APIView):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         return Response(
-            {"title": title, "matrix": matrix, "cells": cells, "default_font_size": default_font_size,},
+            {
+                "title": payload["title"],
+                "matrix": payload["matrix"],
+                "cells": payload["cells"],
+                "default_font_size": payload["default_font_size"],
+                # NEW
+                "google_spreadsheet_id": payload["google_spreadsheet_id"],
+                "google_sheet_id": payload["google_sheet_id"],
+                "worksheet_name": payload["worksheet_name"],
+            },
             status=status.HTTP_200_OK,
         )
 
