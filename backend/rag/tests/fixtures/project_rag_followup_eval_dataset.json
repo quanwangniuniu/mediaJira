@@ -1,0 +1,57 @@
+{
+  "dataset_name": "project_rag_followup_eval_dataset",
+  "dataset_version": "1.0.0",
+  "created_date": "2026-10-20",
+  "description": "Follow-up / query-rewrite smoke eval for MED-264 project RAG. Reuses source_ref values from project_rag_eval_dataset.json (2.1.0); this file does not redefine sources. Questions are conversational follow-ups scored under three retrieval arms (A/B/C). First version is a small smoke set (about 8-12 questions once filled), not a broad reliability proof.",
+  "source_corpus": {
+    "fixture": "project_rag_eval_dataset.json",
+    "dataset_version": "2.1.0",
+    "note": "Harness must seed/index that corpus, then resolve expected_sources[].source_ref against it. Do not copy sources into this file."
+  },
+  "arms": {
+    "A": {
+      "retrieve_with": "question",
+      "purpose": "Baseline without rewrite: how well does the raw short follow-up retrieve?"
+    },
+    "B": {
+      "retrieve_with": "expected_rewrite",
+      "purpose": "Upper-bound reference only: if the question were completed correctly by a human, how much can retrieval improve? B must not be reported as proof that rewrite_project_question works."
+    },
+    "C": {
+      "retrieve_with": "rewrite_project_question()",
+      "purpose": "Real rewrite path. Timeouts and other fallbacks that return the original question still count toward C's score."
+    }
+  },
+  "scoring_notes": "Rank each arm with the same evidence-aware single-source / multi-source rules as the main project RAG eval (expected_sources + evidence spans). Do not merge follow-up results into the 2.1.0 Hit@K / MRR aggregates. expected_rewrite is a human reference for arm B and for qualitative review of C; C need not match it verbatim if meaning and referents are preserved. Reports must list per-question A→C improve/regress, rewrite latency, and fallback counts, and must state which arms the run actually executed.",
+  "case_kinds": [
+    "anaphoric",
+    "already_complete",
+    "topic_shift",
+    "underspecified"
+  ],
+  "case_kind_notes": {
+    "anaphoric": "Follow-up needs prior turns to resolve references (e.g. that / she / why was that).",
+    "already_complete": "Current question is already self-contained; rewrite should leave it alone or nearly so, and retrieval must not regress.",
+    "topic_shift": "Current question changes topic; rewrite must not wrongly graft the previous turn.",
+    "underspecified": "Prior turns do not clearly identify the referent; rewrite must not invent facts."
+  },
+  "question_fields": {
+    "id": "Stable question id, e.g. fq01.",
+    "case_kind": "One of case_kinds.",
+    "question_type": "single-source | multi-source | no-answer — same meaning as the main fixture; drives which scorer arm results use.",
+    "include_in_followup_metrics": "true for questions that feed the follow-up aggregate; false for diagnostic-only rows if any.",
+    "history": "Completed prior turns only (not the current question). Each item: {role: user|assistant, content: string}. Oldest first.",
+    "question": "Current user follow-up text (arm A query; also the input to rewrite_project_question for arm C).",
+    "expected_rewrite": "Human-written standalone question for arm B. Reference only; not a verbatim target for C.",
+    "expected_sources": "Same shape as project_rag_eval_dataset.json: [{source_type, source_ref, evidence: [span, ...]}]. source_ref must exist in the source corpus.",
+    "tags": "Optional free-form tags for filtering in reports.",
+    "notes": "Optional author notes about intent or known traps."
+  },
+  "questions": [],
+  "expected_case_kind_counts": {
+    "anaphoric": 0,
+    "already_complete": 0,
+    "topic_shift": 0,
+    "underspecified": 0
+  }
+}
