@@ -4,12 +4,13 @@ project-document RAG fallback (MED-264 agent integration).
 Follows the same pattern as test_draft_context.py: real ORM (Django
 TestCase), mock only the retrieval call and the LLM call, never hit Gemini.
 """
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from agent.models import AgentSession
+from agent.models import AgentMessage, AgentSession
 from agent.services import AgentOrchestrator
 from core.models import Organization, Project
 from rag.retrieval import RetrievedChunk
@@ -28,6 +29,10 @@ def _chunk(source_id='1', chunk_index=0, content='chunk text', similarity=0.9, s
     )
 
 
+def _llm_ok(text='answer'):
+    return {'text': text, 'usage': {'input': 1, 'output': 1}}
+
+
 class AnswerProjectQuestionTest(TestCase):
     def setUp(self):
         self.org = Organization.objects.create(name='RAG Org')
@@ -39,6 +44,26 @@ class AnswerProjectQuestionTest(TestCase):
         )
         self.session = AgentSession.objects.create(user=self.user, project=self.project)
         self.orch = AgentOrchestrator(self.user, self.project, self.session)
+        self.when = datetime(2026, 10, 19, tzinfo=timezone.utc)
+
+    def _add_message(self, role, content, *, minutes=0):
+        message = AgentMessage.objects.create(
+            session=self.session,
+            role=role,
+            content=content,
+            message_type='text',
+        )
+        AgentMessage.objects.filter(pk=message.pk).update(
+            created_at=self.when + timedelta(minutes=minutes),
+        )
+        return message
+
+    def _seed_follow_up(self, current_question='Why was that?'):
+        """Earlier completed turn plus the current question already persisted."""
+        self._add_message('user', 'Which vendor did we pick?', minutes=0)
+        self._add_message('assistant', 'Vendor A.', minutes=1)
+        self._add_message('user', current_question, minutes=2)
+        return current_question
 
     @patch('agent.llm_client.call_llm')
     @patch('rag.retrieval.retrieve_chunks')
@@ -210,3 +235,74 @@ class AnswerProjectQuestionTest(TestCase):
         user_prompt = mock_llm.call_args.kwargs['user_prompt']
         self.assertIn('Question to answer: Why was that?', user_prompt)
         self.assertIn("User's exact wording: Why was that?", user_prompt)
+
+    @patch('agent.llm_client.call_llm')
+    @patch('rag.retrieval.retrieve_chunks')
+    def test_no_history_skips_rewrite_and_searches_the_original_question(
+        self, mock_retrieve, mock_llm,
+    ):
+        question = 'What happened in the last meeting?'
+        self._add_message('user', question, minutes=0)
+        mock_retrieve.return_value = [_chunk()]
+        mock_llm.return_value = _llm_ok()
+
+        chunks = list(self.orch.answer_project_question(question))
+
+        mock_retrieve.assert_called_once_with(self.project.id, question)
+        mock_llm.assert_called_once()
+        self.assertEqual(mock_llm.call_args.kwargs['temperature'], 0.3)
+        self.assertEqual(chunks[0]['type'], 'text')
+
+    @patch('agent.llm_client.call_llm')
+    @patch('rag.retrieval.retrieve_chunks')
+    def test_history_rewrites_then_searches_and_keeps_both_questions_in_the_prompt(
+        self, mock_retrieve, mock_llm,
+    ):
+        question = self._seed_follow_up()
+        rewritten = 'Why did we pick vendor A?'
+        mock_retrieve.return_value = [_chunk(content='Vendor A was cheaper.')]
+        mock_llm.side_effect = [_llm_ok(rewritten), _llm_ok('Because it was cheaper.')]
+
+        chunks = list(self.orch.answer_project_question(question))
+
+        self.assertEqual(mock_llm.call_count, 2)
+        rewrite_call, answer_call = mock_llm.call_args_list
+        self.assertEqual(rewrite_call.kwargs['temperature'], 0)
+        self.assertEqual(answer_call.kwargs['temperature'], 0.3)
+        mock_retrieve.assert_called_once_with(self.project.id, rewritten)
+        user_prompt = answer_call.kwargs['user_prompt']
+        self.assertIn(f'Question to answer: {rewritten}', user_prompt)
+        self.assertIn(f"User's exact wording: {question}", user_prompt)
+        self.assertEqual(chunks[0]['type'], 'text')
+        self.assertEqual(chunks[0]['content'], 'Because it was cheaper.')
+
+    @patch('agent.llm_client.call_llm')
+    @patch('rag.retrieval.retrieve_chunks')
+    def test_rewrite_timeout_falls_back_and_still_answers(self, mock_retrieve, mock_llm):
+        question = self._seed_follow_up()
+        mock_retrieve.return_value = [_chunk()]
+        mock_llm.side_effect = [TimeoutError('rewrite timed out'), _llm_ok('fallback answer')]
+
+        chunks = list(self.orch.answer_project_question(question))
+
+        mock_retrieve.assert_called_once_with(self.project.id, question)
+        self.assertEqual(mock_llm.call_count, 2)
+        user_prompt = mock_llm.call_args_list[1].kwargs['user_prompt']
+        self.assertIn(f'Question to answer: {question}', user_prompt)
+        self.assertIn(f"User's exact wording: {question}", user_prompt)
+        self.assertEqual(chunks[0]['type'], 'text')
+        self.assertEqual(chunks[0]['content'], 'fallback answer')
+
+    @patch('agent.llm_client.call_llm')
+    @patch('rag.retrieval.retrieve_chunks')
+    def test_empty_rewrite_falls_back_and_still_answers(self, mock_retrieve, mock_llm):
+        question = self._seed_follow_up()
+        mock_retrieve.return_value = [_chunk()]
+        mock_llm.side_effect = [_llm_ok(''), _llm_ok('fallback answer')]
+
+        chunks = list(self.orch.answer_project_question(question))
+
+        mock_retrieve.assert_called_once_with(self.project.id, question)
+        self.assertEqual(mock_llm.call_count, 2)
+        self.assertEqual(chunks[0]['type'], 'text')
+        self.assertEqual(chunks[0]['content'], 'fallback answer')
