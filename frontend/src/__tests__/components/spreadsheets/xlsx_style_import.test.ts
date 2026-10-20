@@ -156,7 +156,7 @@ describe('xlsx import text colours', () => {
       sheet.getCell('A1').value = 'pure red';
       sheet.getCell('A1').font = { color: { argb: 'FFFF0000' } };
     });
-    expect(formatAt(format_ops, 0, 0)?.text_color).toBe('#DC2626');
+    expect(formatAt(format_ops, 0, 0)?.text_color).toBe('#FF0000');
   });
 
   it('snaps a dark blue text colour to blue', async () => {
@@ -164,7 +164,7 @@ describe('xlsx import text colours', () => {
       sheet.getCell('A1').value = 'navy';
       sheet.getCell('A1').font = { color: { argb: 'FF376092' } };
     });
-    expect(formatAt(format_ops, 0, 0)?.text_color).toBe('#2563EB');
+    expect(formatAt(format_ops, 0, 0)?.text_color).toBe('#376092');
   });
 
   it('drops exact black and exact white', async () => {
@@ -201,7 +201,7 @@ describe('xlsx import fills', () => {
         fgColor: { argb: 'FFFDE047' },
       };
     });
-    expect(highlightAt(highlight_ops, 0, 0)?.color).toBe('#FEF08A');
+    expect(highlightAt(highlight_ops, 0, 0)?.color).toBe('#FDE047');
   });
 
   it('snaps a dark blue fill to the blue highlighter', async () => {
@@ -213,7 +213,7 @@ describe('xlsx import fills', () => {
         fgColor: { argb: 'FF376092' },
       };
     });
-    expect(highlightAt(highlight_ops, 0, 0)?.color).toBe('#BFDBFE');
+    expect(highlightAt(highlight_ops, 0, 0)?.color).toBe('#376092');
   });
 
   it('snaps a distant fill because there is no distance cutoff', async () => {
@@ -225,7 +225,7 @@ describe('xlsx import fills', () => {
         fgColor: { argb: 'FFFF0000' },
       };
     });
-    expect(highlightAt(highlight_ops, 0, 0)?.color).toBe('#FBCFE8');
+    expect(highlightAt(highlight_ops, 0, 0)?.color).toBe('#FF0000');
   });
 
   it('ignores a non-solid fill', async () => {

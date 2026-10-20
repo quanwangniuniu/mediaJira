@@ -12,8 +12,6 @@ export const FONT_FAMILY: Record<string, string> = {
 }
 
 export const FONT_SIZES = [9, 10, 11, 12, 14, 16, 18, 20, 24, 28]
-export const HIGHLIGHTS = ['#FEF08A', '#BBF7D0', '#BFDBFE', '#FBCFE8', '#E5E7EB']
-export const TEXT_COLORS = ['#111827', '#6B7280', '#DC2626', '#EA580C', '#CA8A04', '#16A34A', '#2563EB', '#7C3AED']
 
 // Read the workbook's Normal font size from xl/styles.xml. Returns null when it is missing.
 async function readWorkbookDefaultFontSize(buf: ArrayBuffer): Promise<number | null> {
@@ -83,9 +81,9 @@ export async function parseSheetStyles(file: File, sheetName: string) {
       const italic = Boolean(font.italic);
       const strike = Boolean(font.strike);
       const fillType = cell.fill && 'pattern' in cell.fill ? cell.fill.pattern : undefined;
-      const text_color = argbToSnappedHex(resolveExcelColor(font.color, themePalette), TEXT_COLORS);
+      const text_color = argbToHex(resolveExcelColor(font.color, themePalette));
       const fg = cell.fill && 'fgColor' in cell.fill ? cell.fill.fgColor : undefined;
-      const fill = fillType === 'solid' ? argbToSnappedHex(resolveExcelColor(fg, themePalette), HIGHLIGHTS) : null;
+      const fill = fillType === 'solid' ? argbToHex(resolveExcelColor(fg, themePalette)) : null;
       const family = FONT_FAMILY[(font.name || '').trim().toLowerCase()] ?? null;
       const number_format = parseNumberFormat(typeof cell.numFmt === 'string' ? cell.numFmt : null);
       const workbookSize = nearestSize(defaultSize);
@@ -174,38 +172,6 @@ function colourHsl(hex: string): { h: number; s: number; l: number } {
   return { h, s, l };
 }
 
-// Shortest distance between two hues on a 0–360 wheel.
-function hueDistance(a: number, b: number): number {
-  const d = Math.abs(a - b);
-  return Math.min(d, 360 - d);
-}
-
-// True when a hue is in the green band, so it does not snap to yellow.
-function inGreenRange(hue: number): boolean {
-  return hue >= 75 && hue < 165;
-}
-
-// Snap a hex color to the nearest color in the given toolbar palette.
-export function snapHex(hexColour: string, palette: readonly string[]): string {
-  const source = colourHsl(hexColour);
-  const neutral = source.s < 0.15 || source.l < 0.12 || source.l > 0.94;
-  const pool = palette.filter((swatch) => {
-    const hsl = colourHsl(swatch);
-    return neutral ? hsl.s < 0.15 || hsl.l < 0.2 : hsl.s >= 0.15 && hsl.l >= 0.2;
-  });
-  const choices = pool.length ? pool : palette;
-  if (neutral) {
-    return choices.reduce((a, b) =>
-      Math.abs(colourHsl(a).l - source.l) < Math.abs(colourHsl(b).l - source.l) ? a : b);
-  }
-  const greenChoices = choices.filter((swatch) => inGreenRange(colourHsl(swatch).h));
-  if (inGreenRange(source.h) && greenChoices.length) {
-    return greenChoices.reduce((a, b) =>
-      hueDistance(source.h, colourHsl(a).h) < hueDistance(source.h, colourHsl(b).h) ? a : b);
-  }
-  return choices.reduce((a, b) =>
-    hueDistance(source.h, colourHsl(a).h) < hueDistance(source.h, colourHsl(b).h) ? a : b);
-}
 
 // Convert hue, saturation, and lightness back to a #RRGGBB string.
 function hslToHex(h: number, s: number, l: number): string {
@@ -289,16 +255,13 @@ function resolveExcelColor(
   return `FF${tinted.replace('#', '')}`;
 }
 
-// Drop exact black and white, then snap the remaining RGB onto the given palette.
-function argbToSnappedHex(
-  argb: string | undefined,
-  palette: readonly string[],
-): string | null {
+// Drop exact black and white, and extract colour
+function argbToHex(argb: string | undefined): string | null {
   if (!argb || typeof argb !== 'string') return null; // theme / missing
-  const rgb = argb.slice(-6);
-  if (rgb.toUpperCase() === '000000' || rgb.toUpperCase() === 'FFFFFF') return null;
-  return snapHex(`#${rgb}`, palette);
-}
+    const rgb = argb.slice(-6);
+    if (rgb.toUpperCase() === '000000' || rgb.toUpperCase() === 'FFFFFF') return null;
+    return `#${rgb.toUpperCase()}`;
+  }
 
 // Snap a font size to the nearest supported size. An equal distance keeps the larger size.
 export function nearestSize(size: number | null | undefined): number | null {

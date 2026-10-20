@@ -24,7 +24,7 @@ describe('google sheet style import', () => {
     expect(format_ops[3]).toMatchObject({ font_size: 16, font_family: 'Arial, sans-serif' });
   });
 
-  it('snaps text and fill colours and drops black', () => {
+  it('keeps the imported text and fill colours and drops black', () => {
     const { format_ops, highlight_ops } = mapGoogleSheetStyles({
       matrix: [['a', 'b']],
       cells: [
@@ -35,9 +35,9 @@ describe('google sheet style import', () => {
         }),
       ],
     });
-    expect(format_ops[0].text_color).toBe('#DC2626');
+    expect(format_ops[0].text_color).toBe('#DB2626');
     expect(format_ops.some((op) => op.column === 1)).toBe(false);
-    expect(highlight_ops[0]).toMatchObject({ col: 1, color: '#FEF08A' });
+    expect(highlight_ops[0]).toMatchObject({ col: 1, color: '#FCF08C' });
   });
 
   it('keeps a percent fraction and a dollar amount, and ignores an unknown currency', () => {

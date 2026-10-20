@@ -140,14 +140,36 @@ def _extract_plain_text(structural_elements: list[dict]) -> str:
                 chunks.append(content)
     return "".join(chunks).strip()
 
+def _named_style_text_styles(named_styles: dict | None) -> dict[str, dict]:
+    styles: dict[str, dict] = {}
+    for style in (named_styles or {}).get("styles") or []:
+        name = style.get("namedStyleType")
+        if name:
+            styles[name] = style.get("textStyle") or {}
+    return styles
 
-def _render_text_run_to_html(text_run: dict) -> str:
+
+def _render_text_run_to_html(text_run: dict, inherited_style: dict | None = None) -> str:
     content = text_run.get("content") or ""
     if not content:
         return ""
 
     text_style = text_run.get("textStyle") or {}
+    inherited_style = inherited_style or {}
     rendered = escape(content).replace("\n", "<br>")
+
+    family = ((text_style.get("weightedFontFamily") or {}).get("fontFamily") or "").strip()
+    if not family:
+        family = ((inherited_style.get("weightedFontFamily") or {}).get("fontFamily") or "").strip()
+    size = text_style.get("fontSize") or inherited_style.get("fontSize") or {}
+    magnitude = size.get("magnitude")
+    styles = []
+    if family:
+        styles.append(f"font-family: '{escape(family)}'")
+    if isinstance(magnitude, (int, float)) and not isinstance(magnitude, bool):
+        styles.append(f"font-size: {magnitude}pt")
+    if styles:
+        rendered = f'<span style="{"; ".join(styles)}">{rendered}</span>'
 
     link = (text_style.get("link") or {}).get("url")
     if link:
@@ -162,16 +184,19 @@ def _render_text_run_to_html(text_run: dict) -> str:
     return rendered
 
 
-def _extract_rich_html(structural_elements: list[dict]) -> str:
+def _extract_rich_html(structural_elements: list[dict], named_text_styles: dict[str, dict] | None = None) -> str:
+    named_text_styles = named_text_styles or {}
     blocks: list[str] = []
     for element in structural_elements:
         paragraph = element.get("paragraph")
         if paragraph:
+            style_name = (paragraph.get("paragraphStyle") or {}).get("namedStyleType") or "NORMAL_TEXT"
+            inherited = named_text_styles.get(style_name) or named_text_styles.get("NORMAL_TEXT") or {}
             line_parts: list[str] = []
             for paragraph_element in paragraph.get("elements", []):
                 text_run = paragraph_element.get("textRun")
                 if text_run:
-                    line_parts.append(_render_text_run_to_html(text_run))
+                    line_parts.append(_render_text_run_to_html(text_run, inherited))
             line_html = "".join(line_parts).strip()
             if line_html:
                 blocks.append(f"<p>{line_html}</p>")
@@ -181,12 +206,11 @@ def _extract_rich_html(structural_elements: list[dict]) -> str:
         if table:
             for row in table.get("tableRows", []):
                 for cell in row.get("tableCells", []):
-                    cell_html = _extract_rich_html(cell.get("content", []))
+                    cell_html = _extract_rich_html(cell.get("content", []), named_text_styles)
                     if cell_html:
                         blocks.append(cell_html)
 
     return "".join(blocks).strip()
-
 
 def fetch_document_text(document_id: str, access_token: str) -> tuple[str, str, str]:
     response = requests.get(
@@ -199,7 +223,8 @@ def fetch_document_text(document_id: str, access_token: str) -> tuple[str, str, 
     title = payload.get("title") or "Imported Google Doc"
     body = payload.get("body", {}).get("content", [])
     plain_text = _extract_plain_text(body)
-    rich_html = _extract_rich_html(body)
+    named_text_styles = _named_style_text_styles(payload.get("namedStyles"))
+    rich_html = _extract_rich_html(body, named_text_styles)
     return title, plain_text, rich_html
 
 
@@ -385,8 +410,6 @@ def _grid_to_matrix_and_cells(grid: dict) -> tuple[list, list]:
                 continue
             row_text.append(_matrix_text(cell))
             entered = cell.get("userEnteredFormat")
-            if not entered:
-                continue
             item = {
                 "row": row_index,
                 "col": col_index,

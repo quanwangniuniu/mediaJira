@@ -5055,7 +5055,6 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       });
     });
 
-
     const exportHighlights: ExportHighlight[] = [];
     cellHighlights.forEach((color, key) => {
       const { row, col } = parseCellKey(key);
