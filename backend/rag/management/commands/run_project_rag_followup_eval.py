@@ -1,19 +1,20 @@
 """
 Management command: run_project_rag_followup_eval.
 
-Phase for this command today: arms A and B only.
+Arms:
   A -- retrieve with the raw follow-up question
-  B -- retrieve with the human expected_rewrite (upper-bound reference)
-Arm C (rewrite_project_question) is intentionally not run yet. Reports must
-state that this phase only contrasts short follow-ups with ideal completions.
+  B -- retrieve with the human expected_rewrite (upper-bound reference only)
+  C -- retrieve with rewrite_project_question() output (real rewrite path)
 
-Seeds/indexes the source corpus declared in the follow-up fixture
-(project_rag_eval_dataset.json 2.1.0 by default), reusing the main eval
-tenant helpers and evidence scorers from run_project_rag_eval.
+Default runs A,B,C. Use --arms A,B to skip the real rewrite call. When C is
+included, failures/timeouts that fall back to the original question still
+count toward C's score. Reports must state that C is what proves rewrite
+helps relative to A; B is only an ideal-completion ceiling.
 """
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,8 @@ from typing import Any
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
+from agent.models import AgentMessage, AgentSession
+from agent.query_rewrite import rewrite_project_question_result
 from core.services.tenant import slug_to_schema_name
 from core.tenant_context import tenant_schema_context
 from rag.management.commands import run_project_rag_eval as main_eval
@@ -40,14 +43,25 @@ ALLOWED_CASE_KINDS = frozenset({
 })
 ALLOWED_QUESTION_TYPES = frozenset({'single-source', 'multi-source', 'no-answer'})
 ALLOWED_HISTORY_ROLES = frozenset({'user', 'assistant'})
-ARMS_EXECUTED = ('A', 'B')
-PHASE_NOTE = (
+ALLOWED_ARMS = ('A', 'B', 'C')
+
+PHASE_NOTE_AB = (
     'This run executes arms A and B only: raw short follow-up vs human '
     'expected_rewrite. It does not call rewrite_project_question and must '
     'not be reported as proof that query rewrite works.'
 )
+PHASE_NOTE_WITH_C = (
+    'This run includes arm C (real rewrite_project_question). Primary claim: '
+    'how C compares to A. Arm B is an upper-bound reference only (ideal human '
+    'completion) and must not be reported as proof that rewrite works. '
+    'Rewrite failures/timeouts that fall back to the original question still '
+    'count toward C.'
+)
 
 _OUTCOME_SCORE = {'fail': 0, 'partial': 1, 'pass': 2}
+
+# Back-compat export for existing tests that imported PHASE_NOTE.
+PHASE_NOTE = PHASE_NOTE_AB
 
 
 def _load_json(path: Path) -> dict:
@@ -58,6 +72,17 @@ def _load_json(path: Path) -> dict:
             return json.load(f)
     except json.JSONDecodeError as exc:
         raise CommandError(f"Fixture at {path} is not valid JSON: {exc}") from exc
+
+
+def _parse_arms(raw: str) -> tuple[str, ...]:
+    arms = tuple(part.strip().upper() for part in raw.split(',') if part.strip())
+    if not arms:
+        raise CommandError('--arms must list at least one of A, B, C.')
+    unknown = [arm for arm in arms if arm not in ALLOWED_ARMS]
+    if unknown:
+        raise CommandError(f"Unknown arm(s) {unknown}; expected subset of A,B,C.")
+    # Preserve canonical order A,B,C even if the user reorders the flag.
+    return tuple(arm for arm in ALLOWED_ARMS if arm in arms)
 
 
 def _validate_followup_fixture(data: dict, path: Path) -> None:
@@ -177,39 +202,97 @@ def _score_arm(
     return record
 
 
-def _compare_a_to_b(arm_a: dict, arm_b: dict) -> str:
-    """Whether B looks better / worse / same than A for ranking outcomes."""
-    a_out, b_out = arm_a.get('outcome'), arm_b.get('outcome')
-    if a_out is None and b_out is None:
+def _compare_arms(arm_left: dict, arm_right: dict) -> str:
+    """Whether right looks better / worse / same than left for ranking outcomes."""
+    left_out, right_out = arm_left.get('outcome'), arm_right.get('outcome')
+    if left_out is None and right_out is None:
         return 'n/a'
-    a_score = _OUTCOME_SCORE.get(a_out)
-    b_score = _OUTCOME_SCORE.get(b_out)
-    if a_score is None or b_score is None:
+    left_score = _OUTCOME_SCORE.get(left_out)
+    right_score = _OUTCOME_SCORE.get(right_out)
+    if left_score is None or right_score is None:
         return 'n/a'
-    if b_score > a_score:
+    if right_score > left_score:
         return 'improve'
-    if b_score < a_score:
+    if right_score < left_score:
         return 'regress'
-    a_rank = arm_a.get('evidence_complete_rank')
-    b_rank = arm_b.get('evidence_complete_rank')
-    if a_rank is not None and b_rank is not None:
-        if b_rank < a_rank:
+    left_rank = arm_left.get('evidence_complete_rank')
+    right_rank = arm_right.get('evidence_complete_rank')
+    if left_rank is not None and right_rank is not None:
+        if right_rank < left_rank:
             return 'improve'
-        if b_rank > a_rank:
+        if right_rank > left_rank:
             return 'regress'
     return 'same'
 
 
+# Back-compat name used by unit tests.
+_compare_a_to_b = _compare_arms
+
+
+def _seed_rewrite_session(user, project, question_row: dict) -> AgentSession:
+    """Persist history + current question the same way production chat does."""
+    session = AgentSession.objects.create(user=user, project=project)
+    for turn in question_row['history']:
+        AgentMessage.objects.create(
+            session=session,
+            role=turn['role'],
+            content=turn['content'],
+            message_type='text',
+        )
+    AgentMessage.objects.create(
+        session=session,
+        role='user',
+        content=question_row['question'],
+        message_type='text',
+    )
+    return session
+
+
+def _run_arm_c(user, project, question_row: dict) -> dict[str, Any]:
+    session = _seed_rewrite_session(user, project, question_row)
+    started = time.perf_counter()
+    result = rewrite_project_question_result(session, project, question_row['question'])
+    latency_ms = round((time.perf_counter() - started) * 1000, 1)
+    return {
+        'rewritten_question': result.question,
+        'fell_back': result.fell_back,
+        'reason': result.reason,
+        'latency_ms': latency_ms,
+        'session_id': str(session.id),
+    }
+
+
 def _run_followup_questions(
     project,
+    user,
     questions: list[dict],
     source_ref_map: dict[str, tuple[str, str]],
     top_k: int,
+    arms: tuple[str, ...],
 ) -> list[dict]:
     per_question = []
     for q in questions:
-        arm_a = _score_arm(q, q['question'], project.id, source_ref_map, top_k)
-        arm_b = _score_arm(q, q['expected_rewrite'], project.id, source_ref_map, top_k)
+        arms_out: dict[str, Any] = {}
+        if 'A' in arms:
+            arms_out['A'] = _score_arm(q, q['question'], project.id, source_ref_map, top_k)
+        if 'B' in arms:
+            arms_out['B'] = _score_arm(q, q['expected_rewrite'], project.id, source_ref_map, top_k)
+        if 'C' in arms:
+            rewrite_meta = _run_arm_c(user, project, q)
+            arm_c = _score_arm(
+                q, rewrite_meta['rewritten_question'], project.id, source_ref_map, top_k,
+            )
+            arm_c.update(rewrite_meta)
+            arms_out['C'] = arm_c
+
+        comparison: dict[str, str] = {}
+        if 'A' in arms_out and 'B' in arms_out:
+            comparison['A_to_B'] = _compare_arms(arms_out['A'], arms_out['B'])
+        if 'A' in arms_out and 'C' in arms_out:
+            comparison['A_to_C'] = _compare_arms(arms_out['A'], arms_out['C'])
+        if 'B' in arms_out and 'C' in arms_out:
+            comparison['B_to_C'] = _compare_arms(arms_out['B'], arms_out['C'])
+
         per_question.append({
             'id': q['id'],
             'case_kind': q['case_kind'],
@@ -222,8 +305,8 @@ def _run_followup_questions(
             'tags': q.get('tags', []),
             'notes': q.get('notes'),
             'derived_from': q.get('derived_from'),
-            'arms': {'A': arm_a, 'B': arm_b},
-            'comparison': {'A_to_B': _compare_a_to_b(arm_a, arm_b)},
+            'arms': arms_out,
+            'comparison': comparison,
         })
     return per_question
 
@@ -233,6 +316,8 @@ def _arm_records_for_aggregate(per_question: list[dict], arm: str) -> list[dict]
     rows = []
     for q in per_question:
         if not q.get('include_in_followup_metrics', True):
+            continue
+        if arm not in q['arms']:
             continue
         arm_row = q['arms'][arm]
         rows.append({
@@ -255,21 +340,48 @@ def _arm_records_for_aggregate(per_question: list[dict], arm: str) -> list[dict]
     return rows
 
 
-def _summarize_comparisons(per_question: list[dict]) -> dict[str, int]:
+def _summarize_comparisons(per_question: list[dict], key: str) -> dict[str, int]:
     counts = {'improve': 0, 'regress': 0, 'same': 0, 'n/a': 0}
     for q in per_question:
         if not q.get('include_in_followup_metrics', True):
             continue
-        label = q['comparison']['A_to_B']
+        label = q['comparison'].get(key)
+        if label is None:
+            continue
         counts[label] = counts.get(label, 0) + 1
     return counts
+
+
+def _summarize_rewrite(per_question: list[dict]) -> dict[str, Any]:
+    latencies: list[float] = []
+    fallbacks = 0
+    reasons: dict[str, int] = {}
+    n = 0
+    for q in per_question:
+        arm_c = q['arms'].get('C')
+        if not arm_c:
+            continue
+        n += 1
+        latencies.append(float(arm_c['latency_ms']))
+        if arm_c.get('fell_back'):
+            fallbacks += 1
+        reason = arm_c.get('reason') or 'unknown'
+        reasons[reason] = reasons.get(reason, 0) + 1
+    return {
+        'n': n,
+        'fallback_count': fallbacks,
+        'fallback_rate': (fallbacks / n) if n else 0.0,
+        'latency_ms_mean': (sum(latencies) / n) if n else 0.0,
+        'latency_ms_max': max(latencies) if latencies else 0.0,
+        'reasons': reasons,
+    }
 
 
 class Command(BaseCommand):
     help = (
         "Seed the MED-264 source corpus used by the follow-up fixture, then score "
-        "each follow-up question under arms A (raw question) and B (human "
-        "expected_rewrite). This phase does not run rewrite_project_question."
+        "each follow-up question under arms A (raw), B (human expected_rewrite), "
+        "and C (rewrite_project_question). Default arms=A,B,C."
     )
 
     def add_arguments(self, parser):
@@ -291,8 +403,14 @@ class Command(BaseCommand):
             default=10,
             help='top_k passed to retrieve_chunks() for this eval run only.',
         )
+        parser.add_argument(
+            '--arms',
+            default='A,B,C',
+            help='Comma-separated arms to run (subset of A,B,C). Default A,B,C.',
+        )
 
     def handle(self, *args, **options):
+        arms = _parse_arms(options['arms'])
         provider = settings.RAG_EMBEDDING_PROVIDER
         if provider == 'gemini':
             embedding_model = settings.RAG_EMBEDDING_MODEL
@@ -308,6 +426,11 @@ class Command(BaseCommand):
                 "to use the temporary local embedding provider instead "
                 "(eval/local-dev only)."
             )
+        if 'C' in arms and not settings.GEMINI_API_KEY:
+            raise CommandError(
+                "Arm C calls rewrite_project_question and requires GEMINI_API_KEY. "
+                "Pass --arms A,B to skip real rewrite, or set GEMINI_API_KEY."
+            )
 
         followup_path: Path = options['fixture']
         top_k: int = options['top_k']
@@ -318,10 +441,13 @@ class Command(BaseCommand):
         corpus_data = _load_json(corpus_path)
         main_eval._validate_fixture_shape(corpus_data, corpus_path)
 
+        phase_note = PHASE_NOTE_WITH_C if 'C' in arms else PHASE_NOTE_AB
+        phase = 'A_B_C' if 'C' in arms else 'A_B_only'
+
         org, user = main_eval._get_or_create_eval_tenant()
         eval_schema = slug_to_schema_name(org.slug)
         self.stdout.write(f"Eval tenant: organization={org.name!r} schema={eval_schema!r}")
-        self.stdout.write(self.style.WARNING(PHASE_NOTE))
+        self.stdout.write(self.style.WARNING(phase_note))
 
         with tenant_schema_context(eval_schema):
             project = main_eval._get_or_create_eval_project(org, user)
@@ -331,16 +457,14 @@ class Command(BaseCommand):
             )
             main_eval._validate_question_refs(followup_data['questions'], source_ref_map)
             per_question = _run_followup_questions(
-                project, followup_data['questions'], source_ref_map, top_k,
+                project, user, followup_data['questions'], source_ref_map, top_k, arms,
             )
 
         metrics_by_arm = {
             arm: main_eval._aggregate_metrics(_arm_records_for_aggregate(per_question, arm))
-            for arm in ARMS_EXECUTED
+            for arm in arms
         }
-        comparison = _summarize_comparisons(per_question)
-
-        report = {
+        report: dict[str, Any] = {
             'run_metadata': {
                 'timestamp': datetime.now(timezone.utc).isoformat(),
                 'fixture_path': str(followup_path),
@@ -356,15 +480,22 @@ class Command(BaseCommand):
                 'top_k': top_k,
                 'eval_org_schema': eval_schema,
                 'eval_project_id': project.id,
-                'arms_executed': list(ARMS_EXECUTED),
-                'phase': 'A_B_only',
-                'phase_note': PHASE_NOTE,
+                'arms_executed': list(arms),
+                'phase': phase,
+                'phase_note': phase_note,
             },
             'index_outcomes': index_outcomes,
             'metrics_by_arm': metrics_by_arm,
-            'comparison_A_to_B': comparison,
             'per_question': per_question,
         }
+        if 'A' in arms and 'B' in arms:
+            report['comparison_A_to_B'] = _summarize_comparisons(per_question, 'A_to_B')
+        if 'A' in arms and 'C' in arms:
+            report['comparison_A_to_C'] = _summarize_comparisons(per_question, 'A_to_C')
+        if 'B' in arms and 'C' in arms:
+            report['comparison_B_to_C'] = _summarize_comparisons(per_question, 'B_to_C')
+        if 'C' in arms:
+            report['rewrite_summary'] = _summarize_rewrite(per_question)
 
         output_path = self._write_report(report, options['output'])
         self._print_summary(report, output_path)
@@ -383,10 +514,16 @@ class Command(BaseCommand):
 
     def _print_summary(self, report: dict, output_path: Path) -> None:
         meta = report['run_metadata']
+        arms = meta['arms_executed']
+        arm_labels = {
+            'A': 'A raw follow-up',
+            'B': 'B human expected_rewrite (upper bound only)',
+            'C': 'C rewrite_project_question',
+        }
         self.stdout.write("")
         self.stdout.write(self.style.MIGRATE_HEADING("Follow-up eval phase"))
         self.stdout.write(self.style.WARNING(meta['phase_note']))
-        self.stdout.write(f"  arms_executed={meta['arms_executed']}")
+        self.stdout.write(f"  arms_executed={arms}")
 
         outcome_counts: dict[str, int] = {}
         for o in report['index_outcomes']:
@@ -396,11 +533,10 @@ class Command(BaseCommand):
         for outcome, count in sorted(outcome_counts.items()):
             self.stdout.write(f"  {outcome}: {count}")
 
-        for arm in ARMS_EXECUTED:
+        for arm in arms:
             m = report['metrics_by_arm'][arm]
-            label = 'A raw follow-up' if arm == 'A' else 'B human expected_rewrite'
             self.stdout.write("")
-            self.stdout.write(self.style.MIGRATE_HEADING(f"Arm {arm} ({label})"))
+            self.stdout.write(self.style.MIGRATE_HEADING(f"Arm {arm_labels[arm]}"))
             self.stdout.write(
                 f"  Single-source n={m['single_source']['n']}  "
                 f"Hit@1={m['single_source']['hit@1']:.3f}  "
@@ -414,20 +550,50 @@ class Command(BaseCommand):
             )
             self.stdout.write(f"  No-answer n={m['no_answer']['n']} (excluded from ranking metrics)")
 
-        cmp_counts = report['comparison_A_to_B']
-        self.stdout.write("")
-        self.stdout.write(self.style.MIGRATE_HEADING("A → B comparison (ideal completion vs raw)"))
-        self.stdout.write(
-            f"  improve={cmp_counts['improve']}  regress={cmp_counts['regress']}  "
-            f"same={cmp_counts['same']}  n/a={cmp_counts['n/a']}"
-        )
-        for q in report['per_question']:
-            label = q['comparison']['A_to_B']
-            a_out = q['arms']['A'].get('outcome')
-            b_out = q['arms']['B'].get('outcome')
+        if 'rewrite_summary' in report:
+            rs = report['rewrite_summary']
+            self.stdout.write("")
+            self.stdout.write(self.style.MIGRATE_HEADING("Rewrite (arm C)"))
             self.stdout.write(
-                f"  [{label}] {q['id']} ({q['case_kind']}): A={a_out} B={b_out}"
+                f"  n={rs['n']}  fallbacks={rs['fallback_count']}  "
+                f"fallback_rate={rs['fallback_rate']:.3f}  "
+                f"latency_ms_mean={rs['latency_ms_mean']:.1f}  "
+                f"latency_ms_max={rs['latency_ms_max']:.1f}"
             )
+            self.stdout.write(f"  reasons={rs['reasons']}")
+
+        for key, title in (
+            ('comparison_A_to_B', 'A → B (ideal completion vs raw; reference only)'),
+            ('comparison_A_to_C', 'A → C (real rewrite vs raw; primary)'),
+            ('comparison_B_to_C', 'B → C (real rewrite vs ideal completion)'),
+        ):
+            if key not in report:
+                continue
+            cmp_counts = report[key]
+            self.stdout.write("")
+            self.stdout.write(self.style.MIGRATE_HEADING(title))
+            self.stdout.write(
+                f"  improve={cmp_counts['improve']}  regress={cmp_counts['regress']}  "
+                f"same={cmp_counts['same']}  n/a={cmp_counts['n/a']}"
+            )
+            left, right = key.replace('comparison_', '').split('_to_')
+            for q in report['per_question']:
+                label = q['comparison'].get(f'{left}_to_{right}')
+                if label is None:
+                    continue
+                left_out = q['arms'][left].get('outcome')
+                right_out = q['arms'][right].get('outcome')
+                extra = ''
+                if right == 'C':
+                    extra = (
+                        f" rewrite_fell_back={q['arms']['C'].get('fell_back')} "
+                        f"reason={q['arms']['C'].get('reason')} "
+                        f"latency_ms={q['arms']['C'].get('latency_ms')}"
+                    )
+                self.stdout.write(
+                    f"  [{label}] {q['id']} ({q['case_kind']}): "
+                    f"{left}={left_out} {right}={right_out}{extra}"
+                )
 
         self.stdout.write("")
         self.stdout.write(self.style.SUCCESS(f"Results written to {output_path}"))

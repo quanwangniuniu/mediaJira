@@ -91,7 +91,13 @@ def test_compare_a_to_b_labels():
 @override_settings(RAG_EMBEDDING_PROVIDER='gemini', GEMINI_API_KEY='')
 def test_gemini_provider_requires_api_key():
     with pytest.raises(CommandError, match='GEMINI_API_KEY is not configured'):
-        Command().handle(fixture=_NONEXISTENT, output=None, top_k=10)
+        Command().handle(fixture=_NONEXISTENT, output=None, top_k=10, arms='A,B')
+
+
+@override_settings(RAG_EMBEDDING_PROVIDER='local', GEMINI_API_KEY='')
+def test_arm_c_requires_gemini_api_key_even_with_local_embeddings():
+    with pytest.raises(CommandError, match='Arm C .* GEMINI_API_KEY'):
+        Command().handle(fixture=_NONEXISTENT, output=None, top_k=10, arms='A,B,C')
 
 
 @override_settings(RAG_EMBEDDING_PROVIDER='local', GEMINI_API_KEY='')
@@ -163,7 +169,7 @@ def test_ab_phase_runs_both_arms_and_states_scope(tmp_path):
         'rag.management.commands.run_project_rag_followup_eval.retrieve_chunks',
         side_effect=fake_retrieve,
     ):
-        Command().handle(fixture=followup_path, output=output_path, top_k=5)
+        Command().handle(fixture=followup_path, output=output_path, top_k=5, arms='A,B')
 
     report = json.loads(output_path.read_text(encoding='utf-8'))
     assert report['run_metadata']['arms_executed'] == ['A', 'B']
@@ -177,3 +183,107 @@ def test_ab_phase_runs_both_arms_and_states_scope(tmp_path):
     assert report['per_question'][0]['comparison']['A_to_B'] in {
         'improve', 'regress', 'same', 'n/a',
     }
+
+
+@override_settings(RAG_EMBEDDING_PROVIDER='local', GEMINI_API_KEY='fake-key-for-test')
+def test_arm_c_records_rewrite_meta_and_compares_to_a(tmp_path):
+    from agent.query_rewrite import RewriteResult
+
+    followup = {
+        'dataset_version': '1.0.0-test',
+        'source_corpus': {'fixture': 'corpus.json'},
+        'expected_case_kind_counts': {
+            'anaphoric': 1, 'already_complete': 0, 'topic_shift': 0, 'underspecified': 0,
+        },
+        'expected_question_type_counts': {
+            'single-source': 1, 'multi-source': 0, 'no-answer': 0,
+        },
+        'questions': [_minimal_question()],
+    }
+    corpus = {
+        'dataset_version': '2.1.0-test',
+        'expected_source_counts': {'meeting': 1},
+        'expected_question_counts': {},
+        'sources': [{
+            'source_type': 'meeting',
+            'source_ref': 'meeting-001',
+            'title': 't',
+            'content': 'Vendor A was chosen.',
+        }],
+        'questions': [],
+    }
+    followup_path = tmp_path / 'followup.json'
+    corpus_path = tmp_path / 'corpus.json'
+    followup_path.write_text(json.dumps(followup), encoding='utf-8')
+    corpus_path.write_text(json.dumps(corpus), encoding='utf-8')
+    output_path = tmp_path / 'out.json'
+
+    chunk = RetrievedChunk(
+        content='Vendor A was chosen.',
+        source_type='meeting',
+        source_id='1',
+        chunk_index=0,
+        citation_metadata={},
+        distance=0.1,
+    )
+    queries: list[str] = []
+
+    def fake_retrieve(project_id, question, top_k=10, min_similarity=None):
+        queries.append(question)
+        return [chunk]
+
+    org = MagicMock(name='org', slug='rag-eval-harness', id=1)
+    user = MagicMock(name='user', id=2)
+    project = MagicMock(name='project', id=9)
+    session = MagicMock(id='session-c')
+
+    with patch(
+        'rag.management.commands.run_project_rag_followup_eval.main_eval._get_or_create_eval_tenant',
+        return_value=(org, user),
+    ), patch(
+        'rag.management.commands.run_project_rag_followup_eval.main_eval._get_or_create_eval_project',
+        return_value=project,
+    ), patch(
+        'rag.management.commands.run_project_rag_followup_eval.main_eval._seed_and_index',
+        return_value=({'meeting-001': ('meeting', '1')}, [{'outcome': 'indexed'}]),
+    ), patch(
+        'rag.management.commands.run_project_rag_followup_eval.main_eval._validate_question_refs',
+    ), patch(
+        'rag.management.commands.run_project_rag_followup_eval.slug_to_schema_name',
+        return_value='org_rag_eval_harness',
+    ), patch(
+        'rag.management.commands.run_project_rag_followup_eval.tenant_schema_context',
+    ), patch(
+        'rag.management.commands.run_project_rag_followup_eval.retrieve_chunks',
+        side_effect=fake_retrieve,
+    ), patch(
+        'rag.management.commands.run_project_rag_followup_eval._seed_rewrite_session',
+        return_value=session,
+    ), patch(
+        'rag.management.commands.run_project_rag_followup_eval.rewrite_project_question_result',
+        return_value=RewriteResult(
+            question='Why did we pick vendor A?',
+            fell_back=False,
+            reason='rewritten',
+        ),
+    ):
+        Command().handle(fixture=followup_path, output=output_path, top_k=5, arms='A,B,C')
+
+    report = json.loads(output_path.read_text(encoding='utf-8'))
+    assert report['run_metadata']['arms_executed'] == ['A', 'B', 'C']
+    assert report['run_metadata']['phase'] == 'A_B_C'
+    assert 'real rewrite_project_question' in report['run_metadata']['phase_note']
+    assert 'upper-bound' in report['run_metadata']['phase_note']
+    assert queries == [
+        'Why was that?',
+        'Why did we pick vendor A?',
+        'Why did we pick vendor A?',
+    ]
+    arm_c = report['per_question'][0]['arms']['C']
+    assert arm_c['rewritten_question'] == 'Why did we pick vendor A?'
+    assert arm_c['fell_back'] is False
+    assert arm_c['reason'] == 'rewritten'
+    assert isinstance(arm_c['latency_ms'], (int, float))
+    assert 'comparison_A_to_C' in report
+    assert report['rewrite_summary']['n'] == 1
+    assert report['rewrite_summary']['fallback_count'] == 0
