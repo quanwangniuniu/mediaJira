@@ -4,6 +4,7 @@
 
 import { TEAM_ROLES } from '@/lib/constants/teamRoles';
 import api from '../api';
+import { OrgTeamSummary } from '@/types/team';
 
 /**
  * Team API class for team-related operations
@@ -150,4 +151,36 @@ export default class TeamAPI {
     }
   }
 
+  /**
+   * List (and optionally search) all teams of the current organization.
+   * Organization admins only; other users receive 403.
+   * @param search - Optional case-insensitive name filter
+   */
+  static async listTeams(search: string = ''): Promise<OrgTeamSummary[]> {
+    const term = search.trim();
+    const response = await api.get('/api/teams/', {
+      params: term ? { search: term } : undefined,
+    });
+    return response.data.teams;
   }
+
+  /**
+   * Create a team in the current organization (organization admins only).
+   * A duplicate name, including a deleted team's name, returns 409.
+   */
+  static async createTeam(name: string, desc?: string): Promise<OrgTeamSummary> {
+    const response = await api.post('/api/teams/', {
+      name,
+      ...(desc ? { desc } : {}),
+    });
+    return response.data.team;
+  }
+
+  /**
+   * Delete (soft-delete) a team (organization admins only).
+   */
+  static async deleteTeam(teamId: number): Promise<void> {
+    await api.delete(`/api/teams/${teamId}/`);
+  }
+
+}
