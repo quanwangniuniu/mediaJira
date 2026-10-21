@@ -14,6 +14,7 @@ from rag.management.commands.run_project_rag_followup_eval import (
     PHASE_NOTE,
     Command,
     _compare_a_to_b,
+    _history_turn_count,
     _validate_followup_fixture,
 )
 from rag.retrieval import RetrievedChunk
@@ -48,6 +49,31 @@ def _minimal_question(**overrides):
 def test_validate_followup_fixture_accepts_committed_dataset():
     data = json.loads(DEFAULT_FOLLOWUP_FIXTURE.read_text(encoding='utf-8'))
     _validate_followup_fixture(data, DEFAULT_FOLLOWUP_FIXTURE)
+
+
+def test_committed_fixture_includes_multi_turn_smoke_rows():
+    data = json.loads(DEFAULT_FOLLOWUP_FIXTURE.read_text(encoding='utf-8'))
+    multi = [q for q in data['questions'] if 'multi-turn' in (q.get('tags') or [])]
+    assert len(multi) >= 4
+    for q in multi:
+        assert _history_turn_count(q['history']) >= 2, q['id']
+
+
+def test_validate_followup_fixture_rejects_multi_turn_tag_without_two_turns():
+    data = {
+        'source_corpus': {'fixture': 'project_rag_eval_dataset.json'},
+        'questions': [
+            _minimal_question(
+                tags=['multi-turn'],
+                history=[
+                    {'role': 'user', 'content': 'Only one prior turn?'},
+                    {'role': 'assistant', 'content': 'Yes.'},
+                ],
+            ),
+        ],
+    }
+    with pytest.raises(CommandError, match='multi-turn requires history'):
+        _validate_followup_fixture(data, Path('bad.json'))
 
 
 def test_validate_followup_fixture_rejects_case_kind_count_mismatch():
@@ -279,11 +305,14 @@ def test_arm_c_records_rewrite_meta_and_compares_to_a(tmp_path):
         'Why did we pick vendor A?',
         'Why did we pick vendor A?',
     ]
-    arm_c = report['per_question'][0]['arms']['C']
+    row = report['per_question'][0]
+    arm_c = row['arms']['C']
     assert arm_c['rewritten_question'] == 'Why did we pick vendor A?'
     assert arm_c['fell_back'] is False
     assert arm_c['reason'] == 'rewritten'
     assert isinstance(arm_c['latency_ms'], (int, float))
+    assert row['history_turn_count'] == 1
+    assert row['multi_turn'] is False
     assert 'comparison_A_to_C' in report
     assert report['rewrite_summary']['n'] == 1
     assert report['rewrite_summary']['fallback_count'] == 0

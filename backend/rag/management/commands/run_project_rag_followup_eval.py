@@ -124,6 +124,19 @@ def _validate_followup_fixture(data: dict, path: Path) -> None:
                 raise CommandError(f"{qid}: history role must be user or assistant.")
             if not isinstance(turn.get('content'), str) or not turn['content'].strip():
                 raise CommandError(f"{qid}: history content must be a non-empty string.")
+        history_turns = _history_turn_count(history)
+        if history_turns < 1:
+            raise CommandError(
+                f"{qid}: history must contain at least one completed user+assistant turn."
+            )
+        tags = q.get('tags') or []
+        if not isinstance(tags, list):
+            raise CommandError(f"{qid}: tags must be a list when present.")
+        if 'multi-turn' in tags and history_turns < 2:
+            raise CommandError(
+                f"{qid}: tag multi-turn requires history with at least 2 completed turns "
+                f"(found {history_turns})."
+            )
 
         if not isinstance(q.get('question'), str) or not q['question'].strip():
             raise CommandError(f"{qid}: question must be a non-empty string.")
@@ -229,6 +242,19 @@ def _compare_arms(arm_left: dict, arm_right: dict) -> str:
 _compare_a_to_b = _compare_arms
 
 
+def _history_turn_count(history: list[dict]) -> int:
+    """Count completed user→assistant pairs (oldest-first fixture shape)."""
+    turns = 0
+    i = 0
+    while i + 1 < len(history):
+        if history[i].get('role') == 'user' and history[i + 1].get('role') == 'assistant':
+            turns += 1
+            i += 2
+        else:
+            i += 1
+    return turns
+
+
 def _seed_rewrite_session(user, project, question_row: dict) -> AgentSession:
     """Persist history + current question the same way production chat does."""
     session = AgentSession.objects.create(user=user, project=project)
@@ -293,16 +319,19 @@ def _run_followup_questions(
         if 'B' in arms_out and 'C' in arms_out:
             comparison['B_to_C'] = _compare_arms(arms_out['B'], arms_out['C'])
 
+        tags = q.get('tags', [])
         per_question.append({
             'id': q['id'],
             'case_kind': q['case_kind'],
             'question_type': q['question_type'],
             'include_in_followup_metrics': q.get('include_in_followup_metrics', True),
             'history': q['history'],
+            'history_turn_count': _history_turn_count(q['history']),
+            'multi_turn': 'multi-turn' in tags,
             'question': q['question'],
             'expected_rewrite': q['expected_rewrite'],
             'expected_sources': q.get('expected_sources', []),
-            'tags': q.get('tags', []),
+            'tags': tags,
             'notes': q.get('notes'),
             'derived_from': q.get('derived_from'),
             'arms': arms_out,
@@ -561,6 +590,26 @@ class Command(BaseCommand):
                 f"latency_ms_max={rs['latency_ms_max']:.1f}"
             )
             self.stdout.write(f"  reasons={rs['reasons']}")
+
+        multi_turn_rows = [q for q in report['per_question'] if q.get('multi_turn')]
+        if multi_turn_rows:
+            self.stdout.write("")
+            self.stdout.write(self.style.MIGRATE_HEADING(
+                f"Multi-turn rewrite subset (n={len(multi_turn_rows)})"
+            ))
+            self.stdout.write(
+                "  History has 2+ completed turns; check recent-referent binding "
+                "and no graft after topic shift."
+            )
+            for q in multi_turn_rows:
+                a_to_c = q.get('comparison', {}).get('A_to_C', 'n/a')
+                arm_c = q['arms'].get('C') or {}
+                rewritten = arm_c.get('rewritten_question') or arm_c.get('query') or ''
+                self.stdout.write(
+                    f"  [{a_to_c}] {q['id']} ({q['case_kind']}, "
+                    f"history_turns={q.get('history_turn_count')}): "
+                    f"C={rewritten!r}"
+                )
 
         for key, title in (
             ('comparison_A_to_B', 'A → B (ideal completion vs raw; reference only)'),

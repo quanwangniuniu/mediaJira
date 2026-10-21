@@ -1,8 +1,8 @@
 {
   "dataset_name": "project_rag_followup_eval_dataset",
-  "dataset_version": "1.0.0",
+  "dataset_version": "1.1.0",
   "created_date": "2026-10-20",
-  "description": "Follow-up / query-rewrite eval for MED-264 project RAG. Reuses source_ref values from project_rag_eval_dataset.json (2.1.0); this file does not redefine sources. Questions are conversational follow-ups scored under three retrieval arms (A/B/C). First version has 20 questions across four case_kinds (smoke / first baseline, not a broad reliability proof).",
+  "description": "Follow-up / query-rewrite eval for MED-264 project RAG. Reuses source_ref values from project_rag_eval_dataset.json (2.1.0); this file does not redefine sources. Questions are conversational follow-ups scored under three retrieval arms (A/B/C). v1.1 adds multi-turn smoke rows (tag multi-turn; history with 2–3 completed turns) to check recent-referent binding and mid-dialog topic shift. Still a smoke / first baseline, not a broad reliability proof.",
   "source_corpus": {
     "fixture": "project_rag_eval_dataset.json",
     "dataset_version": "2.1.0",
@@ -22,7 +22,7 @@
       "purpose": "Real rewrite path. Timeouts and other fallbacks that return the original question still count toward C's score."
     }
   },
-  "scoring_notes": "Rank each arm with the same evidence-aware single-source / multi-source rules as the main project RAG eval (expected_sources + evidence spans). Do not merge follow-up results into the 2.1.0 Hit@K / MRR aggregates. expected_rewrite is a human reference for arm B and for qualitative review of C; C need not match it verbatim if meaning and referents are preserved. For already_complete and topic_shift, expected_rewrite is intentionally close to question so A and B should be similar and C must not regress by grafting prior turns. For underspecified, prior turns leave multiple plausible referents — expected_rewrite must not pick one. question_type no-answer means the answer should abstain (empty expected_sources); it does not forbid resolving a unique referent in expected_rewrite (see fq20). Reports must list per-question A→C improve/regress, rewrite latency, and fallback counts, and must state which arms the run actually executed.",
+  "scoring_notes": "Rank each arm with the same evidence-aware single-source / multi-source rules as the main project RAG eval (expected_sources + evidence spans). Do not merge follow-up results into the 2.1.0 Hit@K / MRR aggregates. expected_rewrite is a human reference for arm B and for qualitative review of C; C need not match it verbatim if meaning and referents are preserved. For already_complete and topic_shift, expected_rewrite is intentionally close to question so A and B should be similar and C must not regress by grafting prior turns. For underspecified, prior turns leave multiple plausible referents — expected_rewrite must not pick one. question_type no-answer means the answer should abstain (empty expected_sources); it does not forbid resolving a unique referent in expected_rewrite (see fq20). Rows tagged multi-turn have 2+ completed prior turns; rewrite must bind anaphors to the most recent clear referent and must not graft an older turn after a topic shift. Reports must list per-question A→C improve/regress, rewrite latency, and fallback counts, state which arms ran, and call out the multi-turn subset.",
   "case_kinds": [
     "anaphoric",
     "already_complete",
@@ -612,16 +612,176 @@
       "expected_answer_behavior": "abstain",
       "tags": ["topic-present-unresolved", "anaphoric"],
       "notes": "Aligned with nq02: only one pricing topic in history, so rewrite should resolve 'that' to FY26 pricing. Answer must still abstain — details were deferred; there are no finalized numbers in the corpus. Do not treat this row as underspecified."
+    },
+    {
+      "id": "fq21",
+      "case_kind": "anaphoric",
+      "question_type": "single-source",
+      "include_in_followup_metrics": true,
+      "derived_from": "q11",
+      "history": [
+        {
+          "role": "user",
+          "content": "What campaign budget did Jade confirm at the Aurora Retail Q4 kickoff?"
+        },
+        {
+          "role": "assistant",
+          "content": "Jade confirmed a campaign budget of $85,000 for Q4."
+        },
+        {
+          "role": "user",
+          "content": "Which homepage banner option did Priya recommend during the creative review?"
+        },
+        {
+          "role": "assistant",
+          "content": "Priya recommended Option B as the strongest fit for Aurora Retail's brand guidelines."
+        }
+      ],
+      "question": "Did the client approve that option?",
+      "expected_rewrite": "Did the client approve homepage banner Option B that Priya recommended?",
+      "expected_sources": [
+        {
+          "source_type": "meeting",
+          "source_ref": "meeting-006",
+          "evidence": [
+            "Lena approved the final homepage banner concept, Option B (blue gradient with gift-card imagery)."
+          ]
+        }
+      ],
+      "tags": ["multi-turn"],
+      "notes": "2-turn history. 'that option' must bind to Option B from the latest turn, not the $85,000 budget from turn 1."
+    },
+    {
+      "id": "fq22",
+      "case_kind": "anaphoric",
+      "question_type": "single-source",
+      "include_in_followup_metrics": true,
+      "derived_from": "q02",
+      "history": [
+        {
+          "role": "user",
+          "content": "On what date is Aurora Retail's Q3 loyalty-program landing page launching?"
+        },
+        {
+          "role": "assistant",
+          "content": "It will launch on October 15, 2026."
+        },
+        {
+          "role": "user",
+          "content": "What promo code was included in the approved welcome email that Marketing signed off on sending?"
+        },
+        {
+          "role": "assistant",
+          "content": "The approved welcome email uses code WELCOME15."
+        }
+      ],
+      "question": "When does that version start sending?",
+      "expected_rewrite": "When does the approved welcome email version that uses code WELCOME15 start sending?",
+      "expected_sources": [
+        {
+          "source_type": "notion_draft",
+          "source_ref": "notion-005",
+          "evidence": [
+            "This is the version to send starting Oct 1."
+          ]
+        }
+      ],
+      "tags": ["multi-turn", "distractor-heavy"],
+      "notes": "2-turn history. 'that version' must bind to the approved welcome email (latest), not the loyalty landing page launch from turn 1."
+    },
+    {
+      "id": "fq23",
+      "case_kind": "topic_shift",
+      "question_type": "single-source",
+      "include_in_followup_metrics": true,
+      "derived_from": "q17",
+      "history": [
+        {
+          "role": "user",
+          "content": "How many gift cards had been sold as of the Nov 1 main-push launch readiness review?"
+        },
+        {
+          "role": "assistant",
+          "content": "1,200 gift cards sold toward the 4,000 goal."
+        },
+        {
+          "role": "user",
+          "content": "What was the confirmed budget for the Aurora Retail main-push paid social allocation?"
+        },
+        {
+          "role": "assistant",
+          "content": "The confirmed paid social allocation for the main push was $32,000."
+        }
+      ],
+      "question": "Who did the team recommend for the new Q4 copywriter role?",
+      "expected_rewrite": "Who did the team recommend for the new Q4 copywriter role?",
+      "expected_sources": [
+        {
+          "source_type": "meeting",
+          "source_ref": "meeting-016",
+          "evidence": [
+            "The team recommend Nadia Reyes for the Q4 copywriter role"
+          ]
+        }
+      ],
+      "tags": ["multi-turn"],
+      "notes": "2-turn gift-card/budget history then a complete hiring question. Rewrite must not graft gift-card or paid-social context onto the copywriter ask."
+    },
+    {
+      "id": "fq24",
+      "case_kind": "anaphoric",
+      "question_type": "single-source",
+      "include_in_followup_metrics": true,
+      "derived_from": "q07",
+      "history": [
+        {
+          "role": "user",
+          "content": "What is Willow & Pine's confirmed budget for the Q4 onboarding phase and Q1 campaign prep?"
+        },
+        {
+          "role": "assistant",
+          "content": "Willow & Pine confirmed $42,000 for Q4 onboarding and Q1 campaign prep."
+        },
+        {
+          "role": "user",
+          "content": "What compliance turnaround requirement did Northbridge Financial's kickoff establish for member communications?"
+        },
+        {
+          "role": "assistant",
+          "content": "Northbridge requires a five-business-day compliance turnaround for member communications."
+        },
+        {
+          "role": "user",
+          "content": "What root cause did Dev trace the Sprint 15 checkout flow bug to?"
+        },
+        {
+          "role": "assistant",
+          "content": "Dev traced it to a session-timeout misconfiguration on Aurora Retail's checkout server."
+        }
+      ],
+      "question": "Had they deployed that fix by Sprint 18?",
+      "expected_rewrite": "Had Aurora Retail's engineering team deployed the session-timeout checkout fix by Sprint 18?",
+      "expected_sources": [
+        {
+          "source_type": "retrospective",
+          "source_ref": "retro-005",
+          "evidence": [
+            "Aurora Retail's engineering team had not yet deployed the session-timeout fix discussed in Sprint 15"
+          ]
+        }
+      ],
+      "tags": ["multi-turn", "distractor-heavy"],
+      "notes": "3-turn history (fits default RAG_QUERY_REWRITE_HISTORY_TURNS=3). 'that fix' must bind to the session-timeout checkout fix from the latest turn, not Willow & Pine budget or Northbridge compliance."
     }
   ],
   "expected_case_kind_counts": {
-    "anaphoric": 8,
+    "anaphoric": 11,
     "already_complete": 5,
-    "topic_shift": 4,
+    "topic_shift": 5,
     "underspecified": 3
   },
   "expected_question_type_counts": {
-    "single-source": 15,
+    "single-source": 19,
     "multi-source": 1,
     "no-answer": 4
   }
