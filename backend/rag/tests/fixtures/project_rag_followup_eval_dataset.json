@@ -22,7 +22,7 @@
       "purpose": "Real rewrite path. Timeouts and other fallbacks that return the original question still count toward C's score."
     }
   },
-  "scoring_notes": "Rank each arm with the same evidence-aware single-source / multi-source rules as the main project RAG eval (expected_sources + evidence spans). Do not merge follow-up results into the 2.1.0 Hit@K / MRR aggregates. expected_rewrite is a human reference for arm B and for qualitative review of C; C need not match it verbatim if meaning and referents are preserved. For already_complete and topic_shift, expected_rewrite is intentionally close to question so A and B should be similar and C must not regress by grafting prior turns. For underspecified, expected_rewrite must not invent a referent; those rows use question_type no-answer when inventing would be wrong. Reports must list per-question A→C improve/regress, rewrite latency, and fallback counts, and must state which arms the run actually executed.",
+  "scoring_notes": "Rank each arm with the same evidence-aware single-source / multi-source rules as the main project RAG eval (expected_sources + evidence spans). Do not merge follow-up results into the 2.1.0 Hit@K / MRR aggregates. expected_rewrite is a human reference for arm B and for qualitative review of C; C need not match it verbatim if meaning and referents are preserved. For already_complete and topic_shift, expected_rewrite is intentionally close to question so A and B should be similar and C must not regress by grafting prior turns. For underspecified, prior turns leave multiple plausible referents — expected_rewrite must not pick one. question_type no-answer means the answer should abstain (empty expected_sources); it does not forbid resolving a unique referent in expected_rewrite (see fq20). Reports must list per-question A→C improve/regress, rewrite latency, and fallback counts, and must state which arms the run actually executed.",
   "case_kinds": [
     "anaphoric",
     "already_complete",
@@ -593,7 +593,7 @@
     },
     {
       "id": "fq20",
-      "case_kind": "underspecified",
+      "case_kind": "anaphoric",
       "question_type": "no-answer",
       "include_in_followup_metrics": true,
       "history": [
@@ -607,18 +607,18 @@
         }
       ],
       "question": "What are the finalized numbers for that?",
-      "expected_rewrite": "What are the finalized numbers for that?",
+      "expected_rewrite": "What are the finalized numbers for FY26 pricing?",
       "expected_sources": [],
       "expected_answer_behavior": "abstain",
-      "tags": ["topic-present-unresolved", "underspecified"],
-      "notes": "Aligned with nq02: topic present but unresolved. Rewrite must not invent finalized FY26 pricing."
+      "tags": ["topic-present-unresolved", "anaphoric"],
+      "notes": "Aligned with nq02: only one pricing topic in history, so rewrite should resolve 'that' to FY26 pricing. Answer must still abstain — details were deferred; there are no finalized numbers in the corpus. Do not treat this row as underspecified."
     }
   ],
   "expected_case_kind_counts": {
-    "anaphoric": 7,
+    "anaphoric": 8,
     "already_complete": 5,
     "topic_shift": 4,
-    "underspecified": 4
+    "underspecified": 3
   },
   "expected_question_type_counts": {
     "single-source": 15,
