@@ -47,8 +47,11 @@ class RewriteProjectQuestionTest(SimpleTestCase):
         self.assertEqual(kwargs['timeout'], 15)
         self.assertIn('Vendor A.', kwargs['user_prompt'])
         self.assertIn(self.question, kwargs['user_prompt'])
-        self.assertIn('Example 2 — two candidates, leave unchanged:', kwargs['user_prompt'])
+        self.assertIn('Example 2 — too short (wrong) vs searchable (right):', kwargs['user_prompt'])
+        self.assertIn('Wrong (too short — bare label only):', kwargs['user_prompt'])
+        self.assertIn('Did the client approve homepage banner Option B that Priya recommended?', kwargs['user_prompt'])
         self.assertIn('Rewritten:', kwargs['user_prompt'])
+
         self.assertIn('fell_back=False', logs.output[0])
         self.assertIn('reason=rewritten', logs.output[0])
         self.assertIn('Why did we pick vendor A?', logs.output[0])

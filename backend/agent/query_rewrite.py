@@ -24,11 +24,18 @@ _REWRITE_SYSTEM_PROMPT = (
     "You rewrite a follow-up question so it can be searched on its own. "
     "When prior turns clearly identify a referent, resolve references such as "
     "'that', 'she', or 'why' into a complete standalone question. "
+    "Only in that clear-referent case, make the rewrite self-contained and "
+    "searchable: pull in key nouns from the most recent relevant turn "
+    "(entity names, document or asset types, people, codes) — do not leave "
+    "only a bare label such as 'Option B' or 'that version' without the "
+    "surrounding nouns that identify it (e.g. homepage banner, Priya, "
+    "welcome email). "
     "When the referent is ambiguous or the conversation does not uniquely "
     "identify what the user means, return the follow-up unchanged — do not "
-    "guess, pick among alternatives, or invent facts. "
+    "guess, pick among alternatives, invent facts, or force a searchable "
+    "rewrite. "
     "If the question is already complete, or it changes topic away from the "
-    "prior turns, return it unchanged. "
+    "prior turns, return it unchanged — do not append nouns from earlier turns. "
     "Return one line containing only the question. Do not explain."
 )
 
@@ -158,11 +165,12 @@ def rewrite_project_question_result(session, project, question: str) -> RewriteR
 
 
 # Synthetic few-shots only. Keep them out of the eval fixture so the model
-# cannot memorize fixture wording; they teach the clear vs ambiguous rule.
+# cannot memorize fixture wording; they teach clear vs ambiguous, and that
+# rewrites must stay searchable (not bare labels).
 _REWRITE_FEW_SHOTS = """\
 Examples (follow these patterns exactly):
 
-Example 1 — clear referent, rewrite:
+Example 1 — clear referent, rewrite with searchable nouns:
 Conversation:
 User: Which vendor did we choose for email?
 Assistant: We chose Vendor A for the outbound email platform.
@@ -171,7 +179,18 @@ Why was that?
 Rewritten:
 Why did we choose Vendor A for the outbound email platform?
 
-Example 2 — two candidates, leave unchanged:
+Example 2 — too short (wrong) vs searchable (right):
+Conversation:
+User: Which homepage banner option did Priya recommend?
+Assistant: Priya recommended Option B as the strongest fit for the brand guidelines.
+Follow-up question:
+Did the client approve that option?
+Wrong (too short — bare label only):
+Did the client approve Option B?
+Rewritten:
+Did the client approve homepage banner Option B that Priya recommended?
+
+Example 3 — two candidates, leave unchanged:
 Conversation:
 User: Which launches are on the calendar?
 Assistant: The product landing page and the sales-deck launch were both discussed.
@@ -180,7 +199,7 @@ When is that launch?
 Rewritten:
 When is that launch?
 
-Example 3 — two drafts, leave unchanged:
+Example 4 — two drafts, leave unchanged:
 Conversation:
 User: What email drafts exist?
 Assistant: There is a rejected v1 draft and an approved v2 revision.
@@ -189,7 +208,7 @@ What promo code is in that email?
 Rewritten:
 What promo code is in that email?
 
-Example 4 — unique topic, resolve referent (facts may still be unknown):
+Example 5 — unique topic, resolve referent (facts may still be unknown):
 Conversation:
 User: What pricing topics came up?
 Assistant: Next-year pricing was mentioned, but numbers were deferred to finance.
@@ -198,14 +217,16 @@ What are the finalized numbers for that?
 Rewritten:
 What are the finalized numbers for next-year pricing?
 
-Example 5 — already complete, leave unchanged:
+Example 6 — already complete, leave unchanged (do not graft prior nouns):
 Conversation:
-User: How many gift cards sold last week?
-Assistant: 1,200 gift cards sold.
+User: What campaign budget was confirmed for Q4?
+Assistant: A campaign budget of $85,000 for Q4.
 Follow-up question:
-Who recommended Nadia for the copywriter role?
+What purchase order number was confirmed for the holiday gift-card inserts?
+Wrong (grafted prior budget):
+What purchase order number was confirmed for the holiday gift-card inserts for the $85,000 Q4 budget?
 Rewritten:
-Who recommended Nadia for the copywriter role?
+What purchase order number was confirmed for the holiday gift-card inserts?
 """
 
 
@@ -217,8 +238,11 @@ def _rewrite_user_prompt(turns: list[tuple[str, str]], question: str) -> str:
     history = "\n".join(lines)
     return (
         f"{_REWRITE_FEW_SHOTS}\n"
-        f"Now rewrite this follow-up. Return one line only — the rewritten "
-        f"question, or the follow-up unchanged when the referent is ambiguous.\n\n"
+        f"Now rewrite this follow-up. Return one line only. If the referent is "
+        f"clear, emit a searchable standalone question with key nouns (not a "
+        f"bare-label rewrite like the Wrong line in Example 2). If ambiguous "
+        f"or already complete, return the follow-up unchanged (see Examples "
+        f"3–4 and 6) — do not graft prior-turn nouns.\n\n"
         f"Conversation:\n{history}\n\n"
         f"Follow-up question:\n{question}\n"
         f"Rewritten:"
