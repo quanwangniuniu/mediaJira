@@ -107,3 +107,71 @@ document was never surfaced among the retrieved chunks for that question.
 These are pre-existing, categorized retrieval gaps in the current baseline,
 not a flaky harness; see each question's `fail_reason` in the tracked JSON
 for detail.
+
+## Follow-up / query-rewrite eval
+
+Conversational follow-ups (anaphora, topic shift, underspecified, multi-turn)
+are scored by a **separate** harness so their metrics are never merged into
+the 2.1.0 Hit@K / MRR aggregates above.
+
+- **Fixture:** `backend/rag/tests/fixtures/project_rag_followup_eval_dataset.json`
+  (`dataset_version` `"1.2.0"`). Reuses `source_ref` values from the 2.1.0
+  corpus; it does not redefine sources.
+- **Command:**
+
+```bash
+RAG_EMBEDDING_PROVIDER=local python manage.py run_project_rag_followup_eval
+```
+
+Arm C calls `rewrite_project_question` and needs `GEMINI_API_KEY` even when
+embeddings are local. Pass `--arms A,B` to skip real rewrite.
+
+### Arms (A / B / C)
+
+| Arm | Retrieve with | Role |
+|-----|---------------|------|
+| **A** | Raw short follow-up (`question`) | Baseline without rewrite |
+| **B** | Human `expected_rewrite` | Upper-bound reference only — ideal completion ceiling; **not** proof that rewrite works |
+| **C** | `rewrite_project_question()` output | Real rewrite path. Primary claim: how **C compares to A**. Fallbacks that return the original question still count toward C |
+
+Reports also include per-question `comparison_A_to_C` (improve / regress /
+same / n/a), rewrite latency, and fallback counts.
+
+### Tracked follow-up baseline
+
+`backend/rag/eval_seed/baselines/med264_followup_v1.2.0_local_bge_baseline.json`
+is a real `run_project_rag_followup_eval` run (arms A,B,C) against follow-up
+fixture `1.2.0`, source corpus `2.1.0`, `RAG_EMBEDDING_PROVIDER=local`
+(`BAAI/bge-base-en-v1.5`), `chunk_size=1500`, `chunk_overlap=200`, `top_k=10`,
+default `RAG_QUERY_REWRITE_HISTORY_TURNS=3`. Copied from a local
+`eval_results/` artifact the same way as the main baseline; do not treat
+`eval_results/` itself as tracked.
+
+This is a **smoke / first baseline**, not a broad reliability proof.
+
+### Current follow-up aggregate (arms A / B / C)
+
+Single-source (n=23):
+
+| Arm | Hit@1 | Hit@3 | Hit@5 | MRR |
+|-----|-------|-------|-------|-----|
+| A | 0.435 | 0.565 | 0.565 | 0.490 |
+| B | 0.609 | 0.957 | 0.957 | 0.761 |
+| C | 0.609 | 0.957 | 0.957 | 0.746 |
+
+Multi-source (n=4): Recall@5 / Full-Coverage@5 — A 0.500 / 0.500; B and C
+1.000 / 1.000. (Harness also records Recall@3/10; there is no multi-source
+Recall@1.)
+
+No-answer (n=5): excluded from ranking metrics (`n/a` in A→C).
+
+A → C (primary): improve=11, regress=0, same=16, n/a=5. Rewrite fallbacks=0.
+
+### Known gaps in this follow-up baseline
+
+- **Underspecified inventing (fq17–fq19):** rewrite still often picks one
+  referent when history leaves several; product clarification is out of
+  scope for rewrite. fq26 (beyond-window) correctly leaves the question
+  unchanged when the only referent fell outside the 3-turn window.
+- **Do not compare C Hit@1 to the main 2.1.0 Hit@1 (0.917):** different
+  question set and harder follow-up wording; use A→C and B-as-ceiling.
