@@ -6,7 +6,10 @@ turns. rewrite_project_question calls the rewrite model only when that
 history exists, and returns the original question when the call cannot be
 used.
 """
+from __future__ import annotations
+
 import logging
+from dataclasses import dataclass
 
 from django.conf import settings
 
@@ -19,10 +22,30 @@ _REWRITE_TEMPERATURE = 0
 _REWRITE_MAX_OUTPUT_TOKENS = 256
 _REWRITE_SYSTEM_PROMPT = (
     "You rewrite a follow-up question so it can be searched on its own. "
-    "Use the conversation only to resolve references such as 'that' or 'why'. "
-    "If the question is already complete, return it unchanged. "
+    "When prior turns clearly identify a referent, resolve references such as "
+    "'that', 'she', or 'why' into a complete standalone question. "
+    "When the referent is ambiguous or the conversation does not uniquely "
+    "identify what the user means, return the follow-up unchanged — do not "
+    "guess, pick among alternatives, or invent facts. "
+    "If the question is already complete, or it changes topic away from the "
+    "prior turns, return it unchanged. "
     "Return one line containing only the question. Do not explain."
 )
+
+
+@dataclass(frozen=True)
+class RewriteResult:
+    """Outcome of rewrite_project_question_result.
+
+    fell_back is True only when the model was needed but its output could not
+    be used (error / timeout / unusable text), so the original question is
+    kept. Returning the original because there is no history, or because the
+    model intentionally left a complete question unchanged, is not a fallback.
+    """
+
+    question: str
+    fell_back: bool
+    reason: str
 
 
 def recent_rewrite_turns(session) -> list[tuple[str, str]]:
@@ -85,18 +108,23 @@ def recent_rewrite_turns(session) -> list[tuple[str, str]]:
 
 
 def rewrite_project_question(session, project, question: str) -> str:
-    """Return the question to search with.
+    """Return the question to search with. See rewrite_project_question_result."""
+    return rewrite_project_question_result(session, project, question).question
+
+
+def rewrite_project_question_result(session, project, question: str) -> RewriteResult:
+    """Rewrite with explicit fallback metadata for eval and debugging.
 
     With no earlier completed turn, the original question is returned and
     the model is not called. Otherwise the model must return exactly one
     line. An empty reply, more than one line, a timeout, or any other
-    error returns the original question.
+    error returns the original question with fell_back=True.
     """
     original = (question or '').strip()
     turns = recent_rewrite_turns(session)
     if not turns:
         _log_rewrite(project, session, original, original, fell_back=False, reason='no_history')
-        return original
+        return RewriteResult(question=original, fell_back=False, reason='no_history')
 
     try:
         from agent.llm_client import call_llm
@@ -118,15 +146,67 @@ def rewrite_project_question(session, project, question: str) -> str:
             project.id, session.id, type(exc).__name__,
         )
         _log_rewrite(project, session, original, original, fell_back=True, reason='error')
-        return original
+        return RewriteResult(question=original, fell_back=True, reason='error')
 
     accepted = _single_question(result.get('text') or '')
     if accepted is None:
         _log_rewrite(project, session, original, original, fell_back=True, reason='unusable_output')
-        return original
+        return RewriteResult(question=original, fell_back=True, reason='unusable_output')
 
     _log_rewrite(project, session, original, accepted, fell_back=False, reason='rewritten')
-    return accepted
+    return RewriteResult(question=accepted, fell_back=False, reason='rewritten')
+
+
+# Synthetic few-shots only. Keep them out of the eval fixture so the model
+# cannot memorize fixture wording; they teach the clear vs ambiguous rule.
+_REWRITE_FEW_SHOTS = """\
+Examples (follow these patterns exactly):
+
+Example 1 — clear referent, rewrite:
+Conversation:
+User: Which vendor did we choose for email?
+Assistant: We chose Vendor A for the outbound email platform.
+Follow-up question:
+Why was that?
+Rewritten:
+Why did we choose Vendor A for the outbound email platform?
+
+Example 2 — two candidates, leave unchanged:
+Conversation:
+User: Which launches are on the calendar?
+Assistant: The product landing page and the sales-deck launch were both discussed.
+Follow-up question:
+When is that launch?
+Rewritten:
+When is that launch?
+
+Example 3 — two drafts, leave unchanged:
+Conversation:
+User: What email drafts exist?
+Assistant: There is a rejected v1 draft and an approved v2 revision.
+Follow-up question:
+What promo code is in that email?
+Rewritten:
+What promo code is in that email?
+
+Example 4 — unique topic, resolve referent (facts may still be unknown):
+Conversation:
+User: What pricing topics came up?
+Assistant: Next-year pricing was mentioned, but numbers were deferred to finance.
+Follow-up question:
+What are the finalized numbers for that?
+Rewritten:
+What are the finalized numbers for next-year pricing?
+
+Example 5 — already complete, leave unchanged:
+Conversation:
+User: How many gift cards sold last week?
+Assistant: 1,200 gift cards sold.
+Follow-up question:
+Who recommended Nadia for the copywriter role?
+Rewritten:
+Who recommended Nadia for the copywriter role?
+"""
 
 
 def _rewrite_user_prompt(turns: list[tuple[str, str]], question: str) -> str:
@@ -135,7 +215,14 @@ def _rewrite_user_prompt(turns: list[tuple[str, str]], question: str) -> str:
         lines.append(f"User: {user_text}")
         lines.append(f"Assistant: {assistant_text}")
     history = "\n".join(lines)
-    return f"Conversation:\n{history}\n\nFollow-up question:\n{question}"
+    return (
+        f"{_REWRITE_FEW_SHOTS}\n"
+        f"Now rewrite this follow-up. Return one line only — the rewritten "
+        f"question, or the follow-up unchanged when the referent is ambiguous.\n\n"
+        f"Conversation:\n{history}\n\n"
+        f"Follow-up question:\n{question}\n"
+        f"Rewritten:"
+    )
 
 
 def _single_question(text: str) -> str | None:

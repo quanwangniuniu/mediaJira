@@ -47,6 +47,8 @@ class RewriteProjectQuestionTest(SimpleTestCase):
         self.assertEqual(kwargs['timeout'], 15)
         self.assertIn('Vendor A.', kwargs['user_prompt'])
         self.assertIn(self.question, kwargs['user_prompt'])
+        self.assertIn('Example 2 — two candidates, leave unchanged:', kwargs['user_prompt'])
+        self.assertIn('Rewritten:', kwargs['user_prompt'])
         self.assertIn('fell_back=False', logs.output[0])
         self.assertIn('reason=rewritten', logs.output[0])
         self.assertIn('Why did we pick vendor A?', logs.output[0])
@@ -82,14 +84,18 @@ class RewriteProjectQuestionTest(SimpleTestCase):
     @patch('agent.query_rewrite.recent_rewrite_turns', return_value=[('Which vendor?', 'Vendor A.')])
     @patch('agent.llm_client.call_llm')
     def test_model_error_falls_back(self, mock_llm, _turns):
-        from agent.query_rewrite import rewrite_project_question
+        from agent.query_rewrite import rewrite_project_question, rewrite_project_question_result
 
         mock_llm.side_effect = TimeoutError('rewrite timed out')
 
         with self.assertLogs('agent.query_rewrite', level='INFO') as logs:
             rewritten = rewrite_project_question(self.session, self.project, self.question)
+            detailed = rewrite_project_question_result(self.session, self.project, self.question)
 
         self.assertEqual(rewritten, self.question)
+        self.assertTrue(detailed.fell_back)
+        self.assertEqual(detailed.reason, 'error')
+        self.assertEqual(detailed.question, self.question)
         self.assertTrue(any('fell_back=True' in line and 'reason=error' in line for line in logs.output))
         self.assertTrue(any('error_type=TimeoutError' in line for line in logs.output))
 
