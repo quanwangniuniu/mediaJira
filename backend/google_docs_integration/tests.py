@@ -114,6 +114,11 @@ class TestGoogleDocsStatusView:
 
 @pytest.mark.django_db
 class TestGoogleDocsConnectView:
+    @override_settings(
+        GOOGLE_OAUTH_CLIENT_ID="",
+        GOOGLE_OAUTH_CLIENT_SECRET="",
+        GOOGLE_OAUTH_REDIRECT_URI="",
+    )
     def test_missing_oauth_settings_returns_400(self, api_client):
         """When GOOGLE_OAUTH env vars are empty, returns 400."""
         response = api_client.get(CONNECT_URL)
@@ -520,9 +525,17 @@ class TestGoogleSheetsImportView:
         }
         matrix, cells = _grid_to_matrix_and_cells(grid)
         assert matrix == [["Ada", "0.5"]]
-        assert cells[0]["row"] == 0
-        assert cells[0]["col"] == 1
-        assert cells[0]["userEnteredFormat"]["textFormat"]["bold"] is True
+        assert cells == [
+            {"row": 0, "col": 0, "userEnteredFormat": None},
+            {
+                "row": 0,
+                "col": 1,
+                "userEnteredFormat": {
+                    "numberFormat": {"type": "PERCENT", "pattern": "0%"},
+                    "textFormat": {"bold": True},
+                },
+            },
+        ]
 
 
     def test_grid_parser_keeps_merge_anchor_only(self):
@@ -603,7 +616,11 @@ class TestGoogleSheetsImportView:
         }
         matrix, cells = _grid_to_matrix_and_cells(grid)
         assert matrix == [["10"], ["20"], ["=A1+A2"]]
-        assert cells == []
+        assert cells == [
+            {"row": 0, "col": 0, "userEnteredFormat": None},
+            {"row": 1, "col": 0, "userEnteredFormat": None},
+            {"row": 2, "col": 0, "userEnteredFormat": None},
+        ]
 
     def test_google_api_error(self, api_client, connection):
         http_error = requests.HTTPError()
