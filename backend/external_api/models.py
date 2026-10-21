@@ -1,70 +1,36 @@
-from django.conf import settings
 from django.db import models
+from django.db.models.signals import post_init, post_save
+from django.dispatch import receiver
 from django.utils import timezone
 
 from core.models import TimeStampedModel
 
 
-class ApiKey(TimeStampedModel):
-    """Sent as `X-API-Key: zmk_<prefix>_<secret>`; only a SHA-256 of the secret is stored."""
+class Credential(TimeStampedModel):
+    """An API key or a bearer client for one organisation and project.
+
+    The secret is stored as a SHA-256 hex digest and shown once, on create.
+    """
+
+    class Kind(models.TextChoices):
+        API_KEY = 'api_key', 'API key'
+        CLIENT = 'client', 'Bearer client'
 
     organization = models.ForeignKey(
-        'core.Organization', on_delete=models.CASCADE, related_name='api_keys',
+        'core.Organization', on_delete=models.CASCADE, related_name='external_credentials',
     )
-    # core.Project is tenant-scoped and its ids repeat across organisation
-    # schemas, so the project is pinned by (organization, project_id).
+    # core.Project ids repeat across organisation schemas, so the project is
+    # stored as an integer next to the organisation.
     project_id = models.PositiveIntegerField()
     name = models.CharField(max_length=200)
-    prefix = models.CharField(max_length=16, unique=True)
-    key_hash = models.CharField(max_length=64)
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    public_id = models.CharField(max_length=64, unique=True)
+    secret_hash = models.CharField(max_length=64)
+    # '<resource>:read' / '<resource>:write' entries, see external_api.views.SCOPES.
     scopes = models.JSONField(default=list)
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='+',
-    )
-    revoked_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-created_at', '-id']
-
-    @property
-    def is_active(self):
-        return self.revoked_at is None
-
-    def __str__(self):
-        return f"ApiKey '{self.name}' (zmk_{self.prefix})"
-
-
-class OAuthClient(TimeStampedModel):
-    """Binds a toolkit client-credentials Application to one (organization, project) and its scopes."""
-
-    organization = models.ForeignKey(
-        'core.Organization', on_delete=models.CASCADE, related_name='oauth_clients',
-    )
-    project_id = models.PositiveIntegerField()
-    name = models.CharField(max_length=200)
-    # Cleared on revoke: deleting the application also deletes its tokens.
-    application = models.OneToOneField(
-        settings.OAUTH2_PROVIDER_APPLICATION_MODEL, on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='zmarkio_client',
-    )
-    # Kept after revoke so the admin list still identifies the client.
-    client_id = models.CharField(max_length=100)
-    scopes = models.JSONField(default=list)
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='+',
-    )
-
-    class Meta:
-        ordering = ['-created_at', '-id']
-
-    @property
-    def is_active(self):
-        return self.application_id is not None
-
-    def __str__(self):
-        return f"OAuthClient '{self.name}' ({self.client_id})"
 
 
 class WebhookEvent(models.TextChoices):
@@ -74,47 +40,52 @@ class WebhookEvent(models.TextChoices):
 
 
 class WebhookEndpoint(TimeStampedModel):
-    """An external URL that receives signed POSTs for the events it subscribes to."""
-
     organization = models.ForeignKey(
         'core.Organization', on_delete=models.CASCADE, related_name='webhook_endpoints',
     )
     project_id = models.PositiveIntegerField()
     url = models.URLField(max_length=2000)
-    # WebhookEvent values.
     events = models.JSONField(default=list)
-    # core.crypto.encrypt_token output; the plain secret is shown once, on create.
+    # core.crypto.encrypt_token output. The plain secret is shown once, on create.
     secret_encrypted = models.TextField()
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='+',
-    )
 
     class Meta:
         ordering = ['-created_at', '-id']
 
-    def __str__(self):
-        return f'WebhookEndpoint {self.url}'
-
 
 class WebhookDelivery(models.Model):
-    """One delivery attempt; each retry is a further row."""
-
-    class Status(models.TextChoices):
-        SUCCEEDED = 'succeeded', 'Succeeded'
-        RETRYING = 'retrying', 'Retry scheduled'
-        FAILED = 'failed', 'Failed'
+    """One delivery attempt. Each retry is another row."""
 
     endpoint = models.ForeignKey(WebhookEndpoint, on_delete=models.CASCADE, related_name='deliveries')
     event_type = models.CharField(max_length=64)
     attempt = models.PositiveSmallIntegerField(default=1)
-    status = models.CharField(max_length=16, choices=Status.choices)
+    # Empty when the request never got a response.
     response_code = models.PositiveSmallIntegerField(null=True, blank=True)
-    error = models.CharField(max_length=1000, blank=True, default='')
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         ordering = ['-created_at', '-id']
 
-    def __str__(self):
-        return f'{self.event_type} attempt {self.attempt} ({self.status})'
+
+@receiver(post_init, sender='csm.Ticket')
+def _remember_ticket_status(sender, instance, **kwargs):
+    # __dict__, so a deferred status is not loaded here.
+    instance._webhook_status = instance.__dict__.get('status')
+
+
+@receiver(post_save, sender='csm.Ticket')
+def _ticket_saved(sender, instance, created, update_fields, **kwargs):
+    from external_api.tasks import emit_ticket_event
+
+    previous = instance._webhook_status
+    instance._webhook_status = instance.status
+    if created:
+        emit_ticket_event(WebhookEvent.TICKET_CREATED, instance)
+        return
+    if previous and previous != instance.status and (update_fields is None or 'status' in update_fields):
+        emit_ticket_event(WebhookEvent.TICKET_STATUS_CHANGED, instance, previous_status=previous)
+    # The SLA sweep saves exactly this flag when it records a breach.
+    for breach_type in ('first_response', 'resolution'):
+        flag = f'{breach_type}_breach_notified'
+        if update_fields and flag in update_fields and getattr(instance, flag):
+            emit_ticket_event(WebhookEvent.SLA_BREACHED, instance, breach_type=breach_type)

@@ -35,8 +35,6 @@ urlpatterns = [
     path('api/access_control/', include('access_control.urls')),
     path('api/audit/', include('audit.urls')),
     path('api/teams/', include('teams.urls')),
-    # External API (API key / OAuth 2.0) and its admin console: see backend/external_urls.py.
-    path('', include('backend.external_urls')),
     path('api/csm/', include('csm.urls')),
     path('auth/', include('authentication.urls')),
     path('users/', include('user_preferences.urls')),
@@ -55,6 +53,7 @@ urlpatterns = [
     path("api/google-docs/", include("google_docs_integration.urls")),
     path("api/google-calendar/", include("google_calendar_integration.urls")),
     path("api/v1/linear/", include("linear_integration.urls")),
+    path('', include('external_api.views')),
     path('api/', include('task.urls')),
     path('api/policy/', include('policy.urls')),
     path('api/dashboard/', include('dashboard.urls')),

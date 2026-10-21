@@ -6,7 +6,6 @@ from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 
 from core.admin_permissions import IsCsmAccessAllowed
-from core.models import Project
 from core.viewset_mixins import ProjectScopedViewSetMixin
 
 from .models import (
@@ -140,11 +139,7 @@ class CustomerViewSet(ProjectScopedViewSetMixin, viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         project_id = self.get_required_project_id()
-        # Resolved under the request's tenant schema, where the project id is unambiguous.
-        organization_id = (
-            Project.objects.filter(pk=project_id).values_list('organization_id', flat=True).first()
-        )
-        serializer.save(project_id=project_id, organization_id=organization_id)
+        serializer.save(project_id=project_id)
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
