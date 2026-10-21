@@ -59,6 +59,18 @@ def test_committed_fixture_includes_multi_turn_smoke_rows():
         assert _history_turn_count(q['history']) >= 2, q['id']
 
 
+def test_committed_fixture_includes_beyond_window_and_multi_source_rows():
+    data = json.loads(DEFAULT_FOLLOWUP_FIXTURE.read_text(encoding='utf-8'))
+    beyond = [q for q in data['questions'] if 'beyond-default-window' in (q.get('tags') or [])]
+    multi_source = [q for q in data['questions'] if q.get('question_type') == 'multi-source']
+    assert len(beyond) >= 3
+    for q in beyond:
+        assert _history_turn_count(q['history']) > 3, q['id']
+    assert len(multi_source) >= 4
+    for q in multi_source:
+        assert len(q.get('expected_sources') or []) >= 2, q['id']
+
+
 def test_validate_followup_fixture_rejects_multi_turn_tag_without_two_turns():
     data = {
         'source_corpus': {'fixture': 'project_rag_eval_dataset.json'},
@@ -73,6 +85,28 @@ def test_validate_followup_fixture_rejects_multi_turn_tag_without_two_turns():
         ],
     }
     with pytest.raises(CommandError, match='multi-turn requires history'):
+        _validate_followup_fixture(data, Path('bad.json'))
+
+
+@override_settings(RAG_QUERY_REWRITE_HISTORY_TURNS=3)
+def test_validate_followup_fixture_rejects_beyond_window_tag_without_enough_turns():
+    data = {
+        'source_corpus': {'fixture': 'project_rag_eval_dataset.json'},
+        'questions': [
+            _minimal_question(
+                tags=['multi-turn', 'beyond-default-window'],
+                history=[
+                    {'role': 'user', 'content': 'Turn one?'},
+                    {'role': 'assistant', 'content': 'A.'},
+                    {'role': 'user', 'content': 'Turn two?'},
+                    {'role': 'assistant', 'content': 'B.'},
+                    {'role': 'user', 'content': 'Turn three?'},
+                    {'role': 'assistant', 'content': 'C.'},
+                ],
+            ),
+        ],
+    }
+    with pytest.raises(CommandError, match='beyond-default-window requires'):
         _validate_followup_fixture(data, Path('bad.json'))
 
 

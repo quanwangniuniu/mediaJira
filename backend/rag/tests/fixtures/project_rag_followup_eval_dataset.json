@@ -1,8 +1,8 @@
 {
   "dataset_name": "project_rag_followup_eval_dataset",
-  "dataset_version": "1.1.0",
+  "dataset_version": "1.2.0",
   "created_date": "2026-10-20",
-  "description": "Follow-up / query-rewrite eval for MED-264 project RAG. Reuses source_ref values from project_rag_eval_dataset.json (2.1.0); this file does not redefine sources. Questions are conversational follow-ups scored under three retrieval arms (A/B/C). v1.1 adds multi-turn smoke rows (tag multi-turn; history with 2–3 completed turns) to check recent-referent binding and mid-dialog topic shift. Still a smoke / first baseline, not a broad reliability proof.",
+  "description": "Follow-up / query-rewrite eval for MED-264 project RAG. Reuses source_ref values from project_rag_eval_dataset.json (2.1.0); this file does not redefine sources. Questions are conversational follow-ups scored under three retrieval arms (A/B/C). v1.1 multi-turn smoke (2–3 turns). v1.2 adds beyond-default-window rows (4–5 prior turns; default RAG_QUERY_REWRITE_HISTORY_TURNS=3) and more multi-source follow-ups. Still a smoke / first baseline, not a broad reliability proof.",
   "source_corpus": {
     "fixture": "project_rag_eval_dataset.json",
     "dataset_version": "2.1.0",
@@ -22,7 +22,7 @@
       "purpose": "Real rewrite path. Timeouts and other fallbacks that return the original question still count toward C's score."
     }
   },
-  "scoring_notes": "Rank each arm with the same evidence-aware single-source / multi-source rules as the main project RAG eval (expected_sources + evidence spans). Do not merge follow-up results into the 2.1.0 Hit@K / MRR aggregates. expected_rewrite is a human reference for arm B and for qualitative review of C; C need not match it verbatim if meaning and referents are preserved. For already_complete and topic_shift, expected_rewrite is intentionally close to question so A and B should be similar and C must not regress by grafting prior turns. For underspecified, prior turns leave multiple plausible referents — expected_rewrite must not pick one. question_type no-answer means the answer should abstain (empty expected_sources); it does not forbid resolving a unique referent in expected_rewrite (see fq20). Rows tagged multi-turn have 2+ completed prior turns; rewrite must bind anaphors to the most recent clear referent and must not graft an older turn after a topic shift. Reports must list per-question A→C improve/regress, rewrite latency, and fallback counts, state which arms ran, and call out the multi-turn subset.",
+  "scoring_notes": "Rank each arm with the same evidence-aware single-source / multi-source rules as the main project RAG eval (expected_sources + evidence spans). Do not merge follow-up results into the 2.1.0 Hit@K / MRR aggregates. expected_rewrite is a human reference for arm B and for qualitative review of C; C need not match it verbatim if meaning and referents are preserved. For already_complete and topic_shift, expected_rewrite is intentionally close to question so A and B should be similar and C must not regress by grafting prior turns. For underspecified, prior turns leave multiple plausible referents — expected_rewrite must not pick one. question_type no-answer means the answer should abstain (empty expected_sources); it does not forbid resolving a unique referent in expected_rewrite (see fq20). Rows tagged multi-turn have 2+ completed prior turns; rewrite must bind anaphors to the most recent clear referent and must not graft an older turn after a topic shift. Tag beyond-default-window means history_turn_count > default RAG_QUERY_REWRITE_HISTORY_TURNS (3): the oldest turn(s) are dropped from the rewrite prompt — C must not invent facts that appear only outside the window. Multi-source follow-ups use the same Recall/Full-Coverage scorers as the main eval. Reports must list A→C improve/regress, rewrite latency/fallbacks, and call out multi-turn and beyond-default-window subsets.",
   "case_kinds": [
     "anaphoric",
     "already_complete",
@@ -229,7 +229,7 @@
     {
       "id": "fq07",
       "case_kind": "anaphoric",
-      "question_type": "multi-source",
+      "question_type": "single-source",
       "include_in_followup_metrics": true,
       "derived_from": "mq01",
       "history": [
@@ -254,7 +254,7 @@
         }
       ],
       "tags": ["distractor-heavy"],
-      "notes": "Follow-up is single-source on notion-005 after history already covered the 10%→15% reason; expected_sources lists only the send-start source."
+      "notes": "Follow-up is single-source on notion-005 after history already covered the 10%→15% reason."
     },
     {
       "id": "fq08",
@@ -772,17 +772,389 @@
       ],
       "tags": ["multi-turn", "distractor-heavy"],
       "notes": "3-turn history (fits default RAG_QUERY_REWRITE_HISTORY_TURNS=3). 'that fix' must bind to the session-timeout checkout fix from the latest turn, not Willow & Pine budget or Northbridge compliance."
+    },
+    {
+      "id": "fq25",
+      "case_kind": "anaphoric",
+      "question_type": "single-source",
+      "include_in_followup_metrics": true,
+      "derived_from": "q11",
+      "history": [
+        {
+          "role": "user",
+          "content": "What purchase order number was confirmed for the holiday gift-card inserts?"
+        },
+        {
+          "role": "assistant",
+          "content": "Purchase order PO-88421 was confirmed for the holiday gift-card inserts."
+        },
+        {
+          "role": "user",
+          "content": "What campaign budget did Jade confirm at the Aurora Retail Q4 kickoff?"
+        },
+        {
+          "role": "assistant",
+          "content": "Jade confirmed a campaign budget of $85,000 for Q4."
+        },
+        {
+          "role": "user",
+          "content": "What is Willow & Pine's confirmed budget for the Q4 onboarding phase and Q1 campaign prep?"
+        },
+        {
+          "role": "assistant",
+          "content": "Willow & Pine confirmed $42,000 for Q4 onboarding and Q1 campaign prep."
+        },
+        {
+          "role": "user",
+          "content": "Which homepage banner option did Priya recommend during the creative review?"
+        },
+        {
+          "role": "assistant",
+          "content": "Priya recommended Option B as the strongest fit for Aurora Retail's brand guidelines."
+        }
+      ],
+      "question": "Did the client approve that option?",
+      "expected_rewrite": "Did the client approve homepage banner Option B that Priya recommended?",
+      "expected_sources": [
+        {
+          "source_type": "meeting",
+          "source_ref": "meeting-006",
+          "evidence": [
+            "Lena approved the final homepage banner concept, Option B (blue gradient with gift-card imagery)."
+          ]
+        }
+      ],
+      "tags": ["multi-turn", "beyond-default-window"],
+      "notes": "4-turn history; default window keeps only the last 3 (drops PO turn). 'that option' must still bind to Option B from the latest in-window turn, not budget figures."
+    },
+    {
+      "id": "fq26",
+      "case_kind": "underspecified",
+      "question_type": "no-answer",
+      "include_in_followup_metrics": true,
+      "history": [
+        {
+          "role": "user",
+          "content": "What promo code was included in the approved welcome email that Marketing signed off on sending?"
+        },
+        {
+          "role": "assistant",
+          "content": "The approved welcome email uses code WELCOME15."
+        },
+        {
+          "role": "user",
+          "content": "How many gift cards had been sold as of the Nov 1 main-push launch readiness review?"
+        },
+        {
+          "role": "assistant",
+          "content": "1,200 gift cards sold toward the 4,000 goal."
+        },
+        {
+          "role": "user",
+          "content": "What is Willow & Pine's confirmed budget for the Q4 onboarding phase and Q1 campaign prep?"
+        },
+        {
+          "role": "assistant",
+          "content": "Willow & Pine confirmed $42,000 for Q4 onboarding and Q1 campaign prep."
+        },
+        {
+          "role": "user",
+          "content": "What compliance turnaround requirement did Northbridge Financial's kickoff establish for member communications?"
+        },
+        {
+          "role": "assistant",
+          "content": "Northbridge requires a five-business-day compliance turnaround for member communications."
+        }
+      ],
+      "question": "When does that version start sending?",
+      "expected_rewrite": "When does that version start sending?",
+      "expected_sources": [],
+      "expected_answer_behavior": "abstain",
+      "tags": ["multi-turn", "beyond-default-window", "underspecified"],
+      "notes": "4-turn history. The only 'version'/welcome-email referent is in turn 1, which the default 3-turn window drops. Visible history has no unique 'version' — rewrite must not invent WELCOME15 or the welcome email. Leave the follow-up unchanged."
+    },
+    {
+      "id": "fq27",
+      "case_kind": "anaphoric",
+      "question_type": "single-source",
+      "include_in_followup_metrics": true,
+      "derived_from": "q07",
+      "history": [
+        {
+          "role": "user",
+          "content": "What is the approved Instagram caption scheduled for October 17?"
+        },
+        {
+          "role": "assistant",
+          "content": "The approved October 17 caption is the gift-card early-access line from the social caption bank."
+        },
+        {
+          "role": "user",
+          "content": "What purchase order number was confirmed for the holiday gift-card inserts?"
+        },
+        {
+          "role": "assistant",
+          "content": "Purchase order PO-88421 was confirmed for the holiday gift-card inserts."
+        },
+        {
+          "role": "user",
+          "content": "What campaign budget did Jade confirm at the Aurora Retail Q4 kickoff?"
+        },
+        {
+          "role": "assistant",
+          "content": "Jade confirmed a campaign budget of $85,000 for Q4."
+        },
+        {
+          "role": "user",
+          "content": "What compliance turnaround requirement did Northbridge Financial's kickoff establish for member communications?"
+        },
+        {
+          "role": "assistant",
+          "content": "Northbridge requires a five-business-day compliance turnaround for member communications."
+        },
+        {
+          "role": "user",
+          "content": "What root cause did Dev trace the Sprint 15 checkout flow bug to?"
+        },
+        {
+          "role": "assistant",
+          "content": "Dev traced it to a session-timeout misconfiguration on Aurora Retail's checkout server."
+        }
+      ],
+      "question": "Had they deployed that fix by Sprint 18?",
+      "expected_rewrite": "Had Aurora Retail's engineering team deployed the session-timeout checkout fix by Sprint 18?",
+      "expected_sources": [
+        {
+          "source_type": "retrospective",
+          "source_ref": "retro-005",
+          "evidence": [
+            "Aurora Retail's engineering team had not yet deployed the session-timeout fix discussed in Sprint 15"
+          ]
+        }
+      ],
+      "tags": ["multi-turn", "beyond-default-window", "distractor-heavy"],
+      "notes": "5-turn history; window keeps turns 3–5. 'that fix' must bind to the session-timeout checkout fix from the latest turn, not Instagram/PO/budget/compliance from older turns."
+    },
+    {
+      "id": "fq28",
+      "case_kind": "topic_shift",
+      "question_type": "single-source",
+      "include_in_followup_metrics": true,
+      "derived_from": "q14",
+      "history": [
+        {
+          "role": "user",
+          "content": "What campaign budget did Jade confirm at the Aurora Retail Q4 kickoff?"
+        },
+        {
+          "role": "assistant",
+          "content": "Jade confirmed a campaign budget of $85,000 for Q4."
+        },
+        {
+          "role": "user",
+          "content": "How many gift cards had been sold as of the Nov 1 main-push launch readiness review?"
+        },
+        {
+          "role": "assistant",
+          "content": "1,200 gift cards sold toward the 4,000 goal."
+        },
+        {
+          "role": "user",
+          "content": "What was the confirmed budget for the Aurora Retail main-push paid social allocation?"
+        },
+        {
+          "role": "assistant",
+          "content": "The confirmed paid social allocation for the main push was $32,000."
+        },
+        {
+          "role": "user",
+          "content": "What federally-insured disclosure line was added to the compliance-approved Northbridge welcome series?"
+        },
+        {
+          "role": "assistant",
+          "content": "A federally insured by NCUA disclosure line was added to the approved Northbridge welcome series."
+        }
+      ],
+      "question": "What is the approved Instagram caption scheduled for October 17?",
+      "expected_rewrite": "What is the approved Instagram caption scheduled for October 17?",
+      "expected_sources": [
+        {
+          "source_type": "notion_draft",
+          "source_ref": "notion-003",
+          "evidence": [
+            "First dibs go to loyalty members. Join free today."
+          ]
+        }
+      ],
+      "tags": ["multi-turn", "beyond-default-window"],
+      "notes": "4-turn campaign/compliance history then a complete Instagram question. Rewrite must leave it unchanged and not graft gift-card or Northbridge context."
+    },
+    {
+      "id": "fq29",
+      "case_kind": "anaphoric",
+      "question_type": "multi-source",
+      "include_in_followup_metrics": true,
+      "derived_from": "mq03",
+      "history": [
+        {
+          "role": "user",
+          "content": "What creative assets were reviewed for the Aurora Retail homepage?"
+        },
+        {
+          "role": "assistant",
+          "content": "The creative review covered homepage banner options, and Priya recommended Option B as the strongest fit for Aurora Retail's brand guidelines."
+        }
+      ],
+      "question": "Which option was recommended, and did the client approve it?",
+      "expected_rewrite": "Which homepage banner option did the creative review recommend, and did the client end up approving that option?",
+      "expected_sources": [
+        {
+          "source_type": "meeting",
+          "source_ref": "meeting-007",
+          "evidence": [
+            "Priya recommended Option B as the strongest fit for Aurora Retail's brand guidelines."
+          ]
+        },
+        {
+          "source_type": "meeting",
+          "source_ref": "meeting-006",
+          "evidence": [
+            "Lena approved the final homepage banner concept, Option B (blue gradient with gift-card imagery)."
+          ]
+        }
+      ],
+      "tags": [],
+      "notes": "Multi-source follow-up spanning recommendation (meeting-007) and client approval (meeting-006)."
+    },
+    {
+      "id": "fq30",
+      "case_kind": "anaphoric",
+      "question_type": "multi-source",
+      "include_in_followup_metrics": true,
+      "derived_from": "mq02",
+      "history": [
+        {
+          "role": "user",
+          "content": "What went wrong with checkout during Sprint 15?"
+        },
+        {
+          "role": "assistant",
+          "content": "Dev traced the Sprint 15 checkout flow bug to a session-timeout misconfiguration on Aurora Retail's checkout server."
+        }
+      ],
+      "question": "What was the root cause, and had they deployed that fix by Sprint 18?",
+      "expected_rewrite": "What checkout flow issue recurred between Sprint 15 and Sprint 18, and had Aurora Retail's engineering team deployed the session-timeout fix by Sprint 18?",
+      "expected_sources": [
+        {
+          "source_type": "retrospective",
+          "source_ref": "retro-002",
+          "evidence": [
+            "session-timeout misconfiguration on Aurora Retail's checkout server"
+          ]
+        },
+        {
+          "source_type": "retrospective",
+          "source_ref": "retro-005",
+          "evidence": [
+            "Aurora Retail's engineering team had not yet deployed the session-timeout fix discussed in Sprint 15"
+          ]
+        }
+      ],
+      "tags": ["distractor-heavy"],
+      "notes": "Multi-source: root cause (retro-002) plus Sprint 18 deployment status (retro-005)."
+    },
+    {
+      "id": "fq31",
+      "case_kind": "anaphoric",
+      "question_type": "multi-source",
+      "include_in_followup_metrics": true,
+      "derived_from": "mq05",
+      "history": [
+        {
+          "role": "user",
+          "content": "What budget numbers did we lock for Aurora Retail recently?"
+        },
+        {
+          "role": "assistant",
+          "content": "At the Q4 kickoff Jade confirmed a campaign budget of $85,000, and the Q3 quarterly review noted that the Aurora Retail account alone accounted for $138,000 of agency spend."
+        }
+      ],
+      "question": "What Q4 budget did Jade confirm, and how much of Q3 spend was Aurora alone?",
+      "expected_rewrite": "What Q4 campaign budget did Jade confirm at kickoff, and how much of Q3 agency spend did the Aurora Retail account alone account for?",
+      "expected_sources": [
+        {
+          "source_type": "meeting",
+          "source_ref": "meeting-002",
+          "evidence": [
+            "confirming the campaign budget of $85,000 for Q4"
+          ]
+        },
+        {
+          "source_type": "meeting",
+          "source_ref": "meeting-005",
+          "evidence": [
+            "the Aurora Retail account alone accounted for $138,000 of that spend"
+          ]
+        }
+      ],
+      "tags": ["long-document", "multi-chunk"],
+      "notes": "Multi-source follow-up for kickoff budget (meeting-002) and Q3 Aurora spend share (meeting-005)."
+    },
+    {
+      "id": "fq32",
+      "case_kind": "anaphoric",
+      "question_type": "multi-source",
+      "include_in_followup_metrics": true,
+      "derived_from": "mq01",
+      "history": [
+        {
+          "role": "user",
+          "content": "What campaign budget did Jade confirm at the Aurora Retail Q4 kickoff?"
+        },
+        {
+          "role": "assistant",
+          "content": "Jade confirmed a campaign budget of $85,000 for Q4."
+        },
+        {
+          "role": "user",
+          "content": "Why was the welcome email discount changed from 10% to 15%?"
+        },
+        {
+          "role": "assistant",
+          "content": "Marketing flagged that 10% is too low compared to competitor welcome offers, so the approved revision uses 15%."
+        }
+      ],
+      "question": "Why was it changed, and when did the revised version start sending?",
+      "expected_rewrite": "Why was the welcome email discount changed from 10% to 15%, and starting when was the revised version actually sent?",
+      "expected_sources": [
+        {
+          "source_type": "notion_draft",
+          "source_ref": "notion-002",
+          "evidence": [
+            "Marketing flagged that 10% is too low compared to competitor welcome offers"
+          ]
+        },
+        {
+          "source_type": "notion_draft",
+          "source_ref": "notion-005",
+          "evidence": [
+            "This is the version to send starting Oct 1."
+          ]
+        }
+      ],
+      "tags": ["multi-turn", "distractor-heavy"],
+      "notes": "2-turn history then a multi-source ask. 'it' / 'revised version' must bind to the welcome-email discount change (latest), not the Q4 budget from turn 1. Needs notion-002 + notion-005."
     }
   ],
   "expected_case_kind_counts": {
-    "anaphoric": 11,
+    "anaphoric": 17,
     "already_complete": 5,
-    "topic_shift": 5,
-    "underspecified": 3
+    "topic_shift": 6,
+    "underspecified": 4
   },
   "expected_question_type_counts": {
-    "single-source": 19,
-    "multi-source": 1,
-    "no-answer": 4
+    "single-source": 23,
+    "multi-source": 4,
+    "no-answer": 5
   }
 }

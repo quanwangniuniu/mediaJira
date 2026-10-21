@@ -137,6 +137,12 @@ def _validate_followup_fixture(data: dict, path: Path) -> None:
                 f"{qid}: tag multi-turn requires history with at least 2 completed turns "
                 f"(found {history_turns})."
             )
+        default_window = settings.RAG_QUERY_REWRITE_HISTORY_TURNS
+        if 'beyond-default-window' in tags and history_turns <= default_window:
+            raise CommandError(
+                f"{qid}: tag beyond-default-window requires history_turn_count > "
+                f"RAG_QUERY_REWRITE_HISTORY_TURNS ({default_window}); found {history_turns}."
+            )
 
         if not isinstance(q.get('question'), str) or not q['question'].strip():
             raise CommandError(f"{qid}: question must be a non-empty string.")
@@ -320,14 +326,16 @@ def _run_followup_questions(
             comparison['B_to_C'] = _compare_arms(arms_out['B'], arms_out['C'])
 
         tags = q.get('tags', [])
+        history_turn_count = _history_turn_count(q['history'])
         per_question.append({
             'id': q['id'],
             'case_kind': q['case_kind'],
             'question_type': q['question_type'],
             'include_in_followup_metrics': q.get('include_in_followup_metrics', True),
             'history': q['history'],
-            'history_turn_count': _history_turn_count(q['history']),
+            'history_turn_count': history_turn_count,
             'multi_turn': 'multi-turn' in tags,
+            'beyond_default_window': 'beyond-default-window' in tags,
             'question': q['question'],
             'expected_rewrite': q['expected_rewrite'],
             'expected_sources': q.get('expected_sources', []),
@@ -608,6 +616,46 @@ class Command(BaseCommand):
                 self.stdout.write(
                     f"  [{a_to_c}] {q['id']} ({q['case_kind']}, "
                     f"history_turns={q.get('history_turn_count')}): "
+                    f"C={rewritten!r}"
+                )
+
+        beyond_rows = [q for q in report['per_question'] if q.get('beyond_default_window')]
+        if beyond_rows:
+            window = settings.RAG_QUERY_REWRITE_HISTORY_TURNS
+            self.stdout.write("")
+            self.stdout.write(self.style.MIGRATE_HEADING(
+                f"Beyond-default-window subset (n={len(beyond_rows)}, "
+                f"RAG_QUERY_REWRITE_HISTORY_TURNS={window})"
+            ))
+            self.stdout.write(
+                "  Oldest turn(s) are dropped from the rewrite prompt; "
+                "C must not invent facts only present outside the window."
+            )
+            for q in beyond_rows:
+                a_to_c = q.get('comparison', {}).get('A_to_C', 'n/a')
+                arm_c = q['arms'].get('C') or {}
+                rewritten = arm_c.get('rewritten_question') or arm_c.get('query') or ''
+                self.stdout.write(
+                    f"  [{a_to_c}] {q['id']} ({q['case_kind']}, "
+                    f"history_turns={q.get('history_turn_count')}): "
+                    f"C={rewritten!r}"
+                )
+
+        multi_source_rows = [
+            q for q in report['per_question'] if q.get('question_type') == 'multi-source'
+        ]
+        if multi_source_rows and 'C' in report['run_metadata']['arms_executed']:
+            self.stdout.write("")
+            self.stdout.write(self.style.MIGRATE_HEADING(
+                f"Multi-source follow-up subset (n={len(multi_source_rows)})"
+            ))
+            for q in multi_source_rows:
+                a_to_c = q.get('comparison', {}).get('A_to_C', 'n/a')
+                arm_c = q['arms'].get('C') or {}
+                rewritten = arm_c.get('rewritten_question') or arm_c.get('query') or ''
+                recall = arm_c.get('recall@5')
+                self.stdout.write(
+                    f"  [{a_to_c}] {q['id']} recall@5={recall} "
                     f"C={rewritten!r}"
                 )
 
