@@ -17,7 +17,7 @@ from django.utils import timezone
 from .models import (
     Spreadsheet, Sheet, SheetRow, SheetColumn, Cell, CellValueType, ComputedCellType, CellDependency,
     SheetStructureOperation, WorkflowPattern, WorkflowPatternStep,
-    SpreadsheetHighlight, SpreadsheetHighlightScope, UserDefinedFunction
+    SpreadsheetHighlight, SpreadsheetHighlightScope, SpreadsheetCellFormat, UserDefinedFunction
 )
 from .formula_engine import evaluate_formula, extract_references, reference_to_indexes, FormulaError
 from .formula_rewrite import rewrite_cells_for_operation
@@ -597,6 +597,85 @@ class SheetService:
         }
 
     @staticmethod
+    def _shift_decoration_index(base_qs, field_name, start, delta):
+        offset = 1_000_000
+        matched = base_qs.filter(**{f"{field_name}__gte": start})
+        if not matched.exists():
+            return
+        matched.update(**{field_name: F(field_name) + offset})
+        base_qs.filter(**{f"{field_name}__gte": start + offset}).update(
+            **{field_name: F(field_name) - offset + delta}
+        )
+
+    @staticmethod
+    def _format_qs(sheet):
+        return SpreadsheetCellFormat.objects.filter(sheet=sheet)
+
+    @staticmethod
+    def _highlight_qs(sheet, scope):
+        return SpreadsheetHighlight.objects.filter(sheet=sheet, scope=scope)
+
+    @staticmethod
+    def _shift_column_metadata_for_insert(sheet, position, count):
+        SheetService._shift_decoration_index(
+            SheetService._format_qs(sheet), "column_index", position, count
+        )
+        for scope in (SpreadsheetHighlightScope.CELL, SpreadsheetHighlightScope.COLUMN):
+            SheetService._shift_decoration_index(
+                SheetService._highlight_qs(sheet, scope), "col_index", position, count
+            )
+
+    @staticmethod
+    def _shift_column_metadata_for_delete(sheet, position, count):
+        end = position + count
+        SheetService._format_qs(sheet).filter(
+            column_index__gte=position,
+            column_index__lt=end,
+        ).delete()
+        for scope in (SpreadsheetHighlightScope.CELL, SpreadsheetHighlightScope.COLUMN):
+            SheetService._highlight_qs(sheet, scope).filter(
+                col_index__gte=position,
+                col_index__lt=end,
+            ).delete()
+        SheetService._shift_decoration_index(
+            SheetService._format_qs(sheet), "column_index", end, -count
+        )
+        for scope in (SpreadsheetHighlightScope.CELL, SpreadsheetHighlightScope.COLUMN):
+            SheetService._shift_decoration_index(
+                SheetService._highlight_qs(sheet, scope), "col_index", end, -count
+            )
+
+    @staticmethod
+    def _shift_row_metadata_for_insert(sheet, position, count):
+        SheetService._shift_decoration_index(
+            SheetService._format_qs(sheet), "row_index", position, count
+        )
+        for scope in (SpreadsheetHighlightScope.CELL, SpreadsheetHighlightScope.ROW):
+            SheetService._shift_decoration_index(
+                SheetService._highlight_qs(sheet, scope), "row_index", position, count
+            )
+
+    @staticmethod
+    def _shift_row_metadata_for_delete(sheet, position, count):
+        end = position + count
+        SheetService._format_qs(sheet).filter(
+            row_index__gte=position,
+            row_index__lt=end,
+        ).delete()
+        for scope in (SpreadsheetHighlightScope.CELL, SpreadsheetHighlightScope.ROW):
+            SheetService._highlight_qs(sheet, scope).filter(
+                row_index__gte=position,
+                row_index__lt=end,
+            ).delete()
+        SheetService._shift_decoration_index(
+            SheetService._format_qs(sheet), "row_index", end, -count
+        )
+        for scope in (SpreadsheetHighlightScope.CELL, SpreadsheetHighlightScope.ROW):
+            SheetService._shift_decoration_index(
+                SheetService._highlight_qs(sheet, scope), "row_index", end, -count
+            )
+
+    @staticmethod
     @transaction.atomic
     def insert_rows(
         sheet: Sheet,
@@ -654,6 +733,7 @@ class SheetService:
             affected_positions={},
             created_by=created_by
         )
+        SheetService._shift_row_metadata_for_insert(sheet, position, count)
         rewritten_cells = rewrite_cells_for_operation(sheet.id, 'ROW_INSERT', position, count)
         for cell in rewritten_cells:
             CellService._update_dependencies(cell)
@@ -736,6 +816,7 @@ class SheetService:
             affected_positions={},
             created_by=created_by
         )
+        SheetService._shift_column_metadata_for_insert(sheet, position, count)
         rewritten_cells = rewrite_cells_for_operation(sheet.id, 'COL_INSERT', position, count)
         for cell in rewritten_cells:
             CellService._update_dependencies(cell)
@@ -819,6 +900,7 @@ class SheetService:
             affected_positions=affected_positions,
             created_by=created_by
         )
+        SheetService._shift_row_metadata_for_delete(sheet, position, count)
         rewritten_cells = rewrite_cells_for_operation(sheet.id, 'ROW_DELETE', position, count)
         for cell in rewritten_cells:
             CellService._update_dependencies(cell)
@@ -902,6 +984,7 @@ class SheetService:
             affected_positions=affected_positions,
             created_by=created_by
         )
+        SheetService._shift_column_metadata_for_delete(sheet, position, count)
         rewritten_cells = rewrite_cells_for_operation(sheet.id, 'COL_DELETE', position, count)
         for cell in rewritten_cells:
             CellService._update_dependencies(cell)
@@ -1156,6 +1239,7 @@ class SheetService:
                     is_deleted=False,
                     position__gte=operation.anchor_position + operation.count + offset
                 ).update(position=F('position') - offset - operation.count)
+            SheetService._shift_row_metadata_for_delete(sheet, operation.anchor_position, operation.count)
             rewritten_cells = rewrite_cells_for_operation(sheet.id, 'ROW_DELETE', operation.anchor_position, operation.count)
             for cell in rewritten_cells:
                 CellService._update_dependencies(cell)
@@ -1175,6 +1259,7 @@ class SheetService:
                     is_deleted=False,
                     position__gte=operation.anchor_position + operation.count + offset
                 ).update(position=F('position') - offset - operation.count)
+            SheetService._shift_column_metadata_for_delete(sheet, operation.anchor_position, operation.count)
             rewritten_cells = rewrite_cells_for_operation(sheet.id, 'COL_DELETE', operation.anchor_position, operation.count)
             for cell in rewritten_cells:
                 CellService._update_dependencies(cell)
@@ -1200,6 +1285,7 @@ class SheetService:
                     is_deleted=False,
                     position=position
                 )
+            SheetService._shift_row_metadata_for_insert(sheet, operation.anchor_position, operation.count)
             rewritten_cells = rewrite_cells_for_operation(sheet.id, 'ROW_INSERT', operation.anchor_position, operation.count)
             for cell in rewritten_cells:
                 CellService._update_dependencies(cell)
@@ -1224,6 +1310,7 @@ class SheetService:
                     is_deleted=False,
                     position=position
                 )
+            SheetService._shift_column_metadata_for_insert(sheet, operation.anchor_position, operation.count)
             rewritten_cells = rewrite_cells_for_operation(sheet.id, 'COL_INSERT', operation.anchor_position, operation.count)
             for cell in rewritten_cells:
                 CellService._update_dependencies(cell)

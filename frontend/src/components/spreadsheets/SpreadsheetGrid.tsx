@@ -1553,6 +1553,54 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     }
   }, [sheetId]);
 
+  const reloadSheetDecorations = useCallback(async () => {
+    try {
+      const [highlightResponse, formatResponse] = await Promise.all([
+        SpreadsheetAPI.getHighlights(spreadsheetId, sheetId),
+        SpreadsheetAPI.getCellFormats(spreadsheetId, sheetId),
+      ]);
+      const cells = new Map<CellKey, string>();
+      const rows: Record<number, string> = {};
+      const cols: Record<number, string> = {};
+      highlightResponse.highlights.forEach((highlight) => {
+        if (highlight.scope === 'CELL' && highlight.row_index != null && highlight.col_index != null) {
+          cells.set(getCellKey(highlight.row_index, highlight.col_index), highlight.color);
+        } else if (highlight.scope === 'ROW' && highlight.row_index != null) {
+          rows[highlight.row_index] = highlight.color;
+        } else if (highlight.scope === 'COLUMN' && highlight.col_index != null) {
+          cols[highlight.col_index] = highlight.color;
+        }
+      });
+      setCellHighlightsBySheet((prev) => ({ ...prev, [sheetId]: cells }));
+      setRowHighlightsBySheet((prev) => ({ ...prev, [sheetId]: rows }));
+      setColHighlightsBySheet((prev) => ({ ...prev, [sheetId]: cols }));
+  
+      const map = new Map<CellKey, CellFormat>();
+      formatResponse.formats.forEach((f) => {
+        const nf = f.number_format;
+        map.set(getCellKey(f.row_index, f.column_index), {
+          bold: f.bold,
+          italic: f.italic,
+          strikethrough: f.strikethrough,
+          textColor: f.text_color ?? null,
+          fontFamily: f.font_family ?? null,
+          fontSize: f.font_size ?? null,
+          numberFormat:
+            nf && nf.type
+              ? {
+                  type: nf.type as NumberFormatType,
+                  currencyCode: nf.currency_code ?? null,
+                  decimalPlaces: nf.decimal_places ?? null,
+                }
+              : null,
+        });
+      });
+      setCellFormatsBySheet((prev) => ({ ...prev, [sheetId]: map }));
+    } catch (error) {
+      console.error('Failed to reload sheet decorations:', error);
+    }
+  }, [spreadsheetId, sheetId]);
+
   useEffect(() => {
     if (isGridLoading) return;
     let cancelled = false;
@@ -1807,12 +1855,13 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           visibleRange.endCol,
           true
         );
+        await reloadSheetDecorations();
       } catch (error: any) {
         console.error('Failed to insert row:', error);
         toast.error('Failed to insert row');
       }
     },
-    [rowCount, colCount, spreadsheetId, sheetId, resetSheetCaches, loadCellRange, visibleRange]
+    [rowCount, colCount, spreadsheetId, sheetId, resetSheetCaches, loadCellRange, visibleRange, reloadSheetDecorations]
   );
 
   const handleInsertColumn = useCallback(
@@ -1845,12 +1894,13 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           visibleRange.endCol,
           true
         );
+        await reloadSheetDecorations();
       } catch (error: any) {
         console.error('Failed to insert column:', error);
         toast.error('Failed to insert column');
       }
     },
-    [rowCount, colCount, spreadsheetId, sheetId, resetSheetCaches, loadCellRange, visibleRange]
+    [rowCount, colCount, spreadsheetId, sheetId, resetSheetCaches, loadCellRange, visibleRange, reloadSheetDecorations]
   );
 
   const openHeaderMenu = useCallback(
@@ -1882,6 +1932,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           visibleRange.endCol,
           true
         );
+        await reloadSheetDecorations();
         toast.success(count === 1 ? 'Deleted row.' : 'Deleted.');
       } catch (error: any) {
         console.error('Failed to delete row:', error);
@@ -1893,7 +1944,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         toast.error(msg);
       }
     },
-    [rowCount, colCount, spreadsheetId, sheetId, resetSheetCaches, loadCellRange, visibleRange]
+    [rowCount, colCount, spreadsheetId, sheetId, resetSheetCaches, loadCellRange, visibleRange, reloadSheetDecorations]
   );
 
   const handleDeleteColumn = useCallback(
@@ -1918,6 +1969,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           Math.max(0, visibleRange.endCol - count),
           true
         );
+        await reloadSheetDecorations();
         toast.success(count === 1 ? 'Deleted column.' : 'Deleted.');
       } catch (error: any) {
         console.error('Failed to delete column:', error);
@@ -1929,7 +1981,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         toast.error(msg);
       }
     },
-    [rowCount, colCount, spreadsheetId, sheetId, resetSheetCaches, loadCellRange, visibleRange]
+    [rowCount, colCount, spreadsheetId, sheetId, resetSheetCaches, loadCellRange, visibleRange, reloadSheetDecorations]
   );
 
   const selectRow = useCallback(
@@ -2115,6 +2167,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           visibleRange.endCol,
           true
         );
+        await reloadSheetDecorations();
       } catch (error: any) {
         console.error('Failed to revert operation:', error);
         toast.error('Failed to undo');
@@ -2123,7 +2176,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         setIsReverting(false);
       }
     },
-    [isReverting, spreadsheetId, sheetId, rowCount, colCount, resetSheetCaches, loadCellRange, visibleRange]
+    [isReverting, spreadsheetId, sheetId, rowCount, colCount, resetSheetCaches, loadCellRange, visibleRange, reloadSheetDecorations]
   );
 
   const applyUndoColor = useCallback((entry: ColorHistoryEntry) => {
