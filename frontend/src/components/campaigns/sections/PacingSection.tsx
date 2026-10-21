@@ -25,6 +25,27 @@ const FORECAST_STATUSES: ReadonlySet<PacingStatus> = new Set([
   'over_pacing',
 ]);
 
+/**
+ * The forecast fields the panel shows. Bookkeeping such as `computed_at`
+ * changes on every recompute, so it doesn't count as new data.
+ */
+const VISIBLE_FIELDS = [
+  'status',
+  'reason',
+  'budget',
+  'spend_to_date',
+  'expected_spend_to_date',
+  'projected_total_spend',
+  'suggested_daily_cap',
+  'pace_ratio',
+  'days_remaining',
+  'seasonality_applied',
+] as const satisfies ReadonlyArray<keyof CampaignPacingForecast>;
+
+function looksTheSame(a: CampaignPacingForecast, b: CampaignPacingForecast): boolean {
+  return VISIBLE_FIELDS.every((field) => a[field] === b[field]);
+}
+
 function formatComputedAt(timestamp: string): string {
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return '';
@@ -69,9 +90,12 @@ export default function PacingSection({ campaignSlug, configKey }: PacingSection
     setErrorMessage(null);
     try {
       const response = await OptimizationAPI.recomputeCampaignPacing(campaignSlug);
-      const { forecast: fresh, changed } = response.data;
+      const fresh = response.data;
+      // Tell the user whether anything changed: right after an edit the save
+      // has already recomputed, so an unchanged panel would look like a no-op.
+      const unchanged = pacing !== null && looksTheSame(pacing, fresh);
       setPacing(fresh);
-      toast.success(changed ? 'New data found — pacing updated' : 'Pacing is already up to date');
+      toast.success(unchanged ? 'Pacing is already up to date' : 'New data found — pacing updated');
     } catch (err) {
       const anyErr = err as any;
       setErrorMessage(
@@ -80,7 +104,7 @@ export default function PacingSection({ campaignSlug, configKey }: PacingSection
     } finally {
       setRecomputing(false);
     }
-  }, [campaignSlug]);
+  }, [campaignSlug, pacing]);
 
   return (
     <section

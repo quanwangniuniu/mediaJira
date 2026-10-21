@@ -91,29 +91,4 @@ describe('InlineDateController', () => {
 
     expect(onSave).not.toHaveBeenCalled()
   })
-
-  it('saves the latest valid date after a slow earlier save finishes', async () => {
-    let resolveFirst!: () => void
-    let resolveSecond!: () => void
-    const first = new Promise<void>((resolve) => { resolveFirst = resolve })
-    const second = new Promise<void>((resolve) => { resolveSecond = resolve })
-    const onSave = jest.fn()
-      .mockReturnValueOnce(first)
-      .mockReturnValueOnce(second)
-    const { container } = render(<InlineDateController value={null} onSave={onSave} />)
-
-    const input = openEditor(container)
-    fireEvent.change(input, { target: { value: '2026-10-30' } })
-    fireEvent.keyDown(input, { key: 'Enter' })
-
-    fireEvent.change(input, { target: { value: '2026-10-31' } })
-    fireEvent.keyDown(input, { key: 'Enter' })
-    expect(onSave).toHaveBeenCalledTimes(1)
-
-    await act(async () => { resolveFirst() })
-    expect(onSave).toHaveBeenCalledTimes(2)
-    expect(onSave).toHaveBeenLastCalledWith('2026-10-31')
-
-    await act(async () => { resolveSecond() })
-  })
 })

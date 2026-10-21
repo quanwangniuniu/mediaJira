@@ -9,7 +9,6 @@ from django.utils import timezone
 from .models import (
     CampaignPacingForecast,
     OptimizationExperiment,
-    PacingDataQuality,
     PacingReason,
     PacingStatus,
     RollbackHistory,
@@ -113,13 +112,6 @@ SEASONALITY_MIN_DAYS = 14
 DOW_FACTOR_MIN = Decimal("0.5")
 DOW_FACTOR_MAX = Decimal("1.5")
 
-# A single remaining weekend/weekday must not swing the recommendation wildly.
-# Short tails use a linear cap; longer tails keep seasonality but bound its
-# aggregate influence to +/- 20% of the linear recommendation.
-CAP_SEASONALITY_MIN_REMAINING_DAYS = 7
-CAP_WEIGHT_MIN_RATIO = Decimal("0.8")
-CAP_WEIGHT_MAX_RATIO = Decimal("1.2")
-
 _MONEY = Decimal("0.01")
 _RATIO = Decimal("0.0001")
 _NEUTRAL_FACTOR = Decimal("1")
@@ -148,9 +140,6 @@ class PacingForecast:
 
     status: str
     reason: str = ""
-    data_quality: str = PacingDataQuality.NOT_APPLICABLE
-    spend_platforms: list[str] = field(default_factory=list)
-    unsupported_platforms: list[str] = field(default_factory=list)
     budget: Optional[Decimal] = None
     spend_to_date: Decimal = Decimal("0.00")
     expected_spend_to_date: Optional[Decimal] = None
@@ -170,9 +159,6 @@ class PacingForecast:
         return {
             "status": self.status,
             "reason": self.reason,
-            "data_quality": self.data_quality,
-            "spend_platforms": self.spend_platforms,
-            "unsupported_platforms": self.unsupported_platforms,
             "budget": self.budget,
             "spend_to_date": self.spend_to_date,
             "expected_spend_to_date": self.expected_spend_to_date,
@@ -239,10 +225,6 @@ def forecast_pacing(
     end_date: Optional[date],
     daily_spend: Mapping[date, Decimal],
     today: date,
-    no_data_reason: str = PacingReason.NO_LINKED_SPEND,
-    data_quality: str = PacingDataQuality.COMPLETE,
-    spend_platforms: Optional[list[str]] = None,
-    unsupported_platforms: Optional[list[str]] = None,
 ) -> PacingForecast:
     """Project period-end spend and suggest a daily cap that lands on budget.
 
@@ -255,14 +237,10 @@ def forecast_pacing(
     `suggested_daily_cap` inverts that: the baseline daily spend which, scaled by
     each remaining day's factor, exhausts exactly the remaining budget.
     """
-    spend_platforms = list(spend_platforms or [])
-    unsupported_platforms = list(unsupported_platforms or [])
     has_budget = budget is not None and Decimal(budget) > 0
     has_end_date = end_date is not None
 
-    if start_date is None:
-        reason = PacingReason.MISSING_START_DATE
-    elif not has_budget and not has_end_date:
+    if not has_budget and not has_end_date:
         reason = PacingReason.MISSING_BUDGET_AND_END_DATE
     elif not has_budget:
         reason = PacingReason.MISSING_BUDGET
@@ -271,11 +249,15 @@ def forecast_pacing(
     else:
         reason = None
 
+    # start_date is non-null on Campaign, so this only guards direct callers —
+    # but reporting "missing end date" for it would be a lie.
+    if start_date is None:
+        reason = PacingReason.INVALID_PERIOD
+
     if reason is not None:
         return PacingForecast(
             status=PacingStatus.NOT_CONFIGURED,
             reason=reason,
-            data_quality=PacingDataQuality.NOT_APPLICABLE,
             budget=_money(budget) if has_budget else None,
             computed_for_date=today,
         )
@@ -284,7 +266,6 @@ def forecast_pacing(
         return PacingForecast(
             status=PacingStatus.NOT_CONFIGURED,
             reason=PacingReason.INVALID_PERIOD,
-            data_quality=PacingDataQuality.NOT_APPLICABLE,
             budget=_money(budget),
             computed_for_date=today,
         )
@@ -295,7 +276,6 @@ def forecast_pacing(
     if today < start_date:
         return PacingForecast(
             status=PacingStatus.NOT_STARTED,
-            data_quality=PacingDataQuality.NOT_APPLICABLE,
             budget=budget,
             total_days=total_days,
             days_remaining=total_days,
@@ -313,10 +293,7 @@ def forecast_pacing(
     if not daily_spend:
         return PacingForecast(
             status=PacingStatus.NO_DATA,
-            reason=no_data_reason,
-            data_quality=data_quality,
-            spend_platforms=spend_platforms,
-            unsupported_platforms=unsupported_platforms,
+            reason=PacingReason.NO_LINKED_SPEND,
             budget=budget,
             total_days=total_days,
             days_elapsed=days_elapsed,
@@ -371,25 +348,12 @@ def forecast_pacing(
     # No days left to cap, and nothing to re-pace with.
     if seasonal_weight > 0:
         remaining_budget = max(budget - spend_to_date, Decimal("0"))
-        cap_weight = seasonal_weight
-        linear_weight = Decimal(len(remaining_days))
-        if seasonality_applied and linear_weight > 0:
-            if len(remaining_days) < CAP_SEASONALITY_MIN_REMAINING_DAYS:
-                cap_weight = linear_weight
-            else:
-                cap_weight = min(
-                    max(cap_weight, linear_weight * CAP_WEIGHT_MIN_RATIO),
-                    linear_weight * CAP_WEIGHT_MAX_RATIO,
-                )
-        suggested_daily_cap = _money(remaining_budget / cap_weight)
+        suggested_daily_cap = _money(remaining_budget / seasonal_weight)
     else:
         suggested_daily_cap = None
 
     return PacingForecast(
         status=status,
-        data_quality=data_quality,
-        spend_platforms=spend_platforms,
-        unsupported_platforms=unsupported_platforms,
         budget=budget,
         spend_to_date=spend_to_date,
         expected_spend_to_date=expected_spend_to_date,
@@ -406,72 +370,34 @@ def forecast_pacing(
     )
 
 
-class MetaCampaignSpendProvider:
-    """Meta adapter for the platform-neutral pacing service."""
+class PacingService:
+    """Database-facing wrapper around the pure pacing model.
 
-    platform = "META"
-
-    @staticmethod
-    def is_linked(campaign) -> bool:
-        from meta_ads.models import MetaCampaign
-
-        return MetaCampaign.objects.filter(mediajira_campaign=campaign).exists()
+    v1 sources spend from Meta only, via
+    Campaign <- MetaCampaign.mediajira_campaign -> MetaAdSet -> MetaAd -> MetaInsightDaily.
+    Campaigns with no linked MetaCampaign resolve to PacingStatus.NO_DATA.
+    """
 
     @staticmethod
     def build_daily_spend(campaign, *, through: date) -> Dict[date, Decimal]:
+        """Daily spend for a campaign from campaign start through `through`."""
+        # Imported lazily so the optimization app does not hard-depend on
+        # meta_ads at import time.
         from meta_ads.models import MetaInsightDaily
 
         if campaign.start_date is None:
             return {}
-        query_through = min(through, campaign.end_date) if campaign.end_date else through
+
         rows = (
             MetaInsightDaily.objects.filter(
                 ad__adset__campaign__mediajira_campaign=campaign,
                 date__gte=campaign.start_date,
-                date__lte=query_through,
+                date__lte=through,
             )
             .values("date")
             .annotate(total_spend=Sum("spend"))
         )
         return {row["date"]: Decimal(row["total_spend"] or 0) for row in rows}
-
-
-# Adding a platform requires a daily-spend persistence model and one adapter;
-# the forecast math remains platform-neutral.
-SPEND_PROVIDERS = {
-    MetaCampaignSpendProvider.platform: MetaCampaignSpendProvider,
-}
-
-
-class PacingService:
-    """Database-facing wrapper around the pure, platform-neutral pacing model."""
-
-    @staticmethod
-    def build_daily_spend(campaign, *, through: date) -> Dict[date, Decimal]:
-        """Backward-compatible Meta helper used by existing callers/tests."""
-        return MetaCampaignSpendProvider.build_daily_spend(campaign, through=through)
-
-    @staticmethod
-    def collect_daily_spend(campaign, *, through: date):
-        """Aggregate every configured provider and report coverage explicitly."""
-        configured = sorted(set(campaign.platforms or []))
-        daily_spend: Dict[date, Decimal] = {}
-        linked_platforms = []
-        unsupported_platforms = []
-
-        for platform in configured:
-            provider = SPEND_PROVIDERS.get(platform)
-            if provider is None:
-                unsupported_platforms.append(platform)
-                continue
-            if not provider.is_linked(campaign):
-                continue
-
-            linked_platforms.append(platform)
-            for day, amount in provider.build_daily_spend(campaign, through=through).items():
-                daily_spend[day] = daily_spend.get(day, Decimal("0")) + Decimal(amount)
-
-        return daily_spend, linked_platforms, unsupported_platforms
 
     @staticmethod
     def forecast_for_campaign(campaign, *, today: Optional[date] = None) -> PacingForecast:
@@ -488,29 +414,9 @@ class PacingService:
             and campaign.start_date is not None
             and campaign.start_date <= today
         )
-        daily_spend = {}
-        no_data_reason = PacingReason.NO_LINKED_SPEND
-        data_quality = PacingDataQuality.NOT_APPLICABLE
-        spend_platforms = []
-        configured_platforms = set(campaign.platforms or [])
-        unsupported_platforms = sorted(configured_platforms - set(SPEND_PROVIDERS))
-
-        if configured:
-            daily_spend, spend_platforms, unsupported_platforms = (
-                PacingService.collect_daily_spend(campaign, through=today)
-            )
-            if spend_platforms:
-                no_data_reason = PacingReason.NO_SPEND_RECORDED
-            elif configured_platforms and configured_platforms.issubset(unsupported_platforms):
-                no_data_reason = PacingReason.UNSUPPORTED_SPEND_PLATFORM
-
-            has_supported_platform = bool(configured_platforms & set(SPEND_PROVIDERS))
-            if unsupported_platforms and has_supported_platform:
-                data_quality = PacingDataQuality.PARTIAL
-            elif unsupported_platforms and not spend_platforms:
-                data_quality = PacingDataQuality.UNSUPPORTED
-            else:
-                data_quality = PacingDataQuality.COMPLETE
+        daily_spend = (
+            PacingService.build_daily_spend(campaign, through=today) if configured else {}
+        )
 
         return forecast_pacing(
             budget=campaign.budget_estimate,
@@ -518,10 +424,6 @@ class PacingService:
             end_date=campaign.end_date,
             daily_spend=daily_spend,
             today=today,
-            no_data_reason=no_data_reason,
-            data_quality=data_quality,
-            spend_platforms=spend_platforms,
-            unsupported_platforms=unsupported_platforms,
         )
 
     @staticmethod
@@ -533,33 +435,3 @@ class PacingService:
             defaults=forecast.as_model_fields(),
         )
         return obj
-
-    @staticmethod
-    def recompute_for_campaign_with_change(campaign, *, today: Optional[date] = None):
-        """Persist a forecast and report whether any meaningful field changed."""
-        previous = CampaignPacingForecast.objects.filter(campaign=campaign).first()
-        previous_values = None
-        if previous is not None:
-            previous_values = {
-                field: getattr(previous, field)
-                for field in PacingService._comparison_fields()
-            }
-
-        forecast = PacingService.recompute_for_campaign(campaign, today=today)
-        current_values = {
-            field: getattr(forecast, field)
-            for field in PacingService._comparison_fields()
-        }
-        return forecast, previous_values != current_values
-
-    @staticmethod
-    def _comparison_fields() -> tuple[str, ...]:
-        """Every persisted forecast value except identity/audit timestamps."""
-        return (
-            "status", "reason", "data_quality",
-            "spend_platforms", "unsupported_platforms",
-            "budget", "spend_to_date", "expected_spend_to_date",
-            "projected_total_spend", "suggested_daily_cap", "avg_daily_spend",
-            "pace_ratio", "total_days", "days_elapsed", "days_remaining",
-            "seasonality_applied", "dow_factors", "computed_for_date",
-        )

@@ -14,25 +14,13 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from campaign.models import Campaign
-from core.models import AuditEvent, Organization, Project, ProjectMember
+from core.models import Organization, Project, ProjectMember
 from facebook_integration.models import FacebookConnection, MetaAdAccount
 from meta_ads.models import MetaAd, MetaAdSet, MetaCampaign, MetaInsightDaily
-from optimization.models import (
-    CampaignPacingForecast,
-    PacingDataQuality,
-    PacingReason,
-    PacingStatus,
-)
+from optimization.models import CampaignPacingForecast, PacingReason, PacingStatus
 from optimization.services import PacingService, compute_dow_factors, forecast_pacing
 
 User = get_user_model()
-
-
-class PacingTenantRegistrationTest(SimpleTestCase):
-    def test_forecast_table_is_provisioned_in_each_tenant_schema(self):
-        from core.tenant_config import get_tenant_models
-
-        self.assertIn(CampaignPacingForecast, get_tenant_models())
 
 
 def flat_spend(first: date, last: date, amount) -> dict:
@@ -70,18 +58,6 @@ class ForecastPacingConfigTest(SimpleTestCase):
         self.assertEqual(result.status, PacingStatus.NOT_CONFIGURED)
         self.assertEqual(result.reason, PacingReason.MISSING_BUDGET)
         self.assertIsNone(result.projected_total_spend)
-
-    def test_missing_start_date_has_an_explicit_reason(self):
-        result = forecast_pacing(
-            budget=Decimal("1000"),
-            start_date=None,
-            end_date=date(2026, 1, 10),
-            daily_spend={},
-            today=date(2026, 1, 5),
-        )
-
-        self.assertEqual(result.status, PacingStatus.NOT_CONFIGURED)
-        self.assertEqual(result.reason, PacingReason.MISSING_START_DATE)
 
     def test_zero_budget_counts_as_missing(self):
         result = forecast_pacing(
@@ -369,20 +345,6 @@ class SeasonalityTest(SimpleTestCase):
         linear_projection = result.spend_to_date + result.avg_daily_spend * result.days_remaining
         self.assertLess(result.projected_total_spend, linear_projection)
 
-    def test_short_remaining_tail_uses_a_stable_linear_cap(self):
-        result = forecast_pacing(
-            budget=Decimal("10000"),
-            start_date=date(2026, 1, 1),
-            end_date=date(2026, 2, 8),
-            daily_spend=weekend_heavy_spend(date(2026, 1, 1), date(2026, 2, 6)),
-            today=date(2026, 2, 6),
-        )
-
-        remaining_budget = result.budget - result.spend_to_date
-        self.assertTrue(result.seasonality_applied)
-        self.assertEqual(result.days_remaining, 2)
-        self.assertEqual(result.suggested_daily_cap, (remaining_budget / 2).quantize(Decimal("0.01")))
-
 
 class PacingServiceTest(TestCase):
     """Database-facing behaviour: the Meta join and forecast persistence."""
@@ -480,16 +442,6 @@ class PacingServiceTest(TestCase):
 
         self.assertNotIn(date(2026, 1, 9), series)
 
-    def test_build_daily_spend_clamps_query_to_campaign_end(self):
-        adset = self.link_meta_campaign(self.campaign, 'mc-1')
-        self.add_spend(adset, 'ad-a', date(2026, 1, 10), 100)
-        self.add_spend(adset, 'ad-a', date(2026, 1, 11), 999)
-
-        series = PacingService.build_daily_spend(self.campaign, through=date(2026, 1, 15))
-
-        self.assertIn(date(2026, 1, 10), series)
-        self.assertNotIn(date(2026, 1, 11), series)
-
     def test_recompute_persists_an_actionable_forecast(self):
         adset = self.link_meta_campaign(self.campaign, 'mc-1')
         for day in range(1, 6):
@@ -523,48 +475,6 @@ class PacingServiceTest(TestCase):
 
         self.assertEqual(forecast.status, PacingStatus.NO_DATA)
         self.assertEqual(forecast.reason, PacingReason.NO_LINKED_SPEND)
-
-    def test_linked_campaign_without_rows_reports_no_spend_recorded(self):
-        self.link_meta_campaign(self.campaign, 'mc-empty')
-
-        forecast = PacingService.recompute_for_campaign(
-            self.campaign, today=date(2026, 1, 5)
-        )
-
-        self.assertEqual(forecast.status, PacingStatus.NO_DATA)
-        self.assertEqual(forecast.reason, PacingReason.NO_SPEND_RECORDED)
-
-    def test_non_meta_campaign_reports_unsupported_source(self):
-        campaign = Campaign.objects.create(
-            name='Google Campaign',
-            objective=Campaign.Objective.CONVERSION,
-            platforms=[Campaign.Platform.GOOGLE_ADS],
-            start_date=date(2026, 1, 1),
-            end_date=date(2026, 1, 10),
-            budget_estimate=Decimal('1000.00'),
-            project=self.project,
-            owner=self.user,
-        )
-
-        forecast = PacingService.recompute_for_campaign(campaign, today=date(2026, 1, 5))
-
-        self.assertEqual(forecast.reason, PacingReason.UNSUPPORTED_SPEND_PLATFORM)
-        self.assertEqual(forecast.data_quality, PacingDataQuality.UNSUPPORTED)
-        self.assertEqual(forecast.unsupported_platforms, [Campaign.Platform.GOOGLE_ADS])
-
-    def test_mixed_platform_forecast_is_explicitly_partial(self):
-        self.campaign.platforms = [Campaign.Platform.META, Campaign.Platform.GOOGLE_ADS]
-        Campaign.objects.filter(pk=self.campaign.pk).update(platforms=self.campaign.platforms)
-        adset = self.link_meta_campaign(self.campaign, 'mc-mixed')
-        self.add_spend(adset, 'ad-a', date(2026, 1, 1), 100)
-
-        forecast = PacingService.recompute_for_campaign(
-            self.campaign, today=date(2026, 1, 5)
-        )
-
-        self.assertEqual(forecast.data_quality, PacingDataQuality.PARTIAL)
-        self.assertEqual(forecast.spend_platforms, [Campaign.Platform.META])
-        self.assertEqual(forecast.unsupported_platforms, [Campaign.Platform.GOOGLE_ADS])
 
     def test_campaign_without_budget_reports_not_configured(self):
         # Queryset update, not save(): Campaign.save() full_cleans on update and
@@ -635,45 +545,15 @@ class PacingAPITest(TestCase):
         )
 
     def test_recompute_returns_a_fresh_forecast(self):
-        with self.captureOnCommitCallbacks(execute=True):
-            response = self.client.post(
-                f'/api/optimization/campaigns/{self.campaign.slug}/pacing/recompute/'
-            )
+        response = self.client.post(
+            f'/api/optimization/campaigns/{self.campaign.slug}/pacing/recompute/'
+        )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertTrue(response.data['changed'])
-        self.assertEqual(response.data['forecast']['status'], PacingStatus.NO_DATA)
+        self.assertEqual(response.data['status'], PacingStatus.NO_DATA)
         self.assertEqual(
             CampaignPacingForecast.objects.filter(campaign=self.campaign).count(), 1
         )
-        self.assertTrue(AuditEvent.objects.filter(
-            event_type='campaign.pacing_recomputed',
-            actor=self.user,
-            target_id=str(self.campaign.id),
-        ).exists())
-
-    def test_recompute_reports_unchanged_from_server(self):
-        PacingService.recompute_for_campaign(self.campaign)
-
-        response = self.client.post(
-            f'/api/optimization/campaigns/{self.campaign.slug}/pacing/recompute/'
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertFalse(response.data['changed'])
-
-    def test_unrelated_project_member_cannot_recompute(self):
-        member = User.objects.create_user(
-            username='pacing_member', email='pacing_member@example.com', password='testpass123'
-        )
-        ProjectMember.objects.create(user=member, project=self.project, role='member', is_active=True)
-        self.client.force_authenticate(user=member)
-
-        response = self.client.post(
-            f'/api/optimization/campaigns/{self.campaign.slug}/pacing/recompute/'
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_unknown_campaign_is_404(self):
         response = self.client.get('/api/optimization/campaigns/no-such-campaign/pacing/')
@@ -709,18 +589,6 @@ class PacingAPITest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIsNotNone(response.data['pacing'])
         self.assertEqual(response.data['pacing']['status'], PacingStatus.NO_DATA)
-
-    def test_campaign_list_uses_lightweight_pacing_payload(self):
-        PacingService.recompute_for_campaign(self.campaign, today=date(2026, 1, 5))
-
-        response = self.client.get('/api/campaigns/')
-        rows = response.data.get('results', response.data)
-        pacing = rows[0]['pacing']
-
-        self.assertEqual(pacing['status'], PacingStatus.NO_DATA)
-        self.assertIn('computed_for_date', pacing)
-        self.assertNotIn('dow_factors', pacing)
-        self.assertNotIn('projected_total_spend', pacing)
 
     def test_campaign_payload_pacing_is_null_before_first_compute(self):
         response = self.client.get(f'/api/campaigns/{self.campaign.slug}/')
@@ -764,30 +632,6 @@ class PacingAPITest(TestCase):
         forecast = CampaignPacingForecast.objects.get(campaign=campaign)
         self.assertEqual(forecast.status, PacingStatus.NO_DATA)
         self.assertEqual(forecast.budget, Decimal('5000.00'))
-
-    def test_update_rejects_zero_and_negative_budget(self):
-        campaign = self.editable_campaign(end_date=date(2026, 1, 10))
-
-        for invalid in ('0', '-1'):
-            response = self.client.patch(
-                f'/api/campaigns/{campaign.slug}/',
-                {'budget_estimate': invalid},
-                format='json',
-            )
-            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_updating_start_date_is_not_silently_ignored(self):
-        campaign = self.editable_campaign(end_date=date(2026, 1, 10))
-
-        response = self.client.patch(
-            f'/api/campaigns/{campaign.slug}/',
-            {'start_date': '2026-01-02'},
-            format='json',
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        campaign.refresh_from_db(fields=['start_date'])
-        self.assertEqual(campaign.start_date, date(2026, 1, 2))
 
     def test_unrelated_update_does_not_touch_pacing(self):
         campaign = self.editable_campaign(

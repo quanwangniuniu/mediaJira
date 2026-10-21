@@ -20,7 +20,6 @@ from .models import (
     Optimization,
 )
 from core.models import ProjectMember
-from core.services.audit_events import safe_emit_audit_event
 
 User = get_user_model()
 from .serializers import (
@@ -583,25 +582,6 @@ def _get_accessible_campaign(user, slug):
     ).first()
 
 
-def _can_recompute_campaign(user, campaign):
-    """Manual financial recomputes require responsibility, not just visibility."""
-    if getattr(user, 'is_superuser', False):
-        return True
-    if user.id in {campaign.owner_id, campaign.assignee_id, campaign.project.owner_id}:
-        return True
-    return ProjectMember.objects.filter(
-        user=user,
-        project=campaign.project,
-        is_active=True,
-        role__iexact='owner',
-    ).exists() or ProjectMember.objects.filter(
-        user=user,
-        project=campaign.project,
-        is_active=True,
-        role__in=['admin', 'manager', 'ADMIN', 'MANAGER'],
-    ).exists()
-
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def campaign_pacing(request, slug):
@@ -639,23 +619,5 @@ def recompute_campaign_pacing(request, slug):
             status=status.HTTP_404_NOT_FOUND
         )
 
-    if not _can_recompute_campaign(request.user, campaign):
-        raise PermissionDenied('Only campaign owners, assignees, or project managers can recompute pacing.')
-
-    previous = getattr(campaign, 'pacing_forecast', None)
-    before = CampaignPacingForecastSerializer(previous).data if previous is not None else None
-    forecast, changed = PacingService.recompute_for_campaign_with_change(campaign)
-    serialized = CampaignPacingForecastSerializer(forecast).data
-    safe_emit_audit_event(
-        event_type='campaign.pacing_recomputed',
-        actor=request.user,
-        organization=campaign.project.organization,
-        project=campaign.project,
-        target_type='campaign',
-        target_id=campaign.id,
-        before=before,
-        after=serialized,
-        context={'changed': changed, 'trigger': 'manual'},
-        request=request,
-    )
-    return Response({'forecast': serialized, 'changed': changed})
+    forecast = PacingService.recompute_for_campaign(campaign)
+    return Response(CampaignPacingForecastSerializer(forecast).data)

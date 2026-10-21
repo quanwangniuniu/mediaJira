@@ -147,7 +147,7 @@ test.describe('Campaign budget pacing', () => {
       const badge = section.getByTestId('pacing-badge');
       await expect(badge).toHaveAttribute('data-pacing-status', 'no_data', { timeout: 20_000 });
       await expect(badge).toHaveText('No spend data');
-      await expect(section.getByTestId('pacing-prompt')).toContainText('No supported spend source is linked');
+      await expect(section.getByTestId('pacing-prompt')).toContainText('No Meta spend is linked');
     } finally {
       await deleteCampaign(page, campaign.slug);
     }
@@ -226,7 +226,7 @@ test.describe('Campaign budget pacing', () => {
     }
   });
 
-  test('recompute refreshes the page after a campaign update already refreshed the forecast', async ({
+  test('recompute reports new data when the forecast changed behind the page', async ({
     page,
   }) => {
     const campaign = await createCampaign(page, {
@@ -244,8 +244,7 @@ test.describe('Campaign budget pacing', () => {
         { timeout: 20_000 },
       );
 
-      // Change the campaign outside this page. Campaign PATCH recomputes the
-      // persisted forecast immediately, while this page still shows the old one.
+      // Change the campaign outside this page, so what the panel shows is stale.
       const token = await getToken(page);
       const edited = await page.request.patch(`${API_BASE}/api/campaigns/${campaign.slug}/`, {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -255,9 +254,7 @@ test.describe('Campaign budget pacing', () => {
 
       await section.getByTestId('pacing-recompute').click();
 
-      // The manual recompute finds no further backend change, but must still
-      // apply the returned fresh forecast to this stale page.
-      await expect(page.getByText('Pacing is already up to date')).toBeVisible();
+      await expect(page.getByText('New data found — pacing updated')).toBeVisible();
       await expect(section.getByTestId('pacing-badge')).toHaveAttribute(
         'data-pacing-status',
         'not_configured',

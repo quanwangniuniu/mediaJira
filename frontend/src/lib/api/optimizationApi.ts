@@ -1,11 +1,6 @@
 import api from "../api";
 import type { CampaignPacingForecast } from "@/types/campaign";
 
-export interface PacingRecomputeResponse {
-  forecast: CampaignPacingForecast;
-  changed: boolean;
-}
-
 export interface Optimization {
   id: number;
   task: number;
@@ -89,7 +84,7 @@ export const OptimizationAPI = {
 
   /** Force a fresh forecast rather than waiting for the nightly recomputation. */
   recomputeCampaignPacing: (slug: string) =>
-    api.post<PacingRecomputeResponse>(
+    api.post<CampaignPacingForecast>(
       `/api/optimization/campaigns/${slug}/pacing/recompute/`
     ),
 };

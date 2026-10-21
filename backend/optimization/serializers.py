@@ -259,18 +259,6 @@ class OptimizationSerializer(serializers.ModelSerializer):
 
 # ==================== BUDGET PACING SERIALIZERS ====================
 
-class CampaignPacingSummarySerializer(serializers.ModelSerializer):
-    """Small badge payload used by the hot campaign-list endpoint."""
-
-    class Meta:
-        model = CampaignPacingForecast
-        fields = [
-            'status', 'reason', 'data_quality',
-            'spend_platforms', 'unsupported_platforms',
-            'pace_ratio', 'computed_for_date',
-        ]
-        read_only_fields = fields
-
 class CampaignPacingForecastSerializer(serializers.ModelSerializer):
     """Read-only view of a campaign's latest pacing forecast."""
 
@@ -281,7 +269,6 @@ class CampaignPacingForecastSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'campaign', 'campaign_slug',
             'status', 'reason',
-            'data_quality', 'spend_platforms', 'unsupported_platforms',
             'budget', 'spend_to_date', 'expected_spend_to_date',
             'projected_total_spend', 'suggested_daily_cap', 'avg_daily_spend',
             'pace_ratio',

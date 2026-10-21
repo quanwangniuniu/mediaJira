@@ -475,10 +475,10 @@ class Optimization(models.Model):
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         db_table = "optimization"
-    
+
     def __str__(self) -> str:
         return f"Optimization(task={self.task_id}, status={self.execution_status})"
 
@@ -504,22 +504,10 @@ class PacingReason(models.TextChoices):
     """Machine-readable explanation for a non-actionable pacing status."""
 
     MISSING_BUDGET = "missing_budget", "Missing Budget"
-    MISSING_START_DATE = "missing_start_date", "Missing Start Date"
     MISSING_END_DATE = "missing_end_date", "Missing End Date"
     MISSING_BUDGET_AND_END_DATE = "missing_budget_and_end_date", "Missing Budget And End Date"
     INVALID_PERIOD = "invalid_period", "Invalid Period"
     NO_LINKED_SPEND = "no_linked_spend", "No Linked Spend"
-    NO_SPEND_RECORDED = "no_spend_recorded", "No Spend Recorded"
-    UNSUPPORTED_SPEND_PLATFORM = "unsupported_spend_platform", "Unsupported Spend Platform"
-
-
-class PacingDataQuality(models.TextChoices):
-    """How completely the forecast covers the campaign's configured platforms."""
-
-    COMPLETE = "complete", "Complete"
-    PARTIAL = "partial", "Partial"
-    UNSUPPORTED = "unsupported", "Unsupported"
-    NOT_APPLICABLE = "not_applicable", "Not Applicable"
 
 
 class CampaignPacingForecast(models.Model):
@@ -545,27 +533,11 @@ class CampaignPacingForecast(models.Model):
         help_text="Pacing verdict for the campaign",
     )
     reason = models.CharField(
-        max_length=40,
+        max_length=32,
         choices=PacingReason.choices,
         blank=True,
         default="",
         help_text="Why no actionable forecast is available (blank when one is)",
-    )
-    data_quality = models.CharField(
-        max_length=20,
-        choices=PacingDataQuality.choices,
-        default=PacingDataQuality.NOT_APPLICABLE,
-        help_text="Whether spend covers every configured campaign platform",
-    )
-    spend_platforms = models.JSONField(
-        default=list,
-        blank=True,
-        help_text="Configured platforms whose spend is included in the forecast",
-    )
-    unsupported_platforms = models.JSONField(
-        default=list,
-        blank=True,
-        help_text="Configured platforms with no implemented spend provider",
     )
 
     # --- Money (campaign currency; all nullable when not computable) ---
