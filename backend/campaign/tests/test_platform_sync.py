@@ -12,14 +12,13 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from campaign.models import Campaign
-from campaign.services import CampaignSyncService
 from core.models import Organization, OrganizationMembership, Project, ProjectMember
 from core.services.auth_tokens import build_user_refresh_token
 from core.services.tenant import slug_to_schema_name
 from core.tenant_context import tenant_schema_context
 from facebook_integration.models import FacebookConnection, MetaAdAccount
 from meta_ads.meta_client import MetaApiError
-from meta_ads.services import sync_ad_account
+from meta_ads.services import classify_sync_error, sync_ad_account
 from notifications.models import Notification
 
 pytestmark = pytest.mark.django_db
@@ -100,7 +99,7 @@ def sync_successfully(account):
     (ValueError('unexpected'), 'transient'),
 ])
 def test_classify_sync_error(error, expected):
-    assert CampaignSyncService.classify_sync_error(error) == expected
+    assert classify_sync_error(error) == expected
 
 
 def test_auth_error_sets_last_sync_error_and_notifies_owner_once(tenant, account):

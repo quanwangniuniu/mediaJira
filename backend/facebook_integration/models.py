@@ -90,7 +90,8 @@ class MetaAdAccount(models.Model):
         null=True,
         blank=True,
         related_name="linked_meta_accounts",
-        # Project lives in the organization schema; a public FK can never match.
+        # Projects live in organization schemas, so a DB foreign key to
+        # public.core_project would reject valid links.
         db_constraint=False,
     )
 
