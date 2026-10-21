@@ -717,7 +717,12 @@ class MiddlewareAllNineModulesTest(_MiddlewareBase):
     # -- fail-open is preserved for the new modules ------------------------
 
     def test_permission_query_failure_fails_open_for_new_modules(self):
-        with patch.object(services, "user_has_module_permission", side_effect=RuntimeError("boom")):
+        # MED-299 resolves permissions from a cached bundle first. Make that
+        # fast path fail too so the PostgreSQL fallback (fail-open) is what runs.
+        with patch(
+            "access_control.middleware.authorization.get_user_permission_bundle",
+            side_effect=RuntimeError("cache unavailable"),
+        ), patch.object(services, "user_has_module_permission", side_effect=RuntimeError("boom")):
             self.assertIsNone(self._run(self.denied_user, "GET", "/api/csm/queues/"))
 
 

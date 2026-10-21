@@ -347,7 +347,12 @@ class AdditionalDecisionBranchCoverageTest(TestCase):
         req = self.factory.get('/api/assets/list/')
         req.user = self.user_mismatched_role
 
-        with patch.object(
+        # MED-299 resolves permissions from a cached bundle first. Make that
+        # fast path fail too so the PostgreSQL fallback (fail-open) is what runs.
+        with patch(
+            'access_control.middleware.authorization.get_user_permission_bundle',
+            side_effect=RuntimeError("cache unavailable"),
+        ), patch.object(
             access_control_services, 'user_has_module_permission', side_effect=RuntimeError("boom")
         ):
             response = self.middleware.process_view(req, dummy_view, (), {})
