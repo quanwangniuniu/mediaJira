@@ -80,10 +80,10 @@ export const googleDocsApi = {
     };
   },
 
-  exportToGoogleSheets: async (title: string, matrix: string[][], formats: GoogleSheetExportFormat[] = []) => {
+  exportToGoogleSheets: async (title: string, matrix: string[][], formats: GoogleSheetExportFormat[] = [], spreadsheetId?: number | string, sheetId?: number,) => {
     const response = await api.post(
       "/api/google-docs/sheets/export/", 
-      { title, matrix, formats },
+      { title, matrix, formats, spreadsheet_id: spreadsheetId, sheet_id: sheetId, },
       { timeout: SYNC_TIMEOUT_MS }
     );
     return response.data as { spreadsheet_id: string; url: string };

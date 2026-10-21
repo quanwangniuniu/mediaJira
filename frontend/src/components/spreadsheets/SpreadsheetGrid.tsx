@@ -5116,7 +5116,13 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
     const toastId = toast.loading('Exporting to Google Sheets...');
 
     try {
-      const result = await googleDocsApi.exportToGoogleSheets(title, matrix, formats);
+      const result = await googleDocsApi.exportToGoogleSheets(
+        title,
+        matrix,
+        formats,
+        spreadsheetId,
+        sheetId,
+      );
       toast.dismiss(toastId);
       toast.success(
         (t) => (
@@ -5140,7 +5146,7 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       const msg = err?.response?.data?.error || 'Google Sheets export failed. Please try again.';
       toast.error(msg);
     }
-  }, [cells, cellFormats, cellHighlights, rowHighlights, colHighlights, getExportFileBaseName]);
+  }, [cells, cellFormats, cellHighlights, rowHighlights, colHighlights, getExportFileBaseName, spreadsheetId, sheetId]);
 
   useEffect(() => {
     if (!exportMenuOpen) return;

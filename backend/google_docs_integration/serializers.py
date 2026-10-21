@@ -73,3 +73,5 @@ class GoogleSheetsExportSerializer(serializers.Serializer):
         required=True,
     )
     formats = GoogleSheetExportFormatSerializer(many=True, required=False, default=list)
+    spreadsheet_id = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    sheet_id = serializers.IntegerField(required=False, allow_null=True, min_value=1)
