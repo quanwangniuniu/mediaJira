@@ -109,6 +109,7 @@ public sealed class JwtDecisionAccessService(TenantConnectionFactory connections
             WHERE pm.user_id = @user_id
               AND pm.project_id = @project_id
               AND pm.is_active = true
+              AND pm.is_deleted = false
               AND p.is_deleted = false
             LIMIT 1
             """;

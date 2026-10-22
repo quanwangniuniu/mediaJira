@@ -1214,6 +1214,7 @@ public sealed class PostgresDecisionRepository(TenantConnectionFactory connectio
                   AND related.is_deleted = false
                   AND member.user_id = @user_id
                   AND member.is_active = true
+                  AND member.is_deleted = false
                 ORDER BY related.id
                 """;
         command.Parameters.AddWithValue("project_id", projectId);
