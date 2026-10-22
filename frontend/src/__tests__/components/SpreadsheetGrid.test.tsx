@@ -14,6 +14,12 @@ import {
 const readCellRangeMock = jest.fn().mockResolvedValue({ cells: [] });
 const deleteRowsMock = jest.fn().mockResolvedValue({ operation_id: 1 });
 const deleteColumnsMock = jest.fn().mockResolvedValue({ operation_id: 1 });
+const revertStructureMock = jest.fn().mockResolvedValue({});
+const exportXlsxMock = jest.fn().mockResolvedValue(new Blob(['xlsx']));
+const exportGoogleMock = jest.fn().mockResolvedValue({
+  spreadsheet_id: 'dest',
+  url: 'https://docs.google.com/spreadsheets/d/dest/edit',
+});
 const batchUpdateCellsMock = jest.fn().mockResolvedValue({});
 const resizeSheetMock = jest.fn().mockResolvedValue({});
 const finalizeImportMock = jest.fn().mockResolvedValue({ status: 'ok' });
@@ -29,6 +35,14 @@ jest.mock('@/lib/api/spreadsheetApi', () => ({
     batchUpdateHighlights: jest.fn().mockResolvedValue({ updated: 0, deleted: 0 }),
     deleteRows: (...args: any[]) => deleteRowsMock(...args),
     deleteColumns: (...args: any[]) => deleteColumnsMock(...args),
+    revertStructureOperation: (...args: any[]) => revertStructureMock(...args),
+    exportSheetXlsx: (...args: any[]) => exportXlsxMock(...args),
+  },
+}));
+
+jest.mock('@/lib/api/googleDocsApi', () => ({
+  googleDocsApi: {
+    exportToGoogleSheets: (...args: any[]) => exportGoogleMock(...args),
   },
 }));
 
@@ -39,6 +53,8 @@ jest.mock('react-hot-toast', () => ({
   default: {
     success: (...args: any[]) => toastSuccess(...args),
     error: (...args: any[]) => toastError(...args),
+    loading: jest.fn(() => 'toast-id'),
+    dismiss: jest.fn(),
   },
 }));
 
@@ -463,6 +479,48 @@ describe('SpreadsheetGrid delete row/column', () => {
     expect(deleteRowsMock).toHaveBeenCalled();
     expect(toastError).toHaveBeenCalled();
     expect(toastError.mock.calls[0][0]).toContain('Server error');
+  });
+
+  it('redo stays available when a delete-row retry fails', async () => {
+    deleteRowsMock.mockClear();
+    revertStructureMock.mockClear();
+    revertStructureMock.mockResolvedValue({});
+  
+    render(<SpreadsheetGrid spreadsheetId={1} sheetId={1} />);
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+  
+    fireEvent.contextMenu(screen.getByTestId('row-header-0'));
+    fireEvent.click(screen.getByRole('menuitem', { name: /delete row/i }));
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+  
+    fireEvent.click(screen.getByTitle('Undo (Ctrl+Z)'));
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+    expect(revertStructureMock).toHaveBeenCalledWith(1, 1, 1);
+    expect(toastSuccess).toHaveBeenCalledWith('Undo complete');
+  
+    deleteRowsMock.mockRejectedValueOnce(new Error('Server error'));
+    const redo = screen.getByTitle('Redo (Ctrl+Shift+Z)');
+    fireEvent.click(redo);
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+  
+    expect(deleteRowsMock).toHaveBeenCalledTimes(2);
+    expect(toastError).toHaveBeenCalledWith('Failed to redo');
+    expect(redo).toBeEnabled();
+  
+    fireEvent.click(redo);
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+    expect(deleteRowsMock).toHaveBeenCalledTimes(3);
+    expect(deleteRowsMock).toHaveBeenLastCalledWith(1, 1, 0, 1);
   });
 });
 
@@ -1076,6 +1134,50 @@ describe('SpreadsheetGrid toolbar menus to document.body', () => {
     mockToolbarAndButton(button, { left: 20, top: 0, width: 80, height: 32 });
     fireEvent.click(button);
     expectMenuPortaled('[data-export-menu]');
+  });
+
+  it('export menu sends the spreadsheet and sheet ids', async () => {
+    exportXlsxMock.mockClear();
+    exportGoogleMock.mockClear();
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: jest.fn(() => 'blob:xlsx'),
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: jest.fn(),
+    });
+  
+    render(<SpreadsheetGrid spreadsheetId={1} sheetId={33} />);
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+  
+    const openExport = () => {
+      const button = screen.getByRole('button', { name: /^Export$/i });
+      mockToolbarAndButton(button, { left: 20, top: 0, width: 80, height: 32 });
+      fireEvent.click(button);
+    };
+  
+    openExport();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Export as XLSX' }));
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+    expect(exportXlsxMock).toHaveBeenCalledWith(1, 33);
+  
+    openExport();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Export to Google Sheets' }));
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+    expect(exportGoogleMock).toHaveBeenCalledWith(
+      'spreadsheet-1-sheet-33',
+      expect.any(Array),
+      expect.any(Array),
+      1,
+      33,
+    );
   });
 
   it('does not open format menus when nothing is selected', () => {
