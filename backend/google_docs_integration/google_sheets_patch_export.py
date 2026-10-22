@@ -6,6 +6,8 @@ Every later request uses the destination spreadsheet id.
 
 import requests
 from .services import GOOGLE_SHEETS_URL, _col_letter
+import json
+import uuid
 
 _BATCH_SIZE = 2000
 
@@ -87,6 +89,139 @@ def export_copied_google_sheet(source, diff, title, access_token) -> dict:
                 url=url,
             ) from exc
     return {"spreadsheet_id": destination_id, "url": url}
+
+_MAX_XLSX_UPLOAD_BYTES = 5 * 1024 * 1024
+_DRIVE_UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files"
+
+def export_converted_excel_sheet(source, diff, title, access_token) -> dict:
+    """Convert the stored xlsx to a new Google spreadsheet and patch one worksheet."""
+    worksheet_name = _worksheet_name(source)
+    _reject_unsafe_diff(diff)
+    content = _excel_file_bytes(source)
+    value_entries = []
+    repeat_templates = []
+    if diff.get("has_changes") is True:
+        value_entries = _value_entries(diff)
+        repeat_templates = _repeat_templates(diff)
+    if value_entries and diff.get("structural_operations"):
+        value_entries = _without_structural_formula_rewrites(source, diff, value_entries)
+
+    destination_id = _upload_xlsx_as_google_sheet(title, content, access_token)
+    try:
+        converted_sheet_id, converted_title = _converted_worksheet(
+            destination_id,
+            worksheet_name,
+            access_token,
+        )
+        _replay_structure(
+            destination_id,
+            converted_sheet_id,
+            diff.get("structural_operations") or [],
+            access_token,
+        )
+        if value_entries:
+            _write_values(destination_id, converted_title, value_entries, access_token)
+        if repeat_templates:
+            _write_repeats(destination_id, converted_sheet_id, repeat_templates, access_token)
+    except GooglePatchExportError as patch_error:
+        _delete_converted_spreadsheet(destination_id, access_token, patch_error)
+        raise
+    return {"spreadsheet_id": destination_id, "url": _spreadsheet_url(destination_id)}
+
+
+def _excel_file_bytes(source):
+    file_field = getattr(source, "file", None)
+    if not file_field:
+        raise GooglePatchExportError("missing excel file")
+    try:
+        with file_field.open("rb") as handle:
+            content = handle.read()
+    except Exception as exc:
+        raise GooglePatchExportError("excel file could not be read") from exc
+    if not isinstance(content, (bytes, bytearray)) or not content:
+        raise GooglePatchExportError("excel file could not be read")
+    if len(content) > _MAX_XLSX_UPLOAD_BYTES:
+        raise GooglePatchExportError("excel file is too large to convert")
+    return bytes(content)
+
+
+def _upload_xlsx_as_google_sheet(title, content, access_token):
+    boundary = f"excel{uuid.uuid4().hex}"
+    metadata = json.dumps({
+        "name": title or "Exported Sheet",
+        "mimeType": "application/vnd.google-apps.spreadsheet",
+    })
+    body = (
+        f"--{boundary}\r\n"
+        "Content-Type: application/json; charset=UTF-8\r\n\r\n"
+        f"{metadata}\r\n"
+        f"--{boundary}\r\n"
+        "Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n\r\n"
+    ).encode("utf-8") + content + f"\r\n--{boundary}--\r\n".encode("utf-8")
+    response = requests.post(
+        _DRIVE_UPLOAD_URL,
+        params={"uploadType": "multipart", "fields": "id"},
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": f"multipart/related; boundary={boundary}",
+        },
+        data=body,
+        timeout=60,
+    )
+    if response.status_code == 401:
+        response.raise_for_status()
+    if response.status_code >= 400:
+        raise GooglePatchExportError("excel conversion failed")
+    try:
+        spreadsheet_id = response.json().get("id")
+    except ValueError as exc:
+        raise GooglePatchExportError("excel conversion failed") from exc
+    if not isinstance(spreadsheet_id, str) or not spreadsheet_id.strip():
+        raise GooglePatchExportError("excel conversion failed")
+    return spreadsheet_id.strip()
+
+
+def _converted_worksheet(spreadsheet_id, worksheet_name, access_token):
+    response = _request(
+        "get",
+        f"{GOOGLE_SHEETS_URL}/{spreadsheet_id}",
+        access_token,
+        timeout=20,
+        params={"fields": "sheets.properties(sheetId,title)"},
+    )
+    wanted = worksheet_name.strip()
+    try:
+        for sheet in response.json().get("sheets") or []:
+            properties = sheet.get("properties") or {}
+            title = properties.get("title")
+            sheet_id = properties.get("sheetId")
+            if not isinstance(title, str) or title.strip() != wanted:
+                continue
+            if isinstance(sheet_id, bool) or not isinstance(sheet_id, int) or sheet_id < 0:
+                break
+            return sheet_id, title.strip()
+    except (ValueError, AttributeError) as exc:
+        raise GooglePatchExportError("converted worksheet was not found") from exc
+    raise GooglePatchExportError("converted worksheet was not found")
+
+
+def _delete_converted_spreadsheet(spreadsheet_id, access_token, patch_error):
+    try:
+        _request(
+            "delete",
+            f"https://www.googleapis.com/drive/v3/files/{spreadsheet_id}",
+            access_token,
+            timeout=20,
+        )
+    except GooglePatchExportError as exc:
+        raise GoogleBlankTabCleanupError(
+            "converted spreadsheet delete failed",
+            spreadsheet_id=spreadsheet_id,
+            url=_spreadsheet_url(spreadsheet_id),
+        ) from exc
+    return patch_error
+
+
 
 def _source_spreadsheet_id(source):
     spreadsheet_id = getattr(source, "google_spreadsheet_id", None)

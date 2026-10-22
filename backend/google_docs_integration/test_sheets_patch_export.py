@@ -3,6 +3,10 @@ from contextlib import contextmanager
 from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+from django.core.files.base import ContentFile
+from django.test import override_settings
+import tempfile
+import io
 
 import pytest
 import requests
@@ -272,6 +276,142 @@ class TestGoogleSheetExportRouting:
         assert routed.copy.call_args.args[1] == diff
         routed.rebuild.assert_not_called()
 
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+    def test_excel_file_uses_conversion(self, sheet_setup):
+        source = _google_source(
+            sheet_setup.sheet,
+            origin=SheetImportSource.Origin.EXCEL,
+            google_spreadsheet_id="",
+            google_sheet_id=None,
+        )
+        source.file.save("book.xlsx", ContentFile(b"PK-fake"), save=True)
+        converted_result = {
+            "spreadsheet_id": "converted",
+            "url": "https://docs.google.com/spreadsheets/d/converted/edit",
+        }
+        with _routed_export() as routed, patch(
+            "google_docs_integration.views.export_converted_excel_sheet",
+            return_value=converted_result,
+        ) as converted:
+            response = _post_export(sheet_setup)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["spreadsheet_id"] == "converted"
+        converted.assert_called_once()
+        routed.rebuild.assert_not_called()
+        routed.copy.assert_not_called()
+
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+    def test_excel_requires_rebuild_skips_conversion(self, sheet_setup):
+        source = _google_source(
+            sheet_setup.sheet,
+            origin=SheetImportSource.Origin.EXCEL,
+            google_spreadsheet_id="",
+            google_sheet_id=None,
+        )
+        source.file.save("book.xlsx", ContentFile(b"PK-fake"), save=True)
+        with _routed_export(_safe_diff(requires_rebuild=True, has_changes=True)) as routed, patch(
+            "google_docs_integration.views.export_converted_excel_sheet",
+        ) as converted:
+            response = _post_export(sheet_setup)
+        assert response.data["spreadsheet_id"] == "rebuilt"
+        converted.assert_not_called()
+        routed.copy.assert_not_called()
+        routed.rebuild.assert_called_once()
+
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+    def test_excel_conversion_failure_uses_rebuild(self, sheet_setup):
+        source = _google_source(
+            sheet_setup.sheet,
+            origin=SheetImportSource.Origin.EXCEL,
+            google_spreadsheet_id="",
+            google_sheet_id=None,
+        )
+        source.file.save("book.xlsx", ContentFile(b"PK-fake"), save=True)
+        with _routed_export() as routed, patch(
+            "google_docs_integration.views.export_converted_excel_sheet",
+            side_effect=GooglePatchExportError("convert failed"),
+        ):
+            response = _post_export(sheet_setup)
+        assert response.data["spreadsheet_id"] == "rebuilt"
+        routed.rebuild.assert_called_once()
+
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+    def test_excel_cleanup_failure_does_not_rebuild(self, sheet_setup):
+        source = _google_source(
+            sheet_setup.sheet,
+            origin=SheetImportSource.Origin.EXCEL,
+            google_spreadsheet_id="",
+            google_sheet_id=None,
+        )
+        source.file.save("book.xlsx", ContentFile(b"PK-fake"), save=True)
+        with _routed_export() as routed, patch(
+            "google_docs_integration.views.export_converted_excel_sheet",
+            side_effect=GoogleBlankTabCleanupError(
+                "delete failed",
+                spreadsheet_id="converted",
+                url="https://docs.google.com/spreadsheets/d/converted/edit",
+            ),
+        ):
+            response = _post_export(sheet_setup)
+        assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        routed.rebuild.assert_not_called()
+
+    def test_excel_conversion_uploads_xlsx_and_patches_the_named_worksheet(self):
+        from google_docs_integration.google_sheets_patch_export import export_converted_excel_sheet
+
+        class StoredFile:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def open(self, mode):
+                assert mode == "rb"
+                return io.BytesIO(self.payload)
+
+        payload = b"PK-original"
+        source = SimpleNamespace(
+            worksheet_name="Budget",
+            file=StoredFile(payload),
+            baseline={"cells": {}},
+        )
+        diff = _safe_diff(has_changes=True, cells={"0,0": {"raw_input": "new"}})
+
+        def fake_post(url, params=None, headers=None, data=None, timeout=None):
+            assert url.endswith("/upload/drive/v3/files")
+            assert params["uploadType"] == "multipart"
+            assert b"application/vnd.google-apps.spreadsheet" in data
+            assert payload in data
+            assert b"PK-original" == payload
+            response = MagicMock()
+            response.status_code = 200
+            response.json.return_value = {"id": "converted-id"}
+            return response
+
+        def fake_request(method, url, access_token, timeout, **kwargs):
+            response = MagicMock()
+            response.status_code = 200
+            if method == "get":
+                response.json.return_value = {
+                    "sheets": [
+                        {"properties": {"sheetId": 1, "title": "Other"}},
+                        {"properties": {"sheetId": 0, "title": "Budget"}},
+                    ]
+                }
+                return response
+            assert "copyTo" not in url
+            response.json.return_value = {}
+            return response
+
+        with patch(
+            "google_docs_integration.google_sheets_patch_export.requests.post",
+            side_effect=fake_post,
+        ), patch(
+            "google_docs_integration.google_sheets_patch_export._request",
+            side_effect=fake_request,
+        ) as requested:
+            result = export_converted_excel_sheet(source, diff, "Export", "token")
+        assert result["spreadsheet_id"] == "converted-id"
+        assert source.file.payload == b"PK-original"
+        assert any(call.args[0] == "get" for call in requested.call_args_list)
 
 
 class TestExportCopiedGoogleSheet:

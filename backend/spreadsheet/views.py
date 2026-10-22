@@ -21,6 +21,11 @@ from django.http import HttpResponse
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 
 from .xlsx_export import build_sheet_workbook
+from google_docs_integration.models import GoogleDocsConnection
+from google_docs_integration.services import (
+    export_google_spreadsheet_xlsx,
+    run_google_api_with_token_retry,
+)
 
 from .models import (
     Spreadsheet,
@@ -1521,6 +1526,45 @@ class SheetImportSourceView(APIView):
             status=status.HTTP_201_CREATED,
         )
 
+def _google_sheet_xlsx(request, sheet, source):
+    """Export a Google-origin sheet from the original spreadsheet, then patch web edits."""
+    connection = GoogleDocsConnection.objects.filter(user=request.user, is_active=True).first()
+    if connection is None or not connection.get_access_token():
+        return build_sheet_workbook(sheet)
+    try:
+        exported, worksheet_name = run_google_api_with_token_retry(
+            connection,
+            lambda token: export_google_spreadsheet_xlsx(source, token),
+        )
+    except Exception:
+        logger.exception(
+            'Google xlsx export failed for sheet_id=%s source_id=%s',
+            sheet.id,
+            source.id,
+        )
+        return build_sheet_workbook(sheet)
+
+    diff = diff_sheet(source)
+    if diff['requires_rebuild']:
+        return build_sheet_workbook(sheet)
+    if not diff['has_changes'] and not diff.get('structural_operations'):
+        return exported
+    try:
+        return build_patched_workbook(
+            source,
+            diff,
+            workbook_bytes=exported,
+            worksheet_name=worksheet_name,
+        )
+    except Exception:
+        logger.exception(
+            'Google xlsx patch failed for sheet_id=%s source_id=%s',
+            sheet.id,
+            source.id,
+        )
+        return build_sheet_workbook(sheet)
+
+
 class SheetXlsxExportView(APIView):
     """Export a sheet to .xlsx, embedding native charts for sparkline cells (MED-295)."""
     permission_classes = [IsAuthenticated]
@@ -1534,12 +1578,13 @@ class SheetXlsxExportView(APIView):
             SheetImportSource.objects.filter(
                 sheet=sheet,
                 is_deleted=False,
-                origin=SheetImportSource.Origin.EXCEL,
             ).first()
         )
-        if source is None or not source.file:
-            content = build_sheet_workbook(sheet)
-        else:
+        if (
+            source is not None
+            and source.origin == SheetImportSource.Origin.EXCEL
+            and source.file
+        ):
             diff = diff_sheet(source)
             if diff['requires_rebuild']:
                 content = build_sheet_workbook(sheet)
@@ -1564,11 +1609,20 @@ class SheetXlsxExportView(APIView):
                         source.id,
                     )
                     content = build_sheet_workbook(sheet)
+        elif (
+            source is not None
+            and source.origin == SheetImportSource.Origin.GOOGLE
+            and (source.google_spreadsheet_id or '').strip()
+            and source.google_sheet_id is not None
+        ):
+            content = _google_sheet_xlsx(request, sheet, source)
+        else:
+            content = build_sheet_workbook(sheet)
         response = HttpResponse(
             content,
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         )
-        
+
         # sheet.name is user-controlled: strip quotes/backslashes and control
         # chars so it can't break or inject into the Content-Disposition header.
         safe_name = re.sub(r'["\\\r\n]|[\x00-\x1f]', '', (sheet.name or 'sheet')).strip() or 'sheet'

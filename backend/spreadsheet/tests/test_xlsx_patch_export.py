@@ -392,7 +392,7 @@ class TestXlsxPatchExport(TestCase):
             self.assertEqual(workbook['Sheet1']['C1'].value, 'edited')
             self.assertEqual(workbook['Sheet1']['C1'].font.underline, 'single')
 
-    def test_merge_across_the_insert_raises(self):
+    def test_merge_starting_at_the_insert_moves(self):
         self._cell(0, 0, 'top')
         original = _workbook_bytes(
             lambda workbook, worksheet: (
@@ -401,11 +401,30 @@ class TestXlsxPatchExport(TestCase):
             )
         )
         source = self._save_excel_source(original)
+        content = build_patched_workbook(source, self._structure_diff([
+            {'op_type': 'ROW_INSERT', 'anchor_position': 0, 'count': 1},
+        ]))
+        with _open_exported(content) as workbook:
+            worksheet = workbook['Sheet1']
+            self.assertEqual(worksheet['A2'].value, 'top')
+            self.assertIn('A2:A3', {str(item) for item in worksheet.merged_cells.ranges})
+
+    def test_merge_across_the_insert_raises(self):
+        self._cell(0, 0, 'top')
+        self._cell(1, 0, 'mid')
+        original = _workbook_bytes(
+            lambda workbook, worksheet: (
+                worksheet.__setitem__('A1', 'top'),
+                worksheet.__setitem__('A2', 'mid'),
+                worksheet.merge_cells('A1:A3'),
+            )
+        )
+        source = self._save_excel_source(original)
         with source.file.open('rb') as handle:
             stored = handle.read()
         with self.assertRaises(XlsxPatchExportError):
             build_patched_workbook(source, self._structure_diff([
-                {'op_type': 'ROW_INSERT', 'anchor_position': 0, 'count': 1},
+                {'op_type': 'ROW_INSERT', 'anchor_position': 1, 'count': 1},
             ]))
         with source.file.open('rb') as handle:
             self.assertEqual(handle.read(), stored)
@@ -442,7 +461,7 @@ class TestXlsxPatchExport(TestCase):
         with _open_exported(content) as workbook:
             self.assertEqual(workbook['Sheet1']['A1'].value, 'keep')
 
-    def test_column_width_at_the_insert_raises(self):
+    def test_column_width_at_the_insert_moves(self):
         self._cell(0, 0, 'left')
         original = _workbook_bytes(
             lambda workbook, worksheet: (
@@ -451,10 +470,14 @@ class TestXlsxPatchExport(TestCase):
             )
         )
         source = self._save_excel_source(original)
-        with self.assertRaises(XlsxPatchExportError):
-            build_patched_workbook(source, self._structure_diff([
-                {'op_type': 'COL_INSERT', 'anchor_position': 1, 'count': 1},
-            ]))
+        content = build_patched_workbook(source, self._structure_diff([
+            {'op_type': 'COL_INSERT', 'anchor_position': 1, 'count': 1},
+        ]))
+        with _open_exported(content) as workbook:
+            worksheet = workbook['Sheet1']
+            self.assertEqual(worksheet['A1'].value, 'left')
+            self.assertEqual(worksheet.column_dimensions['C'].width, 22)
+            self.assertNotIn('B', worksheet.column_dimensions)
 
     def test_column_width_before_the_insert_is_allowed(self):
         self._cell(0, 0, 'left')
@@ -472,7 +495,7 @@ class TestXlsxPatchExport(TestCase):
             self.assertEqual(workbook['Sheet1']['A1'].value, 'left')
             self.assertEqual(workbook['Sheet1'].column_dimensions['A'].width, 22)
 
-    def test_row_height_at_the_insert_raises(self):
+    def test_row_height_at_the_insert_moves(self):
         self._cell(0, 0, 'top')
         original = _workbook_bytes(
             lambda workbook, worksheet: (
@@ -481,10 +504,14 @@ class TestXlsxPatchExport(TestCase):
             )
         )
         source = self._save_excel_source(original)
-        with self.assertRaises(XlsxPatchExportError):
-            build_patched_workbook(source, self._structure_diff([
-                {'op_type': 'ROW_INSERT', 'anchor_position': 1, 'count': 1},
-            ]))
+        content = build_patched_workbook(source, self._structure_diff([
+            {'op_type': 'ROW_INSERT', 'anchor_position': 1, 'count': 1},
+        ]))
+        with _open_exported(content) as workbook:
+            worksheet = workbook['Sheet1']
+            self.assertEqual(worksheet['A1'].value, 'top')
+            self.assertEqual(worksheet.row_dimensions[3].height, 30)
+            self.assertNotIn(2, worksheet.row_dimensions)
 
     def test_relative_formula_is_patched_after_insert(self):
         formula = self._cell(0, 0, '=B1')
@@ -604,7 +631,7 @@ class TestXlsxPatchExport(TestCase):
             self.assertEqual(workbook['Sheet1']['A1'].value, 'keep')
             self.assertEqual(workbook['Sheet1']['A1'].font.underline, 'single')
 
-    def test_height_below_a_deleted_row_still_rebuilds(self):
+    def test_height_below_a_deleted_row_stays_in_the_patched_workbook(self):
         self._cell(0, 0, 'top')
         self._cell(1, 0, 'drop')
         self._cell(2, 0, 'bottom')
@@ -619,8 +646,17 @@ class TestXlsxPatchExport(TestCase):
         )
         self._save_excel_source(original)
         SheetService.delete_rows(self.sheet, position=1, count=1)
-        self._assert_rebuild()
-    
+        with patch('spreadsheet.views.build_sheet_workbook') as rebuild:
+            response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        rebuild.assert_not_called()
+        with _open_exported(response.content) as workbook:
+            worksheet = workbook['Sheet1']
+            self.assertEqual(worksheet['A1'].value, 'top')
+            self.assertEqual(worksheet['A2'].value, 'bottom')
+            self.assertEqual(worksheet['A2'].font.underline, 'single')
+            self.assertEqual(worksheet.row_dimensions[2].height, 30)
+        
     def test_delete_last_row_removes_its_height(self):
         self._cell(0, 0, 'keep')
         self._cell(2, 0, 'drop')
@@ -703,7 +739,7 @@ class TestXlsxPatchExport(TestCase):
             self.assertNotIn(4, worksheet.row_dimensions)
             self.assertEqual(worksheet['A1'].font.underline, 'single')
 
-    def test_height_below_a_deleted_row_still_raises(self):
+    def test_height_below_a_deleted_row_moves_with_the_row(self):
         self._cell(0, 0, 'top')
         self._cell(2, 0, 'bottom')
         original = _workbook_bytes(
@@ -715,11 +751,16 @@ class TestXlsxPatchExport(TestCase):
             )
         )
         source = self._save_excel_source(original)
-        with self.assertRaises(XlsxPatchExportError):
-            build_patched_workbook(source, self._structure_diff([
-                {'op_type': 'ROW_DELETE', 'anchor_position': 1, 'count': 1},
-            ]))
-    
+        content = build_patched_workbook(source, self._structure_diff([
+            {'op_type': 'ROW_DELETE', 'anchor_position': 1, 'count': 1},
+        ]))
+        with _open_exported(content) as workbook:
+            worksheet = workbook['Sheet1']
+            self.assertEqual(worksheet['A1'].value, 'top')
+            self.assertEqual(worksheet['A2'].value, 'bottom')
+            self.assertEqual(worksheet.row_dimensions[2].height, 30)
+            self.assertNotIn(3, worksheet.row_dimensions)
+        
     def test_delete_column_with_trailing_column_keeps_underline(self):
         self._cell(0, 0, 'keep')
         self._cell(0, 1, 'drop')
@@ -743,3 +784,197 @@ class TestXlsxPatchExport(TestCase):
             self.assertEqual(workbook['Sheet1']['A1'].value, 'keep')
             self.assertEqual(workbook['Sheet1']['A1'].font.underline, 'single')
             self.assertEqual(workbook['Sheet1']['B1'].value, 'next')
+
+    def _save_google_source(self):
+        return SheetImportSource.objects.create(
+            sheet=self.sheet,
+            origin=SheetImportSource.Origin.GOOGLE,
+            worksheet_name='Budget',
+            google_spreadsheet_id='google-book',
+            google_sheet_id=0,
+            baseline=build_import_baseline(self.sheet),
+        )
+
+    def _connect_google(self):
+        from google_docs_integration.models import GoogleDocsConnection
+
+        connection = GoogleDocsConnection(user=self.user, is_active=True)
+        connection.set_access_token('token-abc')
+        connection.save()
+        return connection
+
+    def test_google_download_without_edits_returns_the_exported_workbook(self):
+        self._cell(0, 0, 'same')
+        self._save_google_source()
+        self._connect_google()
+        original = _workbook_bytes(
+            lambda workbook, worksheet: (
+                worksheet.__setitem__('A1', 'same'),
+                setattr(worksheet['A1'], 'font', Font(underline='single')),
+                workbook.create_sheet('Other'),
+            )
+        )
+        with patch(
+            'spreadsheet.views.export_google_spreadsheet_xlsx',
+            return_value=(original, 'Sheet1'),
+        ) as fetch:
+            response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, original)
+        fetch.assert_called_once()
+
+    def test_google_download_patches_a_value_and_keeps_underline(self):
+        changed = self._cell(0, 0, 'old')
+        self._save_google_source()
+        self._connect_google()
+        original = _workbook_bytes(
+            lambda workbook, worksheet: (
+                worksheet.__setitem__('A1', 'old'),
+                setattr(worksheet['A1'], 'font', Font(underline='single')),
+            )
+        )
+        changed.raw_input = 'new'
+        changed.string_value = 'new'
+        changed.save(update_fields=['raw_input', 'string_value'])
+        with patch(
+            'spreadsheet.views.export_google_spreadsheet_xlsx',
+            return_value=(original, 'Sheet1'),
+        ):
+            response = self.client.get(self.url)
+        with _open_exported(response.content) as workbook:
+            self.assertEqual(workbook['Sheet1']['A1'].value, 'new')
+            self.assertEqual(workbook['Sheet1']['A1'].font.underline, 'single')
+
+    def test_google_highlight_keeps_border_and_alignment(self):
+        self._cell(0, 0, 'boxed')
+        self._save_google_source()
+        self._connect_google()
+        original = _workbook_bytes(
+            lambda workbook, worksheet: (
+                worksheet.__setitem__('A1', 'boxed'),
+                setattr(worksheet['A1'], 'border', Border(left=Side(style='thin'))),
+                setattr(worksheet['A1'], 'alignment', Alignment(horizontal='center')),
+            )
+        )
+        SpreadsheetHighlight.objects.create(
+            spreadsheet=self.spreadsheet,
+            sheet=self.sheet,
+            scope='CELL',
+            row_index=0,
+            col_index=0,
+            color='#BFDBFE',
+        )
+        with patch(
+            'spreadsheet.views.export_google_spreadsheet_xlsx',
+            return_value=(original, 'Sheet1'),
+        ):
+            response = self.client.get(self.url)
+        with _open_exported(response.content) as workbook:
+            cell = workbook['Sheet1']['A1']
+            self.assertIn('BFDBFE', cell.fill.fgColor.rgb)
+            self.assertEqual(cell.border.left.style, 'thin')
+            self.assertEqual(cell.alignment.horizontal, 'center')
+
+    def test_google_column_insert_moves_the_underlined_cell(self):
+        self._cell(0, 0, 'left')
+        self._cell(0, 1, 'right')
+        self._save_google_source()
+        self._connect_google()
+        original = _workbook_bytes(
+            lambda workbook, worksheet: (
+                worksheet.__setitem__('A1', 'left'),
+                worksheet.__setitem__('B1', 'right'),
+                setattr(worksheet['B1'], 'font', Font(underline='single')),
+            )
+        )
+        SheetService.insert_columns(self.sheet, position=1, count=1, created_by=self.user)
+        with patch(
+            'spreadsheet.views.export_google_spreadsheet_xlsx',
+            return_value=(original, 'Sheet1'),
+        ):
+            response = self.client.get(self.url)
+        with _open_exported(response.content) as workbook:
+            worksheet = workbook['Sheet1']
+            self.assertEqual(worksheet['A1'].value, 'left')
+            self.assertIsNone(worksheet['B1'].value)
+            self.assertEqual(worksheet['C1'].value, 'right')
+            self.assertEqual(worksheet['C1'].font.underline, 'single')
+
+    def test_google_row_delete_shifts_the_underlined_cell(self):
+        self._cell(0, 0, 'drop')
+        self._cell(1, 0, 'keep')
+        self._save_google_source()
+        self._connect_google()
+        original = _workbook_bytes(
+            lambda workbook, worksheet: (
+                worksheet.__setitem__('A1', 'drop'),
+                worksheet.__setitem__('A2', 'keep'),
+                setattr(worksheet['A2'], 'font', Font(underline='single')),
+            )
+        )
+        SheetService.delete_rows(self.sheet, position=0, count=1, created_by=self.user)
+        with patch(
+            'spreadsheet.views.export_google_spreadsheet_xlsx',
+            return_value=(original, 'Sheet1'),
+        ):
+            response = self.client.get(self.url)
+        with _open_exported(response.content) as workbook:
+            worksheet = workbook['Sheet1']
+            self.assertEqual(worksheet['A1'].value, 'keep')
+            self.assertEqual(worksheet['A1'].font.underline, 'single')
+
+    def test_google_undo_returns_the_exported_workbook(self):
+        from spreadsheet.models import SheetStructureOperation
+
+        self._cell(0, 0, 'top')
+        self._cell(1, 0, 'bottom')
+        self._save_google_source()
+        self._connect_google()
+        original = _workbook_bytes(
+            lambda workbook, worksheet: (
+                worksheet.__setitem__('A1', 'top'),
+                worksheet.__setitem__('A2', 'bottom'),
+            )
+        )
+        deleted = SheetService.delete_rows(self.sheet, position=1, count=1, created_by=self.user)
+        operation = SheetStructureOperation.objects.get(id=deleted['operation_id'])
+        SheetService.revert_structure_operation(self.sheet, operation)
+        with patch(
+            'spreadsheet.views.export_google_spreadsheet_xlsx',
+            return_value=(original, 'Sheet1'),
+        ):
+            response = self.client.get(self.url)
+        self.assertEqual(response.content, original)
+
+    def test_missing_google_worksheet_rebuilds(self):
+        self._cell(0, 0, 'plain')
+        self._save_google_source()
+        self._connect_google()
+        with patch(
+            'spreadsheet.views.export_google_spreadsheet_xlsx',
+            side_effect=ValueError('google worksheet was not found'),
+        ):
+            self._assert_rebuild()
+
+    def test_workbook_bytes_use_the_live_worksheet_name(self):
+        changed = self._cell(0, 0, 'old')
+        source = self._save_google_source()
+        original = _workbook_bytes(lambda workbook, worksheet: worksheet.__setitem__('A1', 'old'))
+        changed.raw_input = 'new'
+        changed.string_value = 'new'
+        changed.save(update_fields=['raw_input', 'string_value'])
+        content = build_patched_workbook(
+            source,
+            diff_sheet(source),
+            workbook_bytes=original,
+            worksheet_name='Sheet1',
+        )
+        with _open_exported(content) as workbook:
+            self.assertEqual(workbook['Sheet1']['A1'].value, 'new')
+        with self.assertRaises(XlsxPatchExportError):
+            build_patched_workbook(
+                source,
+                diff_sheet(source),
+                workbook_bytes=original,
+                worksheet_name='Missing',
+            )

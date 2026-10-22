@@ -17,6 +17,7 @@ from .google_sheets_patch_export import (
     GoogleBlankTabCleanupError,
     GooglePatchExportError,
     export_copied_google_sheet,
+    export_converted_excel_sheet
 )
 from .models import GoogleDocsConnection
 from .serializers import (
@@ -434,6 +435,45 @@ class GoogleSheetsExportView(APIView):
                                 source.id,
                             )
                             result = rebuild()
+                if result is None:
+                    excel_source = (
+                        SheetImportSource.objects.filter(
+                            sheet=sheet,
+                            is_deleted=False,
+                            origin=SheetImportSource.Origin.EXCEL,
+                        ).first()
+                    )
+                    if excel_source is not None and excel_source.file:
+                        diff = diff_sheet(excel_source)
+                        if not diff["requires_rebuild"]:
+                            try:
+                                result = run_google_api_with_token_retry(
+                                    connection,
+                                    lambda token: export_converted_excel_sheet(
+                                        excel_source,
+                                        diff,
+                                        title,
+                                        token,
+                                    ),
+                                )
+                            except GoogleBlankTabCleanupError:
+                                logger.exception(
+                                    "Excel conversion cleanup failed for sheet_id=%s source_id=%s",
+                                    sheet.id,
+                                    excel_source.id,
+                                )
+                                return Response(
+                                    {"error": "Google Sheets export could not be finished. Please try again."},
+                                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                                )
+                            except GooglePatchExportError:
+                                logger.exception(
+                                    "Excel conversion failed for sheet_id=%s source_id=%s",
+                                    sheet.id,
+                                    excel_source.id,
+                                )
+                                result = rebuild()
+                            
             if result is None:
                 result = rebuild()
         except requests.HTTPError as exc:

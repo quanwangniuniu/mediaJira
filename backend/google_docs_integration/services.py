@@ -23,6 +23,7 @@ GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/documents",
     "https://www.googleapis.com/auth/drive.readonly",
     "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive.file",
 ]
 
 
@@ -116,6 +117,46 @@ def run_google_api_with_token_retry(connection: GoogleDocsConnection, fn):
         payload = refresh_google_tokens(connection.get_refresh_token())
         _persist_refreshed_tokens(connection, payload)
         return fn(connection.get_access_token())
+
+_XLSX_EXPORT_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+def export_google_spreadsheet_xlsx(source, access_token):
+    """Read one Google spreadsheet as xlsx. The source spreadsheet is not modified."""
+    spreadsheet_id = getattr(source, "google_spreadsheet_id", None)
+    sheet_id = getattr(source, "google_sheet_id", None)
+    if not isinstance(spreadsheet_id, str) or not spreadsheet_id.strip():
+        raise ValueError("missing google spreadsheet id")
+    if isinstance(sheet_id, bool) or not isinstance(sheet_id, int) or sheet_id < 0:
+        raise ValueError("missing google sheet id")
+    spreadsheet_id = spreadsheet_id.strip()
+
+    metadata = requests.get(
+        f"{GOOGLE_SHEETS_URL}/{spreadsheet_id}",
+        headers={"Authorization": f"Bearer {access_token}"},
+        params={"fields": "sheets.properties(sheetId,title)"},
+        timeout=20,
+    )
+    metadata.raise_for_status()
+    title = None
+    for item in metadata.json().get("sheets") or []:
+        properties = item.get("properties") or {}
+        if properties.get("sheetId") == sheet_id:
+            title = properties.get("title")
+            break
+    if not isinstance(title, str) or not title.strip():
+        raise ValueError("google worksheet was not found")
+
+    exported = requests.get(
+        f"{GOOGLE_DRIVE_FILES_URL}/{spreadsheet_id}/export",
+        headers={"Authorization": f"Bearer {access_token}"},
+        params={"mimeType": _XLSX_EXPORT_MIME},
+        timeout=60,
+    )
+    exported.raise_for_status()
+    if not exported.content:
+        raise ValueError("google xlsx export was empty")
+    return exported.content, title.strip()
+
 
 
 def fetch_google_email(access_token: str) -> str | None:
@@ -445,7 +486,7 @@ def fetch_google_sheet(spreadsheet_id: str, access_token: str) -> tuple[str, lis
     first_properties = sheets[0]["properties"] if sheets else {}
     worksheet_name = first_properties.get("title") or "Sheet1"
     google_sheet_id = first_properties.get("sheetId")
-    
+
     grid_response = requests.get(
         f"{GOOGLE_SHEETS_URL}/{spreadsheet_id}",
         headers={"Authorization": f"Bearer {access_token}"},

@@ -750,3 +750,40 @@ class TestGoogleApiErrorResponse:
             mock_api.side_effect = http_error
             response = api_client.post(IMPORT_URL, {"document_id": "doc1"}, format="json")
         assert response.status_code == status.HTTP_502_BAD_GATEWAY
+
+
+def test_google_xlsx_export_reads_the_sheet_id_and_does_not_write():
+    from unittest.mock import MagicMock, patch
+    from google_docs_integration.services import export_google_spreadsheet_xlsx
+
+    source = type("Source", (), {"google_spreadsheet_id": "book-id", "google_sheet_id": 0})()
+    calls = []
+
+    def fake_get(url, headers=None, params=None, timeout=None):
+        calls.append((url, params))
+        response = MagicMock()
+        response.raise_for_status.return_value = None
+        if url.endswith("/book-id"):
+            response.json.return_value = {
+                "sheets": [
+                    {"properties": {"sheetId": 4, "title": "Other"}},
+                    {"properties": {"sheetId": 0, "title": "Budget"}},
+                ]
+            }
+            response.content = b""
+            return response
+        response.content = b"PK-exported"
+        response.json.return_value = {}
+        return response
+
+    with patch("google_docs_integration.services.requests.get", side_effect=fake_get), patch(
+        "google_docs_integration.services.requests.post",
+    ) as posted:
+        content, title = export_google_spreadsheet_xlsx(source, "token")
+    assert content == b"PK-exported"
+    assert title == "Budget"
+    assert calls[1][0].endswith("/book-id/export")
+    assert calls[1][1]["mimeType"] == (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    posted.assert_not_called()

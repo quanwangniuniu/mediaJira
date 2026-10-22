@@ -20,7 +20,9 @@ from .xlsx_export import (
     _excel_number_format,
     _excel_rgb,
 )
-from openpyxl.utils import column_index_from_string
+
+from openpyxl.utils import column_index_from_string, get_column_letter
+from openpyxl.worksheet.cell_range import CellRange
 
 # _excel_font omits name, size, and color when the web value is null.
 # A brand-new openpyxl cell then uses these library defaults. This repo does
@@ -44,22 +46,30 @@ class XlsxPatchExportError(Exception):
     """The original workbook cannot be patched safely."""
 
 
-def build_patched_workbook(source, diff) -> bytes:
-    """Return xlsx bytes for source.file with diff applied to its worksheet."""
-    if not getattr(source, 'file', None):
-        raise XlsxPatchExportError('The original Excel file is missing.')
+def build_patched_workbook(source, diff, *, workbook_bytes=None, worksheet_name=None) -> bytes:
+    """Return xlsx bytes for an original workbook with diff applied to one worksheet."""
+    if workbook_bytes is None:
+        if not getattr(source, 'file', None):
+            raise XlsxPatchExportError('The original Excel file is missing.')
+        try:
+            with source.file.open('rb') as handle:
+                workbook = load_workbook(handle)
+        except XlsxPatchExportError:
+            raise
+        except Exception as exc:
+            raise XlsxPatchExportError('The original Excel file could not be opened.') from exc
+    else:
+        if not isinstance(workbook_bytes, (bytes, bytearray)) or not workbook_bytes:
+            raise XlsxPatchExportError('The original Excel file is missing.')
+        try:
+            workbook = load_workbook(io.BytesIO(workbook_bytes))
+        except Exception as exc:
+            raise XlsxPatchExportError('The original Excel file could not be opened.') from exc
 
+    selected_name = worksheet_name if isinstance(worksheet_name, str) and worksheet_name.strip() else getattr(source, 'worksheet_name', '')
     sheet = source.sheet
     try:
-        with source.file.open('rb') as handle:
-            workbook = load_workbook(handle)
-    except XlsxPatchExportError:
-        raise
-    except Exception as exc:
-        raise XlsxPatchExportError('The original Excel file could not be opened.') from exc
-
-    try:
-        worksheet = _worksheet(workbook, getattr(source, 'worksheet_name', ''))
+        worksheet = _worksheet(workbook, selected_name)
         _replay_structure(worksheet, diff.get('structural_operations') or [])
         _reject_sparkline_changes(sheet, diff.get('cells') or {})
         for key, change in (diff.get('cells') or {}).items():
@@ -76,7 +86,6 @@ def build_patched_workbook(source, diff) -> bytes:
     finally:
         workbook.close()
 
-
 def _worksheet(workbook, worksheet_name):
     name = (worksheet_name or '').strip()
     if not name or name not in workbook.sheetnames:
@@ -89,7 +98,7 @@ def _replay_structure(worksheet, operations):
     """Apply validated insert and delete operations before cell patches."""
     if not operations:
         return
-    _reject_unshifted_formulas(worksheet.parent)
+    _reject_unshifted_formulas(worksheet)
     for operation in operations:
         if not isinstance(operation, dict):
             raise XlsxPatchExportError('Bad structural operation.')
@@ -112,6 +121,8 @@ def _replay_structure(worksheet, operations):
         _reject_unsupported_structure(worksheet, axis, excel_index, count, deleting)
         if deleting:
             _drop_deleted_metadata(worksheet, axis, excel_index, count)
+        moved_merges = _take_merges_after_edit(worksheet, axis, excel_index, count, deleting)
+        _shift_dimensions_after_edit(worksheet, axis, excel_index, count, deleting)
         if op_type == 'ROW_INSERT':
             worksheet.insert_rows(excel_index, count)
         elif op_type == 'ROW_DELETE':
@@ -120,17 +131,16 @@ def _replay_structure(worksheet, operations):
             worksheet.insert_cols(excel_index, count)
         else:
             worksheet.delete_cols(excel_index, count)
+        for ref in moved_merges:
+            worksheet.merge_cells(ref)
 
-
-def _reject_unshifted_formulas(workbook):
-    for worksheet in workbook.worksheets:
-        for row in worksheet.iter_rows():
-            for cell in row:
-                value = cell.value
-                text = value if isinstance(value, str) else getattr(value, 'text', None)
-                if isinstance(text, str) and text.startswith('=') and ('$' in text or '!' in text):
-                    raise XlsxPatchExportError('This formula reference cannot be shifted.')
-
+def _reject_unshifted_formulas(worksheet):
+    for row in worksheet.iter_rows():
+        for cell in row:
+            value = cell.value
+            text = value if isinstance(value, str) else getattr(value, 'text', None)
+            if isinstance(text, str) and text.startswith('=') and ('$' in text or '!' in text):
+                raise XlsxPatchExportError('This formula reference cannot be shifted.')
 
 def _reject_unsupported_structure(worksheet, axis, excel_index, count, deleting):
     """Refuse features an insert or delete would leave on the old index."""
@@ -146,7 +156,7 @@ def _reject_unsupported_structure(worksheet, axis, excel_index, count, deleting)
         raise XlsxPatchExportError('Frozen panes cannot be shifted.')
     if worksheet.auto_filter.ref:
         raise XlsxPatchExportError('An auto filter cannot be shifted.')
-    if worksheet.parent.defined_names:
+    if _defined_name_uses_sheet(worksheet):
         raise XlsxPatchExportError('Named ranges cannot be shifted.')
     span_end = excel_index + count
     for merged in worksheet.merged_cells.ranges:
@@ -171,12 +181,25 @@ def _reject_unsupported_structure(worksheet, axis, excel_index, count, deleting)
         if _feature_blocks_structure(index, index, excel_index, span_end, deleting):
             raise XlsxPatchExportError('Column widths cannot be shifted.')
 
+def _defined_name_uses_sheet(worksheet):
+    defined_names = getattr(worksheet.parent, 'defined_names', None)
+    if not defined_names:
+        return False
+    title = worksheet.title
+    quoted = "'" + title.replace("'", "''") + "'"
+    for defined in defined_names.values():
+        text = defined.attr_text or ''
+        if quoted in text or f'{title}!' in text:
+            return True
+    return False
 
 def _feature_blocks_structure(start, end, cut, span_end, deleting):
-    """True when this feature is not wholly before the cut or wholly inside a deletion."""
+    """True when this feature crosses the edit and cannot be moved as a whole."""
     if end < cut:
         return False
     if deleting and start >= cut and end < span_end:
+        return False
+    if start >= (span_end if deleting else cut):
         return False
     return True
 
@@ -199,7 +222,60 @@ def _drop_deleted_metadata(worksheet, axis, excel_index, count):
     for merged in list(worksheet.merged_cells.ranges):
         if merged.min_col >= excel_index and merged.max_col < span_end:
             worksheet.unmerge_cells(str(merged))
-            
+
+def _take_merges_after_edit(worksheet, axis, cut, count, deleting):
+    span_end = cut + count
+    move_from = span_end if deleting else cut
+    moved = []
+    for merged in list(worksheet.merged_cells.ranges):
+        start = merged.min_row if axis == 'row' else merged.min_col
+        if start < move_from:
+            continue
+        worksheet.unmerge_cells(range_string=str(merged))
+        shifted = CellRange(str(merged))
+        delta = -count if deleting else count
+        if axis == 'row':
+            shifted.shift(row_shift=delta)
+        else:
+            shifted.shift(col_shift=delta)
+        moved.append(str(shifted))
+    return moved
+
+
+def _shift_dimensions_after_edit(worksheet, axis, cut, count, deleting):
+    move_from = cut + count if deleting else cut
+    delta = -count if deleting else count
+    if axis == 'row':
+        pending = []
+        for index in list(worksheet.row_dimensions):
+            if not isinstance(index, int) or index < move_from:
+                continue
+            dimension = worksheet.row_dimensions[index]
+            if dimension.height is None and not dimension.hidden:
+                continue
+            pending.append((index, dimension.height, dimension.hidden))
+            del worksheet.row_dimensions[index]
+        for index, height, hidden in pending:
+            target = worksheet.row_dimensions[index + delta]
+            target.height = height
+            target.hidden = hidden
+        return
+    pending = []
+    for letter in list(worksheet.column_dimensions):
+        index = column_index_from_string(letter)
+        if index < move_from:
+            continue
+        dimension = worksheet.column_dimensions[letter]
+        if dimension.width is None and not dimension.hidden:
+            continue
+        pending.append((index, dimension.width, dimension.hidden))
+        del worksheet.column_dimensions[letter]
+    for index, width, hidden in pending:
+        target = worksheet.column_dimensions[get_column_letter(index + delta)]
+        target.width = width
+        target.hidden = hidden
+
+
 def _parse_coordinate(key):
     parts = str(key).split(',')
     if len(parts) != 2:
