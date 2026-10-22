@@ -289,10 +289,11 @@ export function updatePersistedAccessToken(accessToken: string, refreshToken?: s
 }
 
 // Throws on failure so callers can tell a rejected refresh token from an unreachable server.
-async function requestTokenRefresh(refreshToken: string): Promise<string | null> {
+// The refresh token itself travels in the HttpOnly refresh cookie, never in JS.
+async function requestTokenRefresh(): Promise<string | null> {
   const response = await axios.post(
     `${API_BASE_URL}/auth/token/refresh/`,
-    { refresh: refreshToken },
+    {},
     {
       headers: {
         'Content-Type': 'application/json',
@@ -302,13 +303,13 @@ async function requestTokenRefresh(refreshToken: string): Promise<string | null>
   );
   const accessToken = response.data?.access || response.data?.token;
   if (!accessToken) return null;
-  updatePersistedAccessToken(accessToken, response.data?.refresh);
+  updatePersistedAccessToken(accessToken);
   return accessToken;
 }
 
-export async function refreshAccessToken(refreshToken: string): Promise<string | null> {
+export async function refreshAccessToken(): Promise<string | null> {
   try {
-    return await requestTokenRefresh(refreshToken);
+    return await requestTokenRefresh();
   } catch (error) {
     console.warn('Failed to refresh auth token:', error);
     return null;
@@ -331,9 +332,10 @@ export function endSession() {
 
 // Shared across every caller (this file's interceptor, other axios instances
 // like preferencesApi.ts) so concurrent 401s trigger exactly one refresh call.
-export function getSharedRefreshedToken(refreshToken: string): Promise<string | null> {
+// The argument is ignored (the refresh token is in the HttpOnly cookie); 
+export function getSharedRefreshedToken(_refreshToken?: string | null): Promise<string | null> {
   if (!sharedRefreshPromise) {
-    sharedRefreshPromise = requestTokenRefresh(refreshToken).catch((error) => {
+    sharedRefreshPromise = requestTokenRefresh().catch((error) => {
       console.warn('Failed to refresh auth token:', error);
       // Network errors and 5xx may recover; a 4xx means the server rejected the refresh token.
       // Runs once per refresh, not once per waiting request.
@@ -432,9 +434,9 @@ api.interceptors.response.use(
 
     if (status === 401 && !isAuthEndpoint && !shouldBypassGlobalLogout) {
       if (typeof window !== 'undefined' && config && !config._retry) {
-        const authData = readPersistedAuthState();
-        const refreshToken = authData?.state?.refreshToken;
-        const accessToken = refreshToken ? await getSharedRefreshedToken(refreshToken) : null;
+        // Only a request that had a session is worth refreshing (via the HttpOnly
+        // cookie). A rejected refresh ends the session inside getSharedRefreshedToken.
+        const accessToken = config.headers.Authorization ? await getSharedRefreshedToken() : null;
 
         // Mark the request as retried so we don't end up in an infinite loop.
         config._retry = true;
@@ -442,9 +444,6 @@ api.interceptors.response.use(
           config.headers.Authorization = `Bearer ${accessToken}`;
           return api(config);
         }
-        // Sent a token but have nothing to refresh it with: the session is dead.
-        // (A rejected refresh already ended it inside getSharedRefreshedToken.)
-        if (!refreshToken && config.headers.Authorization) endSession();
       }
 
       // Session was explicitly revoked or exceeded concurrent limit.
@@ -530,8 +529,8 @@ export const authAPI = {
     return response.data;
   },
 
-  refreshToken: async (refreshToken: string): Promise<string | null> => {
-    return refreshAccessToken(refreshToken);
+  refreshToken: async (): Promise<string | null> => {
+    return refreshAccessToken();
   },
 
   // Profile update endpoint (handles both JSON and FormData for avatar uploads)
