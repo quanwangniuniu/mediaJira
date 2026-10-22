@@ -162,6 +162,12 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
+      args:
+        # Native Linux: the container writes into the bind-mounted ./frontend as the
+        # `node` user, so that user must carry your host UID/GID. Defaults suit the
+        # first Linux user; otherwise set HOST_UID/HOST_GID in .env (see env.example).
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
     container_name: frontend-dev
     restart: always
     ports:

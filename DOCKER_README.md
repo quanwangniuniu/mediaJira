@@ -445,8 +445,10 @@ docker compose up -d --build
 
 ### 5. **Permission Issues**
 ```bash
-# Fix file permissions
+# Fix file permissions (files created by an older container user)
 sudo chown -R $USER:$USER .
+# To stop it recurring, make the frontend dev container write as you:
+# set HOST_UID/HOST_GID in .env (see env.example) and rebuild it.
 
 # Fix Docker permissions (Linux)
 sudo usermod -aG docker $USER
@@ -475,8 +477,12 @@ docker compose -f docker-compose.dev.yml exec backend ls -la
 # Restart development services
 docker compose -f docker-compose.dev.yml restart frontend backend
 
-# Check file permissions in containers
-docker compose -f docker-compose.dev.yml exec frontend chown -R node:node /app
+# EACCES writing next-env.d.ts on native Linux: the container user must match your
+# host UID/GID. Set HOST_UID/HOST_GID in .env (see env.example), then rebuild and
+# recreate the two frontend volumes once. Never chown /app: it is your checkout.
+docker compose -f docker-compose.dev.yml --env-file .env rm -sf frontend
+docker volume rm $(docker volume ls -q | grep -E 'frontend_(node_modules|next)$')
+docker compose -f docker-compose.dev.yml --env-file .env up --build -d frontend
 ```
 
 ### 8. **Line Ending Issues (Windows/WSL)**
