@@ -325,11 +325,7 @@ class MetaSyncRunTriggerView(APIView):
                 {"detail": "You do not have permission to sync this ad account."},
                 status=403,
             )
-        # Sync health is recorded in the requesting organization; public has none.
-        schema = current_tenant_schema()
-        async_result = sync_single_ad_account.delay(
-            ad_account.id, tenant_schema=None if schema == "public" else schema,
-        )
+        async_result = sync_single_ad_account.delay(ad_account.id, tenant_schema=current_tenant_schema())
         return Response(
             {
                 "status": "queued",

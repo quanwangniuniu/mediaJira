@@ -90,9 +90,7 @@ class MetaAdAccount(models.Model):
         null=True,
         blank=True,
         related_name="linked_meta_accounts",
-        # Projects live in organization schemas, so a DB foreign key to
-        # public.core_project would reject valid links.
-        db_constraint=False,
+        db_constraint=False,  # Project lives in tenant schema; no cross-schema FK constraint
     )
 
     created_at = models.DateTimeField(auto_now_add=True)

@@ -211,14 +211,9 @@ def _set_phase(run_id: int, phase: str, progress: str) -> None:
 
 
 def sync_ad_account(
-    ad_account: MetaAdAccount, access_token: str, *, days: int = 30, kind: str = "hourly",
-    tenant_schema: str | None = None,
+    ad_account: MetaAdAccount, access_token: str, *, days: int = 30, kind: str = "hourly", tenant_schema: str = "public"
 ) -> MetaSyncRun:
-    """Run a full hydration pass. Returns the MetaSyncRun log row.
-
-    `tenant_schema` is the organization that requested the sync; when given, the
-    outcome is recorded on that organization's linked campaigns.
-    """
+    """Run a full hydration pass. Returns the MetaSyncRun log row."""
     run = MetaSyncRun.objects.create(ad_account=ad_account, kind=kind, status="running")
     counts: dict[str, int] = {}
     error_message = ""
@@ -279,33 +274,26 @@ def sync_ad_account(
         updated_at=timezone.now(),
     )
     run.refresh_from_db()
-    if tenant_schema:
-        try:
-            # Surface the outcome on linked campaigns; never fail the sync because of it.
-            record_campaign_sync_result(ad_account, sync_error, tenant_schema=tenant_schema)
-        except Exception:
-            logger.exception("Recording campaign sync health failed for %s", ad_account.meta_account_id)
+    _record_campaign_sync_result(ad_account, sync_error, tenant_schema)
     return run
 
 
-# Campaign sync health -----------------------------------------------------------
+# Campaign sync health ---------------------------------------------------------
 
 
-def classify_sync_error(error: Exception) -> str:
+def _classify_sync_error(error: Exception) -> str:
     """Auth errors need the user to reconnect; anything else is retried by the next sync."""
-    codes = Campaign.SyncError
     if not isinstance(error, MetaApiError):
-        return codes.TRANSIENT
+        return "transient"
     detail = error.body.get("error") if isinstance(error.body, dict) else None
     code = str(detail.get("code")) if isinstance(detail, dict) else ""
     # Meta reports expired or revoked tokens as code 190 (or 102 for sessions).
     if code in ("190", "102") or error.status_code == 401:
-        return codes.AUTH
-    return codes.TRANSIENT
+        return "auth"
+    return "transient"
 
 
-def notify_campaign_sync_auth_error(campaign, *, ad_account: MetaAdAccount) -> None:
-    """Tell the campaign owner that a linked Meta account needs reconnecting."""
+def _notify_campaign_sync_auth_error(campaign: Campaign, ad_account: MetaAdAccount) -> None:
     connector = ad_account.connection.user
     create_notification(
         recipient_id=campaign.owner_id,
@@ -320,38 +308,26 @@ def notify_campaign_sync_auth_error(campaign, *, ad_account: MetaAdAccount) -> N
         ),
         related_object_type="campaign",
         related_object_id=str(campaign.id),
-        # The notification drawer has no campaign route, so it opens action_url.
         action_url=f"/campaigns/{campaign.slug}",
-        metadata={
-            "change_type": "campaign_sync_auth_error",
-            "project_id": campaign.project_id,
-            "campaign_slug": campaign.slug,
-            "ad_account_id": ad_account.pk,
-        },
+        metadata={"change_type": "campaign_sync_auth_error", "project_id": campaign.project_id},
     )
 
 
-def record_campaign_sync_result(ad_account: MetaAdAccount, error: Exception | None, *, tenant_schema: str) -> None:
+def _record_campaign_sync_result(ad_account: MetaAdAccount, error: Exception | None, tenant_schema: str) -> None:
     if not ad_account.project_id:
         return
-    codes = Campaign.SyncError
-    error_code = codes.NONE if error is None else classify_sync_error(error)
-    with tenant_schema_context(tenant_schema), transaction.atomic():
-        campaigns = Campaign.objects.select_for_update().filter(
-            project_id=ad_account.project_id, is_deleted=False,
-        )
-        for campaign in campaigns:
-            if Campaign.Platform.META not in (campaign.platforms or []):
+    error_code = _classify_sync_error(error) if error is not None else ""
+    with tenant_schema_context(tenant_schema):
+        for campaign in Campaign.objects.filter(project_id=ad_account.project_id, is_deleted=False):
+            if error_code and Campaign.Platform.META not in (campaign.platforms or []):
                 continue
-            was_auth_error = campaign.last_sync_error == codes.AUTH
-            # A timeout does not prove the credentials work again.
-            new_error = campaign.last_sync_error if was_auth_error and error_code == codes.TRANSIENT else error_code
-            # update() so a sync does not bump updated_at or run save hooks.
+            was_auth_error = campaign.last_sync_error == "auth"
+            new_error = "auth" if was_auth_error and error_code == "transient" else error_code
             Campaign.objects.filter(pk=campaign.pk).update(
-                last_sync_error=new_error, last_sync_attempted_at=timezone.now(),
+                last_sync_error=new_error, last_sync_attempted_at=timezone.now()
             )
-            if new_error == codes.AUTH and not was_auth_error:
-                notify_campaign_sync_auth_error(campaign, ad_account=ad_account)
+            if new_error == "auth" and not was_auth_error:
+                _notify_campaign_sync_auth_error(campaign, ad_account)
 
 
 # Per-level syncers ------------------------------------------------------------

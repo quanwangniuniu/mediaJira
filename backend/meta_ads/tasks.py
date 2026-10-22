@@ -55,7 +55,7 @@ def sync_recent_meta(days: int = 2) -> dict:
 
 
 @shared_task
-def sync_single_ad_account(ad_account_id: int, days: int = 30, tenant_schema: str | None = None) -> dict:
+def sync_single_ad_account(ad_account_id: int, days: int = 30, tenant_schema: str = "public") -> dict:
     """Manual sync trigger used by the UI Refresh button."""
     try:
         ad_account = MetaAdAccount.objects.get(pk=ad_account_id)

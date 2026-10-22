@@ -163,10 +163,12 @@ export default function CampaignHeader({ campaign, onUpdate, loading, onChangeSt
 
   const handleReconnectMeta = async () => {
     try {
-      const { authorize_url } = await facebookApi.connect(campaign.project.id);
-      window.location.assign(authorize_url);
-    } catch {
-      toast.error('Unable to start reconnection. Please try again.');
+      const { authorize_url } = await facebookApi.connect(campaign.project?.id ?? campaign.project_id);
+      window.location.href = authorize_url;
+    } catch (error: any) {
+      toast.error(
+        error?.response?.data?.detail || 'Unable to start reconnection. Please try again.'
+      );
     }
   };
 
@@ -345,14 +347,14 @@ export default function CampaignHeader({ campaign, onUpdate, loading, onChangeSt
               className="text-sm"
             />
           )}
-          {campaign.last_sync_error === 'auth' && (
-            <span role="alert" className="flex items-center gap-2 text-sm text-amber-800">
+          {!isArchived && campaign.last_sync_error === 'auth' && (
+            <div className="flex items-center gap-2 text-sm text-amber-800">
               <AlertTriangle className="h-4 w-4" aria-hidden="true" />
-              Meta authorization expired, metrics may be out of date.
+              Meta authorization expired. Metrics may be out of date.
               <Button variant="secondary" size="sm" onClick={handleReconnectMeta}>
                 Reconnect
               </Button>
-            </span>
+            </div>
           )}
         </div>
 
