@@ -16,12 +16,10 @@ from django.db import transaction
 from django.utils import timezone
 
 from campaign.models import Campaign
-from core.admin_utils import get_user_organizations
-from core.models import Project
-from core.services.tenant import slug_to_schema_name
 from core.tenant_context import tenant_schema_context
 from facebook_integration.models import MetaAdAccount
-from notifications.services import notify_campaign_sync_auth_error
+from notifications.models import NotificationCategory, NotificationEventType
+from notifications.services import create_notification
 from utils.ad_preview_cache_keys import creative_preview_cache_key
 
 from .meta_client import MetaApiError, graph_get, graph_paged
@@ -212,8 +210,15 @@ def _set_phase(run_id: int, phase: str, progress: str) -> None:
     )
 
 
-def sync_ad_account(ad_account: MetaAdAccount, access_token: str, *, days: int = 30, kind: str = "hourly") -> MetaSyncRun:
-    """Run a full hydration pass. Returns the MetaSyncRun log row."""
+def sync_ad_account(
+    ad_account: MetaAdAccount, access_token: str, *, days: int = 30, kind: str = "hourly",
+    tenant_schema: str | None = None,
+) -> MetaSyncRun:
+    """Run a full hydration pass. Returns the MetaSyncRun log row.
+
+    `tenant_schema` is the organization that requested the sync; when given, the
+    outcome is recorded on that organization's linked campaigns.
+    """
     run = MetaSyncRun.objects.create(ad_account=ad_account, kind=kind, status="running")
     counts: dict[str, int] = {}
     error_message = ""
@@ -274,11 +279,12 @@ def sync_ad_account(ad_account: MetaAdAccount, access_token: str, *, days: int =
         updated_at=timezone.now(),
     )
     run.refresh_from_db()
-    try:
-        # Surface the outcome on linked campaigns; never fail the sync because of it.
-        record_campaign_sync_result(ad_account, sync_error)
-    except Exception:
-        logger.exception("Recording campaign sync health failed for %s", ad_account.meta_account_id)
+    if tenant_schema:
+        try:
+            # Surface the outcome on linked campaigns; never fail the sync because of it.
+            record_campaign_sync_result(ad_account, sync_error, tenant_schema=tenant_schema)
+        except Exception:
+            logger.exception("Recording campaign sync health failed for %s", ad_account.meta_account_id)
     return run
 
 
@@ -298,33 +304,39 @@ def classify_sync_error(error: Exception) -> str:
     return codes.TRANSIENT
 
 
-def tenant_schema_for_account(ad_account: MetaAdAccount) -> str | None:
-    """Find the organization schema that holds the account's linked project.
+def notify_campaign_sync_auth_error(campaign, *, ad_account: MetaAdAccount) -> None:
+    """Tell the campaign owner that a linked Meta account needs reconnecting."""
+    connector = ad_account.connection.user
+    create_notification(
+        recipient_id=campaign.owner_id,
+        actor_id=None,
+        category=NotificationCategory.INTEGRATIONS,
+        event_type=NotificationEventType.ACCOUNT_PERMISSION,
+        title=f"Reconnect Meta for {campaign.name}",
+        body=(
+            f"Meta authorization for {ad_account.name or 'the linked ad account'} has expired "
+            f"or been revoked, so campaign metrics may be out of date. "
+            f"{connector.get_full_name() or connector.username} must reconnect the account."
+        ),
+        related_object_type="campaign",
+        related_object_id=str(campaign.id),
+        # The notification drawer has no campaign route, so it opens action_url.
+        action_url=f"/campaigns/{campaign.slug}",
+        metadata={
+            "change_type": "campaign_sync_auth_error",
+            "project_id": campaign.project_id,
+            "campaign_slug": campaign.slug,
+            "ad_account_id": ad_account.pk,
+        },
+    )
 
-    `MetaAdAccount.project_id` is an organization-local ID, so look for it in
-    the organizations of the user who connected the account.
-    """
+
+def record_campaign_sync_result(ad_account: MetaAdAccount, error: Exception | None, *, tenant_schema: str) -> None:
     if not ad_account.project_id:
-        return None
-    matches = []
-    for organization in get_user_organizations(ad_account.connection.user):
-        schema = slug_to_schema_name(organization.slug)
-        with tenant_schema_context(schema):
-            if Project.objects.filter(pk=ad_account.project_id, is_deleted=False).exists():
-                matches.append(schema)
-    if len(matches) > 1:
-        logger.warning("Meta account %s matches project %s in several organizations: %s",
-                       ad_account.pk, ad_account.project_id, matches)
-    return matches[0] if len(matches) == 1 else None
-
-
-def record_campaign_sync_result(ad_account: MetaAdAccount, error: Exception | None) -> None:
-    schema = tenant_schema_for_account(ad_account)
-    if schema is None:
         return
     codes = Campaign.SyncError
     error_code = codes.NONE if error is None else classify_sync_error(error)
-    with tenant_schema_context(schema), transaction.atomic():
+    with tenant_schema_context(tenant_schema), transaction.atomic():
         campaigns = Campaign.objects.select_for_update().filter(
             project_id=ad_account.project_id, is_deleted=False,
         )

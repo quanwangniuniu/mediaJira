@@ -19,6 +19,7 @@ from core.tenant_context import tenant_schema_context
 from facebook_integration.models import FacebookConnection, MetaAdAccount
 from meta_ads.meta_client import MetaApiError
 from meta_ads.services import classify_sync_error, sync_ad_account
+from meta_ads.tasks import sync_single_ad_account
 from notifications.models import Notification
 
 pytestmark = pytest.mark.django_db
@@ -77,14 +78,14 @@ def campaign_in(schema, campaign):
         return Campaign.objects.get(pk=campaign.pk)
 
 
-def sync_failing_with(account, error):
+def sync_failing_with(account, error, *, tenant_schema):
     with patch('meta_ads.services.sync_campaigns', side_effect=error):
-        return sync_ad_account(account, 'token')
+        return sync_ad_account(account, 'token', tenant_schema=tenant_schema)
 
 
-def sync_successfully(account):
+def sync_successfully(account, *, tenant_schema):
     with patch('meta_ads.services.graph_paged', return_value=[]):
-        return sync_ad_account(account, 'token')
+        return sync_ad_account(account, 'token', tenant_schema=tenant_schema)
 
 
 @pytest.mark.parametrize('error, expected', [
@@ -104,7 +105,7 @@ def test_classify_sync_error(error, expected):
 
 def test_auth_error_sets_last_sync_error_and_notifies_owner_once(tenant, account):
     for _ in range(2):
-        assert sync_failing_with(account, EXPIRED).status == 'error'
+        assert sync_failing_with(account, EXPIRED, tenant_schema=tenant.schema).status == 'error'
 
     campaign = campaign_in(tenant.schema, tenant.campaign)
     assert campaign.last_sync_error == 'auth'
@@ -119,23 +120,23 @@ def test_auth_error_sets_last_sync_error_and_notifies_owner_once(tenant, account
 
 
 def test_transient_error_is_recorded_without_notification(tenant, account):
-    sync_failing_with(account, requests.Timeout())
+    sync_failing_with(account, requests.Timeout(), tenant_schema=tenant.schema)
     assert campaign_in(tenant.schema, tenant.campaign).last_sync_error == 'transient'
     assert not Notification.objects.exists()
 
 
 def test_transient_error_keeps_an_open_reconnect_warning(tenant, account):
-    sync_failing_with(account, EXPIRED)
-    sync_failing_with(account, requests.Timeout())
+    sync_failing_with(account, EXPIRED, tenant_schema=tenant.schema)
+    sync_failing_with(account, requests.Timeout(), tenant_schema=tenant.schema)
     assert campaign_in(tenant.schema, tenant.campaign).last_sync_error == 'auth'
 
 
 def test_success_clears_the_error_and_a_new_expiry_notifies_again(tenant, account):
-    sync_failing_with(account, EXPIRED)
-    assert sync_successfully(account).status == 'ok'
+    sync_failing_with(account, EXPIRED, tenant_schema=tenant.schema)
+    assert sync_successfully(account, tenant_schema=tenant.schema).status == 'ok'
     assert campaign_in(tenant.schema, tenant.campaign).last_sync_error == ''
 
-    sync_failing_with(account, EXPIRED)
+    sync_failing_with(account, EXPIRED, tenant_schema=tenant.schema)
     assert Notification.objects.count() == 2
 
 
@@ -149,23 +150,35 @@ def test_only_meta_campaigns_in_the_linked_project_get_sync_state(tenant, accoun
             )
             for project, platforms in [(other_project, ['META']), (tenant.project, ['GOOGLE_ADS'])]
         ]
-    sync_failing_with(account, EXPIRED)
+    sync_failing_with(account, EXPIRED, tenant_schema=tenant.schema)
     assert campaign_in(tenant.schema, tenant.campaign).last_sync_error == 'auth'
     for campaign in ignored:
         assert campaign_in(tenant.schema, campaign).last_sync_attempted_at is None
 
 
-def test_same_project_id_in_two_of_the_connectors_organizations_is_skipped(tenant, account):
-    other = make_tenant(project_id=tenant.project.pk)
-    OrganizationMembership.objects.create(user=tenant.user, organization=other.org)
-    sync_failing_with(account, EXPIRED)
-    for each in (tenant, other):
-        assert campaign_in(each.schema, each.campaign).last_sync_attempted_at is None
+def test_sync_without_a_requesting_organization_records_nothing(tenant, account):
+    # Scheduled syncs run from beat with no organization context.
+    sync_failing_with(account, EXPIRED, tenant_schema=None)
+    assert campaign_in(tenant.schema, tenant.campaign).last_sync_attempted_at is None
     assert not Notification.objects.exists()
 
 
+def test_refresh_passes_the_requesting_organization_to_the_sync(tenant, account):
+    with patch('meta_ads.views.sync_single_ad_account.delay') as delay:
+        delay.return_value.id = 'task-123'
+        response = tenant.client.post(f'/api/meta_ads/ad_accounts/{account.pk}/sync/')
+    assert response.status_code == 202, response.data
+    delay.assert_called_once_with(account.pk, tenant_schema=tenant.schema)
+
+    with patch.object(FacebookConnection, 'get_access_token', return_value='token'), patch(
+        'meta_ads.services.sync_campaigns', side_effect=EXPIRED,
+    ):
+        sync_single_ad_account(account.pk, tenant_schema=tenant.schema)
+    assert campaign_in(tenant.schema, tenant.campaign).last_sync_error == 'auth'
+
+
 def test_campaign_detail_exposes_read_only_sync_state(tenant, account):
-    sync_failing_with(account, EXPIRED)
+    sync_failing_with(account, EXPIRED, tenant_schema=tenant.schema)
     url = f'/api/campaigns/{tenant.campaign.slug}/'
     response = tenant.client.get(url)
     assert response.status_code == 200, response.data

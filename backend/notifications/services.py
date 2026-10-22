@@ -7,7 +7,6 @@ from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from django.db.models import QuerySet
 
-from .action_urls import campaign_action_url
 from .dispatch import maybe_dispatch_external_channels
 from .models import (
     DEADLINE_TAB_EVENT_TYPES,
@@ -364,35 +363,6 @@ def create_notifications_for_users(
         if n:
             created.append(n)
     return created
-
-
-CAMPAIGN_SYNC_AUTH_ERROR = "campaign_sync_auth_error"
-
-
-def notify_campaign_sync_auth_error(campaign, *, ad_account) -> Notification | None:
-    """Tell the campaign owner that a linked Meta account needs reconnecting."""
-    connector = ad_account.connection.user
-    return create_notification(
-        recipient_id=campaign.owner_id,
-        actor_id=None,
-        category=NotificationCategory.INTEGRATIONS,
-        event_type=NotificationEventType.ACCOUNT_PERMISSION,
-        title=f"Reconnect Meta for {campaign.name}",
-        body=(
-            f"Meta authorization for {ad_account.name or 'the linked ad account'} has expired "
-            f"or been revoked, so campaign metrics may be out of date. "
-            f"{connector.get_full_name() or connector.username} must reconnect the account."
-        ),
-        related_object_type="campaign",
-        related_object_id=str(campaign.id),
-        action_url=campaign_action_url(campaign.slug),
-        metadata={
-            "change_type": CAMPAIGN_SYNC_AUTH_ERROR,
-            "project_id": campaign.project_id,
-            "campaign_slug": campaign.slug,
-            "ad_account_id": ad_account.pk,
-        },
-    )
 
 
 def _chat_message_notification_qs(*, recipient_id: int, chat_id: int):

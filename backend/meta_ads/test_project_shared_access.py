@@ -344,7 +344,8 @@ class MetaAdsProjectSharedAccessTests(TestCase):
 
         self.assertEqual(response.status_code, 202)
         self.assertEqual(response.data["status"], "queued")
-        delay_mock.assert_called_once_with(self.account.id)
+        # No organization schema in this test, so nothing is recorded on campaigns.
+        delay_mock.assert_called_once_with(self.account.id, tenant_schema=None)
 
     def test_non_connector_cannot_disconnect_connector_facebook_connection(self):
         self.authenticate(self.manager)
