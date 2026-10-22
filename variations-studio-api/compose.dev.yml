@@ -9,6 +9,12 @@ services:
     build:
       context: ./variations-studio-api
       dockerfile: Dockerfile.dev
+      args:
+        # Same as the frontend service: the container writes into the bind-mounted
+        # source as `node`, so that user must carry your host UID/GID on native
+        # Linux. Set HOST_UID/HOST_GID in .env (see env.example) if `id -u` is not 1000.
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
     container_name: variations-studio-api-dev
     command:
       - /bin/bash
