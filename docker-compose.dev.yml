@@ -68,7 +68,7 @@ services:
 
   # SonarQube
   # sonarqube:
-  #   build: 
+  #   build:
   #     context: ./devops/sonarqube
   #     dockerfile: Dockerfile.dev
   #   container_name: sonarqube-dev
@@ -110,7 +110,7 @@ services:
 
   # Django Backend (Development)
   backend:
-    build: 
+    build:
       context: ./backend
       dockerfile: Dockerfile.dev
     container_name: backend-dev
@@ -155,7 +155,7 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-        labels: "service=django"    
+        labels: "service=django"
 
   # Next.js Frontend (Development)
   frontend:
@@ -163,9 +163,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.dev
       args:
-        # Native Linux: the container writes into the bind-mounted ./frontend as the
-        # `node` user, so that user must carry your host UID/GID. Defaults suit the
-        # first Linux user; otherwise set HOST_UID/HOST_GID in .env (see env.example).
+        # set HOST_UID/HOST_GID in .env (see env.example).
         HOST_UID: ${HOST_UID:-1000}
         HOST_GID: ${HOST_GID:-1000}
     container_name: frontend-dev
@@ -197,7 +195,7 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-        labels: "service=nextjs"    
+        labels: "service=nextjs"
 
   # Decision .NET Microservice (Development)
   decision-service:
@@ -449,13 +447,13 @@ services:
       CLUSTER_ID: "MW-7IGsmQbmFkrf2x7Ho5A"
       # Retention policy (7 days default)
       KAFKA_LOG_RETENTION_HOURS: 168
-      
+
       # Security Configuration (PLAINTEXT for dev, see KAFKA_SECURITY.md for production)
       # Current: PLAINTEXT (no authentication/encryption) - OK for local development only
       # Production: Use SASL_SSL with SCRAM-SHA-512 authentication and SSL encryption
-      
+
       # === PRODUCTION SECURITY SETTINGS (uncomment and configure for production) ===
-      # 
+      #
       # 1. Update listener security protocol map to use SASL_SSL:
       # KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:SASL_SSL,EXTERNAL:SASL_SSL,CONTROLLER:PLAINTEXT
       #
@@ -485,7 +483,7 @@ services:
       #
       # See KAFKA_SECURITY.md for detailed security setup instructions
     volumes:
-      - kafka_data:/var/lib/kafka/data   
+      - kafka_data:/var/lib/kafka/data
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "9092"]
       interval: 10s
@@ -493,7 +491,7 @@ services:
       retries: 10
       start_period: 20s
 
-      
+
   kafka-exporter:
     image: danielqsj/kafka-exporter
     container_name: kafka-exporter
@@ -501,7 +499,7 @@ services:
     ports:
       - "9308:9308"
     command:
-      - "--kafka.server=kafka:9092"   
+      - "--kafka.server=kafka:9092"
     depends_on:
       - kafka
 
@@ -608,7 +606,7 @@ services:
     # Services are accessible by their container names (e.g., backend-dev, frontend-dev, influxdb-k6)
 
 volumes:
-  clamav_data: 
+  clamav_data:
   # sonar-token-data:
   frontend_node_modules:
   frontend_next:
