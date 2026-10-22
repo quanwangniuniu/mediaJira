@@ -647,25 +647,29 @@ function NotionV2DetailContent() {
   return (
     <DashboardLayout>
       <div className="-m-5 h-[calc(100vh-3rem)] flex flex-col bg-white overflow-hidden">
-        <div className="sticky top-0 z-20 border-b border-gray-100 bg-white/90 backdrop-blur-sm px-6 py-3 flex items-center gap-3">
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Untitled"
-            disabled={isLoading}
-            className="min-w-0 flex-1 border-0 focus:outline-none focus:ring-0 text-2xl font-semibold text-gray-900 placeholder:text-gray-300 bg-transparent"
-          />
-          <NotionStatusPill status={status} />
-          {lastEditedLabel && (
-            <span
-              aria-live="polite"
-              className="text-xs text-gray-500 whitespace-nowrap hidden md:inline"
-            >
-              {lastEditedLabel}
-            </span>
-          )}
-          <div className="flex shrink-0 items-center gap-1.5">
+        <div className="sticky top-0 z-20 border-b border-gray-100 bg-white/90 backdrop-blur-sm px-6 py-3 flex flex-col gap-2">
+          {/* Title on its own row so the action cluster cannot shrink it to 0 width. */}
+          <div className="flex min-w-0 items-center gap-3">
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Untitled"
+              disabled={isLoading}
+              aria-label="Draft title"
+              className="min-w-0 flex-1 border-0 focus:outline-none focus:ring-0 text-2xl font-semibold text-gray-900 placeholder:text-gray-300 bg-transparent"
+            />
+            <NotionStatusPill status={status} />
+            {lastEditedLabel && (
+              <span
+                aria-live="polite"
+                className="text-xs text-gray-500 whitespace-nowrap hidden sm:inline"
+              >
+                {lastEditedLabel}
+              </span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
             <button
               type="button"
               onClick={() => setIsPreviewOpen(true)}
@@ -756,7 +760,7 @@ function NotionV2DetailContent() {
                 onChange={(event) => {
                   void handleProjectChange(event.target.value);
                 }}
-                className="h-8 max-w-[12rem] rounded-md border border-gray-200 bg-white px-2 text-sm text-gray-800 disabled:opacity-50"
+                className="h-8 max-w-[10rem] rounded-md border border-gray-200 bg-white px-2 text-sm text-gray-800 disabled:opacity-50"
               >
                 <option value="">No project</option>
                 {projects.map((project) => (
