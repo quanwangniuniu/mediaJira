@@ -240,6 +240,17 @@ class SheetStructureOperation(TimeStampedModel):
         default=dict,
         help_text="Mapping of affected ID to original position"
     )
+    removed_decorations = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Formats and highlights removed by a row or column delete",
+    )
+    formula_rewrites = models.JSONField(
+        null=True,
+        blank=True,
+        default=None,
+        help_text="Formula text replaced by this structural operation, keyed by cell id",
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

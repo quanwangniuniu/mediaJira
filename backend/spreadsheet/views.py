@@ -1543,7 +1543,7 @@ class SheetXlsxExportView(APIView):
             diff = diff_sheet(source)
             if diff['requires_rebuild']:
                 content = build_sheet_workbook(sheet)
-            elif not diff['has_changes']:
+            elif not diff['has_changes'] and not diff.get('structural_operations'):
                 try:
                     with source.file.open('rb') as handle:
                         content = handle.read()

@@ -261,6 +261,18 @@ class TestGoogleSheetExportRouting:
         routed.rebuild.assert_not_called()
         routed.copy.assert_not_called()
 
+    def test_structural_only_diff_uses_the_copier(self, sheet_setup):
+        _google_source(sheet_setup.sheet)
+        diff = _safe_diff(structural_operations=[
+            {"op_type": "COL_DELETE", "anchor_position": 1, "count": 1},
+        ])
+        with _routed_export(diff) as routed:
+            response = _post_export(sheet_setup)
+        assert response.status_code == status.HTTP_200_OK
+        assert routed.copy.call_args.args[1] == diff
+        routed.rebuild.assert_not_called()
+
+
 
 class TestExportCopiedGoogleSheet:
     def _run(self, diff, source=None, copy_title="Budget", fail=None, recorded=None):
@@ -275,6 +287,15 @@ class TestExportCopiedGoogleSheet:
                 return _ok(_created_payload())
             if url.endswith(":copyTo"):
                 return _ok(_copy_payload(copy_title))
+            if method == "get" and url == f"{GOOGLE_SHEETS_URL}/{DESTINATION_ID}":
+                return _ok({
+                    "sheets": [{
+                        "properties": {
+                            "sheetId": COPIED_SHEET_ID,
+                            "gridProperties": {"rowCount": 1000, "columnCount": 26},
+                        }
+                    }]
+                })
             return _ok({})
 
         with patch(
@@ -485,6 +506,237 @@ class TestExportCopiedGoogleSheet:
                 assert url.endswith(":copyTo")
             if url.endswith("/values:batchUpdate") or url.endswith(":batchUpdate"):
                 assert DESTINATION_ID in url
+
+    def _dimension_requests(self, diff, **kwargs):
+        _result, recorded = self._run(diff, **kwargs)
+        found = []
+        for url, body in recorded:
+            if url == f"{GOOGLE_SHEETS_URL}/{DESTINATION_ID}:batchUpdate":
+                for request in (body or {}).get("requests", []):
+                    if "insertDimension" in request or "deleteDimension" in request or "updateSheetProperties" in request:
+                        found.append(request)
+        source_writes = [
+            url for url, _body in recorded
+            if SOURCE_SPREADSHEET_ID in url and not url.endswith(":copyTo")
+        ]
+        return found, source_writes
+
+    def test_column_delete_only_deletes_the_copied_column(self):
+        diff = _safe_diff(structural_operations=[
+            {"op_type": "COL_DELETE", "anchor_position": 1, "count": 1},
+        ])
+        found, source_writes = self._dimension_requests(diff)
+        assert source_writes == []
+        assert found == [{
+            "deleteDimension": {
+                "range": {
+                    "sheetId": COPIED_SHEET_ID,
+                    "dimension": "COLUMNS",
+                    "startIndex": 1,
+                    "endIndex": 2,
+                }
+            }
+        }]
+
+    def test_row_delete_with_an_empty_padding_row_deletes_only_the_original_row(self):
+        diff = _safe_diff(structural_operations=[
+            {"op_type": "ROW_DELETE", "anchor_position": 1, "count": 1},
+        ])
+        found, source_writes = self._dimension_requests(diff)
+        assert source_writes == []
+        assert found == [{
+            "deleteDimension": {
+                "range": {
+                    "sheetId": COPIED_SHEET_ID,
+                    "dimension": "ROWS",
+                    "startIndex": 1,
+                    "endIndex": 2,
+                }
+            }
+        }]
+
+    def test_row_delete_does_not_clear_formatting(self):
+        requests = self._recorded_requests(_safe_diff(structural_operations=[
+            {"op_type": "ROW_DELETE", "anchor_position": 1, "count": 1},
+        ]))
+        assert not any(item.get("repeatCell", {}).get("fields") == "userEnteredFormat" for item in requests)
+
+
+    def test_row_insert_at_the_top_does_not_inherit_from_before(self):
+        diff = _safe_diff(structural_operations=[
+            {"op_type": "ROW_INSERT", "anchor_position": 0, "count": 1},
+        ])
+        found, _source_writes = self._dimension_requests(diff)
+        assert found[0]["insertDimension"]["inheritFromBefore"] is False
+        assert found[0]["insertDimension"]["range"]["startIndex"] == 0
+        assert found[0]["insertDimension"]["range"]["endIndex"] == 1
+
+    def test_column_insert_inherits_from_the_previous_column(self):
+        diff = _safe_diff(structural_operations=[
+            {"op_type": "COL_INSERT", "anchor_position": 2, "count": 1},
+        ])
+        found, _source_writes = self._dimension_requests(diff)
+        insert = found[0]["insertDimension"]
+        assert insert["inheritFromBefore"] is True
+        assert insert["range"]["dimension"] == "COLUMNS"
+        assert insert["range"]["sheetId"] == COPIED_SHEET_ID
+
+    def test_operations_stay_in_order(self):
+        diff = _safe_diff(structural_operations=[
+            {"op_type": "ROW_INSERT", "anchor_position": 1, "count": 2},
+            {"op_type": "COL_DELETE", "anchor_position": 0, "count": 1},
+        ])
+        found, _source_writes = self._dimension_requests(diff)
+        assert list(found[0]) == ["insertDimension"]
+        assert found[0]["insertDimension"]["range"]["endIndex"] == 3
+        assert list(found[1]) == ["deleteDimension"]
+
+    def test_delete_then_value_patch_uses_the_final_coordinate(self):
+        diff = _safe_diff(
+            has_changes=True,
+            structural_operations=[{"op_type": "COL_DELETE", "anchor_position": 1, "count": 1}],
+            cells={"0,1": {"raw_input": "moved"}},
+        )
+        _result, recorded = self._run(diff)
+        urls = [url for url, _body in recorded]
+        assert urls.index(f"{GOOGLE_SHEETS_URL}/{DESTINATION_ID}:batchUpdate") < urls.index(
+            f"{GOOGLE_SHEETS_URL}/{DESTINATION_ID}/values:batchUpdate"
+        )
+        values = next(body for url, body in recorded if url.endswith("/values:batchUpdate"))
+        assert values["data"] == [{"range": "'Budget'!B1", "values": [["moved"]]}]
+
+    def test_delete_then_bold_patch_uses_the_copied_sheet_id(self):
+        diff = _safe_diff(
+            has_changes=True,
+            structural_operations=[{"op_type": "ROW_DELETE", "anchor_position": 0, "count": 1}],
+            formats={"0,0": {"bold": True}},
+        )
+        repeats = self._repeat_cells(diff)
+        assert repeats[0]["range"]["sheetId"] == COPIED_SHEET_ID
+        assert repeats[0]["fields"] == "userEnteredFormat.textFormat.bold"
+
+    def test_insert_past_the_grid_grows_before_inserting(self):
+        diff = _safe_diff(structural_operations=[
+            {"op_type": "COL_INSERT", "anchor_position": 30, "count": 1},
+        ])
+        found, _source_writes = self._dimension_requests(diff)
+        assert found[0]["updateSheetProperties"]["properties"]["gridProperties"]["columnCount"] == 30
+        assert found[0]["updateSheetProperties"]["properties"]["sheetId"] == COPIED_SHEET_ID
+        assert found[1]["insertDimension"]["range"]["startIndex"] == 30
+
+    def test_delete_outside_the_grid_raises_before_a_dimension_write(self):
+        diff = _safe_diff(structural_operations=[
+            {"op_type": "ROW_DELETE", "anchor_position": 1000, "count": 1},
+        ])
+        recorded = []
+        with pytest.raises(GooglePatchExportError):
+            self._run(diff, recorded=recorded)
+        assert not any(
+            "deleteDimension" in str(body)
+            for _url, body in recorded
+        )
+
+    def test_dimension_api_error_deletes_only_the_copied_tab(self):
+        diff = _safe_diff(structural_operations=[
+            {"op_type": "COL_DELETE", "anchor_position": 1, "count": 1},
+        ])
+        recorded = []
+
+        def fail(url, body, _count):
+            return (
+                url == f"{GOOGLE_SHEETS_URL}/{DESTINATION_ID}:batchUpdate"
+                and "deleteDimension" in str(body)
+            )
+
+        fail.status_code = 400
+        with pytest.raises(GooglePatchExportError, match="google sheets request failed"):
+            self._run(diff, fail=fail, recorded=recorded)
+        deletes = [
+            request["deleteSheet"]["sheetId"]
+            for _url, body in recorded
+            for request in (body or {}).get("requests", [])
+            if "deleteSheet" in request
+        ]
+        assert deletes == [COPIED_SHEET_ID]
+    
+    def test_structural_export_does_not_rewrite_a_cross_sheet_formula(self):
+        from spreadsheet.formula_rewrite import rewrite_formula_text
+
+        rewritten = rewrite_formula_text("=Sheet2!A1", "COL_INSERT", 0, 1)
+        source = _source()
+        source.baseline = {"cells": {"0,0": {"raw_input": "=Sheet2!A1"}}}
+        diff = _safe_diff(
+            has_changes=True,
+            structural_operations=[{"op_type": "COL_INSERT", "anchor_position": 0, "count": 1}],
+            cells={"0,1": {"raw_input": rewritten}},
+        )
+        _result, recorded = self._run(diff, source=source)
+        assert not any(url.endswith("/values:batchUpdate") for url, _body in recorded)
+
+    def test_structural_export_still_writes_a_formula_the_user_edited(self):
+        source = _source()
+        source.baseline = {"cells": {"0,0": {"raw_input": "=B1"}}}
+        diff = _safe_diff(
+            has_changes=True,
+            structural_operations=[{"op_type": "COL_INSERT", "anchor_position": 0, "count": 1}],
+            cells={"0,1": {"raw_input": "=C1+5"}},
+        )
+        _result, recorded = self._run(diff, source=source)
+        values = next(body for url, body in recorded if url.endswith("/values:batchUpdate"))
+        assert values["data"] == [{"range": "'Budget'!B1", "values": [["=C1+5"]]}]
+
+    def _recorded_requests(self, diff, **kwargs):
+        _result, recorded = self._run(diff, **kwargs)
+        requests = []
+        for _url, body in recorded:
+            requests.extend((body or {}).get("requests", []))
+        return requests
+
+    def test_row_insert_clears_only_the_new_row(self):
+        requests = self._recorded_requests(_safe_diff(structural_operations=[
+            {"op_type": "ROW_INSERT", "anchor_position": 1, "count": 2},
+        ]))
+        clear = next(item["repeatCell"] for item in requests if "repeatCell" in item)
+        assert clear["fields"] == "userEnteredFormat"
+        assert clear["cell"] == {}
+        assert clear["range"] == {
+            "sheetId": COPIED_SHEET_ID,
+            "startRowIndex": 1,
+            "endRowIndex": 3,
+            "startColumnIndex": 0,
+            "endColumnIndex": 26,
+        }
+
+    def test_column_insert_at_the_end_clears_only_the_new_column(self):
+        requests = self._recorded_requests(_safe_diff(structural_operations=[
+            {"op_type": "COL_INSERT", "anchor_position": 26, "count": 1},
+        ]))
+        clear = next(item["repeatCell"] for item in requests if item.get("repeatCell", {}).get("fields") == "userEnteredFormat")
+        assert clear["range"]["startColumnIndex"] == 26
+        assert clear["range"]["endColumnIndex"] == 27
+        assert clear["range"]["startRowIndex"] == 0
+        assert clear["range"]["endRowIndex"] == 1000
+
+    def test_insert_at_the_top_clears_the_new_row_before_a_user_format(self):
+        diff = _safe_diff(
+            has_changes=True,
+            structural_operations=[{"op_type": "ROW_INSERT", "anchor_position": 0, "count": 1}],
+            formats={"0,0": {"bold": True}},
+        )
+        _result, recorded = self._run(diff)
+        repeats = []
+        for url, body in recorded:
+            for item in (body or {}).get("requests", []):
+                if "repeatCell" in item:
+                    repeats.append((url, item["repeatCell"]))
+        assert repeats[0][1]["fields"] == "userEnteredFormat"
+        assert repeats[0][1]["range"]["startRowIndex"] == 0
+        assert repeats[0][1]["range"]["endRowIndex"] == 1
+        assert repeats[1][1]["fields"] == "userEnteredFormat.textFormat.bold"
+        assert repeats[1][1]["range"]["endColumnIndex"] == 1
+
+
+
 
 @pytest.mark.django_db
 class TestGoogleCopyTokenRetry:

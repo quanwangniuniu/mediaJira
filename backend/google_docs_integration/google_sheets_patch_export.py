@@ -47,6 +47,9 @@ def export_copied_google_sheet(source, diff, title, access_token) -> dict:
         value_entries = _value_entries(diff)
         repeat_templates = _repeat_templates(diff)
 
+    if value_entries and diff.get("structural_operations"):
+        value_entries = _without_structural_formula_rewrites(source, diff, value_entries)
+
     destination_id, blank_sheet_id = _create_destination(title, access_token)
     copied_sheet_id, copied_title = _copy_source_tab(
         source_spreadsheet_id,
@@ -55,6 +58,8 @@ def export_copied_google_sheet(source, diff, title, access_token) -> dict:
         access_token,
     )
     try:
+        _replay_structure(destination_id, copied_sheet_id, diff.get("structural_operations") or [], access_token,)
+
         if value_entries:
             _write_values(destination_id, copied_title, value_entries, access_token)
         if repeat_templates:
@@ -320,6 +325,234 @@ def _copy_source_tab(source_spreadsheet_id, source_sheet_id, destination_id, acc
     if isinstance(copied_sheet_id, bool) or not isinstance(copied_sheet_id, int) or not copied_title:
         raise GooglePatchExportError("copy failed")
     return copied_sheet_id, copied_title
+
+def _without_structural_formula_rewrites(source, diff, entries):
+    """Drop formula patches that only repeat the structural rewrite.
+
+    Google already adjusted those formulas while inserting or deleting.
+    A formula the user edited after that still differs and is kept.
+    """
+    operations = diff.get("structural_operations") or []
+    baseline = getattr(source, "baseline", None)
+    if not operations or not isinstance(baseline, dict):
+        return entries
+    from spreadsheet.formula_rewrite import rewrite_formula_text
+
+    cells = dict(baseline.get("cells") or {})
+    for operation in operations:
+        cells = _rewrite_baseline_formulas(cells, operation, rewrite_formula_text)
+    automatic = {
+        key: value.get("raw_input")
+        for key, value in cells.items()
+        if isinstance(value, dict) and isinstance(value.get("raw_input"), str)
+    }
+    return [
+        (row, column, raw)
+        for row, column, raw in entries
+        if not (
+            isinstance(raw, str)
+            and raw.startswith("=")
+            and automatic.get(f"{row},{column}") == raw
+        )
+    ]
+
+
+def _rewrite_baseline_formulas(cells, operation, rewrite_formula_text):
+    op_type = operation.get("op_type")
+    anchor = operation.get("anchor_position")
+    count = operation.get("count")
+    if op_type not in ("ROW_INSERT", "ROW_DELETE", "COL_INSERT", "COL_DELETE"):
+        return cells
+    if isinstance(anchor, bool) or not isinstance(anchor, int):
+        return cells
+    if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+        return cells
+    delete = op_type.endswith("_DELETE")
+    axis = "row" if op_type.startswith("ROW_") else "column"
+    shifted = {}
+    for key, value in cells.items():
+        row_text, column_text = str(key).split(",", 1)
+        row = int(row_text)
+        column = int(column_text)
+        if axis == "row":
+            row = _shift_formula_index(row, anchor, count, delete)
+        else:
+            column = _shift_formula_index(column, anchor, count, delete)
+        if row is None or column is None:
+            continue
+        if (
+            isinstance(value, dict)
+            and isinstance(value.get("raw_input"), str)
+            and value["raw_input"].startswith("=")
+        ):
+            value = dict(value)
+            value["raw_input"] = rewrite_formula_text(value["raw_input"], op_type, anchor, count)
+        shifted[f"{row},{column}"] = value
+    return shifted
+
+
+def _shift_formula_index(index, anchor, count, delete):
+    """Same coordinate rule as structure_replay._shift_index."""
+    if delete:
+        if anchor <= index < anchor + count:
+            return None
+        if index >= anchor + count:
+            return index - count
+        return index
+    if index >= anchor:
+        return index + count
+    return index
+
+
+def _replay_structure(destination_id, copied_sheet_id, operations, access_token):
+    """Apply validated inserts and deletes to the copied destination tab."""
+    if not operations:
+        return
+    row_count, column_count = _copied_grid_size(destination_id, copied_sheet_id, access_token)
+    requests_body = []
+    for operation in operations:
+        row_count, column_count = _append_dimension_change(
+            copied_sheet_id,
+            operation,
+            row_count,
+            column_count,
+            requests_body,
+        )
+    _request(
+        "post",
+        f"{GOOGLE_SHEETS_URL}/{destination_id}:batchUpdate",
+        access_token,
+        timeout=30,
+        json={"requests": requests_body},
+    )
+
+
+def _copied_grid_size(destination_id, copied_sheet_id, access_token):
+    response = _request(
+        "get",
+        f"{GOOGLE_SHEETS_URL}/{destination_id}",
+        access_token,
+        timeout=20,
+        params={"fields": "sheets.properties(sheetId,gridProperties(rowCount,columnCount))"},
+    )
+    try:
+        for sheet in response.json().get("sheets") or []:
+            properties = sheet.get("properties") or {}
+            if properties.get("sheetId") != copied_sheet_id:
+                continue
+            grid = properties.get("gridProperties") or {}
+            row_count = grid.get("rowCount")
+            column_count = grid.get("columnCount")
+            if (
+                isinstance(row_count, int)
+                and row_count >= 1
+                and isinstance(column_count, int)
+                and column_count >= 1
+            ):
+                return row_count, column_count
+    except (ValueError, AttributeError):
+        pass
+    raise GooglePatchExportError("copied sheet size is unavailable")
+
+
+def _append_dimension_change(sheet_id, operation, row_count, column_count, requests_body):
+    if not isinstance(operation, dict):
+        raise GooglePatchExportError("bad structural operation")
+    op_type = operation.get("op_type")
+    anchor = operation.get("anchor_position")
+    count = operation.get("count")
+    if isinstance(anchor, bool) or not isinstance(anchor, int) or anchor < 0:
+        raise GooglePatchExportError("bad structural anchor")
+    if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+        raise GooglePatchExportError("bad structural count")
+    if op_type in ("ROW_INSERT", "ROW_DELETE"):
+        dimension = "ROWS"
+        size = row_count
+    elif op_type in ("COL_INSERT", "COL_DELETE"):
+        dimension = "COLUMNS"
+        size = column_count
+    else:
+        raise GooglePatchExportError("unsupported structural operation")
+
+    start = anchor
+    end = anchor + count
+    if op_type.endswith("_DELETE"):
+        if end > size or size - count < 1:
+            raise GooglePatchExportError("structural delete is outside the sheet")
+        requests_body.append({
+            "deleteDimension": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "dimension": dimension,
+                    "startIndex": start,
+                    "endIndex": end,
+                }
+            }
+        })
+        size -= count
+    else:
+        if start > size:
+            requests_body.append(_grow_grid(sheet_id, dimension, start))
+            size = start
+        requests_body.append({
+            "insertDimension": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "dimension": dimension,
+                    "startIndex": start,
+                    "endIndex": end,
+                },
+                "inheritFromBefore": start > 0,
+            }
+        })
+        size += count
+        requests_body.append(_clear_inserted_format(sheet_id, dimension, start, end, row_count, column_count))
+    if dimension == "ROWS":
+        return size, column_count
+    return row_count, size
+
+def _clear_inserted_format(sheet_id, dimension, start, end, row_count, column_count):
+    """Remove formatting Google copied onto the new rows or columns."""
+    if dimension == "ROWS":
+        cell_range = {
+            "sheetId": sheet_id,
+            "startRowIndex": start,
+            "endRowIndex": end,
+            "startColumnIndex": 0,
+            "endColumnIndex": column_count,
+        }
+    else:
+        cell_range = {
+            "sheetId": sheet_id,
+            "startRowIndex": 0,
+            "endRowIndex": row_count,
+            "startColumnIndex": start,
+            "endColumnIndex": end,
+        }
+    return {
+        "repeatCell": {
+            "range": cell_range,
+            "cell": {},
+            "fields": "userEnteredFormat",
+        }
+    }
+
+
+def _grow_grid(sheet_id, dimension, new_count):
+    grid = {}
+    if dimension == "ROWS":
+        grid["rowCount"] = new_count
+        fields = "gridProperties.rowCount"
+    else:
+        grid["columnCount"] = new_count
+        fields = "gridProperties.columnCount"
+    return {
+        "updateSheetProperties": {
+            "properties": {"sheetId": sheet_id, "gridProperties": grid},
+            "fields": fields,
+        }
+    }
+
 
 def _quote_title(title):
     return "'" + str(title).replace("'", "''") + "'"

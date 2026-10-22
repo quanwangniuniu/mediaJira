@@ -20,7 +20,7 @@ from .models import (
     SpreadsheetHighlight, SpreadsheetHighlightScope, SpreadsheetCellFormat, UserDefinedFunction
 )
 from .formula_engine import evaluate_formula, extract_references, reference_to_indexes, FormulaError
-from .formula_rewrite import rewrite_cells_for_operation
+from .formula_rewrite import restore_formula_rewrites, rewrite_cells_for_operation, rewrite_cells_for_structure
 from .sparkline import compute_sparkline, is_sparkline
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from .exceptions import SheetRevisionConflict
@@ -676,6 +676,133 @@ class SheetService:
             )
 
     @staticmethod
+    def _snapshot_removed_decorations(sheet, *, axis, position, count):
+        """Copy the format and highlight rows that the following delete will remove."""
+        end = position + count
+        if axis == 'row':
+            formats = SheetService._format_qs(sheet).filter(
+                row_index__gte=position,
+                row_index__lt=end,
+            )
+            highlights = SpreadsheetHighlight.objects.filter(
+                sheet=sheet,
+                scope__in=(
+                    SpreadsheetHighlightScope.CELL,
+                    SpreadsheetHighlightScope.ROW,
+                ),
+                row_index__gte=position,
+                row_index__lt=end,
+            )
+        else:
+            formats = SheetService._format_qs(sheet).filter(
+                column_index__gte=position,
+                column_index__lt=end,
+            )
+            highlights = SpreadsheetHighlight.objects.filter(
+                sheet=sheet,
+                scope__in=(
+                    SpreadsheetHighlightScope.CELL,
+                    SpreadsheetHighlightScope.COLUMN,
+                ),
+                col_index__gte=position,
+                col_index__lt=end,
+            )
+        return {
+            'formats': [
+                {
+                    'row_index': item.row_index,
+                    'column_index': item.column_index,
+                    'bold': item.bold,
+                    'italic': item.italic,
+                    'strikethrough': item.strikethrough,
+                    'text_color': item.text_color,
+                    'font_family': item.font_family,
+                    'font_size': item.font_size,
+                    'number_format': item.number_format,
+                }
+                for item in formats
+            ],
+            'highlights': [
+                {
+                    'scope': item.scope,
+                    'row_index': item.row_index,
+                    'col_index': item.col_index,
+                    'color': item.color,
+                }
+                for item in highlights
+            ],
+        }
+
+    @staticmethod
+    def _restore_removed_decorations(sheet, payload):
+        """Recreate a delete snapshot without replacing a record already at that coordinate."""
+        if not isinstance(payload, dict):
+            return
+        for item in payload.get('formats') or []:
+            if not isinstance(item, dict):
+                continue
+            row_index = item.get('row_index')
+            column_index = item.get('column_index')
+            if isinstance(row_index, bool) or not isinstance(row_index, int):
+                continue
+            if isinstance(column_index, bool) or not isinstance(column_index, int):
+                continue
+            if SpreadsheetCellFormat.objects.filter(
+                sheet=sheet,
+                row_index=row_index,
+                column_index=column_index,
+            ).exists():
+                continue
+            SpreadsheetCellFormat.objects.create(
+                sheet=sheet,
+                row_index=row_index,
+                column_index=column_index,
+                bold=bool(item.get('bold')),
+                italic=bool(item.get('italic')),
+                strikethrough=bool(item.get('strikethrough')),
+                text_color=item.get('text_color'),
+                font_family=item.get('font_family'),
+                font_size=item.get('font_size'),
+                number_format=item.get('number_format') if isinstance(item.get('number_format'), dict) else None,
+            )
+        for item in payload.get('highlights') or []:
+            if not isinstance(item, dict):
+                continue
+            scope = item.get('scope')
+            row_index = item.get('row_index')
+            col_index = item.get('col_index')
+            color = item.get('color')
+            if scope not in (
+                SpreadsheetHighlightScope.CELL,
+                SpreadsheetHighlightScope.ROW,
+                SpreadsheetHighlightScope.COLUMN,
+            ):
+                continue
+            if isinstance(row_index, bool) or not isinstance(row_index, int):
+                continue
+            if isinstance(col_index, bool) or not isinstance(col_index, int):
+                continue
+            if not color:
+                continue
+            if SpreadsheetHighlight.objects.filter(
+                sheet=sheet,
+                scope=scope,
+                row_index=row_index,
+                col_index=col_index,
+            ).exists():
+                continue
+            SpreadsheetHighlight.objects.create(
+                spreadsheet_id=sheet.spreadsheet_id,
+                sheet=sheet,
+                scope=scope,
+                row_index=row_index,
+                col_index=col_index,
+                color=color,
+            )
+
+
+
+    @staticmethod
     @transaction.atomic
     def insert_rows(
         sheet: Sheet,
@@ -734,7 +861,11 @@ class SheetService:
             created_by=created_by
         )
         SheetService._shift_row_metadata_for_insert(sheet, position, count)
-        rewritten_cells = rewrite_cells_for_operation(sheet.id, 'ROW_INSERT', position, count)
+        rewritten_cells, formula_rewrites = rewrite_cells_for_structure(
+            sheet.id, 'ROW_INSERT', position, count,
+        )
+        operation.formula_rewrites = formula_rewrites
+        operation.save(update_fields=['formula_rewrites'])
         for cell in rewritten_cells:
             CellService._update_dependencies(cell)
         CellService._recalculate_formula_cells(rewritten_cells)
@@ -817,7 +948,11 @@ class SheetService:
             created_by=created_by
         )
         SheetService._shift_column_metadata_for_insert(sheet, position, count)
-        rewritten_cells = rewrite_cells_for_operation(sheet.id, 'COL_INSERT', position, count)
+        rewritten_cells, formula_rewrites = rewrite_cells_for_structure(
+            sheet.id, 'COL_INSERT', position, count,
+        )
+        operation.formula_rewrites = formula_rewrites
+        operation.save(update_fields=['formula_rewrites'])
         for cell in rewritten_cells:
             CellService._update_dependencies(cell)
         CellService._recalculate_formula_cells(rewritten_cells)
@@ -891,6 +1026,9 @@ class SheetService:
                 position__gte=position + count + offset
             ).update(position=F('position') - offset - count)
 
+        removed_decorations = SheetService._snapshot_removed_decorations(
+            sheet, axis='row', position=position, count=count,
+        )
         operation = SheetStructureOperation.objects.create(
             sheet=sheet,
             op_type=SheetStructureOperation.OperationType.ROW_DELETE,
@@ -898,10 +1036,16 @@ class SheetService:
             count=count,
             affected_ids=affected_ids,
             affected_positions=affected_positions,
+            removed_decorations=removed_decorations,
             created_by=created_by
         )
         SheetService._shift_row_metadata_for_delete(sheet, position, count)
-        rewritten_cells = rewrite_cells_for_operation(sheet.id, 'ROW_DELETE', position, count)
+        rewritten_cells, formula_rewrites = rewrite_cells_for_structure(
+            sheet.id, 'ROW_DELETE', position, count,
+        )
+        operation.formula_rewrites = formula_rewrites
+        operation.save(update_fields=['formula_rewrites'])
+
         for cell in rewritten_cells:
             CellService._update_dependencies(cell)
         CellService._recalculate_formula_cells(rewritten_cells)
@@ -975,6 +1119,9 @@ class SheetService:
                 position__gte=position + count + offset
             ).update(position=F('position') - offset - count)
 
+        removed_decorations = SheetService._snapshot_removed_decorations(
+            sheet, axis='column', position=position, count=count,
+        )
         operation = SheetStructureOperation.objects.create(
             sheet=sheet,
             op_type=SheetStructureOperation.OperationType.COL_DELETE,
@@ -982,10 +1129,16 @@ class SheetService:
             count=count,
             affected_ids=affected_ids,
             affected_positions=affected_positions,
+            removed_decorations=removed_decorations,
             created_by=created_by
         )
+
         SheetService._shift_column_metadata_for_delete(sheet, position, count)
-        rewritten_cells = rewrite_cells_for_operation(sheet.id, 'COL_DELETE', position, count)
+        rewritten_cells, formula_rewrites = rewrite_cells_for_structure(
+            sheet.id, 'COL_DELETE', position, count,
+        )
+        operation.formula_rewrites = formula_rewrites
+        operation.save(update_fields=['formula_rewrites'])
         for cell in rewritten_cells:
             CellService._update_dependencies(cell)
         CellService._recalculate_formula_cells(rewritten_cells)
@@ -1203,6 +1356,18 @@ class SheetService:
         return _advance_sheet_revision(sheet)
 
     @staticmethod
+    def _formulas_for_revert(sheet, operation, inverse_op_type):
+        if operation.formula_rewrites is None:
+            return rewrite_cells_for_operation(
+                sheet.id,
+                inverse_op_type,
+                operation.anchor_position,
+                operation.count,
+            )
+        return restore_formula_rewrites(sheet, operation.formula_rewrites)
+
+
+    @staticmethod
     @transaction.atomic
     def revert_structure_operation(
         sheet: Sheet,
@@ -1240,7 +1405,8 @@ class SheetService:
                     position__gte=operation.anchor_position + operation.count + offset
                 ).update(position=F('position') - offset - operation.count)
             SheetService._shift_row_metadata_for_delete(sheet, operation.anchor_position, operation.count)
-            rewritten_cells = rewrite_cells_for_operation(sheet.id, 'ROW_DELETE', operation.anchor_position, operation.count)
+            rewritten_cells = SheetService._formulas_for_revert(sheet, operation, 'ROW_DELETE')
+
             for cell in rewritten_cells:
                 CellService._update_dependencies(cell)
             CellService._recalculate_formula_cells(rewritten_cells)
@@ -1260,7 +1426,8 @@ class SheetService:
                     position__gte=operation.anchor_position + operation.count + offset
                 ).update(position=F('position') - offset - operation.count)
             SheetService._shift_column_metadata_for_delete(sheet, operation.anchor_position, operation.count)
-            rewritten_cells = rewrite_cells_for_operation(sheet.id, 'COL_DELETE', operation.anchor_position, operation.count)
+            rewritten_cells = SheetService._formulas_for_revert(sheet, operation, 'COL_DELETE')
+  
             for cell in rewritten_cells:
                 CellService._update_dependencies(cell)
             CellService._recalculate_formula_cells(rewritten_cells)
@@ -1286,7 +1453,9 @@ class SheetService:
                     position=position
                 )
             SheetService._shift_row_metadata_for_insert(sheet, operation.anchor_position, operation.count)
-            rewritten_cells = rewrite_cells_for_operation(sheet.id, 'ROW_INSERT', operation.anchor_position, operation.count)
+            SheetService._restore_removed_decorations(sheet, operation.removed_decorations)
+            rewritten_cells = SheetService._formulas_for_revert(sheet, operation, 'ROW_INSERT')
+            
             for cell in rewritten_cells:
                 CellService._update_dependencies(cell)
             CellService._recalculate_formula_cells(rewritten_cells)
@@ -1311,7 +1480,9 @@ class SheetService:
                     position=position
                 )
             SheetService._shift_column_metadata_for_insert(sheet, operation.anchor_position, operation.count)
-            rewritten_cells = rewrite_cells_for_operation(sheet.id, 'COL_INSERT', operation.anchor_position, operation.count)
+            SheetService._restore_removed_decorations(sheet, operation.removed_decorations)
+            rewritten_cells = SheetService._formulas_for_revert(sheet, operation, 'COL_INSERT')
+            
             for cell in rewritten_cells:
                 CellService._update_dependencies(cell)
             CellService._recalculate_formula_cells(rewritten_cells)

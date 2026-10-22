@@ -1,6 +1,8 @@
 """Compare a frozen import baseline with the live web sheet."""
 
 from .import_baseline import build_import_baseline
+from .structure_replay import replay_baseline_structure
+from .models import SheetStructureOperation
 
 BASELINE_VERSION = 1
 
@@ -24,6 +26,7 @@ def _result(
     cells=None,
     formats=None,
     cell_highlights=None,
+    structural_operations=None,
 ):
     return {
         'version': 1,
@@ -34,6 +37,7 @@ def _result(
         'cells': cells or {},
         'formats': formats or {},
         'highlights': {'cells': cell_highlights or {}},
+        'structural_operations': list(structural_operations or []),
     }
 
 
@@ -180,6 +184,15 @@ def _highlight_map_changed(before, after):
             return True
     return False
 
+def _has_replay_operations(sheet, baseline):
+    checkpoint = baseline.get('structure_operation_checkpoint')
+    if isinstance(checkpoint, bool) or not isinstance(checkpoint, int) or checkpoint < 0:
+        return False
+    return SheetStructureOperation.objects.filter(
+        sheet=sheet,
+        id__gt=checkpoint,
+        is_reverted=False,
+    ).exists()
 
 def diff_sheet(source):
     """Compare source.baseline with a fresh build_import_baseline(source.sheet)."""
@@ -190,8 +203,35 @@ def diff_sheet(source):
         return _rebuild('unsupported_baseline_version')
 
     current = build_import_baseline(source.sheet)
-    row_status = _id_prefix_status(baseline.get('row_ids'), current.get('row_ids'))
-    column_status = _id_prefix_status(baseline.get('column_ids'), current.get('column_ids'))
+    working = baseline
+    structural_operations = []
+    row_status = _id_prefix_status(working.get('row_ids'), current.get('row_ids'))
+    column_status = _id_prefix_status(working.get('column_ids'), current.get('column_ids'))
+    structure_changed = row_status == 'unsafe' or column_status == 'unsafe'
+    appended = row_status == 'append' or column_status == 'append'
+    if structure_changed or appended:
+        replay = replay_baseline_structure(
+            source.sheet,
+            baseline,
+            current.get('row_ids'),
+            current.get('column_ids'),
+        )
+        if replay.get('safe') is True:
+            working = {
+                'row_ids': replay['row_ids'],
+                'column_ids': replay['column_ids'],
+                'cells': replay['cells'],
+                'formats': replay['formats'],
+                'highlights': replay['highlights'],
+            }
+            structural_operations = list(replay.get('structural_operations') or [])
+            row_status = _id_prefix_status(working['row_ids'], current.get('row_ids'))
+            column_status = _id_prefix_status(working['column_ids'], current.get('column_ids'))
+        elif appended and _has_replay_operations(source.sheet, baseline):
+            if row_status == 'append':
+                row_status = 'unsafe'
+            if column_status == 'append':
+                column_status = 'unsafe'
 
     reasons = []
     if row_status == 'unsafe':
@@ -199,20 +239,20 @@ def diff_sheet(source):
     if column_status == 'unsafe':
         reasons.append('column_structure_changed')
 
-    baseline_highlights = baseline.get('highlights') or {}
+    baseline_highlights = working.get('highlights') or {}
     current_highlights = current.get('highlights') or {}
     if _highlight_map_changed(baseline_highlights.get('rows'), current_highlights.get('rows')):
         reasons.append('row_highlight_changed')
     if _highlight_map_changed(baseline_highlights.get('columns'), current_highlights.get('columns')):
         reasons.append('column_highlight_changed')
 
-    row_count = len(baseline.get('row_ids') or [])
-    col_count = len(baseline.get('column_ids') or [])
+    row_count = len(working.get('row_ids') or [])
+    col_count = len(working.get('column_ids') or [])
     cell_changes, cell_outside = diff_cells(
-        baseline.get('cells'), current.get('cells'), row_count, col_count,
+        working.get('cells'), current.get('cells'), row_count, col_count,
     )
     format_changes, format_outside = diff_formats(
-        baseline.get('formats'), current.get('formats'), row_count, col_count,
+        working.get('formats'), current.get('formats'), row_count, col_count,
     )
     highlight_changes, highlight_outside = diff_cell_highlights(
         baseline_highlights, current_highlights, row_count, col_count,
@@ -238,4 +278,5 @@ def diff_sheet(source):
         cells=cell_changes,
         formats=format_changes,
         cell_highlights=highlight_changes,
+        structural_operations=structural_operations,
     )

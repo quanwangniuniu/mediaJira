@@ -1834,20 +1834,36 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   }, [addRowsInputValue, rowCount, colCount, resizeGrid]);
 
   const handleInsertRow = useCallback(
-    async (position: number, count: number = 1) => {
+    async (position: number, count: number = 1, preserveRedo: boolean = false) => {
       if (rowCount + count > MAX_ROWS) {
+        if (preserveRedo) {
+          throw new Error('Row limit reached');
+        }
         toast.error('Row limit reached');
         return;
       }
-
+  
+      let response;
       try {
-        const response = await SpreadsheetAPI.insertRows(spreadsheetId, sheetId, position, count);
-        const nextRowCount = rowCount + count;
-        setRowCount(nextRowCount);
-        dimensionsCache.set(sheetId, { rowCount: nextRowCount, colCount });
-        setUndoStack((prev) => [...prev, { type: 'structure', op: { id: response.operation_id, type: 'row_insert', count, position } }]);
+        response = await SpreadsheetAPI.insertRows(spreadsheetId, sheetId, position, count);
+      } catch (error: any) {
+        console.error('Failed to insert row:', error);
+        if (preserveRedo) {
+          throw error;
+        }
+        toast.error('Failed to insert row');
+        return;
+      }
+  
+      const nextRowCount = rowCount + count;
+      setRowCount(nextRowCount);
+      dimensionsCache.set(sheetId, { rowCount: nextRowCount, colCount });
+      setUndoStack((prev) => [...prev, { type: 'structure', op: { id: response.operation_id, type: 'row_insert', count, position } }]);
+      if (!preserveRedo) {
         setRedoStack([]);
-        resetSheetCaches();
+      }
+      resetSheetCaches();
+      try {
         await loadCellRange(
           visibleRange.startRow,
           visibleRange.endRow,
@@ -1857,20 +1873,27 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         );
         await reloadSheetDecorations();
       } catch (error: any) {
-        console.error('Failed to insert row:', error);
-        toast.error('Failed to insert row');
+        console.error('Failed to refresh after inserting row:', error);
+        toast.error('Row inserted, but the grid could not refresh. Reload the sheet.');
+        if (preserveRedo) {
+          throw Object.assign(new Error('refresh failed'), { structureCommitted: true });
+        }
       }
     },
     [rowCount, colCount, spreadsheetId, sheetId, resetSheetCaches, loadCellRange, visibleRange, reloadSheetDecorations]
   );
 
   const handleInsertColumn = useCallback(
-    async (position: number, count: number = 1) => {
+    async (position: number, count: number = 1, preserveRedo: boolean = false) => {
       if (colCount + count > MAX_COLUMNS) {
+        if (preserveRedo) {
+          throw new Error('Column limit reached');
+        }
         toast.error('Column limit reached');
         return;
       }
-
+  
+      let response;
       try {
         // Ensure backend has at least `position` columns (insert at position needs columns 0..position-1 to exist)
         const minColsNeeded = position;
@@ -1880,13 +1903,25 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           setColCount(targetCols);
           dimensionsCache.set(sheetId, { rowCount, colCount: targetCols });
         }
-        const response = await SpreadsheetAPI.insertColumns(spreadsheetId, sheetId, position, count);
-        const nextColCount = colCount + count;
-        setColCount(nextColCount);
-        dimensionsCache.set(sheetId, { rowCount, colCount: nextColCount });
-        setUndoStack((prev) => [...prev, { type: 'structure', op: { id: response.operation_id, type: 'col_insert', count, position } }]);
+        response = await SpreadsheetAPI.insertColumns(spreadsheetId, sheetId, position, count);
+      } catch (error: any) {
+        console.error('Failed to insert column:', error);
+        if (preserveRedo) {
+          throw error;
+        }
+        toast.error('Failed to insert column');
+        return;
+      }
+  
+      const nextColCount = colCount + count;
+      setColCount(nextColCount);
+      dimensionsCache.set(sheetId, { rowCount, colCount: nextColCount });
+      setUndoStack((prev) => [...prev, { type: 'structure', op: { id: response.operation_id, type: 'col_insert', count, position } }]);
+      if (!preserveRedo) {
         setRedoStack([]);
-        resetSheetCaches();
+      }
+      resetSheetCaches();
+      try {
         await loadCellRange(
           visibleRange.startRow,
           visibleRange.endRow,
@@ -1896,8 +1931,11 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
         );
         await reloadSheetDecorations();
       } catch (error: any) {
-        console.error('Failed to insert column:', error);
-        toast.error('Failed to insert column');
+        console.error('Failed to refresh after inserting column:', error);
+        toast.error('Column inserted, but the grid could not refresh. Reload the sheet.');
+        if (preserveRedo) {
+          throw Object.assign(new Error('refresh failed'), { structureCommitted: true });
+        }
       }
     },
     [rowCount, colCount, spreadsheetId, sheetId, resetSheetCaches, loadCellRange, visibleRange, reloadSheetDecorations]
@@ -1911,20 +1949,41 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   );
 
   const handleDeleteRow = useCallback(
-    async (position: number, count: number = 1) => {
+    async (position: number, count: number = 1, preserveRedo: boolean = false) => {
       if (rowCount - count < 0) {
+        if (preserveRedo) {
+          throw new Error('Row limit reached');
+        }
         toast.error('Row limit reached');
         return;
       }
-
+  
+      let response;
       try {
-        const response = await SpreadsheetAPI.deleteRows(spreadsheetId, sheetId, position, count);
-        const nextRowCount = Math.max(0, rowCount - count);
-        setRowCount(nextRowCount);
-        dimensionsCache.set(sheetId, { rowCount: nextRowCount, colCount });
-        setUndoStack((prev) => [...prev, { type: 'structure', op: { id: response.operation_id, type: 'row_delete', count, position } }]);
+        response = await SpreadsheetAPI.deleteRows(spreadsheetId, sheetId, position, count);
+      } catch (error: any) {
+        console.error('Failed to delete row:', error);
+        if (preserveRedo) {
+          throw error;
+        }
+        const msg =
+          error?.response?.data?.error ||
+          error?.response?.data?.detail ||
+          error?.message ||
+          'Delete failed.';
+        toast.error(msg);
+        return;
+      }
+  
+      const nextRowCount = Math.max(0, rowCount - count);
+      setRowCount(nextRowCount);
+      dimensionsCache.set(sheetId, { rowCount: nextRowCount, colCount });
+      setUndoStack((prev) => [...prev, { type: 'structure', op: { id: response.operation_id, type: 'row_delete', count, position } }]);
+      if (!preserveRedo) {
         setRedoStack([]);
-        resetSheetCaches();
+      }
+      resetSheetCaches();
+      try {
         await loadCellRange(
           Math.max(0, visibleRange.startRow - count),
           Math.max(0, visibleRange.endRow - count),
@@ -1933,35 +1992,57 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           true
         );
         await reloadSheetDecorations();
-        toast.success(count === 1 ? 'Deleted row.' : 'Deleted.');
       } catch (error: any) {
-        console.error('Failed to delete row:', error);
-        const msg =
-          error?.response?.data?.error ||
-          error?.response?.data?.detail ||
-          error?.message ||
-          'Delete failed.';
-        toast.error(msg);
+        console.error('Failed to refresh after deleting row:', error);
+        toast.error('Row deleted, but the grid could not refresh. Reload the sheet.');
+        if (preserveRedo) {
+          throw Object.assign(new Error('refresh failed'), { structureCommitted: true });
+        }
+        return;
+      }
+      if (!preserveRedo) {
+        toast.success(count === 1 ? 'Deleted row.' : 'Deleted.');
       }
     },
     [rowCount, colCount, spreadsheetId, sheetId, resetSheetCaches, loadCellRange, visibleRange, reloadSheetDecorations]
   );
 
   const handleDeleteColumn = useCallback(
-    async (position: number, count: number = 1) => {
+    async (position: number, count: number = 1, preserveRedo: boolean = false) => {
       if (colCount - count < 0) {
+        if (preserveRedo) {
+          throw new Error('Column limit reached');
+        }
         toast.error('Column limit reached');
         return;
       }
-
+  
+      let response;
       try {
-        const response = await SpreadsheetAPI.deleteColumns(spreadsheetId, sheetId, position, count);
-        const nextColCount = Math.max(0, colCount - count);
-        setColCount(nextColCount);
-        dimensionsCache.set(sheetId, { rowCount, colCount: nextColCount });
-        setUndoStack((prev) => [...prev, { type: 'structure', op: { id: response.operation_id, type: 'col_delete', count, position } }]);
+        response = await SpreadsheetAPI.deleteColumns(spreadsheetId, sheetId, position, count);
+      } catch (error: any) {
+        console.error('Failed to delete column:', error);
+        if (preserveRedo) {
+          throw error;
+        }
+        const msg =
+          error?.response?.data?.error ||
+          error?.response?.data?.detail ||
+          error?.message ||
+          'Delete failed.';
+        toast.error(msg);
+        return;
+      }
+  
+      const nextColCount = Math.max(0, colCount - count);
+      setColCount(nextColCount);
+      dimensionsCache.set(sheetId, { rowCount, colCount: nextColCount });
+      setUndoStack((prev) => [...prev, { type: 'structure', op: { id: response.operation_id, type: 'col_delete', count, position } }]);
+      if (!preserveRedo) {
         setRedoStack([]);
-        resetSheetCaches();
+      }
+      resetSheetCaches();
+      try {
         await loadCellRange(
           visibleRange.startRow,
           visibleRange.endRow,
@@ -1970,15 +2051,16 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
           true
         );
         await reloadSheetDecorations();
-        toast.success(count === 1 ? 'Deleted column.' : 'Deleted.');
       } catch (error: any) {
-        console.error('Failed to delete column:', error);
-        const msg =
-          error?.response?.data?.error ||
-          error?.response?.data?.detail ||
-          error?.message ||
-          'Delete failed.';
-        toast.error(msg);
+        console.error('Failed to refresh after deleting column:', error);
+        toast.error('Column deleted, but the grid could not refresh. Reload the sheet.');
+        if (preserveRedo) {
+          throw Object.assign(new Error('refresh failed'), { structureCommitted: true });
+        }
+        return;
+      }
+      if (!preserveRedo) {
+        toast.success(count === 1 ? 'Deleted column.' : 'Deleted.');
       }
     },
     [rowCount, colCount, spreadsheetId, sheetId, resetSheetCaches, loadCellRange, visibleRange, reloadSheetDecorations]
@@ -3314,17 +3396,20 @@ const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
       const entry = last.entry;
       try {
         if (entry.type === 'row_insert') {
-          await handleInsertRow(entry.position, entry.count);
+          await handleInsertRow(entry.position, entry.count, true);
         } else if (entry.type === 'col_insert') {
-          await handleInsertColumn(entry.position, entry.count);
+          await handleInsertColumn(entry.position, entry.count, true);
         } else if (entry.type === 'row_delete') {
-          await handleDeleteRow(entry.position, entry.count);
+          await handleDeleteRow(entry.position, entry.count, true);
         } else if (entry.type === 'col_delete') {
-          await handleDeleteColumn(entry.position, entry.count);
+          await handleDeleteColumn(entry.position, entry.count, true);
         }
         toast.success('Redo complete');
       } catch (error: any) {
         console.error('Failed to redo structure:', error);
+        if (error?.structureCommitted) {
+          return;
+        }
         toast.error('Failed to redo');
         setRedoStack((prev) => [...prev, last]);
       }

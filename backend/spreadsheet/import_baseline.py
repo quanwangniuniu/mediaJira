@@ -1,7 +1,9 @@
+from django.db.models import Max
 from .models import (
     Cell,
     SheetColumn,
     SheetRow,
+    SheetStructureOperation,
     SpreadsheetCellFormat,
     SpreadsheetHighlight,
 )
@@ -34,6 +36,13 @@ def _is_default_format(payload: dict) -> bool:
         and payload['number_format'] is None
     )
 
+def _structure_operation_checkpoint(sheet) -> int:
+    latest = (
+        SheetStructureOperation.objects.filter(sheet=sheet)
+        .aggregate(latest=Max('id'))
+        .get('latest')
+    )
+    return int(latest or 0)
 
 def build_import_baseline(sheet) -> dict:
     row_ids = list(
@@ -92,4 +101,5 @@ def build_import_baseline(sheet) -> dict:
         'cells': cells_out,
         'formats': formats_out,
         'highlights': highlights_out,
+        'structure_operation_checkpoint': _structure_operation_checkpoint(sheet),
     }
