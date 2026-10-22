@@ -9,6 +9,8 @@ import logging
 import os
 
 from celery import Task
+from celery._state import _task_stack
+from django.db import connections
 
 logger = logging.getLogger(__name__)
 
@@ -96,8 +98,16 @@ class TimeoutEnforcedTask(Task):
         if not seconds or os.environ.get('PYTEST_CURRENT_TEST'):
             return self.run(*args, **kwargs)
 
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        future = executor.submit(self.run, *args, **kwargs)
+        # The worker's tracer pushed this run's request onto the *calling*
+        # thread's stack; hand it to the executor thread explicitly.
+        request = self.request
+        executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix=f'{self.name}.timeout_enforced',
+        )
+        future = executor.submit(
+            self._run_in_executor_thread, request, args, kwargs,
+        )
         try:
             result = future.result(timeout=seconds)
         except concurrent.futures.TimeoutError:
@@ -105,7 +115,8 @@ class TimeoutEnforcedTask(Task):
                 "%s exceeded its %ss timeout — abandoning. The Celery "
                 "worker is freed to pick up new work, but the "
                 "underlying call may still be running in the "
-                "background (Python cannot forcibly stop a thread).",
+                "background (Python cannot forcibly stop a thread); its "
+                "database connection is released when it finishes.",
                 self.name,
                 seconds,
             )
@@ -126,3 +137,42 @@ class TimeoutEnforcedTask(Task):
         else:
             executor.shutdown(wait=True)
             return result
+
+    def _run_in_executor_thread(self, request, args, kwargs):
+        """
+        Run the task body on the executor thread with the worker's context.
+
+        Celery keeps the current task and its request in thread-local
+        stacks, and Django keeps database connections thread-local.
+        Neither follows the task body onto this thread by itself:
+
+        * Without the stacks, ``self.request`` is an empty default Context
+          (``id=None``, ``called_directly=True``): ``self.retry()`` then
+          re-raises instead of scheduling a retry, and tasks enqueued from
+          the body lose their parent/root ids.
+        * Without the close, the connection this thread opens is never
+          closed. Celery's Django fixup closes connections on task_postrun,
+          but that signal fires on the pool thread and ``connections``
+          only sees that thread's connections — so the executor thread's
+          connection survives the thread's exit until the cyclic GC
+          happens to collect it. Under PgBouncer session pooling each one
+          pins a server slot for that whole time, which is how a
+          concurrency-4 worker exhausted a 30-slot pool.
+        """
+        _task_stack.push(self)
+        self.request_stack.push(request)
+        try:
+            return self.run(*args, **kwargs)
+        finally:
+            try:
+                connections.close_all()
+            except Exception:
+                logger.warning(
+                    "%s: could not close the database connections opened "
+                    "on its executor thread",
+                    self.name,
+                    exc_info=True,
+                )
+            finally:
+                self.request_stack.pop()
+                _task_stack.pop()
