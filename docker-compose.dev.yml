@@ -391,6 +391,12 @@ services:
     image: prom/prometheus
     volumes:
       - ./devops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    # prometheus.yml scrapes the backend and frontend via host.docker.internal
+    # (their host-published ports). Docker Desktop and OrbStack resolve that
+    # name by themselves; native Linux only knows it through this mapping, and
+    # without it the lookup fell through to the host's DNS search domain.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "9090:9090"
     depends_on:
