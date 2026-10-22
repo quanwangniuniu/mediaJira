@@ -96,7 +96,10 @@ export async function parseSheetStyles(file: File, sheetName: string) {
 
       while (matrix.length <= r) matrix.push([]);
       while (matrix[r].length <= c) matrix[r].push('');
-      matrix[r][c] = cellToMatrixValue(value);
+      const formula = typeof cell.formula === 'string' ? cell.formula.trim() : '';
+      matrix[r][c] = formula
+        ? (formula.startsWith('=') ? formula : `=${formula}`)
+        : cellToMatrixValue(value);
       const size = hasValue ? (reportedSize ?? workbookSize) : null;
       if (bold || italic || strike || text_color || family || size || number_format) {
         format_ops.push({

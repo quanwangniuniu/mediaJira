@@ -76,6 +76,24 @@ describe('xlsx import formulas', () => {
     expect(matrix[0][0]).toBe('=A1+1');
     expect(matrix[0][0]).not.toBe('[object Object]');
   });
+
+  it('shifts a shared formula instead of keeping the cached result', async () => {
+    const { matrix } = await parse((sheet) => {
+      sheet.getCell('A1').value = {
+        formula: '$B1+C1',
+        result: 2,
+        shareType: 'shared',
+        ref: 'A1:A12',
+      };
+      for (let row = 2; row <= 12; row += 1) {
+        sheet.getCell(`A${row}`).value = { sharedFormula: 'A1', result: 3 };
+      }
+    });
+    expect(matrix[0][0]).toBe('=$B1+C1');
+    expect(matrix[8][0]).toBe('=$B9+C9');
+    expect(matrix[8][0]).not.toBe('3');
+  });
+  
 });
 
 describe('xlsx import dates', () => {
