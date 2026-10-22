@@ -31,7 +31,7 @@ public interface IDecisionAccessService
     );
 }
 
-public sealed class JwtDecisionAccessService(NpgsqlDataSource dataSource, DjangoJwtValidator jwtValidator) : IDecisionAccessService
+public sealed class JwtDecisionAccessService(TenantConnectionFactory connections, DjangoJwtValidator jwtValidator) : IDecisionAccessService
 {
     public async Task<DecisionAccessContext?> AuthorizeAsync(
         HttpRequest request,
@@ -40,7 +40,7 @@ public sealed class JwtDecisionAccessService(NpgsqlDataSource dataSource, Django
         CancellationToken cancellationToken
     )
     {
-        var token = BearerToken(request);
+        var token = request.BearerToken();
         if (string.IsNullOrWhiteSpace(token))
         {
             return null;
@@ -52,11 +52,12 @@ public sealed class JwtDecisionAccessService(NpgsqlDataSource dataSource, Django
             return null;
         }
 
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var session = await connections.OpenAsync(cancellationToken);
+        var connection = session.Connection;
         await using var userCommand = connection.CreateCommand();
         userCommand.CommandText = """
             SELECT id, email, is_superuser, is_active, auth_token_version
-            FROM core_customuser
+            FROM public.core_customuser
             WHERE id = @user_id
             """;
         userCommand.Parameters.AddWithValue("user_id", principal.UserId);
@@ -138,15 +139,6 @@ public sealed class JwtDecisionAccessService(NpgsqlDataSource dataSource, Django
             role,
             roleLevel
         );
-    }
-
-    private static string? BearerToken(HttpRequest request)
-    {
-        var authorization = request.Headers.Authorization.ToString();
-        const string prefix = "Bearer ";
-        return authorization.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
-            ? authorization[prefix.Length..].Trim()
-            : null;
     }
 
     private static async Task<int?> ProjectOrganizationIdAsync(
