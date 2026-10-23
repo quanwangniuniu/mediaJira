@@ -32,7 +32,6 @@ confirmation runs).
 from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 
-from core.tenant_context import current_tenant_schema
 from notion_editor.models import ContentBlock, Draft, DraftProjectLink
 from rag.enqueue import clear_source_now, enqueue_source_index
 from rag.models import DocumentSourceType
@@ -108,7 +107,6 @@ def handle_draft_project_link_saved(sender, instance: DraftProjectLink, created:
     old_project_id = getattr(instance, '_old_project_id', None)
     new_project_id = instance.project_id
     draft_id = instance.draft_id
-    tenant_schema = current_tenant_schema()
 
     if old_project_id is not None and old_project_id != new_project_id:
         # Reassigned, not a fresh link. index_document_task against the OLD
@@ -116,10 +114,11 @@ def handle_draft_project_link_saved(sender, instance: DraftProjectLink, created:
         # new_project_id, and take rag.indexing's existing MOVED branch
         # (hard-delete old_project_id's chunks, reset its state) — the
         # synchronous fast path below just removes that latency window.
-        _enqueue_draft_index(old_project_id, draft_id, tenant_schema)
+        # Schema is captured inside rag.enqueue (same as meeting/retro signals).
+        _enqueue_draft_index(old_project_id, draft_id)
         _clear_draft_index(old_project_id, draft_id)
 
-    _enqueue_draft_index(new_project_id, draft_id, tenant_schema)
+    _enqueue_draft_index(new_project_id, draft_id)
 
 
 @receiver(post_delete, sender=DraftProjectLink)

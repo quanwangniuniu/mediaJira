@@ -9,19 +9,15 @@ Celery task's own retry behavior (test_tasks.py) --
 rag.tasks.index_document_task.delay is mocked everywhere below, so no
 indexing or Celery machinery ever runs.
 
-Every signal handler does `from rag.tasks import index_document_task` as a
-LOCAL import inside its enqueue closure, then calls
-`index_document_task.delay(...)`. Patching `rag.tasks.index_document_task.delay`
-(the attribute on the shared Task object, not a per-module name) intercepts
-every call site regardless of which app's signals.py did the local import,
-so every assertion below targets that one patch path.
+Every signal handler eventually reaches `rag.enqueue.enqueue_source_index`,
+which locally imports `index_document_task` and calls `.delay(...)`.
+Patching `rag.tasks.index_document_task.delay` (the attribute on the shared
+Task object, not a per-module name) intercepts every call site.
 
-Each app's signals.py imports `current_tenant_schema` at module top level
-(`from core.tenant_context import current_tenant_schema`) and calls it
-directly, so tenant-identity determinism is patched per-module
-(`<app>.signals.current_tenant_schema`) rather than at the source module --
-patching the source wouldn't affect the name already bound into each
-signals module's own namespace.
+Tenant schema is captured inside `rag.enqueue` via
+`current_tenant_schema()` (unless a caller passes an explicit schema).
+Tests therefore patch `rag.enqueue.current_tenant_schema`, not each app's
+signals module — meetings/retrospective signals no longer bind that name.
 
 Because the enqueue functions wrap `index_document_task.delay(...)` in
 `transaction.on_commit(...)`, and django.test.TestCase wraps each test in an
@@ -82,7 +78,7 @@ class _SignalTestCase(TestCase):
 class MeetingSignalTests(_SignalTestCase):
     def setUp(self):
         super().setUp()
-        self.tenant_schema = self._patch_current_tenant_schema('meetings.signals.current_tenant_schema')
+        self.tenant_schema = self._patch_current_tenant_schema('rag.enqueue.current_tenant_schema')
 
     def test_meeting_save_enqueues_parent_meeting(self, mock_delay):
         with self.captureOnCommitCallbacks(execute=True):
@@ -166,7 +162,7 @@ class MeetingSignalTests(_SignalTestCase):
 class DraftSignalTests(_SignalTestCase):
     def setUp(self):
         super().setUp()
-        self.tenant_schema = self._patch_current_tenant_schema('notion_editor.signals.current_tenant_schema')
+        self.tenant_schema = self._patch_current_tenant_schema('rag.enqueue.current_tenant_schema')
 
     def test_unlinked_draft_save_does_not_enqueue(self, mock_delay):
         with self.captureOnCommitCallbacks(execute=True):
@@ -299,7 +295,7 @@ class DraftSignalTests(_SignalTestCase):
 class RetrospectiveSignalTests(_SignalTestCase):
     def setUp(self):
         super().setUp()
-        self.tenant_schema = self._patch_current_tenant_schema('retrospective.signals.current_tenant_schema')
+        self.tenant_schema = self._patch_current_tenant_schema('rag.enqueue.current_tenant_schema')
 
     def _make_retro(self, **kwargs):
         defaults = dict(campaign=self.project, created_by=self.user)
