@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Dapper;
 using Npgsql;
 
 namespace DecisionService.Decisions;
@@ -21,10 +22,7 @@ public sealed partial class TenantConnectionFactory(
         try
         {
             var transaction = connection.BeginTransaction();
-            using var command = connection.CreateCommand();
-            command.Transaction = transaction;
-            command.CommandText = SearchPathSql(Schema);
-            command.ExecuteNonQuery();
+            connection.Execute(SearchPathSql(Schema), transaction: transaction);
             return new TenantSession(connection, transaction);
         }
         catch
@@ -40,10 +38,11 @@ public sealed partial class TenantConnectionFactory(
         try
         {
             var transaction = await connection.BeginTransactionAsync(cancellationToken);
-            await using var command = connection.CreateCommand();
-            command.Transaction = transaction;
-            command.CommandText = SearchPathSql(Schema);
-            await command.ExecuteNonQueryAsync(cancellationToken);
+            await connection.ExecuteAsync(new CommandDefinition(
+                SearchPathSql(Schema),
+                transaction: transaction,
+                cancellationToken: cancellationToken
+            ));
             return new TenantSession(connection, transaction);
         }
         catch
@@ -87,16 +86,16 @@ public sealed partial class TenantConnectionFactory(
         }
 
         using var connection = dataSource.OpenConnection();
-        using var command = connection.CreateCommand();
-        command.CommandText = """
+        var slug = connection.ExecuteScalar<string?>(
+            """
             SELECT o.slug
             FROM public.core_customuser u
             INNER JOIN public.core_organization o
                 ON o.id = COALESCE(u.current_organization_id, u.organization_id)
-            WHERE u.id = @user_id
-            """;
-        command.Parameters.AddWithValue("user_id", principal.UserId);
-        var slug = command.ExecuteScalar() as string;
+            WHERE u.id = @UserId
+            """,
+            new { principal.UserId }
+        );
         if (string.IsNullOrWhiteSpace(slug))
         {
             return PublicSchema;
