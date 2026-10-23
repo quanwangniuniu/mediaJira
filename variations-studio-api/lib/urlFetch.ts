@@ -1,6 +1,5 @@
 import { ApiError } from '@/lib/bulk';
 
-const DEFAULT_BASE = 'https://chrome.browserless.io';
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_TEXT_CHARS = 20_000;
 
@@ -47,7 +46,12 @@ export async function fetchUrlText(pageUrl: string): Promise<string> {
     throw new BrowserlessError('BROWSERLESS_API_KEY is not configured');
   }
 
-  const base = (process.env.BROWSERLESS_BASE || DEFAULT_BASE).replace(/\/$/, '');
+  const base = process.env.BROWSERLESS_BASE?.trim().replace(/\/$/, '');
+  if (!base) {
+    throw new BrowserlessError(
+      'BROWSERLESS_BASE is not configured. Point it at a self-hosted Browserless instance.'
+    );
+  }
   const endpoint = new URL('/content', `${base}/`);
   endpoint.searchParams.set('token', apiKey);
 
