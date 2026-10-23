@@ -4,6 +4,7 @@ exclusions, and deterministic ordering (MED-264).
 import pytest
 from django.utils import timezone
 
+from notion_editor.models import ContentBlock
 from retrospective.models import Insight, RetrospectiveStatus
 
 from rag.extraction import extract_meeting, extract_notion_draft, extract_retrospective
@@ -65,19 +66,25 @@ class TestExtractMeeting:
 
 @pytest.mark.django_db
 class TestExtractNotionDraft:
-    def test_draft_without_project_link_is_excluded(self, make_draft, make_content_block):
-        draft = make_draft(title='Unassigned draft')
-        make_content_block(draft, text='some text')
+    def test_draft_without_project_link_is_excluded(self, make_draft):
+        draft = make_draft(
+            title='Unassigned draft',
+            content_blocks=[{'type': 'text', 'content': {'text': 'some text'}, 'order': 0}],
+        )
 
         assert extract_notion_draft(draft) is None
 
-    def test_draft_with_link_extracts_title_and_ordered_content_blocks(
-        self, make_draft, make_draft_link, make_content_block, project,
+    def test_draft_with_link_extracts_title_and_ordered_json_blocks(
+        self, make_draft, make_draft_link, project,
     ):
-        draft = make_draft(title='Linked draft')
+        draft = make_draft(
+            title='Linked draft',
+            content_blocks=[
+                {'type': 'text', 'content': {'text': 'second'}, 'order': 1},
+                {'type': 'text', 'content': {'text': 'first'}, 'order': 0},
+            ],
+        )
         make_draft_link(draft, project)
-        make_content_block(draft, text='second', order=1)
-        make_content_block(draft, text='first', order=0)
 
         doc = extract_notion_draft(draft)
 
@@ -87,19 +94,64 @@ class TestExtractNotionDraft:
         assert doc.text.index('Linked draft') < doc.text.index('first')
         assert doc.text.index('first') < doc.text.index('second')
 
-    def test_content_block_order_field_wins_over_creation_order(
-        self, make_draft, make_draft_link, make_content_block, project,
-    ):
-        draft = make_draft(title='Reordered draft')
+    def test_json_html_is_stripped_to_plain_text(self, make_draft, make_draft_link, project):
+        draft = make_draft(
+            title='HTML draft',
+            content_blocks=[
+                {
+                    'type': 'rich_text',
+                    'content': {'html': '<p>Welcome code <strong>WELCOME15</strong></p>'},
+                    'order': 0,
+                },
+            ],
+        )
         make_draft_link(draft, project)
-        # Created first but given a higher `order` -- extraction must follow
-        # `order`, not insertion/created_at order.
-        make_content_block(draft, text='created-first-but-order-1', order=1)
-        make_content_block(draft, text='created-second-but-order-0', order=0)
 
         doc = extract_notion_draft(draft)
 
-        assert doc.text.index('created-second-but-order-0') < doc.text.index('created-first-but-order-1')
+        assert doc is not None
+        assert 'WELCOME15' in doc.text
+        assert '<p>' not in doc.text
+        assert '<strong>' not in doc.text
+
+    def test_json_is_preferred_over_stale_content_block_rows(
+        self, make_draft, make_draft_link, project,
+    ):
+        draft = make_draft(
+            title='Dual storage draft',
+            content_blocks=[
+                {'type': 'text', 'content': {'text': 'from-json-body'}, 'order': 0},
+            ],
+        )
+        make_draft_link(draft, project)
+        ContentBlock.objects.create(
+            draft=draft,
+            block_type='text',
+            content={'text': 'from-table-only'},
+            order=0,
+        )
+
+        doc = extract_notion_draft(draft)
+
+        assert 'from-json-body' in doc.text
+        assert 'from-table-only' not in doc.text
+
+    def test_falls_back_to_content_block_rows_when_json_empty(
+        self, make_draft, make_draft_link, project,
+    ):
+        draft = make_draft(title='Legacy draft', content_blocks=[])
+        make_draft_link(draft, project)
+        ContentBlock.objects.create(
+            draft=draft,
+            block_type='text',
+            content={'text': 'table-fallback'},
+            order=0,
+        )
+
+        doc = extract_notion_draft(draft)
+
+        assert doc is not None
+        assert 'table-fallback' in doc.text
 
 
 @pytest.mark.django_db
@@ -160,11 +212,15 @@ class TestExtractRetrospective:
 
 @pytest.mark.django_db
 class TestExtractionOrderingDeterminism:
-    def test_draft_extraction_is_deterministic(self, make_draft, make_draft_link, make_content_block, project):
-        draft = make_draft(title='Stable draft')
+    def test_draft_extraction_is_deterministic(self, make_draft, make_draft_link, project):
+        draft = make_draft(
+            title='Stable draft',
+            content_blocks=[
+                {'type': 'text', 'content': {'text': 'alpha'}, 'order': 0},
+                {'type': 'text', 'content': {'text': 'beta'}, 'order': 0},
+            ],
+        )
         make_draft_link(draft, project)
-        make_content_block(draft, text='alpha', order=0)
-        make_content_block(draft, text='beta', order=0)  # ties on `order` -> created_at/id tiebreak
 
         first = extract_notion_draft(draft)
         second = extract_notion_draft(draft)

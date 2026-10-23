@@ -91,8 +91,78 @@ def extract_meeting(meeting: Meeting) -> Optional[SourceDocument]:
     )
 
 
+def _plain_text_from_json_block(block: dict) -> str:
+    """Plain text for one editor ``content_blocks`` entry.
+
+    Matches the Agent draft Q&A path: prefer ``html`` / ``text``, strip tags
+    via notion_editor's ``_html_to_plain_text``. Bookmark / media blocks
+    contribute their useful string fields only.
+    """
+    from notion_editor.services import _html_to_plain_text
+
+    content = block.get('content') or {}
+    if not isinstance(content, dict):
+        return ''
+
+    block_type = block.get('type') or ''
+    if block_type == 'divider':
+        return ''
+    if block_type == 'web_bookmark':
+        parts = [
+            content.get('title') or '',
+            content.get('description') or '',
+            content.get('url') or '',
+        ]
+        return ' '.join(part for part in parts if part).strip()
+    if block_type in ('image', 'video', 'audio', 'file'):
+        return (content.get('filename') or content.get('file_url') or '').strip()
+
+    html_or_text = content.get('html') or content.get('text') or ''
+    if not isinstance(html_or_text, str) or not html_or_text:
+        return ''
+    return _html_to_plain_text(html_or_text).strip()
+
+
+def _block_texts_from_draft_json(content_blocks: Any) -> list[str]:
+    """Ordered plain-text segments from ``Draft.content_blocks`` (editor truth)."""
+    if not isinstance(content_blocks, list):
+        return []
+
+    ordered: list[tuple[int, int, dict]] = []
+    for index, block in enumerate(content_blocks):
+        if not isinstance(block, dict):
+            continue
+        order = block.get('order', index)
+        if not isinstance(order, int):
+            order = index
+        ordered.append((order, index, block))
+    ordered.sort(key=lambda item: (item[0], item[1]))
+
+    texts: list[str] = []
+    for _order, _index, block in ordered:
+        text = _plain_text_from_json_block(block)
+        if text:
+            texts.append(text)
+    return texts
+
+
+def _block_texts_from_content_block_rows(draft: Draft) -> list[str]:
+    """Legacy / eval fallback: structured ``ContentBlock`` rows.
+
+    Ordinary editor Save only updates JSON ``content_blocks`` and does not
+    sync this table. Prefer JSON; use rows when JSON has no extractable text
+    (older seeds, Import dual-write-only fixtures).
+    """
+    blocks = ContentBlock.objects.filter(draft=draft).order_by('order', 'created_at', 'id')
+    return [text for text in (block.get_text_content() for block in blocks) if text]
+
+
 def extract_notion_draft(draft: Draft) -> Optional[SourceDocument]:
-    """Notion Draft: title + plain text of all content blocks, in order.
+    """Notion Draft: title + plain text of body blocks, in order.
+
+    Body text comes from ``Draft.content_blocks`` JSON — the same payload the
+    editor Save path writes, and the same source Agent draft Q&A reads.
+    Falls back to ``ContentBlock`` rows only when JSON yields no body text.
 
     Excluded if soft-deleted or unassigned (no DraftProjectLink) — RAG
     indexing must never guess a project for an unassigned draft. A plain
@@ -106,10 +176,9 @@ def extract_notion_draft(draft: Draft) -> Optional[SourceDocument]:
     if project_link is None:
         return None
 
-    # Preserves ContentBlock's intended business order (`order`, then
-    # `created_at`) and adds `id` as a final unique tiebreaker.
-    blocks = ContentBlock.objects.filter(draft=draft).order_by('order', 'created_at', 'id')
-    block_texts = [block.get_text_content() for block in blocks]
+    block_texts = _block_texts_from_draft_json(draft.content_blocks)
+    if not block_texts:
+        block_texts = _block_texts_from_content_block_rows(draft)
 
     text = _join_nonempty([draft.title, *block_texts])
     if not text:

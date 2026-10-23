@@ -72,7 +72,27 @@ def make_content_block():
     def _make(draft, text='', order=0, **kwargs):
         defaults = dict(block_type='text', content={'text': text}, order=order)
         defaults.update(kwargs)
-        return ContentBlock.objects.create(draft=draft, **defaults)
+        block = ContentBlock.objects.create(draft=draft, **defaults)
+        # Keep Draft.content_blocks in sync — RAG extraction prefers JSON
+        # (editor Save truth) and only falls back to ContentBlock rows.
+        blocks = list(draft.content_blocks) if isinstance(draft.content_blocks, list) else []
+        entry = {
+            'type': block.block_type,
+            'content': block.content,
+            'order': block.order,
+        }
+        replaced = False
+        for i, existing in enumerate(blocks):
+            if isinstance(existing, dict) and existing.get('order') == block.order:
+                blocks[i] = entry
+                replaced = True
+                break
+        if not replaced:
+            blocks.append(entry)
+        blocks.sort(key=lambda item: item.get('order', 0) if isinstance(item, dict) else 0)
+        draft.content_blocks = blocks
+        draft.save(update_fields=['content_blocks', 'updated_at'])
+        return block
     return _make
 
 

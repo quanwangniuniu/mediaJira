@@ -194,13 +194,18 @@ def _sync_draft(project: Project, user, src: dict) -> Draft:
         defaults={'status': 'draft'},
     )
     DraftProjectLink.objects.get_or_create(draft=draft, defaults={'project': project})
+    content_payload = {'text': src['content']}
+    json_blocks = [{'type': 'text', 'content': content_payload, 'order': 0}]
+    if draft.content_blocks != json_blocks:
+        draft.content_blocks = json_blocks
+        draft.save(update_fields=['content_blocks', 'updated_at'])
     block, created = ContentBlock.objects.get_or_create(
         draft=draft,
         order=0,
-        defaults={'block_type': 'text', 'content': {'text': src['content']}},
+        defaults={'block_type': 'text', 'content': content_payload},
     )
     if not created and block.content.get('text') != src['content']:
-        block.content = {'text': src['content']}
+        block.content = content_payload
         block.save(update_fields=['content'])
     return draft
 

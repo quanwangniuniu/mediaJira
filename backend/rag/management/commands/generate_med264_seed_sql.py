@@ -295,7 +295,18 @@ class Command(BaseCommand):
 
                     elif source_type == 'notion_draft':
                         with CaptureQueriesContext(connection) as ctx:
-                            draft = Draft.objects.create(user=user, title=src['title'], status='draft')
+                            draft = Draft.objects.create(
+                                user=user,
+                                title=src['title'],
+                                status='draft',
+                                content_blocks=[
+                                    {
+                                        'type': 'text',
+                                        'content': {'text': src['content']},
+                                        'order': 0,
+                                    },
+                                ],
+                            )
                         rows.append(self._parse_row(ctx, ('Draft', ref)))
 
                         with CaptureQueriesContext(connection) as ctx:
