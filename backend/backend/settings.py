@@ -129,6 +129,7 @@ INSTALLED_APPS = [
     'tracking',
     'csm',
     'portal',
+    'external_api',
 ]
 
 MIDDLEWARE = [
@@ -511,6 +512,8 @@ REST_FRAMEWORK = {
             'SPREADSHEET_WS_TICKET_THROTTLE_RATE',
             default='60/minute',
         ),
+        'external_api': config('EXTERNAL_API_THROTTLE_RATE', default='120/minute'),
+        'external_api_token': config('EXTERNAL_API_TOKEN_THROTTLE_RATE', default='10/minute'),
     },
 }
 
