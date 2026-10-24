@@ -86,6 +86,8 @@ public sealed partial class TenantConnectionFactory(
         }
 
         using var connection = dataSource.OpenConnection();
+        var parameters = new DynamicParameters();
+        parameters.Add("UserId", principal.UserId);
         var slug = connection.ExecuteScalar<string?>(
             """
             SELECT o.slug
@@ -94,7 +96,7 @@ public sealed partial class TenantConnectionFactory(
                 ON o.id = COALESCE(u.current_organization_id, u.organization_id)
             WHERE u.id = @UserId
             """,
-            new { principal.UserId }
+            parameters
         );
         if (string.IsNullOrWhiteSpace(slug))
         {

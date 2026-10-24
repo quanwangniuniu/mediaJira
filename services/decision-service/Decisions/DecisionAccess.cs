@@ -54,6 +54,8 @@ public sealed class JwtDecisionAccessService(TenantConnectionFactory connections
 
         await using var session = await connections.OpenAsync(cancellationToken);
         var connection = session.Connection;
+        var userParameters = new DynamicParameters();
+        userParameters.Add("UserId", principal.UserId);
         var user = await connection.QuerySingleOrDefaultAsync<UserRow>(new CommandDefinition(
             """
             SELECT
@@ -64,7 +66,7 @@ public sealed class JwtDecisionAccessService(TenantConnectionFactory connections
             FROM public.core_customuser
             WHERE id = @UserId
             """,
-            new { principal.UserId },
+            userParameters,
             session.Transaction,
             cancellationToken: cancellationToken
         ));
@@ -101,6 +103,9 @@ public sealed class JwtDecisionAccessService(TenantConnectionFactory connections
             return new DecisionAccessContext(false, principal.UserId, email, false, null, null, null, null);
         }
 
+        var memberParameters = new DynamicParameters();
+        memberParameters.Add("UserId", principal.UserId);
+        memberParameters.Add("ProjectId", projectId.Value);
         var member = await connection.QueryFirstOrDefaultAsync<MemberRow>(new CommandDefinition(
             """
             SELECT pm.role AS Role, p.organization_id AS OrganizationId
@@ -113,7 +118,7 @@ public sealed class JwtDecisionAccessService(TenantConnectionFactory connections
               AND p.is_deleted = false
             LIMIT 1
             """,
-            new { principal.UserId, ProjectId = projectId.Value },
+            memberParameters,
             session.Transaction,
             cancellationToken: cancellationToken
         ));
@@ -145,9 +150,11 @@ public sealed class JwtDecisionAccessService(TenantConnectionFactory connections
         CancellationToken cancellationToken
     )
     {
+        var parameters = new DynamicParameters();
+        parameters.Add("ProjectId", projectId);
         return session.Connection.ExecuteScalarAsync<int?>(new CommandDefinition(
             "SELECT organization_id FROM core_project WHERE id = @ProjectId AND is_deleted = false",
-            new { ProjectId = projectId },
+            parameters,
             session.Transaction,
             cancellationToken: cancellationToken
         ));
