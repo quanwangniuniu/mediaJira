@@ -43,6 +43,7 @@ export default function IntegrationsSettingsPage() {
   const { projectId, projectValid } = useProjectIdFromUrl();
   const [overview, setOverview] = useState<Overview | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [forbidden, setForbidden] = useState(false);
   const [drawer, setDrawer] = useState<DrawerKind | null>(null);
   const [removing, setRemoving] = useState<Removal | null>(null);
   const [busy, setBusy] = useState(false);
@@ -50,11 +51,13 @@ export default function IntegrationsSettingsPage() {
   const load = useCallback(async () => {
     if (!projectValid) return;
     setLoadError(null);
+    setForbidden(false);
     try {
       const res = await api.get<Overview>(`${BASE}/`, { params: { project: projectId } });
       setOverview(res.data);
-    } catch {
-      setLoadError('Could not load API access.');
+    } catch (err) {
+      if ((err as { response?: { status?: number } })?.response?.status === 403) setForbidden(true);
+      else setLoadError('Could not load API access.');
     }
   }, [projectId, projectValid]);
 
@@ -89,25 +92,33 @@ export default function IntegrationsSettingsPage() {
         {projectValid && (
           <div className="flex flex-wrap items-center gap-3">
             <SettingsHubLink projectId={projectId} />
-            <button type="button" onClick={() => setDrawer('webhook')} disabled={!overview} className={SECONDARY_BUTTON_CLASS}>
-              <Plus className="h-4 w-4" aria-hidden />
-              New webhook
-            </button>
-            <button
-              type="button"
-              onClick={() => setDrawer('credential')}
-              disabled={!overview}
-              className={`gap-2 ${PORTAL_SUBMIT_BUTTON_CLASS}`}
-            >
-              <Plus className="h-4 w-4" aria-hidden />
-              New credential
-            </button>
+            {!forbidden && (
+              <>
+                <button type="button" onClick={() => setDrawer('webhook')} disabled={!overview} className={SECONDARY_BUTTON_CLASS}>
+                  <Plus className="h-4 w-4" aria-hidden />
+                  New webhook
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDrawer('credential')}
+                  disabled={!overview}
+                  className={`gap-2 ${PORTAL_SUBMIT_BUTTON_CLASS}`}
+                >
+                  <Plus className="h-4 w-4" aria-hidden />
+                  New credential
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
 
       {!projectValid ? (
         <CsmSettingsProjectGuard />
+      ) : forbidden ? (
+        <p className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">
+          Only an organisation admin can manage API access and webhooks.
+        </p>
       ) : loadError ? (
         <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           <AlertCircle className="h-4 w-4 shrink-0" aria-hidden />
@@ -307,8 +318,10 @@ function CreateDrawer({
       toast.success(isCredential ? 'Credential created.' : 'Webhook created.');
       onCreated();
     } catch (err) {
-      const parsed = parseFieldErrors((err as { response?: { data?: unknown } })?.response?.data);
+      const data = (err as { response?: { data?: { detail?: unknown } } })?.response?.data;
+      const parsed = parseFieldErrors(data);
       if (Object.keys(parsed).length > 0) setFieldErrors(parsed);
+      else if (typeof data?.detail === 'string') setError(data.detail);
       else setError(isCredential ? 'Could not create the credential.' : 'Could not create the webhook.');
     } finally {
       setSubmitting(false);

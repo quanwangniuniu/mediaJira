@@ -6,8 +6,10 @@ from unittest.mock import Mock
 
 import pytest
 from celery.exceptions import Retry
+from django.core.cache.backends.locmem import LocMemCache
 from django.utils import timezone
 from rest_framework.test import APIRequestFactory, force_authenticate
+from rest_framework.throttling import SimpleRateThrottle
 
 from chat.services import UnsafeUrlError
 from core.crypto import encrypt_token
@@ -16,11 +18,12 @@ from csm.models import CustomerUser, Queue, RoutingRule, Ticket
 from csm.tasks import notify_sla_breaches
 from customer.models import Customer, CustomerOrganisation
 from experience_group.models import ExperienceGroup
-from external_api.models import Credential, WebhookEndpoint, WebhookEvent
+from external_api.enums import CredentialKind, WebhookEvent
+from external_api.models import Credential, WebhookEndpoint
 from external_api.tasks import deliver_webhook
 from external_api.views import (
-    AgentResource, ClientTokenView, CredentialView, CustomerResource, IntegrationView, RoutingRuleResource,
-    TicketResource, WebhookView, hash_secret,
+    MAX_CREDENTIALS_PER_PROJECT, MAX_WEBHOOKS_PER_PROJECT, AgentResource, ClientTokenView, CredentialView,
+    CustomerResource, IntegrationView, RoutingRuleResource, TicketResource, WebhookView, hash_secret,
 )
 
 factory = APIRequestFactory()
@@ -33,12 +36,19 @@ def _stay_on_public_schema(monkeypatch):
     monkeypatch.setattr('external_api.views.slug_to_schema_name', lambda slug: 'public')
 
 
+@pytest.fixture(autouse=True)
+def _fresh_rate_limits(monkeypatch):
+    cache = LocMemCache('external-api-tests', {})
+    cache.clear()
+    monkeypatch.setattr(SimpleRateThrottle, 'cache', cache)
+
+
 @pytest.fixture
 def queue(project, customer_organisation):
     return Queue.objects.create(project=project, organisation=customer_organisation, name='Frontline', tier='T1')
 
 
-def _credential(organization, project, *scopes, kind=Credential.Kind.API_KEY):
+def _credential(organization, project, *scopes, kind=CredentialKind.API_KEY):
     Credential.objects.create(
         organization=organization, project_id=project.id, name='Integration', kind=kind,
         public_id='abcd1234', secret_hash=hash_secret('super-secret'), scopes=list(scopes),
@@ -50,6 +60,12 @@ def _call(view, method, data=None, key=None, **headers):
     if key:
         headers['HTTP_X_API_KEY'] = key
     return view(getattr(factory, method)('/', data, format='json', **headers))
+
+
+def _admin_call(user, project, view, method, data=None, **kwargs):
+    request = getattr(factory, method)(f'/?project={project.id}', data, format='json')
+    force_authenticate(request, user=user)
+    return view(request, **kwargs)
 
 
 def _rows(data):
@@ -104,7 +120,7 @@ def test_write_key_creates_in_its_own_project_and_cannot_set_project_fields(
 
 @pytest.mark.django_db
 def test_client_credentials_grant_issues_a_working_bearer(organization, project, queue):
-    _credential(organization, project, 'tickets:read', kind=Credential.Kind.CLIENT)
+    _credential(organization, project, 'tickets:read', kind=CredentialKind.CLIENT)
     token_view = ClientTokenView.as_view()
     grant = {'grant_type': 'client_credentials', 'client_id': 'abcd1234', 'client_secret': 'super-secret'}
 
@@ -116,6 +132,28 @@ def test_client_credentials_grant_issues_a_working_bearer(organization, project,
     assert _call(tickets, 'get', HTTP_AUTHORIZATION=f"Bearer {token.data['access_token']}").status_code == 200
     assert _call(tickets, 'get', HTTP_AUTHORIZATION='Bearer not-a-token').status_code == 401
     assert _call(tickets, 'get', key=token.data['access_token']).status_code == 401
+
+
+@pytest.mark.django_db
+def test_each_credential_has_its_own_request_limit(organization, project, monkeypatch):
+    monkeypatch.setattr(SimpleRateThrottle, 'THROTTLE_RATES', {'external_api': '2/minute'})
+    first = _credential(organization, project, 'customers:read')
+    Credential.objects.create(
+        organization=organization, project_id=project.id, name='Other', kind=CredentialKind.API_KEY,
+        public_id='efgh5678', secret_hash=hash_secret('other-secret'), scopes=['customers:read'],
+    )
+    customers = CustomerResource.as_view({'get': 'list'})
+
+    assert [_call(customers, 'get', key=first).status_code for _ in range(3)] == [200, 200, 429]
+    assert _call(customers, 'get', key='zmk_efgh5678_other-secret').status_code == 200
+
+
+@pytest.mark.django_db
+def test_token_requests_are_limited_per_caller(monkeypatch):
+    monkeypatch.setattr(SimpleRateThrottle, 'THROTTLE_RATES', {'external_api_token': '2/minute'})
+    grant = {'grant_type': 'client_credentials', 'client_id': 'unknown', 'client_secret': 'wrong'}
+
+    assert [_call(ClientTokenView.as_view(), 'post', grant).status_code for _ in range(3)] == [401, 401, 429]
 
 
 @pytest.mark.django_db
@@ -164,15 +202,11 @@ def test_routing_rule_create_has_no_person_to_record(organization, project, queu
 @pytest.mark.django_db
 def test_org_admin_creates_and_revokes_credentials_and_secrets_show_once(organization, project, user):
     OrganizationMembership.objects.create(user=user, organization=organization, role='admin', is_active=True)
-
-    def admin_call(view, method, data=None):
-        request = getattr(factory, method)(f'/?project={project.id}', data, format='json')
-        force_authenticate(request, user=user)
-        return view(request)
-
-    key = admin_call(CredentialView.as_view(), 'post', {'name': 'Billing', 'kind': 'api_key', 'scopes': ['customers:read']})
-    http = admin_call(WebhookView.as_view(), 'post', {'url': 'http://example.com/hook', 'events': ['ticket.created']})
-    overview = admin_call(IntegrationView.as_view(), 'get')
+    new_key = {'name': 'Billing', 'kind': 'api_key', 'scopes': ['customers:read']}
+    key = _admin_call(user, project, CredentialView.as_view(), 'post', new_key)
+    new_hook = {'url': 'http://example.com/hook', 'events': ['ticket.created']}
+    http = _admin_call(user, project, WebhookView.as_view(), 'post', new_hook)
+    overview = _admin_call(user, project, IntegrationView.as_view(), 'get')
 
     assert key.status_code == 201 and key.data['secret'].startswith('zmk_')
     assert http.status_code == 400 and 'url' in http.data
@@ -180,12 +214,29 @@ def test_org_admin_creates_and_revokes_credentials_and_secrets_show_once(organiz
     assert overview.data['credentials'][0]['public_id'] == key.data['public_id']
     assert 'secret' not in overview.data['credentials'][0]
 
-    revoke = factory.delete(f'/?project={project.id}')
-    force_authenticate(revoke, user=user)
-    assert CredentialView.as_view()(revoke, pk=key.data['id']).status_code == 204
+    assert _admin_call(user, project, CredentialView.as_view(), 'delete', pk=key.data['id']).status_code == 204
     customers = CustomerResource.as_view({'get': 'list'})
     assert _call(customers, 'get', key=key.data['secret']).status_code == 401
-    assert admin_call(IntegrationView.as_view(), 'get').data['credentials'] == []
+    assert _admin_call(user, project, IntegrationView.as_view(), 'get').data['credentials'] == []
+
+
+@pytest.mark.django_db
+def test_a_project_holds_a_limited_number_of_credentials_and_webhooks(organization, project, user):
+    OrganizationMembership.objects.create(user=user, organization=organization, role='admin', is_active=True)
+    for index in range(MAX_CREDENTIALS_PER_PROJECT):
+        Credential.objects.create(
+            organization=organization, project_id=project.id, name='Integration', kind=CredentialKind.API_KEY,
+            public_id=f'key{index}', secret_hash=hash_secret('secret'),
+        )
+    for _ in range(MAX_WEBHOOKS_PER_PROJECT):
+        _subscribe(organization, project, WebhookEvent.TICKET_CREATED)
+
+    key = _admin_call(user, project, CredentialView.as_view(), 'post', {'name': 'Billing', 'kind': 'api_key'})
+    new_hook = {'url': 'https://example.com/hook', 'events': ['ticket.created']}
+    hook = _admin_call(user, project, WebhookView.as_view(), 'post', new_hook)
+
+    assert key.status_code == 400 and 'at most' in key.data['detail']
+    assert hook.status_code == 400 and 'at most' in hook.data['detail']
 
 
 @pytest.mark.django_db

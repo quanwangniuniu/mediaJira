@@ -29,6 +29,7 @@ from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import SAFE_METHODS, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.routers import SimpleRouter
+from rest_framework.throttling import ScopedRateThrottle, SimpleRateThrottle
 from rest_framework.views import APIView
 
 from chat.services import UnsafeUrlError
@@ -49,7 +50,8 @@ from csm.views import (
 from customer.models import Customer, CustomerOrganisation
 from customer.views import CustomerOrganisationViewSet, CustomerViewSet
 from experience_group.models import ExperienceGroup
-from external_api.models import Credential, WebhookDelivery, WebhookEndpoint, WebhookEvent
+from external_api.enums import CredentialKind, WebhookEvent
+from external_api.models import Credential, WebhookDelivery, WebhookEndpoint
 from external_api.tasks import validate_webhook_url
 
 User = get_user_model()
@@ -57,6 +59,8 @@ User = get_user_model()
 KEY_PREFIX = 'zmk'
 BEARER_SALT = 'external-api-bearer'
 BEARER_MAX_AGE_SECONDS = 3600
+MAX_CREDENTIALS_PER_PROJECT = 10
+MAX_WEBHOOKS_PER_PROJECT = 10
 _DUMMY_HASH = hashlib.sha256(b'missing').hexdigest()
 RESOURCES = (
     'customers', 'organisations', 'tickets', 'conversations', 'templates', 'routing_rules', 'queues', 'agents',
@@ -103,7 +107,7 @@ def credential_for_api_key(raw):
     public_id, _, secret = rest.partition('_')
     if prefix != KEY_PREFIX or not public_id or not secret:
         return None
-    return find_credential(public_id, Credential.Kind.API_KEY, secret)
+    return find_credential(public_id, CredentialKind.API_KEY, secret)
 
 
 def credential_for_bearer(token):
@@ -111,7 +115,7 @@ def credential_for_bearer(token):
         public_id = loads(token, salt=BEARER_SALT, max_age=BEARER_MAX_AGE_SECONDS)
     except BadSignature:
         return None
-    return find_credential(public_id, Credential.Kind.CLIENT)
+    return find_credential(public_id, CredentialKind.CLIENT)
 
 
 class CredentialAuthentication(BaseAuthentication):
@@ -152,6 +156,18 @@ class CredentialAccess(BasePermission):
         if f'{view.api_resource}:write' in principal.scopes:
             return True
         return request.method in SAFE_METHODS and f'{view.api_resource}:read' in principal.scopes
+
+
+class CredentialRateThrottle(SimpleRateThrottle):
+    """Counts requests per credential.
+
+    ApiPrincipal has no pk, so the built-in throttles cannot tell credentials apart.
+    """
+
+    scope = 'external_api'
+
+    def get_cache_key(self, request, view):
+        return self.cache_format % {'scope': self.scope, 'ident': request.auth.public_id}
 
 
 # --- Scoping ----------------------------------------------------------------
@@ -231,6 +247,7 @@ def scoped_assignable_users(principal):
 class ExternalResourceMixin:
     authentication_classes = [CredentialAuthentication]
     permission_classes = [IsAuthenticated, CredentialAccess]
+    throttle_classes = [CredentialRateThrottle]
     filter_backends = []
     api_resource = None
     rows = None
@@ -495,10 +512,15 @@ class CredentialView(IntegrationAdminView):
         scopes = request.data.get('scopes') or []
         if not name:
             raise ValidationError({'name': 'This field is required.'})
-        if kind not in Credential.Kind.values:
+        if kind not in CredentialKind.values:
             raise ValidationError({'kind': 'Choose api_key or client.'})
         if not isinstance(scopes, list) or any(scope not in SCOPES for scope in scopes):
             raise ValidationError({'scopes': 'Unknown scope.'})
+        if self.credentials().count() >= MAX_CREDENTIALS_PER_PROJECT:
+            return Response(
+                {'detail': f'A project can have at most {MAX_CREDENTIALS_PER_PROJECT} credentials.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         public_id, secret = secrets.token_hex(8), secrets.token_urlsafe(32)
         credential = Credential.objects.create(
             organization_id=self.organization_id,
@@ -509,7 +531,7 @@ class CredentialView(IntegrationAdminView):
             secret_hash=hash_secret(secret),
             scopes=scopes,
         )
-        revealed = f'{KEY_PREFIX}_{public_id}_{secret}' if kind == Credential.Kind.API_KEY else secret
+        revealed = f'{KEY_PREFIX}_{public_id}_{secret}' if kind == CredentialKind.API_KEY else secret
         return Response({**_credential_row(credential), 'secret': revealed}, status=status.HTTP_201_CREATED)
 
     def delete(self, request, pk):
@@ -523,6 +545,11 @@ class WebhookView(IntegrationAdminView):
         events = request.data.get('events') or []
         if not isinstance(events, list) or not events or any(event not in WebhookEvent.values for event in events):
             raise ValidationError({'events': 'Choose one or more supported events.'})
+        if self.endpoints().count() >= MAX_WEBHOOKS_PER_PROJECT:
+            return Response(
+                {'detail': f'A project can have at most {MAX_WEBHOOKS_PER_PROJECT} webhooks.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         try:
             url, _address = validate_webhook_url(str(request.data.get('url') or '').strip())
         except UnsafeUrlError as exc:
@@ -548,6 +575,8 @@ class ClientTokenView(APIView):
 
     authentication_classes = []
     permission_classes = []
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'external_api_token'
 
     def post(self, request):
         if request.data.get('grant_type') != 'client_credentials':
@@ -555,7 +584,7 @@ class ClientTokenView(APIView):
         client_id, client_secret = request.data.get('client_id'), request.data.get('client_secret')
         credential = None
         if isinstance(client_id, str) and isinstance(client_secret, str):
-            credential = find_credential(client_id, Credential.Kind.CLIENT, client_secret)
+            credential = find_credential(client_id, CredentialKind.CLIENT, client_secret)
         if credential is None:
             return Response({'error': 'invalid_client'}, status=status.HTTP_401_UNAUTHORIZED)
         return Response({

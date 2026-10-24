@@ -6,11 +6,13 @@ import CsmSettingsPageRoot, { CsmSettingsProjectGuard } from '@/components/csm-s
 import CsmSettingsNavCard from '@/components/csm-settings/CsmSettingsNavCard';
 import { useProjectIdFromUrl } from '@/components/csm-settings/useProjectIdFromUrl';
 import { SECONDARY_BUTTON_CLASS } from '@/components/csm-settings/constants';
+import { useAuthStore } from '@/lib/authStore';
 import { useBuildUrl } from '@/lib/buildUrl';
 
 export default function CsmSettingsHubPage() {
   const { projectValid } = useProjectIdFromUrl();
   const buildUrl = useBuildUrl();
+  const isOrgAdmin = useAuthStore((state) => Boolean(state.user?.is_org_admin));
 
   return (
     <CsmSettingsPageRoot>
@@ -102,12 +104,14 @@ export default function CsmSettingsHubPage() {
             title="Routing & Template Sandbox"
             description="Simulate a conversation, trace rule evaluation, and preview templates. Nothing is saved."
           />
-          <CsmSettingsNavCard
-            href={buildUrl('/admin/csm/settings/integrations')}
-            icon={Webhook}
-            title="API & Webhooks"
-            description="API keys, bearer clients, and signed webhooks for ticket and SLA events."
-          />
+          {isOrgAdmin && (
+            <CsmSettingsNavCard
+              href={buildUrl('/admin/csm/settings/integrations')}
+              icon={Webhook}
+              title="API & Webhooks"
+              description="API keys, bearer clients, and signed webhooks for ticket and SLA events."
+            />
+          )}
         </div>
       )}
     </CsmSettingsPageRoot>

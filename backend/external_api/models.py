@@ -4,6 +4,7 @@ from django.dispatch import receiver
 from django.utils import timezone
 
 from core.models import TimeStampedModel
+from external_api.enums import CredentialKind, WebhookEvent
 
 
 class Credential(TimeStampedModel):
@@ -12,10 +13,6 @@ class Credential(TimeStampedModel):
     The secret is stored as a SHA-256 hex digest and shown once, on create.
     """
 
-    class Kind(models.TextChoices):
-        API_KEY = 'api_key', 'API key'
-        CLIENT = 'client', 'Bearer client'
-
     organization = models.ForeignKey(
         'core.Organization', on_delete=models.CASCADE, related_name='external_credentials',
     )
@@ -23,7 +20,7 @@ class Credential(TimeStampedModel):
     # stored as an integer next to the organisation.
     project_id = models.PositiveIntegerField()
     name = models.CharField(max_length=200)
-    kind = models.CharField(max_length=16, choices=Kind.choices)
+    kind = models.CharField(max_length=16, choices=CredentialKind.choices)
     public_id = models.CharField(max_length=64, unique=True)
     secret_hash = models.CharField(max_length=64)
     # '<resource>:read' / '<resource>:write' entries, see external_api.views.SCOPES.
@@ -31,12 +28,6 @@ class Credential(TimeStampedModel):
 
     class Meta:
         ordering = ['-created_at', '-id']
-
-
-class WebhookEvent(models.TextChoices):
-    TICKET_CREATED = 'ticket.created', 'Ticket created'
-    TICKET_STATUS_CHANGED = 'ticket.status_changed', 'Ticket status changed'
-    SLA_BREACHED = 'sla.breached', 'SLA breached'
 
 
 class WebhookEndpoint(TimeStampedModel):
