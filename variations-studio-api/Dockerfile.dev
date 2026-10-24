@@ -3,11 +3,7 @@ FROM node:20-bullseye
 
 WORKDIR /app
 
-# Same arrangement as frontend/Dockerfile.dev: run as the image's non-root
-# `node` user, renumbered to the developer's host UID/GID. compose.dev.yml
-# bind-mounts this directory over /app and Next.js writes next-env.d.ts into
-# it, so on native Linux the container user must own the checkout. Override
-# with HOST_UID/HOST_GID in .env (see env.example) and rebuild.
+# Same as frontend/Dockerfile.dev: run as `node` with the host UID/GID.
 ARG HOST_UID=1000
 ARG HOST_GID=1000
 RUN if [ "$HOST_UID" != "$(id -u node)" ] || [ "$HOST_GID" != "$(id -g node)" ]; then \

@@ -5,15 +5,8 @@ FROM node:20-bullseye
 # Set work directory
 WORKDIR /app
 
-# Run as the image's non-root `node` user, renumbered to the developer's host
-# UID/GID. docker-compose.dev.yml bind-mounts ./frontend over /app, and Next.js
-# writes next-env.d.ts into it (`next build` also writes tsconfig.tsbuildinfo),
-# so on native Linux the container user must own the checkout or those writes
-# fail with EACCES. Docker Desktop and OrbStack mask bind-mount ownership, which
-# is why this only shows on Linux. The defaults match the first Linux user and
-# the image's own node user; override with HOST_UID/HOST_GID in .env (see
-# env.example) and rebuild. `-o` tolerates an ID that already exists in the
-# image, e.g. a macOS primary group of 20.
+# Run as `node`, renumbered to the host UID/GID so writes into the bind-mounted
+# source (next-env.d.ts etc.) are owned by the developer. Linux only; see env.example.
 ARG HOST_UID=1000
 ARG HOST_GID=1000
 RUN if [ "$HOST_UID" != "$(id -u node)" ] || [ "$HOST_GID" != "$(id -g node)" ]; then \

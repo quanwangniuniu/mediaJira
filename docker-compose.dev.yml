@@ -174,7 +174,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.dev
       args:
-        # set HOST_UID/HOST_GID in .env (see env.example).
+        # Match the bind-mount owner on native Linux; see env.example.
         HOST_UID: ${HOST_UID:-1000}
         HOST_GID: ${HOST_GID:-1000}
     container_name: frontend-dev
@@ -400,10 +400,7 @@ services:
     image: prom/prometheus
     volumes:
       - ./devops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-    # prometheus.yml scrapes the backend and frontend via host.docker.internal
-    # (their host-published ports). Docker Desktop and OrbStack resolve that
-    # name by themselves; native Linux only knows it through this mapping, and
-    # without it the lookup fell through to the host's DNS search domain.
+    # prometheus.yml scrapes host.docker.internal; native Linux needs the mapping.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
