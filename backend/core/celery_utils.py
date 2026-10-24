@@ -1,7 +1,7 @@
 """
 Timeout protection for Celery tasks running under --pool=threads, where
-Celery's native time_limit/soft_time_limit are silently inert. 
-TimeoutEnforcedTask is wired in once as the app's default Task class — tasks 
+Celery's native time_limit/soft_time_limit are silently inert.
+TimeoutEnforcedTask is wired in once as the app's default Task class — tasks
 just declare the native `time_limit=N` kwarg; no per-task decorator or import.
 """
 import concurrent.futures
@@ -81,6 +81,30 @@ TASK_TIMEOUTS = {
 }
 
 
+def _run_task_with_db_cleanup(run, *args, **kwargs):
+    """Run a task body and always close this thread's Django DB connections.
+
+    TimeoutEnforcedTask executes ``run`` on a helper thread. Django connections
+    are thread-local, so a connection opened here is not returned to PgBouncer
+    (session pool) when the Celery worker thread moves on — unless we close it
+    on this thread.
+
+    Use ``connections.close_all()``, not ``close_old_connections()``. The latter
+    only drops unusable/obsolete connections and may leave a healthy one open,
+    which still holds a session-pool slot until the client disconnects.
+
+    If the task is stuck inside a blocking DB call, this ``finally`` only runs
+    after that call returns; a statement_timeout is the backstop for that case.
+    On timeout the helper may keep running in the background until then.
+    """
+    try:
+        return run(*args, **kwargs)
+    finally:
+        from django.db import connections
+
+        connections.close_all()
+
+
 class TimeoutEnforcedTask(Task):
     """
     Default Task class for this app (wired in backend/backend/celery.py).
@@ -89,6 +113,10 @@ class TimeoutEnforcedTask(Task):
     protect it, with whatever timeout it needs. Nothing to declare on
     the task itself, and tasks not listed in TASK_TIMEOUTS run
     unprotected, same as before this class existed.
+
+    Timed tasks run on a one-shot helper thread so the worker can abandon
+    them; that thread always closes its DB connections via
+    ``_run_task_with_db_cleanup`` when the body exits.
     """
 
     def __call__(self, *args, **kwargs):
@@ -97,7 +125,9 @@ class TimeoutEnforcedTask(Task):
             return self.run(*args, **kwargs)
 
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        future = executor.submit(self.run, *args, **kwargs)
+        future = executor.submit(
+            _run_task_with_db_cleanup, self.run, *args, **kwargs,
+        )
         try:
             result = future.result(timeout=seconds)
         except concurrent.futures.TimeoutError:
@@ -112,6 +142,8 @@ class TimeoutEnforcedTask(Task):
             # wait=False: do NOT block here waiting for the orphaned
             # thread to finish — that would defeat the entire point of
             # timing out. Let it run its course in the background.
+            # When that thread eventually exits, _run_task_with_db_cleanup
+            # still closes its Django connections in finally.
             executor.shutdown(wait=False)
             raise TaskTimeoutError(
                 f"{self.name} exceeded {seconds}s timeout"
