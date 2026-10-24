@@ -53,11 +53,13 @@ export async function fetchUrlText(pageUrl: string): Promise<string> {
     );
   }
   const endpoint = new URL('/content', `${base}/`);
-  endpoint.searchParams.set('token', apiKey);
 
   const response = await fetch(endpoint, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
     body: JSON.stringify({
       url: pageUrl,
       gotoOptions: { waitUntil: 'networkidle2' },

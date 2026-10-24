@@ -35,4 +35,17 @@ describe('fetchUrlText', () => {
     await expect(fetchUrlText('https://example.com/landing')).rejects.toThrow(BrowserlessError);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it('sends the token in an Authorization header, never in the URL', async () => {
+    process.env.BROWSERLESS_BASE = 'http://browserless.internal:3000';
+
+    await fetchUrlText('https://example.com/landing');
+
+    const [endpoint, init] = fetchMock.mock.calls[0];
+    expect(String(endpoint)).not.toContain('token=');
+    expect(String(endpoint)).not.toContain('test-key');
+    expect((init as RequestInit).headers).toMatchObject({
+      Authorization: 'Bearer test-key',
+    });
+  });
 });
